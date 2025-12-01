@@ -1,12 +1,12 @@
 import logging
 import os
 import time
-from typing import Literal
+from typing import Literal, Optional
+import httpx
 
 import numpy as np
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel, Field
-from sentence_transformers import CrossEncoder, SentenceTransformer
 
 logger = logging.getLogger(__name__)
 
@@ -24,15 +24,30 @@ app = FastAPI(title="Embedding Service", version="1.0.0")
 EMBEDDING_MODEL = os.getenv("EMBEDDING_MODEL", "all-MiniLM-L6-v2")
 RERANK_MODEL = os.getenv("RERANK_MODEL", "cross-encoder/ms-marco-MiniLM-L-6-v2")
 TARGET_DIMENSION = int(os.getenv("TARGET_DIMENSION", "2048"))
+EMBEDDING_PROVIDER = os.getenv("EMBEDDING_PROVIDER", "local")  # local, ollama, or gemini
+OLLAMA_BASE_URL = os.getenv("LOCAL_LLM_BASE_URL", "http://localhost:11434")
 
-# Initialize models lazily
-embedding_model = SentenceTransformer(EMBEDDING_MODEL)
-rerank_model = CrossEncoder(RERANK_MODEL)
-
-
+print(f"Using embedding provider: {EMBEDDING_PROVIDER}")
 print(f"Using embedding model: {EMBEDDING_MODEL}")
 print(f"Using rerank model: {RERANK_MODEL}")
 print(f"Using target dimension: {TARGET_DIMENSION}")
+if EMBEDDING_PROVIDER == "ollama":
+    print(f"Using Ollama base URL: {OLLAMA_BASE_URL}")
+
+# Initialize models lazily based on provider
+embedding_model = None
+rerank_model = None
+
+if EMBEDDING_PROVIDER == "local":
+    try:
+        from sentence_transformers import SentenceTransformer, CrossEncoder
+        embedding_model = SentenceTransformer(EMBEDDING_MODEL)
+        rerank_model = CrossEncoder(RERANK_MODEL)
+        logger.info(f"Loaded local embedding model: {EMBEDDING_MODEL}")
+    except Exception as e:
+        logger.error(f"Failed to load local models: {e}")
+        logger.info("Falling back to Ollama provider")
+        EMBEDDING_PROVIDER = "ollama"
 
 def normalize_embedding(embedding: list[float]) -> list[float]:
     """Pad or validate embedding to match TARGET_DIMENSION"""
@@ -48,6 +63,25 @@ def normalize_embedding(embedding: list[float]) -> list[float]:
         raise ValueError(
             f"Embedding dimension {current_dim} exceeds maximum supported dimension {TARGET_DIMENSION}"
         )
+
+
+async def get_ollama_embedding(text: str) -> list[float]:
+    """Get embedding from Ollama API"""
+    async with httpx.AsyncClient(timeout=30.0) as client:
+        try:
+            response = await client.post(
+                f"{OLLAMA_BASE_URL}/api/embeddings",
+                json={"model": EMBEDDING_MODEL, "prompt": text}
+            )
+            response.raise_for_status()
+            data = response.json()
+            return data["embedding"]
+        except httpx.HTTPStatusError as e:
+            logger.error(f"Ollama API error: {e.response.status_code} - {e.response.text}")
+            raise HTTPException(status_code=502, detail=f"Ollama API error: {str(e)}")
+        except Exception as e:
+            logger.error(f"Failed to get embedding from Ollama: {str(e)}")
+            raise HTTPException(status_code=500, detail=f"Ollama connection failed: {str(e)}")
 
 
 # Request/Response Models
@@ -92,13 +126,13 @@ class RerankResponse(BaseModel):
 @app.get("/health")
 async def health_check():
     """Health check endpoint"""
-    return {"status": "healthy"}
+    return {"status": "healthy", "provider": EMBEDDING_PROVIDER}
 
 
 @app.post("/embed", response_model=EmbedResponse)
 async def embed(request: EmbedRequest):
     """
-    Generate embeddings for the provided text content using sentence transformers.
+    Generate embeddings for the provided text content.
 
     Args:
         request: EmbedRequest containing the text content and normalization preference
@@ -107,13 +141,23 @@ async def embed(request: EmbedRequest):
         EmbedResponse with the embedding vector and its dimension
     """
     try:
-        embedding = embedding_model.encode(request.content).tolist()
+        if EMBEDDING_PROVIDER == "ollama":
+            embedding = await get_ollama_embedding(request.content)
+        elif EMBEDDING_PROVIDER == "local":
+            if embedding_model is None:
+                raise HTTPException(status_code=503, detail="Local embedding model not available")
+            embedding = embedding_model.encode(request.content).tolist()
+        else:
+            raise HTTPException(status_code=501, detail=f"Provider {EMBEDDING_PROVIDER} not implemented")
 
         if request.normalize:
             embedding = normalize_embedding(embedding)
 
         return EmbedResponse(embedding=embedding, dimension=len(embedding))
+    except HTTPException:
+        raise
     except Exception as e:
+        logger.error(f"Embedding generation failed: {str(e)}")
         raise HTTPException(
             status_code=500, detail=f"Embedding generation failed: {str(e)}"
         )
@@ -139,6 +183,24 @@ async def rerank(request: RerankRequest):
             logger.debug(f"Empty documents list, returning empty results (took {time.perf_counter() - check_start:.6f}s)")
             return RerankResponse(results=[])
         logger.debug(f"Documents check completed (took {time.perf_counter() - check_start:.6f}s)")
+
+        # For now, if rerank_model is not available, use simple scoring
+        if rerank_model is None:
+            logger.warning("Rerank model not available, using fallback scoring")
+            # Simple fallback: return documents in original order with decreasing scores
+            reranked = []
+            for idx, doc in enumerate(request.documents):
+                score = 1.0 - (idx * 0.01)  # Simple decreasing scores
+                reranked.append(
+                    RerankResult(
+                        index=idx,
+                        document=doc if isinstance(doc, str) else str(doc),
+                        relevance_score=float(f"{score:.6f}"),
+                    )
+                )
+            if isinstance(request.top_k, int) and request.top_k > 0:
+                reranked = reranked[:request.top_k]
+            return RerankResponse(results=reranked)
 
         def get_document_text(doc):
             if isinstance(doc, str):
@@ -189,7 +251,7 @@ async def rerank(request: RerankRequest):
         return RerankResponse(results=reranked)
     except Exception as e:
         total_time = time.perf_counter() - start_time
-        logger.debug(f"Rerank failed after {total_time:.6f}s: {str(e)}")
+        logger.error(f"Rerank failed after {total_time:.6f}s: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Reranking failed: {str(e)}")
 
 
