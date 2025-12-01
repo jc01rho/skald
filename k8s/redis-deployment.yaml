@@ -1,0 +1,49 @@
+# Redis Deployment 정의
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: redis
+  namespace: skald
+  labels:
+    app: skald
+    component: redis
+    environment: production
+  annotations:
+    description: "Skald Redis 캐시 서버"
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: skald
+      component: redis
+  template:
+    metadata:
+      labels:
+        app: skald
+        component: redis
+        environment: production
+    spec:
+      containers:
+      - name: redis
+        image: redis:7-alpine
+        ports:
+        - containerPort: 6379
+          name: redis
+        # 기본 Redis 설정 (비밀번호 없음, 개발/테스트용)
+        command:
+        - redis-server
+        - --appendonly
+        - "yes"
+        resources:
+          requests:
+            memory: "128Mi"
+            cpu: "100m"
+          limits:
+            memory: "256Mi"
+            cpu: "200m"
+        volumeMounts:
+        - name: redis-data
+          mountPath: /data
+      volumes:
+      - name: redis-data
+        emptyDir: {}

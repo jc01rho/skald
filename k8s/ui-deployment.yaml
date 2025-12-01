@@ -1,0 +1,123 @@
+# Frontend UI Deployment 정의
+# Skald 프론트엔드 UI를 실행하는 Deployment입니다.
+# 주의: 이 서비스는 별도의 빌드 과정이 필요할 수 있습니다.
+# 빌드 방법: frontend 디렉토리에서 빌드 후 Nginx 또는 다른 웹서버로 제공
+# 예시: docker build -t skald-frontend:latest ./frontend/
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ui
+  namespace: skald
+  labels:
+    app: skald
+    component: ui
+    environment: production
+  annotations:
+    description: "Skald 프론트엔드 UI Deployment"
+spec:
+  replicas: 2
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  selector:
+    matchLabels:
+      app: skald
+      component: ui
+  template:
+    metadata:
+      labels:
+        app: skald
+        component: ui
+        environment: production
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 101  # nginx 사용자
+        runAsGroup: 101
+        fsGroup: 101
+      containers:
+      - name: ui
+        # frontend 디렉토리에서 빌드된 이미지 사용
+        image: ${DOCKER_REGISTRY:-skaldlabs}/skald-frontend:${IMAGE_TAG:-latest}
+        imagePullPolicy: IfNotPresent
+        ports:
+        - containerPort: 80
+          name: http
+          protocol: TCP
+        env:
+        # API 서버 주소 설정
+        - name: VITE_API_URL
+          value: "http://api-service:8000"
+        # 프론트엔드 관련 환경변수
+        - name: FRONTEND_URL
+          valueFrom:
+            configMapKeyRef:
+              name: skald-config
+              key: FRONTEND_URL
+        - name: APP_HOST
+          valueFrom:
+            configMapKeyRef:
+              name: skald-config
+              key: APP_HOST
+        # OAuth 관련 환경변수 (클라이언트용)
+        - name: VITE_GOOGLE_CLIENT_ID
+          valueFrom:
+            secretKeyRef:
+              name: skald-secrets
+              key: GOOGLE_CLIENT_ID
+        # 기타 환경변수
+        - name: NODE_ENV
+          valueFrom:
+            configMapKeyRef:
+              name: skald-config
+              key: NODE_ENV
+        # 헬스체크 설정
+        readinessProbe:
+          httpGet:
+            path: /
+            port: 80
+          initialDelaySeconds: 10
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 3
+        livenessProbe:
+          httpGet:
+            path: /
+            port: 80
+          initialDelaySeconds: 30
+          periodSeconds: 30
+          timeoutSeconds: 5
+          failureThreshold: 3
+        # 보안 설정
+        securityContext:
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: true
+          capabilities:
+            drop:
+            - ALL
+        # 리소스 설정
+        resources:
+          requests:
+            memory: "128Mi"
+            cpu: "100m"
+          limits:
+            memory: "512Mi"
+            cpu: "500m"
+        # 임시 볼륨 마운트 (readOnlyRootFilesystem을 위함)
+        volumeMounts:
+        - name: tmp
+          mountPath: /tmp
+        - name: cache
+          mountPath: /var/cache/nginx
+        - name: run
+          mountPath: /var/run
+      # 임시 볼륨
+      volumes:
+      - name: tmp
+        emptyDir: {}
+      - name: cache
+        emptyDir: {}
+      - name: run
+        emptyDir: {}

@@ -1,0 +1,23 @@
+# API 서버 서비스 정의
+# 클러스터 내부에서 Skald API 서버에 접근하기 위한 ClusterIP 서비스입니다.
+apiVersion: v1
+kind: Service
+metadata:
+  name: api-service
+  namespace: skald
+  labels:
+    app: skald
+    component: api
+    environment: production
+  annotations:
+    description: "Skald 백엔드 API 서버 접속을 위한 ClusterIP 서비스"
+spec:
+  type: ClusterIP
+  ports:
+  - port: 8080
+    targetPort: 8080
+    protocol: TCP
+    name: http
+  selector:
+    app: skald
+    component: api

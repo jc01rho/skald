@@ -1,0 +1,279 @@
+# NGINX Ingress Controller Helm Values
+# 온프레미스 Kubernetes 환경에 최적화된 설정입니다.
+# 사용법: helm install ingress-nginx ingress-nginx/ingress-nginx --namespace ingress-nginx --create-namespace --values ingress-nginx-values.yaml
+
+# 컨트롤러 기본 설정
+controller:
+  # Ingress 클래스 이름 (ingress.yaml의 ingressClassName과 일치해야 함)
+  ingressClassResource:
+    name: nginx
+    defaultValue: nginx
+    controllerValue: k8s.io/ingress-nginx
+  
+  # 기본 Ingress 클래스로 설정
+  ingressClass: nginx
+  
+  # 레플리카 수 (고가용성을 위해 2 이상 권장)
+  replicaCount: 2
+  
+  # 이미지 설정
+  image:
+    repository: registry.k8s.io/ingress-nginx/controller
+    tag: "v1.9.5"  # 안정적인 버전 사용 권장
+    pullPolicy: IfNotPresent
+  
+  # 서비스 타입 설정
+  # 온프레미스 환경에서는 LoadBalancer 또는 NodePort 사용
+  service:
+    type: LoadBalancer  # MetalLB 설치 시 사용 가능
+    # type: NodePort     # LoadBalancer unavailable 시 대안
+    
+    # LoadBalancer 외부 IP 지정 (MetalLB 사용 시)
+    # loadBalancerIP: "192.168.1.100"
+    
+    # NodePort 사용 시 포트 지정
+    # nodePorts:
+    #   http: 30080
+    #   https: 30443
+    
+    # 외부 트래픽 허용 설정
+    externalTrafficPolicy: Local
+    
+    # 헬스체크 포트
+    healthCheckNodePort: 32444
+    
+    # 서비스 레이블 및 어노테이션
+    annotations: {}
+    labels: {}
+  
+  # 포트 설정
+  containerPort:
+    http: 80
+    https: 443
+  
+  # 리소스 제한 (온프레미스 환경에 맞게 조정)
+  resources:
+    limits:
+      cpu: 1000m      # 1 CPU 코어
+      memory: 1Gi     # 1GB 메모리
+    requests:
+      cpu: 500m       # 0.5 CPU 코어
+      memory: 512Mi   # 512MB 메모리
+  
+  # 자동 스케일링 설정 (HPA)
+  autoscaling:
+    enabled: true
+    minReplicas: 2
+    maxReplicas: 5
+    targetCPUUtilizationPercentage: 80
+    targetMemoryUtilizationPercentage: 80
+  
+  # 노드 선택기 (특정 노드에 Ingress Controller 배치)
+  # nodeSelector:
+  #   kubernetes.io/hostname: "ingress-node-1"
+  
+  # 톨러레이션 (마스터 노드에 배치 시 필요)
+  tolerations: []
+  # - key: "node-role.kubernetes.io/master"
+  #   operator: "Equal"
+  #   value: "true"
+  #   effect: "NoSchedule"
+  
+  # 어피니티 (Pod 배치 규칙)
+  affinity:
+    podAntiAffinity:
+      preferredDuringSchedulingIgnoredDuringExecution:
+      - weight: 100
+        podAffinityTerm:
+          labelSelector:
+            matchExpressions:
+            - key: app.kubernetes.io/name
+              operator: In
+              values:
+              - ingress-nginx
+          topologyKey: kubernetes.io/hostname
+  
+  # 보안 컨텍스트
+  securityContext:
+    capabilities:
+      drop:
+      - ALL
+      add:
+      - NET_BIND_SERVICE
+    runAsUser: 101
+    runAsNonRoot: true
+    allowPrivilegeEscalation: false
+  
+  # 워커 프로세스 설정
+  workerProcesses: "auto"
+  workerConnections: "16384"
+  
+  # 로그 설정
+  logLevel: info
+  logFormatUpstream: |
+    {
+      "timestamp": "$time_iso8601",
+      "client_ip": "$remote_addr",
+      "proxy_ip": "$proxy_protocol_addr",
+      "request_id": "$request_id",
+      "remote_user": "$remote_user",
+      "request": "$request",
+      "status": $status,
+      "body_bytes_sent": $body_bytes_sent,
+      "http_referer": "$http_referer",
+      "http_user_agent": "$http_user_agent",
+      "request_time": $request_time,
+      "upstream_addr": "$upstream_addr",
+      "upstream_status": "$upstream_status",
+      "upstream_response_time": "$upstream_response_time",
+      "upstream_connect_time": "$upstream_connect_time"
+    }
+  
+  # 메트릭 수집 설정
+  metrics:
+    enabled: true
+    service:
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "10254"
+    serviceMonitor:
+      enabled: false  # Prometheus Operator 사용 시 true로 설정
+      namespace: ingress-nginx
+  
+  # 헬스체크 설정
+  readinessProbe:
+    httpGet:
+      path: /healthz
+      port: 10254
+      scheme: HTTP
+    initialDelaySeconds: 10
+    periodSeconds: 10
+    timeoutSeconds: 1
+    successThreshold: 1
+    failureThreshold: 3
+  
+  livenessProbe:
+    httpGet:
+      path: /healthz
+      port: 10254
+      scheme: HTTP
+    initialDelaySeconds: 30
+    periodSeconds: 10
+    timeoutSeconds: 1
+    successThreshold: 1
+    failureThreshold: 3
+
+# 기본 백엔드 설정 (존재하지 않는 호스트/경로 요청 처리)
+defaultBackend:
+  enabled: true
+  image:
+    repository: registry.k8s.io/defaultbackend-amd64
+    tag: "1.5"
+    pullPolicy: IfNotPresent
+  replicaCount: 1
+  resources:
+    limits:
+      cpu: 10m
+      memory: 20Mi
+    requests:
+      cpu: 10m
+      memory: 20Mi
+
+# RBAC 설정
+rbac:
+  create: true
+  scope: false
+
+# 서비스 어카운트 설정
+serviceAccount:
+  create: true
+  name: ""
+  annotations: {}
+
+# 네임스페이스 설정
+namespace: ingress-nginx
+
+# ConfigMap 설정
+config:
+  # 전역 설정
+  global-config: ""
+  
+  # TCP 서비스 설정
+  tcp: {}
+  # 9000: "default/example-tcp-svc:9000"
+  
+  # UDP 서비스 설정
+  udp: {}
+  # 53: "kube-system/kube-dns:53"
+  
+  # 사용자 정의 ConfigMap
+  data: {}
+  # keep-alive-requests: "100"
+  # upstream-keepalive-connections: "100"
+  # upstream-keepalive-timeout: "60"
+  # upstream-keepalive-requests: "100"
+
+# 어드미션 컨트롤러 설정 (Ingress 리소스 검증)
+admissionWebhooks:
+  enabled: true
+  annotations: {}
+  failurePolicy: Fail
+  port: 8443
+  certificate: ""
+  key: ""
+  namespaceSelector: {}
+  objectSelector: {}
+
+# 사용법 설명 (한국어 주석):
+
+# 설치 방법:
+# 1. Helm 리포지토리 추가:
+#    helm repo add ingress-nginx https://kubernetes.github.io/ingress-nginx
+#    helm repo update
+#
+# 2. Ingress Controller 설치:
+#    helm install ingress-nginx ingress-nginx/ingress-nginx \
+#      --namespace ingress-nginx \
+#      --create-namespace \
+#      --values ingress-nginx-values.yaml
+#
+# 3. 설치 확인:
+#    kubectl get pods -n ingress-nginx
+#    kubectl get svc -n ingress-nginx
+#
+# 온프레미스 환경 설정 가이드:
+#
+# 1. LoadBalancer 타입 사용:
+#    - MetalLB 설치 필요: https://metallb.universe.tf/
+#    - IP 주소 풀 설정: IPAddressPool 및 L2Advertisement 리소스 생성
+#    - service.loadBalancerIP에 특정 IP 지정 가능
+#
+# 2. NodePort 타입 사용 (LoadBalancer unavailable 시):
+#    - service.type: NodePort로 변경
+#    - service.nodePorts에 HTTP/HTTPS 포트 지정
+#    - 방화벽에서 해당 포트 열기 필요
+#
+# 3. 고가용성 설정:
+#    - replicaCount: 2 이상 권장
+#    - podAntiAffinity로 Pod 분산 배치
+#    - HPA(수평 파드 자동 스케일링) 활성화
+#
+# 4. 성능 튜닝:
+#    - workerConnections: 동시 연결 수 조정 (기본: 16384)
+#    - resources: 실제 하드웨어 사양에 맞게 조정
+#    - logLevel: production 환경에서는 warn 또는 error 권장
+#
+# 5. 보안 강화:
+#    - securityContext: 권한 최소화
+#    - admissionWebhooks: Ingress 리소스 검증 활성화
+#    - TLS 설정: cert-manager와 연동하여 자동 인증서 관리
+#
+# 6. 모니터링:
+#    - metrics.enabled: Prometheus 메트릭 수집 활성화
+#    - serviceMonitor.enabled: Prometheus Operator 사용 시 활성화
+#    - 로그 수집: Fluentd/Fluent Bit와 연동하여 중앙 로깅
+#
+# 7. 트러블슈팅:
+#    - Ingress Controller 로그: kubectl logs -n ingress-nginx deployment/ingress-nginx-controller
+#    - Ingress 리소스 상태: kubectl describe ingress <ingress-name>
+#    - 서비스 엔드포인트: kubectl get endpoints -n ingress-nginx

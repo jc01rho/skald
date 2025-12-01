@@ -1,0 +1,124 @@
+# RabbitMQ StatefulSet 정의
+# 메시지 큐 시스템으로 RabbitMQ 3.13 Management Alpine 이미지를 사용합니다.
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: rabbitmq
+  namespace: skald
+  labels:
+    app: skald
+    component: rabbitmq
+    environment: production
+  annotations:
+    description: "RabbitMQ 메시지 큐 Deployment (Management UI 포함)"
+spec:
+  replicas: 1
+  serviceName: rabbitmq
+  selector:
+    matchLabels:
+      app: skald
+      component: rabbitmq
+  template:
+    metadata:
+      labels:
+        app: skald
+        component: rabbitmq
+        environment: production
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 999
+        runAsGroup: 999
+        fsGroup: 999
+      initContainers:
+      - name: rabbitmq-init
+        image: busybox:1.35
+        command:
+        - sh
+        - -c
+        - |
+          echo "Setting proper permissions for .erlang.cookie"
+          chmod 600 /var/lib/rabbitmq/.erlang.cookie 2>/dev/null || echo ".erlang.cookie not found, will be created by RabbitMQ"
+          chown 999:999 /var/lib/rabbitmq 2>/dev/null || echo "Directory ownership already set"
+          echo "Permissions setup completed"
+        volumeMounts:
+        - name: rabbitmq-data
+          mountPath: /var/lib/rabbitmq
+        securityContext:
+          runAsUser: 0
+          runAsGroup: 0
+          runAsNonRoot: false
+      containers:
+      - name: rabbitmq
+        image: rabbitmq:3.13-management-alpine
+        imagePullPolicy: IfNotPresent
+        ports:
+        - containerPort: 5672
+          name: amqp
+          protocol: TCP
+        - containerPort: 15672
+          name: management
+          protocol: TCP
+        env:
+        - name: RABBITMQ_DEFAULT_USER
+          valueFrom:
+            configMapKeyRef:
+              name: skald-config
+              key: RABBITMQ_USER
+        - name: RABBITMQ_DEFAULT_PASS
+          valueFrom:
+            secretKeyRef:
+              name: skald-secrets
+              key: RABBITMQ_DEFAULT_PASS
+        - name: RABBITMQ_DEFAULT_VHOST
+          valueFrom:
+            configMapKeyRef:
+              name: skald-config
+              key: RABBITMQ_VHOST
+        # 헬스체크 설정
+        readinessProbe:
+          tcpSocket:
+            port: 5672
+          initialDelaySeconds: 15
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 3
+        livenessProbe:
+          exec:
+            command:
+            - rabbitmq-diagnostics
+            - -q
+            - ping
+          initialDelaySeconds: 60
+          periodSeconds: 30
+          timeoutSeconds: 5
+          failureThreshold: 3
+        # 볼륨 마운트
+        volumeMounts:
+        - name: rabbitmq-data
+          mountPath: /var/lib/rabbitmq
+        # 보안 설정
+        securityContext:
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: false  # RabbitMQ은 쓰기 권한이 필요
+          capabilities:
+            drop:
+            - ALL
+        # 리소스 설정
+        resources:
+          requests:
+            memory: "256Mi"
+            cpu: "250m"
+          limits:
+            memory: "1Gi"
+            cpu: "500m"
+  # 볼륨 클레임 템플릿 - 동적 PVC 생성을 위한 템플릿
+  volumeClaimTemplates:
+  - metadata:
+      name: rabbitmq-data
+    spec:
+      accessModes: ["ReadWriteOnce"]
+      resources:
+        requests:
+          storage: 5Gi
+      storageClassName: longhorn-one-replica

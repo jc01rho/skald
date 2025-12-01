@@ -1,0 +1,28 @@
+# RabbitMQ 서비스 정의
+# 클러스터 내부에서 RabbitMQ에 접근하기 위한 ClusterIP 서비스입니다.
+# AMQP 포트(5672)와 Management UI 포트(15672)를 모두 노출합니다.
+apiVersion: v1
+kind: Service
+metadata:
+  name: rabbitmq-service
+  namespace: skald
+  labels:
+    app: skald
+    component: rabbitmq
+    environment: production
+  annotations:
+    description: "RabbitMQ 메시지 큐 접속을 위한 ClusterIP 서비스"
+spec:
+  type: ClusterIP
+  ports:
+  - port: 5672
+    targetPort: 5672
+    protocol: TCP
+    name: amqp
+  - port: 15672
+    targetPort: 15672
+    protocol: TCP
+    name: management
+  selector:
+    app: skald
+    component: rabbitmq

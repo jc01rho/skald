@@ -1,0 +1,100 @@
+# Docling Service Deployment 정의
+# 문서 처리를 위한 Docling 서비스를 실행하는 Deployment입니다.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: docling-service
+  namespace: skald
+  labels:
+    app: skald
+    component: docling-service
+    environment: production
+  annotations:
+    description: "Docling 문서 처리 서비스 Deployment"
+spec:
+  replicas: 2
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  selector:
+    matchLabels:
+      app: skald
+      component: docling-service
+  template:
+    metadata:
+      labels:
+        app: skald
+        component: docling-service
+        environment: production
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
+      containers:
+      - name: docling-service
+        image: quay.io/docling-project/docling-serve:latest
+        imagePullPolicy: IfNotPresent
+        ports:
+        - containerPort: 5001
+          name: http
+          protocol: TCP
+        env:
+        # 애플리케이션 관련 환경변수
+        - name: PORT
+          value: "5001"
+        - name: HOST
+          value: "0.0.0.0"
+        # 로깅 설정
+        - name: LOG_LEVEL
+          valueFrom:
+            configMapKeyRef:
+              name: skald-config
+              key: LOG_LEVEL
+        # 헬스체크 설정
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 5001
+          initialDelaySeconds: 30
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 3
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 5001
+          initialDelaySeconds: 60
+          periodSeconds: 30
+          timeoutSeconds: 5
+          failureThreshold: 3
+        # 보안 설정
+        securityContext:
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: true
+          capabilities:
+            drop:
+            - ALL
+        # 리소스 설정
+        resources:
+          requests:
+            memory: "1Gi"
+            cpu: "500m"
+          limits:
+            memory: "2Gi"
+            cpu: "1500m"
+        # 임시 볼륨 마운트 (readOnlyRootFilesystem을 위함)
+        volumeMounts:
+        - name: tmp
+          mountPath: /tmp
+        - name: cache
+          mountPath: /app/cache
+      # 임시 볼륨
+      volumes:
+      - name: tmp
+        emptyDir: {}
+      - name: cache
+        emptyDir: {}

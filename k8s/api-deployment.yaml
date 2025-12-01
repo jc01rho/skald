@@ -1,0 +1,350 @@
+# API 서버 Deployment 정의
+# Skald 백엔드 API 서버를 실행하는 Deployment입니다.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: api-server
+  namespace: skald
+  labels:
+    app: skald
+    component: api
+    environment: production
+  annotations:
+    description: "Skald 백엔드 API 서버 Deployment"
+spec:
+  replicas: 2
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  selector:
+    matchLabels:
+      app: skald
+      component: api
+  template:
+    metadata:
+      labels:
+        app: skald
+        component: api
+        environment: production
+    spec:
+      # initContainer를 사용하여 데이터베이스와 RabbitMQ가 준비될 때까지 대기
+      initContainers:
+      - name: wait-for-postgres
+        image: postgres:16-alpine
+        command:
+        - sh
+        - -c
+        - |
+          until pg_isready -h $DB_HOST -p $DB_PORT -U $DB_USER -d $DB_NAME; do
+            echo "Waiting for PostgreSQL..."
+            sleep 2
+          done
+        env:
+        - name: DB_HOST
+          valueFrom:
+            configMapKeyRef:
+              name: skald-config
+              key: DB_HOST
+        - name: DB_PORT
+          valueFrom:
+            configMapKeyRef:
+              name: skald-config
+              key: DB_PORT
+        - name: DB_USER
+          valueFrom:
+            configMapKeyRef:
+              name: skald-config
+              key: DB_USER
+        - name: DB_NAME
+          valueFrom:
+            configMapKeyRef:
+              name: skald-config
+              key: DB_NAME
+      - name: wait-for-rabbitmq
+        image: busybox:1.35
+        command:
+        - sh
+        - -c
+        - |
+          until nc -z $RABBITMQ_HOST $RABBITMQ_PORT; do
+            echo "Waiting for RabbitMQ..."
+            sleep 2
+          done
+        env:
+        - name: RABBITMQ_HOST
+          valueFrom:
+            configMapKeyRef:
+              name: skald-config
+              key: RABBITMQ_HOST
+        - name: RABBITMQ_PORT
+          valueFrom:
+            configMapKeyRef:
+              name: skald-config
+              key: RABBITMQ_PORT
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
+      containers:
+      - name: api-server
+        # 환경변수로 이미지 태그를 지정할 수 있도록 설정
+        image: ${DOCKER_REGISTRY:-skaldlabs}/skald-backend:${IMAGE_TAG:-latest}
+        imagePullPolicy: IfNotPresent
+        ports:
+        - containerPort: 8080
+          name: http
+          protocol: TCP
+        env:
+        # 데이터베이스 관련 환경변수
+        - name: DATABASE_URL
+          valueFrom:
+            secretKeyRef:
+              name: skald-secrets
+              key: DATABASE_URL
+        - name: DB_HOST
+          valueFrom:
+            configMapKeyRef:
+              name: skald-config
+              key: DB_HOST
+        - name: DB_PORT
+          valueFrom:
+            configMapKeyRef:
+              name: skald-config
+              key: DB_PORT
+        - name: DB_NAME
+          valueFrom:
+            configMapKeyRef:
+              name: skald-config
+              key: DB_NAME
+        - name: DB_USER
+          valueFrom:
+            configMapKeyRef:
+              name: skald-config
+              key: DB_USER
+        - name: DB_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: skald-secrets
+              key: DB_PASSWORD
+        # RabbitMQ 관련 환경변수
+        - name: RABBITMQ_HOST
+          valueFrom:
+            configMapKeyRef:
+              name: skald-config
+              key: RABBITMQ_HOST
+        - name: RABBITMQ_PORT
+          valueFrom:
+            configMapKeyRef:
+              name: skald-config
+              key: RABBITMQ_PORT
+        - name: RABBITMQ_USER
+          valueFrom:
+            configMapKeyRef:
+              name: skald-config
+              key: RABBITMQ_USER
+        - name: RABBITMQ_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: skald-secrets
+              key: RABBITMQ_PASSWORD
+        - name: RABBITMQ_VHOST
+          valueFrom:
+            configMapKeyRef:
+              name: skald-config
+              key: RABBITMQ_VHOST
+        - name: INTER_PROCESS_QUEUE
+          valueFrom:
+            configMapKeyRef:
+              name: skald-config
+              key: INTER_PROCESS_QUEUE
+        # Redis 관련 환경변수
+        - name: REDIS_HOST
+          valueFrom:
+            configMapKeyRef:
+              name: skald-config
+              key: REDIS_HOST
+        - name: REDIS_PORT
+          valueFrom:
+            configMapKeyRef:
+              name: skald-config
+              key: REDIS_PORT
+        - name: REDIS_URL
+          value: "redis://$(REDIS_HOST):$(REDIS_PORT)"
+        # 애플리케이션 관련 환경변수
+        - name: NODE_ENV
+          valueFrom:
+            configMapKeyRef:
+              name: skald-config
+              key: NODE_ENV
+        - name: IS_DEVELOPMENT
+          valueFrom:
+            configMapKeyRef:
+              name: skald-config
+              key: IS_DEVELOPMENT
+        - name: EXPRESS_SERVER_PORT
+          valueFrom:
+            configMapKeyRef:
+              name: skald-config
+              key: EXPRESS_SERVER_PORT
+        - name: PORT
+          valueFrom:
+            configMapKeyRef:
+              name: skald-config
+              key: PORT
+        - name: SECRET_KEY
+          valueFrom:
+            secretKeyRef:
+              name: skald-secrets
+              key: SECRET_KEY
+        - name: IS_SELF_HOSTED_DEPLOY
+          valueFrom:
+            configMapKeyRef:
+              name: skald-config
+              key: IS_SELF_HOSTED_DEPLOY
+        - name: EMAIL_VERIFICATION_ENABLED
+          valueFrom:
+            configMapKeyRef:
+              name: skald-config
+              key: EMAIL_VERIFICATION_ENABLED
+        # AI 서비스 관련 환경변수
+        - name: LLM_PROVIDER
+          valueFrom:
+            configMapKeyRef:
+              name: skald-config
+              key: LLM_PROVIDER
+        - name: EMBEDDING_PROVIDER
+          valueFrom:
+            configMapKeyRef:
+              name: skald-config
+              key: EMBEDDING_PROVIDER
+        - name: DOCUMENT_EXTRACTION_PROVIDER
+          valueFrom:
+            configMapKeyRef:
+              name: skald-config
+              key: DOCUMENT_EXTRACTION_PROVIDER
+        - name: LOCAL_LLM_BASE_URL
+          valueFrom:
+            configMapKeyRef:
+              name: skald-config
+              key: LOCAL_LLM_BASE_URL
+        - name: LOCAL_LLM_MODEL
+          valueFrom:
+            configMapKeyRef:
+              name: skald-config
+              key: LOCAL_LLM_MODEL
+        - name: LOCAL_EMBEDDING_MODEL
+          valueFrom:
+            configMapKeyRef:
+              name: skald-config
+              key: LOCAL_EMBEDDING_MODEL
+        - name: LOCAL_RERANK_MODEL
+          valueFrom:
+            configMapKeyRef:
+              name: skald-config
+              key: LOCAL_RERANK_MODEL
+        - name: STRIPE_SECRET_KEY
+          value: " "
+
+        - name : DATALAB_API_KEY
+          value: " "
+          
+        - name: OPENAI_API_KEY
+          valueFrom:
+            secretKeyRef:
+              name: skald-secrets
+              key: OPENAI_API_KEY
+        - name: VOYAGE_API_KEY
+          valueFrom:
+            secretKeyRef:
+              name: skald-secrets
+              key: VOYAGE_API_KEY
+        - name: ANTHROPIC_API_KEY
+          valueFrom:
+            secretKeyRef:
+              name: skald-secrets
+              key: ANTHROPIC_API_KEY
+        # 마이크로서비스 URL 설정
+        - name: EMBEDDING_SERVICE_URL
+          valueFrom:
+            configMapKeyRef:
+              name: skald-config
+              key: EMBEDDING_SERVICE_URL
+        - name: DOCLING_SERVICE_URL
+          valueFrom:
+            configMapKeyRef:
+              name: skald-config
+              key: DOCLING_SERVICE_URL
+        # # OAuth 관련 환경변수
+        # - name: GOOGLE_CLIENT_ID
+        #   valueFrom:
+        #     secretKeyRef:
+        #       name: skald-secrets
+        #       key: GOOGLE_CLIENT_ID
+        # - name: GOOGLE_CLIENT_SECRET
+        #   valueFrom:
+        #     secretKeyRef:
+        #       name: skald-secrets
+        #       key: GOOGLE_CLIENT_SECRET
+        # 기타 환경변수
+        - name: FRONTEND_URL
+          valueFrom:
+            configMapKeyRef:
+              name: skald-config
+              key: FRONTEND_URL
+        - name: CORS_ORIGIN
+          valueFrom:
+            configMapKeyRef:
+              name: skald-config
+              key: CORS_ORIGIN
+        # AWS S3 관련 환경변수
+        - name: AWS_REGION
+          value: " "
+        - name: AWS_ACCESS_KEY_ID
+          value: " "
+        - name: AWS_SECRET_ACCESS_KEY
+          value: " "
+        - name: S3_BUCKET_NAME
+          value: " "
+        # 헬스체크 설정
+        readinessProbe:
+          httpGet:
+            path: /api/health
+            port: 8080
+          initialDelaySeconds: 30
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 3
+        livenessProbe:
+          httpGet:
+            path: /api/health
+            port: 8080
+          initialDelaySeconds: 60
+          periodSeconds: 30
+          timeoutSeconds: 5
+          failureThreshold: 3
+        # 보안 설정
+        securityContext:
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: true
+          capabilities:
+            drop:
+            - ALL
+        # 리소스 설정
+        resources:
+          requests:
+            memory: "512Mi"
+            cpu: "250m"
+          limits:
+            memory: "1Gi"
+            cpu: "1000m"
+        # 임시 볼륨 마운트 (readOnlyRootFilesystem을 위함)
+        volumeMounts:
+        - name: tmp
+          mountPath: /tmp
+      # 임시 볼륨
+      volumes:
+      - name: tmp
+        emptyDir: {}

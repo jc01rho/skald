@@ -1,0 +1,23 @@
+# Docling Service 서비스 정의
+# 클러스터 내부에서 Docling 문서 처리 서비스에 접근하기 위한 ClusterIP 서비스입니다.
+apiVersion: v1
+kind: Service
+metadata:
+  name: docling-service
+  namespace: skald
+  labels:
+    app: skald
+    component: docling-service
+    environment: production
+  annotations:
+    description: "Docling 문서 처리 서비스 접속을 위한 ClusterIP 서비스"
+spec:
+  type: ClusterIP
+  ports:
+  - port: 5001
+    targetPort: 5001
+    protocol: TCP
+    name: http
+  selector:
+    app: skald
+    component: docling-service
