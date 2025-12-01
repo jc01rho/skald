@@ -42,7 +42,7 @@ spec:
         # embedding-service 디렉토리의 Dockerfile로 빌드된 이미지 사용
         # GitHub Container Registry에서 이미지를 가져옵니다
         image: ghcr.io/jc01rho/skald/embedding-service:latest
-        imagePullPolicy: IfNotPresent
+        imagePullPolicy: Always
         ports:
         - containerPort: 8000
           name: http
