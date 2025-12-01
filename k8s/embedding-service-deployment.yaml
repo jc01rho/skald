@@ -1,0 +1,134 @@
+# Embedding Service Deployment 정의
+# Skald 임베딩 서비스를 실행하는 Deployment입니다.
+# 주의: 이 서비스는 별도의 빌드 과정이 필요할 수 있습니다.
+# 빌드 방법: embedding-service 디렉토리에서 Dockerfile을 사용하여 이미지 빌드 필요
+# 예시: docker build -t skald-embedding-service:latest ./embedding-service/
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: embedding-service
+  namespace: skald
+  labels:
+    app: skald
+    component: embedding-service
+    environment: production
+  annotations:
+    description: "Skald 임베딩 서비스 Deployment (Python FastAPI 기반)"
+spec:
+  replicas: 2
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  selector:
+    matchLabels:
+      app: skald
+      component: embedding-service
+  template:
+    metadata:
+      labels:
+        app: skald
+        component: embedding-service
+        environment: production
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
+      containers:
+      - name: embedding-service
+        # embedding-service 디렉토리의 Dockerfile로 빌드된 이미지 사용
+        # GitHub Container Registry에서 이미지를 가져옵니다
+        image: ghcr.io/jc01rho/skald/embedding-service:latest
+        imagePullPolicy: IfNotPresent
+        ports:
+        - containerPort: 8000
+          name: http
+          protocol: TCP
+        env:
+        # 애플리케이션 관련 환경변수
+        - name: PORT
+          value: "8000"
+        - name: HOST
+          value: "0.0.0.0"
+        # AI 서비스 관련 환경변수
+        - name: OPENAI_API_KEY
+          valueFrom:
+            secretKeyRef:
+              name: skald-secrets
+              key: OPENAI_API_KEY
+        - name: VOYAGE_API_KEY
+          valueFrom:
+            secretKeyRef:
+              name: skald-secrets
+              key: VOYAGE_API_KEY
+        # 임베딩 프로바이더 설정
+        - name: EMBEDDING_PROVIDER
+          valueFrom:
+            configMapKeyRef:
+              name: skald-config
+              key: EMBEDDING_PROVIDER
+        - name: EMBEDDING_MODEL
+          valueFrom:
+            configMapKeyRef:
+              name: skald-config
+              key: LOCAL_EMBEDDING_MODEL
+        - name: RERANK_MODEL
+          valueFrom:
+            configMapKeyRef:
+              name: skald-config
+              key: LOCAL_RERANK_MODEL
+        - name: TARGET_DIMENSION
+          value: "2048"
+        # 로깅 설정
+        - name: LOG_LEVEL
+          valueFrom:
+            configMapKeyRef:
+              name: skald-config
+              key: LOG_LEVEL
+        # 헬스체크 설정
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 8000
+          initialDelaySeconds: 30
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 3
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 8000
+          initialDelaySeconds: 60
+          periodSeconds: 30
+          timeoutSeconds: 5
+          failureThreshold: 3
+        # 보안 설정
+        securityContext:
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: true
+          capabilities:
+            drop:
+            - ALL
+        # 리소스 설정
+        resources:
+          requests:
+            memory: "1Gi"
+            cpu: "500m"
+          limits:
+            memory: "2Gi"
+            cpu: "1500m"
+        # 임시 볼륨 마운트 (readOnlyRootFilesystem을 위함)
+        volumeMounts:
+        - name: tmp
+          mountPath: /tmp
+        - name: cache
+          mountPath: /app/cache
+      # 임시 볼륨
+      volumes:
+      - name: tmp
+        emptyDir: {}
+      - name: cache
+        emptyDir: {}

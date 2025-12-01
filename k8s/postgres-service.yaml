@@ -1,0 +1,23 @@
+# PostgreSQL 서비스 정의
+# 클러스터 내부에서 PostgreSQL 데이터베이스에 접근하기 위한 ClusterIP 서비스입니다.
+apiVersion: v1
+kind: Service
+metadata:
+  name: postgres-service
+  namespace: skald
+  labels:
+    app: skald
+    component: postgres
+    environment: production
+  annotations:
+    description: "PostgreSQL 데이터베이스 접속을 위한 ClusterIP 서비스"
+spec:
+  type: ClusterIP
+  ports:
+  - port: 5432
+    targetPort: 5432
+    protocol: TCP
+    name: postgres
+  selector:
+    app: skald
+    component: postgres

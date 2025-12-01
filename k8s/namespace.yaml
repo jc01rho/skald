@@ -1,0 +1,12 @@
+# Skald 애플리케이션을 위한 Kubernetes 네임스페이스 정의
+# 이 네임스페이스는 Skald 애플리케이션의 모든 리소스를 격리하는 데 사용됩니다.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: skald
+  labels:
+    app: skald
+    component: namespace
+    environment: production
+  annotations:
+    description: "Skald 애플리케이션 전용 네임스페이스"

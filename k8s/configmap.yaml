@@ -1,0 +1,92 @@
+# Skald 애플리케이션을 위한 ConfigMap 정의
+# 비민감한 환경변수들을 포함하며, 애플리케이션 설정을 관리합니다.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: skald-config
+  namespace: skald
+  labels:
+    app: skald
+    component: config
+    environment: production
+  annotations:
+    description: "Skald 애플리케이션의 비민감 환경변수 설정"
+data:
+  # 도메인 설정
+  API_DOMAIN: "api.skald.sparrow.local"  # API 도메인 (기본값: api.example.com)
+  UI_DOMAIN: "app.skald.sparrow.local"  # UI 도메인 (기본값: app.example.com)
+  ACME_EMAIL: "admin@example.com"  # Let's Encrypt 인증서용 이메일
+  
+  # 프론트엔드 관련 설정
+  FRONTEND_URL: "https://app.skald.sparrow.local"  # 프론트엔드 URL (기본값: https://app.example.com)
+  APP_HOST: "0.0.0.0"  # 애플리케이션 호스트 (기본값: 0.0.0.0)
+  API_URL: "https://api.skald.sparrow.local"  # API URL (기본값: https://api.example.com)
+  
+  # AI 서비스 프로바이더 설정
+  LLM_PROVIDER: "local"  # LLM 제공자 (기본값: openai)
+  EMBEDDING_PROVIDER: "local"  # 임베딩 제공자 (기본값: openai)
+  DOCUMENT_EXTRACTION_PROVIDER: "docling"  # 문서 추출 제공자 (기본값: docling)
+  
+  # 메시지 큐 설정
+  INTER_PROCESS_QUEUE: "rabbitmq"  # 메시지 큐 타입 (기본값: rabbitmq)
+  
+  # 데이터베이스 관련 설정 (비밀번호 제외)
+  DB_HOST: "postgres-service"  # 데이터베이스 호스트 (기본값: postgres-service)
+  DB_PORT: "5432"  # 데이터베이스 포트 (기본값: 5432)
+  DB_NAME: "skald2"  # 데이터베이스 이름 (기본값: skald2)
+  DB_USER: "postgres"  # 데이터베이스 사용자 (기본값: postgres)
+  DB_SSL_MODE: "require"  # 데이터베이스 SSL 모드 (기본값: require)
+  DB_CONNECTION_POOL_SIZE: "20"  # 데이터베이스 연결 풀 크기 (기본값: 20)
+  
+  # RabbitMQ 관련 설정 (비밀번호 제외)
+  RABBITMQ_HOST: "rabbitmq-service"  # RabbitMQ 호스트 (기본값: rabbitmq-service)
+  RABBITMQ_PORT: "5672"  # RabbitMQ 포트 (기본값: 5672)
+  RABBITMQ_USER: "skald"  # RabbitMQ 사용자 (기본값: skald)
+  RABBITMQ_VHOST: "/"  # RabbitMQ VHost (기본값: /)
+  
+  # 마이크로서비스 URL 설정
+  EMBEDDING_SERVICE_URL: "http://embedding-service:8000"  # 임베딩 서비스 URL (기본값: http://embedding-service:8000)
+  DOCLING_SERVICE_URL: "http://docling-service:5001"  # Docling 서비스 URL (기본값: http://docling-service:5001)
+  
+  # 애플리케이션 설정
+  NODE_ENV: "production"  # Node.js 환경 (기본값: production)
+  PORT: "8080"  # 애플리케이션 포트 (기본값: 8080)
+  EXPRESS_SERVER_PORT: "8080" # Express 서버 포트 (기본값: 3000, K8s에서는 8080으로 설정)
+  LOG_LEVEL: "info"  # 로그 레벨 (기본값: info)
+  IS_SELF_HOSTED_DEPLOY: "true"  # 셀프 호스팅 배포 여부 (기본값: true)
+  IS_DEVELOPMENT: "true"  # 개발 모드 여부 (기본값: false)
+  
+  # 보안 설정
+  ENABLE_SECURITY_SETTINGS: "false" # 보안 설정 비활성화 (Rate Limiter 우회용)
+  SECURE_SSL_REDIRECT: "false"  # SSL 리다이렉트 여부 (기본값: false)
+  EMAIL_VERIFICATION_ENABLED: "true"  # 이메일 인증 활성화 여부 (기본값: true)
+  DISABLE_AUTH: "false"  # 인증 비활성화 여부 (기본값: false)
+  
+  # Langsmith 설정
+  LANGSMITH_TRACING: "false"  # Langsmith 추적 여부 (기본값: false)
+  LANGSMITH_ENDPOINT: "https://api.smith.langchain.com"  # Langsmith 엔드포인트 (기본값: https://api.smith.langchain.com)
+  LANGSMITH_PROJECT: "skald"  # Langsmith 프로젝트 이름 (기본값: skald)
+  
+  # 로컬 LLM 설정
+  LOCAL_LLM_BASE_URL: "http://192.168.30.169:11434"  # 로컬 LLM 베이스 URL (기본값: "")
+  LOCAL_LLM_MODEL: "qwen3-32b"
+  
+  # 로컬 임베딩 모델 설정
+  LOCAL_EMBEDDING_MODEL: "qwen3-embedding"  # 로컬 임베딩 모델 (기본값: all-MiniLM-L6-v2)
+  LOCAL_RERANK_MODEL: "Krakekai/qwen3-reranker-8b"  # 로컬 리랭크 모델 (기본값: cross-encoder/ms-marco-MiniLM-L-6-v2)
+  
+  # Redis 설정 (캐시용)
+  REDIS_HOST: "redis-service"  # Redis 호스트 (기본값: redis-service)
+  REDIS_PORT: "6379"  # Redis 포트 (기본값: 6379)
+  REDIS_DB: "0"  # Redis DB (기본값: 0)
+  
+  # S3 관련 설정 (비밀 정보 제외)
+  S3_BUCKET: "skald-storage"  # S3 버킷 (기본값: skald-storage)
+  S3_REGION: "us-east-1"  # S3 리전 (기본값: us-east-1)
+  
+  # 기타 설정
+  CORS_ORIGIN: "https://app.example.com"  # CORS 허용 도메인 (기본값: https://app.example.com)
+  SESSION_TIMEOUT: "86400"  # 세션 타임아웃 (기본값: 86400)
+  MAX_FILE_SIZE: "10485760"  # 최대 파일 크기 (기본값: 10485760)
+  RATE_LIMIT_WINDOW: "900000"  # 요청 제한 시간 창 (기본값: 900000)
+  RATE_LIMIT_MAX: "100"  # 요청 제한 최대 수 (기본값: 100)

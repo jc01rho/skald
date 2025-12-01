@@ -1,0 +1,18 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: postgres-init-scripts
+  namespace: skald
+  labels:
+    app: skald
+    component: database
+    tier: initialization
+  annotations:
+    description: "PostgreSQL 초기화 스크립트 ConfigMap"
+    usage: "postgres-deployment.yaml에서 volumeMounts로 참조하여 컨테이너 시작 시 실행"
+data:
+  # PostgreSQL 컨테이너 시작 시 자동으로 실행될 초기화 스크립트
+  # /docker-entrypoint-initdb.d/ 디렉토리에 마운트되어 실행됨
+  01-init-pgvector.sql: |
+    -- Enable pgvector extension
+    CREATE EXTENSION IF NOT EXISTS vector;

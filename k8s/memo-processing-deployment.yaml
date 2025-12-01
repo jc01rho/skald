@@ -1,0 +1,315 @@
+# Memo Processing 서버 Deployment 정의
+# Skald 메모 처리 서버를 실행하는 Deployment입니다.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: memo-processing-server
+  namespace: skald
+  labels:
+    app: skald
+    component: memo-processing
+    environment: production
+  annotations:
+    description: "Skald 메모 처리 서버 Deployment"
+spec:
+  replicas: 2
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  selector:
+    matchLabels:
+      app: skald
+      component: memo-processing
+  template:
+    metadata:
+      labels:
+        app: skald
+        component: memo-processing
+        environment: production
+    spec:
+      # initContainer를 사용하여 의존 서비스가 준비될 때까지 대기
+      initContainers:
+      - name: wait-for-postgres
+        image: postgres:16-alpine
+        command:
+        - sh
+        - -c
+        - |
+          until pg_isready -h $DB_HOST -p $DB_PORT -U $DB_USER -d $DB_NAME; do
+            echo "Waiting for PostgreSQL..."
+            sleep 2
+          done
+        env:
+        - name: DB_HOST
+          valueFrom:
+            configMapKeyRef:
+              name: skald-config
+              key: DB_HOST
+        - name: DB_PORT
+          valueFrom:
+            configMapKeyRef:
+              name: skald-config
+              key: DB_PORT
+        - name: DB_USER
+          valueFrom:
+            configMapKeyRef:
+              name: skald-config
+              key: DB_USER
+        - name: DB_NAME
+          valueFrom:
+            configMapKeyRef:
+              name: skald-config
+              key: DB_NAME
+      - name: wait-for-rabbitmq
+        image: busybox:1.35
+        command:
+        - sh
+        - -c
+        - |
+          until nc -z $RABBITMQ_HOST $RABBITMQ_PORT; do
+            echo "Waiting for RabbitMQ..."
+            sleep 2
+          done
+        env:
+        - name: RABBITMQ_HOST
+          valueFrom:
+            configMapKeyRef:
+              name: skald-config
+              key: RABBITMQ_HOST
+        - name: RABBITMQ_PORT
+          valueFrom:
+            configMapKeyRef:
+              name: skald-config
+              key: RABBITMQ_PORT
+      - name: wait-for-redis
+        image: busybox:1.35
+        command:
+        - sh
+        - -c
+        - |
+          until nc -z $REDIS_HOST $REDIS_PORT; do
+            echo "Waiting for Redis..."
+            sleep 2
+          done
+        env:
+        - name: REDIS_HOST
+          valueFrom:
+            configMapKeyRef:
+              name: skald-config
+              key: REDIS_HOST
+        - name: REDIS_PORT
+          valueFrom:
+            configMapKeyRef:
+              name: skald-config
+              key: REDIS_PORT
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
+      containers:
+      - name: memo-processing-server
+        # API 서버와 동일한 이미지 사용
+        image: ${DOCKER_REGISTRY:-skaldlabs}/skald-backend:${IMAGE_TAG:-latest}
+        imagePullPolicy: IfNotPresent
+        # 메모 처리 서버 모드로 실행
+        command:
+        - node
+        - dist/index.js
+        - --mode=memo-processing-server
+        env:
+        # 데이터베이스 관련 환경변수
+        - name: DATABASE_URL
+          valueFrom:
+            secretKeyRef:
+              name: skald-secrets
+              key: DATABASE_URL
+        - name: DB_HOST
+          valueFrom:
+            configMapKeyRef:
+              name: skald-config
+              key: DB_HOST
+        - name: DB_PORT
+          valueFrom:
+            configMapKeyRef:
+              name: skald-config
+              key: DB_PORT
+        - name: DB_NAME
+          valueFrom:
+            configMapKeyRef:
+              name: skald-config
+              key: DB_NAME
+        - name: DB_USER
+          valueFrom:
+            configMapKeyRef:
+              name: skald-config
+              key: DB_USER
+        - name: DB_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: skald-secrets
+              key: DB_PASSWORD
+        # RabbitMQ 관련 환경변수
+        - name: RABBITMQ_HOST
+          valueFrom:
+            configMapKeyRef:
+              name: skald-config
+              key: RABBITMQ_HOST
+        - name: RABBITMQ_PORT
+          valueFrom:
+            configMapKeyRef:
+              name: skald-config
+              key: RABBITMQ_PORT
+        - name: RABBITMQ_USER
+          valueFrom:
+            configMapKeyRef:
+              name: skald-config
+              key: RABBITMQ_USER
+        - name: RABBITMQ_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: skald-secrets
+              key: RABBITMQ_PASSWORD
+        - name: RABBITMQ_VHOST
+          valueFrom:
+            configMapKeyRef:
+              name: skald-config
+              key: RABBITMQ_VHOST
+        # 애플리케이션 관련 환경변수
+        - name: NODE_ENV
+          valueFrom:
+            configMapKeyRef:
+              name: skald-config
+              key: NODE_ENV
+        - name: IS_DEVELOPMENT
+          valueFrom:
+            configMapKeyRef:
+              name: skald-config
+              key: IS_DEVELOPMENT
+        - name: SECRET_KEY
+          valueFrom:
+            secretKeyRef:
+              name: skald-secrets
+              key: SECRET_KEY
+        # AI 서비스 관련 환경변수
+        - name: LLM_PROVIDER
+          valueFrom:
+            configMapKeyRef:
+              name: skald-config
+              key: LLM_PROVIDER
+        - name: EMBEDDING_PROVIDER
+          valueFrom:
+            configMapKeyRef:
+              name: skald-config
+              key: EMBEDDING_PROVIDER
+        - name: DOCUMENT_EXTRACTION_PROVIDER
+          valueFrom:
+            configMapKeyRef:
+              name: skald-config
+              key: DOCUMENT_EXTRACTION_PROVIDER
+        - name: LOCAL_LLM_BASE_URL
+          valueFrom:
+            configMapKeyRef:
+              name: skald-config
+              key: LOCAL_LLM_BASE_URL
+        - name: LOCAL_LLM_MODEL
+          valueFrom:
+            configMapKeyRef:
+              name: skald-config
+              key: LOCAL_LLM_MODEL
+        - name: LOCAL_EMBEDDING_MODEL
+          valueFrom:
+            configMapKeyRef:
+              name: skald-config
+              key: LOCAL_EMBEDDING_MODEL
+        - name: LOCAL_RERANK_MODEL
+          valueFrom:
+            configMapKeyRef:
+              name: skald-config
+              key: LOCAL_RERANK_MODEL
+        - name: OPENAI_API_KEY
+          valueFrom:
+            secretKeyRef:
+              name: skald-secrets
+              key: OPENAI_API_KEY
+        - name: VOYAGE_API_KEY
+          valueFrom:
+            secretKeyRef:
+              name: skald-secrets
+              key: VOYAGE_API_KEY
+        - name: ANTHROPIC_API_KEY
+          valueFrom:
+            secretKeyRef:
+              name: skald-secrets
+              key: ANTHROPIC_API_KEY
+        # 마이크로서비스 URL 설정
+        - name: EMBEDDING_SERVICE_URL
+          valueFrom:
+            configMapKeyRef:
+              name: skald-config
+              key: EMBEDDING_SERVICE_URL
+        - name: DOCLING_SERVICE_URL
+          valueFrom:
+            configMapKeyRef:
+              name: skald-config
+              key: DOCLING_SERVICE_URL
+        - name: STRIPE_SECRET_KEY
+          value: " "
+
+        - name : DATALAB_API_KEY
+          value: " "
+        # 메시지 큐 설정
+        - name: INTER_PROCESS_QUEUE
+          valueFrom:
+            configMapKeyRef:
+              name: skald-config
+              key: INTER_PROCESS_QUEUE
+        - name: RABBITMQ_QUEUE_NAME
+          value: "process_memo"
+        # Redis 설정 (캐시용)
+        - name: REDIS_HOST
+          valueFrom:
+            configMapKeyRef:
+              name: skald-config
+              key: REDIS_HOST
+        - name: REDIS_PORT
+          valueFrom:
+            configMapKeyRef:
+              name: skald-config
+              key: REDIS_PORT
+        - name: REDIS_URL
+          value: "redis://$(REDIS_HOST):$(REDIS_PORT)"
+        # S3 설정
+        - name: AWS_REGION
+          value: " "
+        - name: AWS_ACCESS_KEY_ID
+          value: " "
+        - name: AWS_SECRET_ACCESS_KEY
+          value: " "
+        - name: S3_BUCKET_NAME
+          value: " "
+        # 보안 설정
+        securityContext:
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: true
+          capabilities:
+            drop:
+            - ALL
+        # 리소스 설정
+        resources:
+          requests:
+            memory: "512Mi"
+            cpu: "250m"
+          limits:
+            memory: "1Gi"
+            cpu: "1000m"
+        # 임시 볼륨 마운트 (readOnlyRootFilesystem을 위함)
+        volumeMounts:
+        - name: tmp
+          mountPath: /tmp
+      # 임시 볼륨
+      volumes:
+      - name: tmp
+        emptyDir: {}
