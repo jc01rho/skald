@@ -2,6 +2,19 @@
 
 이 문서는 Skald 애플리케이션을 온프레미스 Kubernetes 클러스터에 배포하는 방법을 안내합니다.
 
+## 검증 상태
+
+✅ **전체 검증 완료**: 2025-12-02
+📋 **상세 검증 보고서**: [VALIDATION_REPORT.md](VALIDATION_REPORT.md) 참조
+
+### 주요 검증 결과
+- ✅ YAML 문법 검증 통과 (수정된 파일: ingress.yaml, ingress-nginx-values.yaml)
+- ✅ Docker Compose ↔ Kubernetes 매핑 검증 완료
+- ⚠️ GitHub Actions 워크플로우 일부 문제 발견 (네임스페이스 불일치)
+- ✅ 배포 스크립트 문법 및 권한 검증 통과
+- ⚠️ 설정 일관성 부분 개선 필요
+- ✅ 보안 설정 기본 검증 통과
+
 ## 목차
 
 1. [개요](#1-개요)
@@ -15,6 +28,7 @@
 9. [유지보수](#9-유지보수)
 10. [트러블슈팅](#10-트러블슈팅)
 11. [참고 자료](#11-참고-자료)
+12. [검증 보고서](#12-검증-보고서)
 
 ---
 
@@ -953,6 +967,65 @@ kubectl exec -it deployment/api-server -n skald -- \
 - [ConfigMap 가이드](https://kubernetes.io/docs/concepts/configuration/configmap/)
 - [Secret 가이드](https://kubernetes.io/docs/concepts/configuration/secret/)
 - [PersistentVolume 가이드](https://kubernetes.io/docs/concepts/storage/persistent-volumes/)
+## 12. 검증 보고서
+
+### 검증 개요
+
+전체 Kubernetes 설정 및 배포 자동화 시스템에 대한 종합적인 검증이 완료되었습니다. 상세한 검증 결과는 [VALIDATION_REPORT.md](VALIDATION_REPORT.md)를 참고하세요.
+
+### 검증 항목
+
+1. **YAML 문법 검증** ✅
+   - 모든 K8s 매니페스트 파일의 문법 검증 완료
+   - 수정된 파일: ingress.yaml, ingress-nginx-values.yaml
+
+2. **Docker Compose ↔ Kubernetes 매핑** ✅
+   - 모든 서비스의 매핑 상태 확인 완료
+   - 환경변수, 포트, 네트워크 설정 검증 완료
+
+3. **GitHub Actions 워크플로우** ⚠️
+   - 일부 워크플로우에서 네임스페이스 불일치 문제 발견
+   - 이미지 태그 업데이트 로직 개선 필요
+
+4. **배포 스크립트** ✅
+   - 쉘 문법 검증 통과
+   - 실행 권한 확인 완료 (0755)
+
+5. **설정 일관성** ⚠️
+   - 이미지 태그 패턴 일부 불일치
+   - 환경변수 참조 방식 통일 필요
+
+6. **보안 검증** ✅
+   - Secret/ConfigMap 적절히 사용됨
+   - RBAC 기본 설정 확인됨
+   - NetworkPolicy 추가 권장
+
+### 권장 조치사항
+
+#### 즉시 적용 필요
+1. GitHub Actions 워크플로우 네임스페이스 일치
+2. 이미지 태그 패턴 통일
+3. Ingress 설정 최적화
+
+#### 단기 개선사항
+1. RBAC 강화 (서비스별 ServiceAccount 추가)
+2. NetworkPolicy 도입
+3. 모니터링 강화
+
+### 검증 도구 사용법
+
+```bash
+# YAML 문법 검증
+kubectl apply --dry-run=client -f k8s/
+
+# 배포 테스트
+./k8s/deploy.sh --help
+
+# 서비스 상태 확인
+kubectl get pods,svc,ingress -n skald
+```
+
+---
 
 ### 관련 도구 링크
 

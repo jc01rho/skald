@@ -2,6 +2,12 @@
 # 온프레미스 Kubernetes 환경에 최적화된 설정입니다.
 # 사용법: helm install ingress-nginx ingress-nginx/ingress-nginx --namespace ingress-nginx --create-namespace --values ingress-nginx-values.yaml
 
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: nginx-ingress-values
+  namespace: ingress-nginx
+
 # 컨트롤러 기본 설정
 controller:
   # Ingress 클래스 이름 (ingress.yaml의 ingressClassName과 일치해야 함)

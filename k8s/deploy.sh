@@ -32,14 +32,103 @@ log_error() {
 # 설정 변수
 NAMESPACE="skald"
 IMAGE_TAG="${IMAGE_TAG:-latest}"
-DOCKER_REGISTRY="${DOCKER_REGISTRY:-skaldlabs}"
+DOCKER_REGISTRY="${DOCKER_REGISTRY:-ghcr.io/skaldlabs}"
 echo "DOCKER_REGISTRY : $DOCKER_REGISTRY"
 SKIP_INGRESS="${SKIP_INGRESS:-false}"
+
+# 환경 변수 파일
+ENV_FILE="${ENV_FILE:-.env.prod}"
 
 # 언디플로이 관련 변수
 UNDEPLOY_MODE="false"
 FORCE_UNDEPLOY="false"
 KEEP_DATA="false"
+
+# 환경 변수 로드 함수
+load_env_file() {
+    if [ -f "$ENV_FILE" ]; then
+        log_info "Loading environment variables from $ENV_FILE..."
+        set -a
+        source "$ENV_FILE"
+        set +a
+        log_success "Environment variables loaded from $ENV_FILE"
+    else
+        log_warning "Environment file $ENV_FILE not found, using defaults"
+    fi
+}
+
+# ConfigMap 생성 함수 (환경 변수 기반)
+generate_configmap_from_env() {
+    log_info "Generating ConfigMap from environment variables..."
+    
+    cat > /tmp/skald-configmap.yaml << EOF
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: skald-config
+  namespace: $NAMESPACE
+data:
+  # Domain Configuration
+  API_DOMAIN: "${API_DOMAIN:-api.skald.local}"
+  UI_DOMAIN: "${UI_DOMAIN:-ui.skald.local}"
+  ACME_EMAIL: "${ACME_EMAIL:-admin@skald.local}"
+  
+  # Database Configuration
+  POSTGRES_DB: "${POSTGRES_DB:-skald2}"
+  POSTGRES_USER: "${POSTGRES_USER:-postgres}"
+  DB_HOST: "postgres-service"
+  DB_PORT: "5432"
+  
+  # RabbitMQ Configuration
+  RABBITMQ_HOST: "rabbitmq-service"
+  RABBITMQ_PORT: "5672"
+  RABBITMQ_USER: "${RABBITMQ_USER:-skald}"
+  RABBITMQ_VHOST: "/"
+  INTER_PROCESS_QUEUE: "rabbitmq"
+  
+  # Redis Configuration
+  REDIS_HOST: "redis-service"
+  REDIS_PORT: "6379"
+  
+  # Application Configuration
+  IS_SELF_HOSTED_DEPLOY: "true"
+  LLM_PROVIDER: "${LLM_PROVIDER:-openai}"
+  EMBEDDING_PROVIDER: "${EMBEDDING_PROVIDER:-openai}"
+  DOCUMENT_EXTRACTION_PROVIDER: "${DOCUMENT_EXTRACTION_PROVIDER:-docling}"
+  EMBEDDING_SERVICE_URL: "http://embedding-service-service:8000"
+  DOCLING_SERVICE_URL: "http://docling-service:5001"
+  SECURE_SSL_REDIRECT: "false"
+  EXPRESS_SERVER_PORT: "8000"
+  
+  # Frontend Configuration
+  FRONTEND_URL: "https://${UI_DOMAIN:-ui.skald.local}"
+  API_URL: "https://${API_DOMAIN:-api.skald.local}"
+  
+  # LangSmith Configuration (optional)
+  LANGSMITH_TRACING: "${LANGSMITH_TRACING:-false}"
+  LANGSMITH_ENDPOINT: "${LANGSMITH_ENDPOINT:-}"
+  LANGSMITH_PROJECT: "${LANGSMITH_PROJECT:-}"
+  
+  # Local LLM Configuration (optional)
+  LOCAL_LLM_BASE_URL: "${LOCAL_LLM_BASE_URL:-}"
+  LOCAL_LLM_MODEL: "${LOCAL_LLM_MODEL:-}"
+  
+  # Local Embedding Configuration (optional)
+  LOCAL_EMBEDDING_MODEL: "${LOCAL_EMBEDDING_MODEL:-all-MiniLM-L6-v2}"
+  LOCAL_RERANK_MODEL: "${LOCAL_RERANK_MODEL:-cross-encoder/ms-marco-MiniLM-L-6-v2}"
+  TARGET_DIMENSION: "2048"
+EOF
+
+    if kubectl apply -f /tmp/skald-configmap.yaml; then
+        log_success "ConfigMap generated and applied successfully"
+        rm -f /tmp/skald-configmap.yaml
+        return 0
+    else
+        log_error "Failed to apply ConfigMap"
+        rm -f /tmp/skald-configmap.yaml
+        return 1
+    fi
+}
 
 # 대기 함수
 wait_for_pods() {
@@ -52,6 +141,100 @@ wait_for_pods() {
         return 0
     else
         log_error "Timeout waiting for pods with label '$label'"
+        return 1
+    fi
+}
+
+# 서비스 상태 확인 함수
+check_service_health() {
+    local service_name=$1
+    local namespace=${2:-$NAMESPACE}
+    local timeout=${3:-60}
+    
+    log_info "Checking service health for $service_name..."
+    
+    # 서비스 존재 확인
+    if ! kubectl get svc "$service_name" -n "$namespace" &>/dev/null; then
+        log_error "Service $service_name not found"
+        return 1
+    fi
+    
+    # 엔드포인트 확인
+    local endpoints
+    endpoints=$(kubectl get endpoints "$service_name" -n "$namespace" -o jsonpath='{.subsets[*].addresses[*].ip}' 2>/dev/null)
+    
+    if [ -z "$endpoints" ]; then
+        log_warning "Service $service_name has no ready endpoints"
+        return 1
+    fi
+    
+    log_success "Service $service_name is healthy with endpoints: $endpoints"
+    return 0
+}
+
+# 롤링 업데이트 함수
+rolling_update() {
+    local deployment_name=$1
+    local new_image=$2
+    local timeout=${3:-300}
+    
+    log_info "Starting rolling update for $deployment_name to $new_image..."
+    
+    # 이미지 업데이트
+    if kubectl set image deployment/"$deployment_name" "$deployment_name"="$new_image" -n "$NAMESPACE"; then
+        log_success "Image updated for $deployment_name"
+    else
+        log_error "Failed to update image for $deployment_name"
+        return 1
+    fi
+    
+    # 롤링 업데이트 대기
+    if kubectl rollout status deployment/"$deployment_name" -n "$NAMESPACE" --timeout="${timeout}s"; then
+        log_success "Rolling update completed for $deployment_name"
+        return 0
+    else
+        log_error "Rolling update failed for $deployment_name"
+        return 1
+    fi
+}
+
+# 롤백 함수
+rollback_deployment() {
+    local deployment_name=$1
+    local revision=${2:-1}
+    
+    log_info "Rolling back $deployment_name to revision $revision..."
+    
+    if kubectl rollout undo deployment/"$deployment_name" -n "$NAMESPACE" --to-revision="$revision"; then
+        log_success "Rollback completed for $deployment_name"
+        return 0
+    else
+        log_error "Rollback failed for $deployment_name"
+        return 1
+    fi
+}
+
+# 배포 상태 확인 함수
+check_deployment_status() {
+    local deployment_name=$1
+    local namespace=${2:-$NAMESPACE}
+    
+    log_info "Checking deployment status for $deployment_name..."
+    
+    # 배포 상태 확인
+    local status
+    status=$(kubectl get deployment "$deployment_name" -n "$namespace" -o jsonpath='{.status.conditions[?(@.type=="Progressing")].status}' 2>/dev/null)
+    
+    if [ "$status" = "True" ]; then
+        local replicas
+        local ready_replicas
+        replicas=$(kubectl get deployment "$deployment_name" -n "$namespace" -o jsonpath='{.spec.replicas}' 2>/dev/null)
+        ready_replicas=$(kubectl get deployment "$deployment_name" -n "$namespace" -o jsonpath='{.status.readyReplicas}' 2>/dev/null)
+        
+        log_success "Deployment $deployment_name is progressing (Ready: $ready_replicas/$replicas)"
+        return 0
+    else
+        log_error "Deployment $deployment_name is not progressing"
         return 1
     fi
 }
@@ -96,6 +279,39 @@ create_namespace() {
         log_error "네임스페이스 생성 실패"
         exit 1
     fi
+}
+
+# Step 2: Traefik Ingress Controller 배포
+deploy_traefik() {
+    if [ "$SKIP_INGRESS" = "true" ]; then
+        log_warning "Traefik 배포를 건너뜁니다 (SKIP_INGRESS=true)"
+        return 0
+    fi
+    
+    log_info "Step 2: Traefik Ingress Controller 배포"
+    
+    # Traefik 배포
+    if kubectl apply -f traefik-deployment.yaml; then
+        log_success "Traefik Ingress Controller 배포 완료"
+    else
+        log_error "Traefik Ingress Controller 배포 실패"
+        exit 1
+    fi
+    
+    # Traefik Pod 준비 대기 (default 네임스페이스에서 확인)
+    log_info "Waiting for traefik pods to be ready..."
+    if kubectl wait --for=condition=ready pod -l "app=traefik" -n "default" --timeout="600s"; then
+        log_success "Traefik pods are ready"
+    else
+        log_error "Timeout waiting for traefik pods"
+        exit 1
+    fi
+    
+    # Traefik 서비스 확인
+    log_info "Traefik 서비스 확인 중..."
+    kubectl get svc traefik -n default
+    
+    log_success "Traefik Ingress Controller 준비 완료"
 }
 
 # Step 2: ConfigMap 및 Secret 생성
@@ -206,8 +422,8 @@ deploy_backend() {
     log_info "Step 5: Backend 서비스 배포"
     
     # 환경변수 치환을 위한 임시 파일 생성
-    sed "s/\${DOCKER_REGISTRY:-skaldlabs}/$DOCKER_REGISTRY/g" api-deployment.yaml | \
-    sed "s/\${IMAGE_TAG:-latest}/$IMAGE_TAG/g" > /tmp/api-deployment.yaml
+    sed "s|\${DOCKER_REGISTRY:-skaldlabs}|$DOCKER_REGISTRY|g" api-deployment.yaml | \
+    sed "s|\${IMAGE_TAG:-latest}|$IMAGE_TAG|g" > /tmp/api-deployment.yaml
     echo "API Deployment 임시 파일 생성 완료: /tmp/api-deployment.yaml"
     echo "DOCKER_REGISTRY in temp file: $(grep 'image:' /tmp/api-deployment.yaml)"
     
@@ -227,8 +443,8 @@ deploy_backend() {
     fi
     
     # Memo Processing 서비스 배포
-    sed "s/\${DOCKER_REGISTRY:-skaldlabs}/$DOCKER_REGISTRY/g" memo-processing-deployment.yaml | \
-    sed "s/\${IMAGE_TAG:-latest}/$IMAGE_TAG/g" > /tmp/memo-processing-deployment.yaml
+    sed "s|\${DOCKER_REGISTRY:-skaldlabs}|$DOCKER_REGISTRY|g" memo-processing-deployment.yaml | \
+    sed "s|\${IMAGE_TAG:-latest}|$IMAGE_TAG|g" > /tmp/memo-processing-deployment.yaml
     
     if kubectl apply -f /tmp/memo-processing-deployment.yaml -n "$NAMESPACE"; then
         log_success "Memo Processing Deployment 생성 완료"
@@ -250,8 +466,8 @@ deploy_ai_services() {
     log_info "Step 6: AI 서비스 배포"
     
     # Embedding Service 배포
-    sed "s/\${DOCKER_REGISTRY:-skaldlabs}/$DOCKER_REGISTRY/g" embedding-service-deployment.yaml | \
-    sed "s/\${IMAGE_TAG:-latest}/$IMAGE_TAG/g" > /tmp/embedding-service-deployment.yaml
+    sed "s|\${DOCKER_REGISTRY:-skaldlabs}|$DOCKER_REGISTRY|g" embedding-service-deployment.yaml | \
+    sed "s|\${IMAGE_TAG:-latest}|$IMAGE_TAG|g" > /tmp/embedding-service-deployment.yaml
     
     if kubectl apply -f /tmp/embedding-service-deployment.yaml -n "$NAMESPACE"; then
         log_success "Embedding Service Deployment 생성 완료"
@@ -295,8 +511,8 @@ deploy_frontend() {
     log_info "Step 7: Frontend UI 배포"
     
     # 환경변수 치환을 위한 임시 파일 생성
-    sed "s/\${DOCKER_REGISTRY:-skaldlabs}/$DOCKER_REGISTRY/g" ui-deployment.yaml | \
-    sed "s/\${IMAGE_TAG:-latest}/$IMAGE_TAG/g" > /tmp/ui-deployment.yaml
+    sed "s|\${DOCKER_REGISTRY:-skaldlabs}|$DOCKER_REGISTRY|g" ui-deployment.yaml | \
+    sed "s|\${IMAGE_TAG:-latest}|$IMAGE_TAG|g" > /tmp/ui-deployment.yaml
     
     if kubectl apply -f /tmp/ui-deployment.yaml -n "$NAMESPACE"; then
         log_success "UI Deployment 생성 완료"
@@ -346,7 +562,7 @@ verify_deployment() {
     
     # 모든 Pod 상태 확인
     log_info "모든 Pod 상태:"
-    kubectl get pods -n "$NAMESPACE"
+    kubectl get pods -n "$NAMESPACE" -o wide
     
     # 모든 서비스 상태 확인
     log_info "모든 서비스 상태:"
@@ -356,13 +572,104 @@ verify_deployment() {
     log_info "PVC 상태:"
     kubectl get pvc -n "$NAMESPACE"
     
-    # Ingress 상태 확인 (Ingress Controller가 있는 경우)
-    if kubectl get ingressclass nginx &> /dev/null; then
-        log_info "Ingress 상태:"
-        kubectl get ingress -n "$NAMESPACE"
+    # StatefulSet 상태 확인
+    log_info "StatefulSet 상태:"
+    kubectl get statefulsets -n "$NAMESPACE"
+    
+    # Deployment 상태 확인
+    log_info "Deployment 상태:"
+    kubectl get deployments -n "$NAMESPACE"
+    
+    # IngressRoute 상태 확인 (Traefik)
+    if kubectl get ingressroute -n "$NAMESPACE" &> /dev/null; then
+        log_info "IngressRoute 상태:"
+        kubectl get ingressroute -n "$NAMESPACE"
     fi
     
+    # 서비스 상세 상태 확인
+    verify_service_health
+    
+    # Ingress 설정 검증
+    verify_ingress_configuration
+    
     log_success "배포 확인 완료"
+}
+
+# 서비스 상세 상태 확인 함수
+verify_service_health() {
+    log_info "서비스 상세 상태 확인 중..."
+    
+    local services=("postgres-service" "rabbitmq-service" "redis-service" "api-service" "ui-service" "embedding-service-service" "docling-service")
+    
+    for service in "${services[@]}"; do
+        if kubectl get svc "$service" -n "$NAMESPACE" &>/dev/null; then
+            check_service_health "$service" "$NAMESPACE"
+            
+            # 서비스 엔드포인트 상세 정보
+            local endpoints
+            endpoints=$(kubectl get endpoints "$service" -n "$NAMESPACE" -o jsonpath='{.subsets[*].addresses[*].ip}' 2>/dev/null)
+            if [ -n "$endpoints" ]; then
+                log_success "  $service 엔드포인트: $endpoints"
+            else
+                log_warning "  $service 엔드포인트 없음"
+            fi
+        else
+            log_warning "  $service 서비스를 찾을 수 없음"
+        fi
+    done
+}
+
+# Ingress 설정 검증 함수
+verify_ingress_configuration() {
+    log_info "Ingress 설정 검증 중..."
+    
+    # Traefik 서비스 확인
+    if kubectl get svc traefik -n default &>/dev/null; then
+        local traefik_ip
+        traefik_ip=$(kubectl get svc traefik -n default -o jsonpath='{.status.loadBalancer.ingress[0].ip}' 2>/dev/null)
+        if [ -n "$traefik_ip" ]; then
+            log_success "Traefik LoadBalancer IP: $traefik_ip"
+        else
+            log_warning "Traefik LoadBalancer IP를 확인할 수 없음"
+        fi
+    fi
+    
+    # IngressRoute 확인
+    if kubectl get ingressroute -n "$NAMESPACE" &>/dev/null; then
+        local ingress_routes
+        ingress_routes=$(kubectl get ingressroute -n "$NAMESPACE" -o jsonpath='{.items[*].metadata.name}' 2>/dev/null)
+        for route in $ingress_routes; do
+            log_info "IngressRoute $route 확인 중..."
+            if kubectl get ingressroute "$route" -n "$NAMESPACE" -o yaml | grep -q "namespace: $NAMESPACE"; then
+                log_success "  $route 네임스페이스 설정 올바름"
+            else
+                log_warning "  $route 네임스페이스 설정 확인 필요"
+            fi
+        done
+    fi
+    
+    # 도메인 설정 확인
+    if [ -n "$API_DOMAIN" ] && [ -n "$UI_DOMAIN" ]; then
+        log_info "도메인 설정:"
+        log_info "  API 도메인: $API_DOMAIN"
+        log_info "  UI 도메인: $UI_DOMAIN"
+        
+        # DNS 확인 (선택적)
+        if command -v dig &> /dev/null; then
+            log_info "DNS 확인 중..."
+            if dig +short "$API_DOMAIN" &>/dev/null; then
+                log_success "  $API_DOMAIN DNS 확인 성공"
+            else
+                log_warning "  $API_DOMAIN DNS 확인 실패"
+            fi
+            
+            if dig +short "$UI_DOMAIN" &>/dev/null; then
+                log_success "  $UI_DOMAIN DNS 확인 성공"
+            else
+                log_warning "  $UI_DOMAIN DNS 확인 실패"
+            fi
+        fi
+    fi
 }
 
 # 접속 정보 출력
@@ -819,10 +1126,18 @@ main() {
         echo "  Ingress 건너뛰기: $SKIP_INGRESS"
         echo
         
+        # 환경 변수 로드
+        load_env_file
+        
         # 배포 단계 실행
         check_prerequisites
         create_namespace
+        deploy_traefik
+        
+        # ConfigMap 및 Secret 생성 (환경 변수 기반)
+        generate_configmap_from_env
         create_configs
+        
         create_pvcs  # PVC 생성 함수는 호출되지만 내부 로직 생략됨
         deploy_infrastructure
         deploy_backend
@@ -864,8 +1179,9 @@ show_help() {
     echo
     echo "환경변수:"
     echo "  IMAGE_TAG              이미지 태그 (기본값: latest)"
-    echo "  DOCKER_REGISTRY        도커 레지스트리 (기본값: docker.io)"
+    echo "  DOCKER_REGISTRY        도커 레지스트리 (기본값: ghcr.io/skaldlabs)"
     echo "  SKIP_INGRESS           Ingress 건너뛰기 (기본값: false)"
+    echo "  ENV_FILE              환경 변수 파일 경로 (기본값: .env.prod)"
     echo
     echo "예시:"
     echo "  $0                                    # 기본 설정으로 배포"

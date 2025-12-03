@@ -1,5 +1,6 @@
 # Kubernetes Ingress 리소스 정의
 # 외부 트래픽을 클러스터 내부 서비스로 라우팅하는 Ingress 설정입니다.
+# NGINX Ingress Controller를 사용하도록 표준 Ingress로 구성
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
@@ -9,43 +10,20 @@ metadata:
     app: skald
     component: ingress
   annotations:
-    # API 경로 재작성: /api/* 경로를 /로 재작성하여 백엔드 서비스로 전달
-    nginx.ingress.kubernetes.io/rewrite-target: /$2
-    
-    # HTTPS 리다이렉트: HTTP 요청을 HTTPS로 자동 리다이렉트
+    kubernetes.io/ingress.class: "nginx"
+    cert-manager.io/cluster-issuer: "letsencrypt-prod"
     nginx.ingress.kubernetes.io/ssl-redirect: "true"
-    cert-manager.io/cluster-issuer: sparrow-local-cluster-issuer
-    
-    # TLS 인증서 자동 발급 (cert-manager 사용 시)
-    # cert-manager.io/cluster-issuer: "letsencrypt-prod"
-    
-    # CORS 설정 (필요시 주석 해제)
-    # nginx.ingress.kubernetes.io/enable-cors: "true"
-    # nginx.ingress.kubernetes.io/cors-allow-origin: "*"
-    # nginx.ingress.kubernetes.io/cors-allow-methods: "GET, POST, PUT, DELETE, OPTIONS"
-    # nginx.ingress.kubernetes.io/cors-allow-headers: "DNT,User-Agent,X-Requested-With,If-Modified-Since,Cache-Control,Content-Type,Range,Authorization"
-    
-    # 프록시 바디 크기 설정 (대용량 파일 업로드 시 필요)
-    nginx.ingress.kubernetes.io/proxy-body-size: "50m"
-    
-    description: "Skald 애플리케이션 Ingress - 외부 접속을 위한 라우팅 규칙"
+    nginx.ingress.kubernetes.io/use-regex: "true"
 spec:
-  # Ingress 클래스 지정 (NGINX Ingress Controller 사용)
-  ingressClassName: nginx
-  
-  # TLS/SSL 설정 (HTTPS 통신을 위한 인증서)
-  # 실제 도메인과 인증서 정보로 수정 필요
   tls:
   - hosts:
-    - skald.example.com  # 실제 도메인으로 변경 필요
-    secretName: skald-tls-secret  # TLS 인증서가 저장된 Secret 이름
-  
+    - ${UI_DOMAIN}
+    - ${API_DOMAIN}
+    secretName: skald-tls-secret
   rules:
-  # 메인 도메인 규칙
-  - host: skald.sparrow.local  # 실제 도메인으로 변경 필요
+  - host: ${UI_DOMAIN}
     http:
       paths:
-      # Frontend UI 서비스로 라우팅 (/ 경로)
       - path: /
         pathType: Prefix
         backend:
@@ -53,25 +31,16 @@ spec:
             name: ui-service
             port:
               number: 80
-      
-      # API 서비스로 라우팅 (/api/* 경로)
-      - path: /api(/|$)(.*)
+  - host: ${API_DOMAIN}
+    http:
+      paths:
+      - path: /
         pathType: Prefix
         backend:
           service:
             name: api-service
             port:
-              number: 8000
-      
-      # RabbitMQ Management UI로 라우팅 (/rabbitmq/* 경로) - 선택적
-      # 보안을 위해 기본적으로 비활성화하거나 인증 추가 권장
-      - path: /rabbitmq(/|$)(.*)
-        pathType: Prefix
-        backend:
-          service:
-            name: rabbitmq-service
-            port:
-              number: 15672
+              number: 8080
 
 ---
 # 설치 및 설정 가이드 (한국어 주석)
