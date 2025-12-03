@@ -11,17 +11,17 @@ metadata:
     component: ingress
   annotations:
     kubernetes.io/ingress.class: "nginx"
-    cert-manager.io/cluster-issuer: "letsencrypt-prod"
+    cert-manager.io/cluster-issuer: sparrow-local-cluster-issuer
     nginx.ingress.kubernetes.io/ssl-redirect: "true"
     nginx.ingress.kubernetes.io/use-regex: "true"
 spec:
   tls:
   - hosts:
-    - ${UI_DOMAIN}
-    - ${API_DOMAIN}
+    - ui.skald.sparrow.local
+    - api.skald.sparrow.local
     secretName: skald-tls-secret
   rules:
-  - host: ${UI_DOMAIN}
+  - host: ui.skald.sparrow.local
     http:
       paths:
       - path: /
@@ -31,7 +31,7 @@ spec:
             name: ui-service
             port:
               number: 80
-  - host: ${API_DOMAIN}
+  - host: api.skald.sparrow.local
     http:
       paths:
       - path: /
