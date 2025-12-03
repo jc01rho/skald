@@ -44,8 +44,9 @@ jobs:
           # Update backend deployment
           sed -i "s|image: ghcr.io/${{ github.repository }}-backend:.*|image: ghcr.io/${{ github.repository }}-backend:${{ steps.image_tags.outputs.IMAGE_TAG }}|g" k8s/api-deployment.yaml
           
-          # Update UI deployment
-          sed -i "s|image: ghcr.io/${{ github.repository }}-ui:.*|image: ghcr.io/${{ github.repository }}-ui:${{ steps.image_tags.outputs.IMAGE_TAG }}|g" k8s/ui-deployment.yaml
+          # Update UI deployment with K8s-specific image
+          # Use k8s-latest tag for UI to ensure proper build args (VITE_API_HOST="")
+          sed -i "s|image: ghcr.io/jc01rho/skald-ui:.*|image: ghcr.io/jc01rho/skald-ui:k8s-latest|g" k8s/ui-deployment.yaml
           
           # Update embedding service deployment
           sed -i "s|image: ghcr.io/${{ github.repository }}-embedding-service:.*|image: ghcr.io/${{ github.repository }}-embedding-service:${{ steps.image_tags.outputs.IMAGE_TAG }}|g" k8s/embedding-service-deployment.yaml
@@ -68,6 +69,7 @@ jobs:
           kubectl apply -f k8s/memo-processing-deployment.yaml
           kubectl apply -f k8s/api-deployment.yaml
           kubectl apply -f k8s/api-service.yaml
+          kubectl apply -f k8s/ui-nginx-configmap.yaml
           kubectl apply -f k8s/ui-deployment.yaml
           kubectl apply -f k8s/ui-service.yaml
           kubectl apply -f k8s/traefik-deployment.yaml

@@ -1,0 +1,130 @@
+# UI Nginx 설정을 위한 ConfigMap
+# API 프록시 설정을 통해 CORS 문제를 해결하고 동일 오리진에서 API 호출 가능하게 합니다.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: ui-nginx-config
+  namespace: skald
+  labels:
+    app: skald
+    component: ui-nginx-config
+  annotations:
+    description: "UI Nginx 설정 - API 프록시 포함"
+data:
+  nginx.conf: |
+    user nginx;
+    worker_processes auto;
+    error_log /var/log/nginx/error.log warn;
+    pid /var/run/nginx.pid;
+
+    events {
+        worker_connections 1024;
+    }
+
+    http {
+        include /etc/nginx/mime.types;
+        default_type application/octet-stream;
+
+        log_format main '$remote_addr - $remote_user [$time_local] "$request" '
+                        '$status $body_bytes_sent "$http_referer" '
+                        '"$http_user_agent" "$http_x_forwarded_for"';
+
+        access_log /var/log/nginx/access.log main;
+
+        sendfile on;
+        tcp_nopush on;
+        tcp_nodelay on;
+        keepalive_timeout 65;
+        types_hash_max_size 2048;
+        client_max_body_size 20M;
+
+        gzip on;
+        gzip_vary on;
+        gzip_proxied any;
+        gzip_comp_level 6;
+        gzip_types text/plain text/css text/xml text/javascript 
+                   application/json application/javascript application/xml+rss 
+                   application/rss+xml font/truetype font/opentype 
+                   application/vnd.ms-fontobject image/svg+xml;
+
+        server {
+            listen 80;
+            server_name _;
+            root /usr/share/nginx/html;
+            index index.html;
+
+            # Health check endpoint
+            location /health {
+                access_log off;
+                return 200 "healthy\n";
+                add_header Content-Type text/plain;
+            }
+
+            # API 프록시 - /api 경로로 들어오는 요청을 API 서비스로 전달
+            location /api/ {
+                # 클러스터 내부의 API 서비스로 프록시
+                proxy_pass http://api-service:8080/api/;
+                
+                # 프록시 헤더 설정
+                proxy_set_header Host $host;
+                proxy_set_header X-Real-IP $remote_addr;
+                proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+                proxy_set_header X-Forwarded-Proto $scheme;
+                
+                # 타임아웃 설정
+                proxy_connect_timeout 60s;
+                proxy_send_timeout 60s;
+                proxy_read_timeout 60s;
+                
+                # 버퍼링 설정
+                proxy_buffering off;
+                proxy_request_buffering off;
+            }
+
+            # 정적 파일 서빙
+            location / {
+                try_files $uri $uri/ /index.html;
+                
+                # index.html에 런타임 환경 변수 주입
+                sub_filter '</head>' '
+                <script>
+                  // Runtime environment configuration
+                  // Override VITE build-time variables
+                  window.RUNTIME_CONFIG = {
+                    API_URL: ""
+                  };
+                  
+                  // Override import.meta.env for runtime
+                  if (typeof window !== "undefined") {
+                    window.import = window.import || {};
+                    window.import.meta = window.import.meta || {};
+                    window.import.meta.env = window.import.meta.env || {};
+                    
+                    // Set API host to empty string so it uses relative paths
+                    window.import.meta.env.VITE_API_HOST = "";
+                  }
+                </script>
+                </head>';
+                sub_filter_once on;
+                sub_filter_types text/html;
+                
+                # 캐시 설정
+                location ~* \.(js|css|png|jpg|jpeg|gif|ico|svg|woff|woff2|ttf|eot)$ {
+                    expires 1y;
+                    add_header Cache-Control "public, immutable";
+                }
+            }
+
+            # index.html은 캐시하지 않음
+            location = /index.html {
+                add_header Cache-Control "no-cache, no-store, must-revalidate";
+                add_header Pragma "no-cache";
+                add_header Expires "0";
+            }
+
+            # 보안 헤더
+            add_header X-Frame-Options "SAMEORIGIN" always;
+            add_header X-Content-Type-Options "nosniff" always;
+            add_header X-XSS-Protection "1; mode=block" always;
+        }
+    }

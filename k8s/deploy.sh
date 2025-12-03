@@ -517,6 +517,14 @@ deploy_ai_services() {
 deploy_frontend() {
     log_info "Step 7: Frontend UI 배포"
     
+    # UI Nginx ConfigMap 생성 (API 프록시 설정)
+    if kubectl apply -f ui-nginx-configmap.yaml -n "$NAMESPACE"; then
+        log_success "UI Nginx ConfigMap 생성 완료"
+    else
+        log_error "UI Nginx ConfigMap 생성 실패"
+        exit 1
+    fi
+    
     # 환경변수 치환을 위한 임시 파일 생성
     sed "s|\${DOCKER_REGISTRY:-skaldlabs}|$DOCKER_REGISTRY|g" ui-deployment.yaml | \
     sed "s|\${IMAGE_TAG:-latest}|$IMAGE_TAG|g" > /tmp/ui-deployment.yaml

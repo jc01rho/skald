@@ -21,6 +21,7 @@ data:
   FRONTEND_URL: "https://app.skald.sparrow.local"  # 프론트엔드 URL (기본값: https://app.example.com)
   APP_HOST: "0.0.0.0"  # 애플리케이션 호스트 (기본값: 0.0.0.0)
   API_URL: "https://api.skald.sparrow.local"  # API URL (기본값: https://api.example.com)
+  INTERNAL_API_URL: "http://api-service:8080"  # 클러스터 내부 API 서비스 URL
   
   # AI 서비스 프로바이더 설정
   LLM_PROVIDER: "local"  # LLM 제공자 (기본값: openai)

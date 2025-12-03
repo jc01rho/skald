@@ -1,0 +1,38 @@
+# UI 런타임 환경 변수 주입을 위한 ConfigMap
+# Vite 빌드 시점 환경 변수 문제 해결을 위해 런타임에 환경 변수를 주입합니다.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: ui-runtime-config
+  namespace: skald
+  labels:
+    app: skald
+    component: ui-config
+  annotations:
+    description: "UI 런타임 환경 변수 설정을 위한 ConfigMap"
+data:
+  # env-config.js 템플릿 - 런타임에 envsubst로 치환됨
+  env-config.template.js: |
+    window._env_ = {
+      API_URL: ""
+    };
+  
+  # entrypoint.sh - 런타임에 환경 변수를 치환하고 nginx 시작
+  entrypoint.sh: |
+    #!/bin/sh
+    set -e
+    
+    echo "Generating runtime environment config..."
+    
+    # env-config.js 생성 (환경 변수 없이 빈 문자열 사용)
+    cat > /usr/share/nginx/html/env-config.js << 'EOF'
+    window._env_ = {
+      API_URL: ""
+    };
+    EOF
+    
+    echo "Runtime environment config generated:"
+    cat /usr/share/nginx/html/env-config.js
+    
+    echo "Starting nginx..."
+    exec nginx -g 'daemon off;'
