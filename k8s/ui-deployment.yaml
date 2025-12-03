@@ -40,16 +40,19 @@ spec:
       containers:
       - name: ui
         # frontend 디렉토리에서 빌드된 이미지 사용
-        image: ${DOCKER_REGISTRY:-skaldlabs}/skald-frontend:${IMAGE_TAG:-latest}
+        image: ghcr.io/skaldlabs/skald-frontend:${IMAGE_TAG:-latest}
         imagePullPolicy: IfNotPresent
         ports:
         - containerPort: 80
           name: http
           protocol: TCP
         env:
-        # API 서버 주소 설정
+        # API 서버 주소 설정 (도메인 변수 사용)
         - name: VITE_API_URL
-          value: "http://api-service:8000"
+          value: "https://${API_DOMAIN}"
+        # Self-hosted 배포 여부 설정
+        - name: VITE_IS_SELF_HOSTED_DEPLOY
+          value: "true"
         # 프론트엔드 관련 환경변수
         - name: FRONTEND_URL
           valueFrom:

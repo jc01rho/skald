@@ -1,0 +1,89 @@
+name: Deploy to Kubernetes
+
+on:
+  push:
+    branches: [main, develop]
+  workflow_run:
+    workflows: ["Build and Push Docker Images"]
+    types: [completed]
+
+env:
+  KUBE_CONFIG_DATA: ${{ secrets.KUBE_CONFIG_DATA }}
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    if: ${{ github.event.workflow_run.conclusion == 'success' || github.event_name == 'push' }}
+    environment: ${{ github.ref == 'refs/heads/main' && 'production' || 'staging' }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup kubectl
+        uses: azure/setup-kubectl@v3
+        with:
+          version: 'latest'
+
+      - name: Set up KUBECONFIG
+        run: |
+          mkdir -p ~/.kube
+          echo "${{ secrets.KUBE_CONFIG_DATA }}" | base64 -d > ~/.kube/config
+
+      - name: Set image tags based on branch
+        id: image_tags
+        run: |
+          if [ "${{ github.ref }}" = "refs/heads/main" ]; then
+            echo "IMAGE_TAG=latest" >> $GITHUB_OUTPUT
+          else
+            echo "IMAGE_TAG=${{ github.ref_name }}" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Update deployment manifests with new image tags
+        run: |
+          # Update backend deployment
+          sed -i "s|image: ghcr.io/${{ github.repository }}-backend:.*|image: ghcr.io/${{ github.repository }}-backend:${{ steps.image_tags.outputs.IMAGE_TAG }}|g" k8s/api-deployment.yaml
+          
+          # Update UI deployment
+          sed -i "s|image: ghcr.io/${{ github.repository }}-ui:.*|image: ghcr.io/${{ github.repository }}-ui:${{ steps.image_tags.outputs.IMAGE_TAG }}|g" k8s/ui-deployment.yaml
+          
+          # Update embedding service deployment
+          sed -i "s|image: ghcr.io/${{ github.repository }}-embedding-service:.*|image: ghcr.io/${{ github.repository }}-embedding-service:${{ steps.image_tags.outputs.IMAGE_TAG }}|g" k8s/embedding-service-deployment.yaml
+
+      - name: Deploy to Kubernetes
+        run: |
+          kubectl apply -f k8s/namespace.yaml
+          kubectl apply -f k8s/postgres-pvc.yaml
+          kubectl apply -f k8s/rabbitmq-pvc.yaml
+          kubectl apply -f k8s/postgres-deployment.yaml
+          kubectl apply -f k8s/postgres-service.yaml
+          kubectl apply -f k8s/rabbitmq-deployment.yaml
+          kubectl apply -f k8s/rabbitmq-service.yaml
+          kubectl apply -f k8s/redis-deployment.yaml
+          kubectl apply -f k8s/redis-service.yaml
+          kubectl apply -f k8s/embedding-service-deployment.yaml
+          kubectl apply -f k8s/embedding-service-service.yaml
+          kubectl apply -f k8s/docling-deployment.yaml
+          kubectl apply -f k8s/docling-service.yaml
+          kubectl apply -f k8s/memo-processing-deployment.yaml
+          kubectl apply -f k8s/api-deployment.yaml
+          kubectl apply -f k8s/api-service.yaml
+          kubectl apply -f k8s/ui-deployment.yaml
+          kubectl apply -f k8s/ui-service.yaml
+          kubectl apply -f k8s/traefik-deployment.yaml
+          kubectl apply -f k8s/ingress.yaml
+
+      - name: Verify deployment
+        run: |
+          echo "Checking deployment status..."
+          kubectl rollout status deployment/api -n default
+          kubectl rollout status deployment/ui -n default
+          kubectl rollout status deployment/embedding-service -n default
+          kubectl rollout status deployment/memo-processing-server -n default
+          kubectl rollout status deployment/traefik -n default
+
+      - name: Print deployment status
+        run: |
+          kubectl get pods -n default
+          kubectl get services -n default
+          kubectl get ingress -n default

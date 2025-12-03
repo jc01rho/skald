@@ -112,7 +112,7 @@ spec:
       containers:
       - name: memo-processing-server
         # API 서버와 동일한 이미지 사용
-        image: ${DOCKER_REGISTRY:-skaldlabs}/skald-backend:${IMAGE_TAG:-latest}
+        image: skaldlabs/skald-backend:${IMAGE_TAG:-latest}
         imagePullPolicy: IfNotPresent
         # 메모 처리 서버 모드로 실행
         command:
