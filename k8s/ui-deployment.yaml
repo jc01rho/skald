@@ -40,7 +40,7 @@ spec:
       containers:
       - name: ui
         # frontend 디렉토리에서 빌드된 이미지 사용
-        image: ghcr.io/skaldlabs/skald-frontend:${IMAGE_TAG:-latest}
+        image: ghcr.io/jc01rho/skald-ui:${IMAGE_TAG:-latest}
         imagePullPolicy: IfNotPresent
         ports:
         - containerPort: 80
@@ -49,7 +49,7 @@ spec:
         env:
         # API 서버 주소 설정 (도메인 변수 사용)
         - name: VITE_API_URL
-          value: "https://${API_DOMAIN}"
+          value: "https://api.skald.sparrow.local"
         # Self-hosted 배포 여부 설정
         - name: VITE_IS_SELF_HOSTED_DEPLOY
           value: "true"
@@ -65,11 +65,11 @@ spec:
               name: skald-config
               key: APP_HOST
         # OAuth 관련 환경변수 (클라이언트용)
-        - name: VITE_GOOGLE_CLIENT_ID
-          valueFrom:
-            secretKeyRef:
-              name: skald-secrets
-              key: GOOGLE_CLIENT_ID
+        # - name: VITE_GOOGLE_CLIENT_ID
+        #   valueFrom:
+        #     secretKeyRef:
+        #       name: skald-secrets
+        #       key: GOOGLE_CLIENT_ID
         # 기타 환경변수
         - name: NODE_ENV
           valueFrom:

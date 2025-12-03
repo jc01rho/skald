@@ -44,6 +44,9 @@ UNDEPLOY_MODE="false"
 FORCE_UNDEPLOY="false"
 KEEP_DATA="false"
 
+# 강제 응답 관련 변수
+FORCE_YES="false"
+
 # 환경 변수 로드 함수
 load_env_file() {
     if [ -f "$ENV_FILE" ]; then
@@ -258,11 +261,15 @@ check_prerequisites() {
     # 네임스페이스 중복 확인
     if kubectl get namespace "$NAMESPACE" &> /dev/null; then
         log_warning "네임스페이스 '$NAMESPACE'가 이미 존재합니다. 기존 리소스를 덮어쓸 수 있습니다."
-        read -p "계속 진행하시겠습니까? (y/N): " -n 1 -r
-        echo
-        if [[ ! $REPLY =~ ^[Yy]$ ]]; then
-            log_info "배포를 취소합니다."
-            exit 0
+        if [ "$FORCE_YES" = "false" ]; then
+            read -p "계속 진행하시겠습니까? (y/N): " -n 1 -r
+            echo
+            if [[ ! $REPLY =~ ^[Yy]$ ]]; then
+                log_info "배포를 취소합니다."
+                exit 0
+            fi
+        else
+            log_info "FORCE_YES 모드 활성화 - 확인 없이 진행합니다."
         fi
     fi
     
@@ -723,7 +730,7 @@ show_undeploy_confirmation() {
     echo -e "${YELLOW}계속 진행하시겠습니까?${NC}"
     echo -e "네임스페이스: ${NAMESPACE}"
     
-    if [ "$FORCE_UNDEPLOY" = "false" ]; then
+    if [ "$FORCE_UNDEPLOY" = "false" ] && [ "$FORCE_YES" = "false" ]; then
         read -p "계속하시려면 'yes'를 입력하세요: " -r
         echo
         if [[ ! $REPLY =~ ^[yY][eE][sS]$ ]]; then
@@ -1004,28 +1011,40 @@ undeploy() {
     if [ "$KEEP_DATA" = "false" ]; then
         log_info "StatefulSet에서 생성된 PVC 삭제 중..."
         
-        # PostgreSQL StatefulSet에서 생성된 PVC 삭제
-        postgres_pvc_name="postgres-postgres-data-0"
-        if kubectl get pvc "$postgres_pvc_name" -n "$NAMESPACE" &>/dev/null; then
-            if kubectl delete pvc "$postgres_pvc_name" -n "$NAMESPACE"; then
-                log_success "PostgreSQL StatefulSet PVC '$postgres_pvc_name' 삭제 완료"
-            else
-                log_error "PostgreSQL StatefulSet PVC '$postgres_pvc_name' 삭제 실패"
-            fi
+        # PostgreSQL 관련 PVC 삭제 (레이블 기반)
+        postgres_pvcs=$(kubectl get pvc -n "$NAMESPACE" -l "app.kubernetes.io/instance=postgres" -o name 2>/dev/null || echo "")
+        if [ -n "$postgres_pvcs" ]; then
+            log_info "PostgreSQL 관련 PVC 삭제 중..."
+            echo "$postgres_pvcs" | while read -r pvc; do
+                if [ -n "$pvc" ]; then
+                    pvc_name=$(kubectl get "$pvc" -n "$NAMESPACE" -o jsonpath='{.metadata.name}')
+                    if kubectl delete "$pvc" -n "$NAMESPACE"; then
+                        log_success "PostgreSQL PVC '$pvc_name' 삭제 완료"
+                    else
+                        log_error "PostgreSQL PVC '$pvc_name' 삭제 실패"
+                    fi
+                fi
+            done
         else
-            log_info "PostgreSQL StatefulSet PVC '$postgres_pvc_name'가 존재하지 않습니다"
+            log_info "PostgreSQL 관련 PVC를 찾을 수 없습니다"
         fi
         
-        # RabbitMQ StatefulSet에서 생성된 PVC 삭제
-        rabbitmq_pvc_name="rabbitmq-rabbitmq-data-0"
-        if kubectl get pvc "$rabbitmq_pvc_name" -n "$NAMESPACE" &>/dev/null; then
-            if kubectl delete pvc "$rabbitmq_pvc_name" -n "$NAMESPACE"; then
-                log_success "RabbitMQ StatefulSet PVC '$rabbitmq_pvc_name' 삭제 완료"
-            else
-                log_error "RabbitMQ StatefulSet PVC '$rabbitmq_pvc_name' 삭제 실패"
-            fi
+        # RabbitMQ 관련 PVC 삭제 (레이블 기반)
+        rabbitmq_pvcs=$(kubectl get pvc -n "$NAMESPACE" -l "app.kubernetes.io/instance=rabbitmq" -o name 2>/dev/null || echo "")
+        if [ -n "$rabbitmq_pvcs" ]; then
+            log_info "RabbitMQ 관련 PVC 삭제 중..."
+            echo "$rabbitmq_pvcs" | while read -r pvc; do
+                if [ -n "$pvc" ]; then
+                    pvc_name=$(kubectl get "$pvc" -n "$NAMESPACE" -o jsonpath='{.metadata.name}')
+                    if kubectl delete "$pvc" -n "$NAMESPACE"; then
+                        log_success "RabbitMQ PVC '$pvc_name' 삭제 완료"
+                    else
+                        log_error "RabbitMQ PVC '$pvc_name' 삭제 실패"
+                    fi
+                fi
+            done
         else
-            log_info "RabbitMQ StatefulSet PVC '$rabbitmq_pvc_name'가 존재하지 않습니다"
+            log_info "RabbitMQ 관련 PVC를 찾을 수 없습니다"
         fi
         
         # 삭제 확인
@@ -1102,10 +1121,35 @@ undeploy() {
         log_success "모든 컨트롤러 리소스가 정상적으로 삭제되었습니다"
     fi
 
+    # 네임스페이스의 모든 리소스 확인 및 삭제
+    log_info "네임스페이스 '$NAMESPACE'의 모든 리소스 확인 중..."
+    all_resources=$(kubectl api-resources --verbs=delete --namespaced -o name | tr '\n' ',' | sed 's/,$//')
+    
+    if [ -n "$all_resources" ]; then
+        log_warning "네임스페이스 '$NAMESPACE'에 남아있는 모든 리소스를 삭제합니다..."
+        if kubectl delete $all_resources --all -n "$NAMESPACE" --ignore-not-found=true; then
+            log_success "네임스페이스의 모든 리소스 삭제 완료"
+        else
+            log_warning "일부 리소스 삭제 중 오류 발생"
+        fi
+    fi
+    
+    # 네임스페이스 삭제
+    log_warning "네임스페이스 '$NAMESPACE'를 삭제합니다. 이 작업은 되돌릴 수 없습니다."
+    if [ "$FORCE_UNDEPLOY" = "false" ] && [ "$FORCE_YES" = "false" ]; then
+        read -p "네임스페이스를 삭제하시겠습니까? (yes/no): " -r
+        echo
+        if [[ ! $REPLY =~ ^[yY][eE][sS]$ ]]; then
+            log_info "네임스페이스 삭제를 취소합니다."
+            log_info "네임스페이스를 수동으로 삭제하려면 다음 명령어를 사용하세요:"
+            echo "  kubectl delete namespace $NAMESPACE"
+            return 0
+        fi
+    fi
+    
+    undeploy_namespace || log_warning "네임스페이스 삭제 중 오류 발생"
+    
     log_success "Skald 애플리케이션 언디플로이가 완료되었습니다!"
-    echo
-    log_info "네임스페이스는 수동으로 삭제하려면 다음 명령어를 사용하세요:"
-    echo "  kubectl delete namespace $NAMESPACE"
 }
 
 # 메인 함수
@@ -1171,6 +1215,7 @@ show_help() {
     echo " -t, --tag TAG          사용할 이미지 태그 (기본값: latest)"
     echo " -r, --registry REGISTRY 사용할 도커 레지스트리 (기본값: docker.io)"
     echo "  --skip-ingress          Ingress 배포를 건너뜁니다"
+    echo "  -y, --yes               확인 프롬프트를 건너뛰고 모든 질문에 'yes'로 자동 응답합니다"
     echo
     echo "언디플로이 옵션:"
     echo "  --undeploy, --delete    언디플로이(삭제) 모드로 실행"
@@ -1188,9 +1233,12 @@ show_help() {
     echo " $0 -t v1.0.0                         # 특정 태그로 배포"
     echo "  $0 -r my-registry.com -t v1.0.0     # 특정 레지스트리와 태그로 배포"
     echo "  $0 --skip-ingress                     # Ingress 없이 배포"
+    echo "  $0 -y                                 # 확인 없이 배포"
+    echo "  $0 --yes                              # 확인 없이 배포"
     echo "  $0 --undeploy                         # 전체 삭제 (데이터 포함)"
     echo "  $0 --undeploy --keep-data             # 데이터 유지하고 삭제"
     echo "  $0 --undeploy --force                 # 확인 없이 강제 삭제"
+    echo "  $0 --undeploy -y                      # 언디플로이 시 확인 없이 진행"
 }
 
 # 인자 파싱
@@ -1222,6 +1270,10 @@ while [[ $# -gt 0 ]]; do
             ;;
         --force)
             FORCE_UNDEPLOY="true"
+            shift
+            ;;
+        -y|--yes)
+            FORCE_YES="true"
             shift
             ;;
         *)
