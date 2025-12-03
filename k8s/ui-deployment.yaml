@@ -47,9 +47,10 @@ spec:
           name: http
           protocol: TCP
         env:
-        # API 서버 주소 설정 (도메인 변수 사용)
+        # API 서버 주소 설정 - 동일 오리진에서 /api 경로로 프록시
+        # Nginx가 /api 요청을 클러스터 내부 api-service:8080으로 전달
         - name: VITE_API_URL
-          value: "https://api.skald.sparrow.local"
+          value: "/api"
         # Self-hosted 배포 여부 설정
         - name: VITE_IS_SELF_HOSTED_DEPLOY
           value: "true"
@@ -116,6 +117,10 @@ spec:
           mountPath: /var/cache/nginx
         - name: run
           mountPath: /var/run
+        - name: nginx-config
+          mountPath: /etc/nginx/nginx.conf
+          subPath: nginx.conf
+          readOnly: true
       # 임시 볼륨
       volumes:
       - name: tmp
@@ -124,3 +129,9 @@ spec:
         emptyDir: {}
       - name: run
         emptyDir: {}
+      - name: nginx-config
+        configMap:
+          name: ui-nginx-config
+          items:
+          - key: nginx.conf
+            path: nginx.conf

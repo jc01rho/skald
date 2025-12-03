@@ -953,9 +953,14 @@ kubectl exec -it deployment/api-server -n skald -- \
 | `docling-service.yaml` | 문서 처리 서비스 | 문서 처리 접속 |
 | `ui-deployment.yaml` | 프론트엔드 UI Deployment | 웹 인터페이스 |
 | `ui-service.yaml` | 프론트엔드 UI 서비스 | 웹 접속 |
+| `ui-nginx-configmap.yaml` | UI Nginx 설정 ConfigMap | API 프록시 설정 |
+| `ui-configmap.yaml` | UI 런타임 환경 변수 ConfigMap | 런타임 설정 (선택적) |
 | `ingress.yaml` | Ingress 리소스 | 외부 트래픽 라우팅 |
 | `ingress-nginx-values.yaml` | NGINX Ingress Controller 설정 | Ingress Controller |
 | `init-scripts-configmap.yaml` | PostgreSQL 초기화 스크립트 | 데이터베이스 초기화 |
+| `api-url-architecture-design.md` | API URL 아키텍처 설계 문서 | 기술 문서 |
+| `UI-API-FIX-SUMMARY.md` | UI API 호출 문제 해결 요약 | 변경 사항 문서 |
+
 
 ### Kubernetes 공식 문서 링크
 
