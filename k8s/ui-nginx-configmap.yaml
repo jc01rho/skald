@@ -60,10 +60,11 @@ data:
                 add_header Content-Type text/plain;
             }
 
-            # API 프록시 - /api 경로로 들어오는 요청을 API 서비스로 전달
+            # Backend API 프록시 설정
             location /api/ {
-                # 클러스터 내부의 API 서비스로 프록시
-                proxy_pass http://api-service:8080/api/;
+                # 클러스터 내부 API 서비스로 프록시
+                # api-service:8000/api/ 경로로 전달
+                proxy_pass http://api-service.skald.svc.cluster.local:8000/api/;
                 
                 # 프록시 헤더 설정
                 proxy_set_header Host $host;

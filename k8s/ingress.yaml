@@ -40,7 +40,7 @@ spec:
           service:
             name: api-service
             port:
-              number: 8080
+              number: 8000
 
 ---
 # 설치 및 설정 가이드 (한국어 주석)

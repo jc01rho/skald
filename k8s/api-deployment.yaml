@@ -93,8 +93,12 @@ spec:
         # 환경변수로 이미지 태그를 지정할 수 있도록 설정
         image: skaldlabs/skald-backend:${IMAGE_TAG:-latest}
         imagePullPolicy: IfNotPresent
+        # Use startup command from docker-compose
+        command:
+        - sh
+        - /app/start.sh
         ports:
-        - containerPort: 8080
+        - containerPort: 8000
           name: http
           protocol: TCP
         env:
@@ -185,15 +189,9 @@ spec:
               name: skald-config
               key: IS_DEVELOPMENT
         - name: EXPRESS_SERVER_PORT
-          valueFrom:
-            configMapKeyRef:
-              name: skald-config
-              key: EXPRESS_SERVER_PORT
+          value: "8000"
         - name: PORT
-          valueFrom:
-            configMapKeyRef:
-              name: skald-config
-              key: PORT
+          value: "8000"
         - name: SECRET_KEY
           valueFrom:
             secretKeyRef:
@@ -266,6 +264,18 @@ spec:
             secretKeyRef:
               name: skald-secrets
               key: ANTHROPIC_API_KEY
+        - name: GROQ_API_KEY
+          valueFrom:
+            secretKeyRef:
+              name: skald-secrets
+              key: GROQ_API_KEY
+              optional: true
+        - name: GEMINI_API_KEY
+          valueFrom:
+            secretKeyRef:
+              name: skald-secrets
+              key: GEMINI_API_KEY
+              optional: true
         # 마이크로서비스 URL 설정
         - name: EMBEDDING_SERVICE_URL
           valueFrom:
@@ -312,7 +322,7 @@ spec:
         readinessProbe:
           httpGet:
             path: /api/health
-            port: 8080
+            port: 8000
           initialDelaySeconds: 30
           periodSeconds: 10
           timeoutSeconds: 5
@@ -320,7 +330,7 @@ spec:
         livenessProbe:
           httpGet:
             path: /api/health
-            port: 8080
+            port: 8000
           initialDelaySeconds: 60
           periodSeconds: 30
           timeoutSeconds: 5

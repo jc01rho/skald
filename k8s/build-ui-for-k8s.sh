@@ -57,10 +57,10 @@ fi
 
 # 빌드 시작
 log_info "UI 이미지 빌드 시작..."
-log_warning "VITE_API_HOST='' (빈 문자열)로 빌드하여 상대 경로 사용"
+log_warning "VITE_API_HOST='/api'로 빌드하여 Nginx 프록시 경로 사용"
 
 if docker build \
-  --build-arg VITE_API_HOST="" \
+  --build-arg VITE_API_HOST="/api" \
   --build-arg VITE_IS_SELF_HOSTED_DEPLOY="true" \
   --file ui.Dockerfile \
   --tag "$IMAGE_NAME:$IMAGE_TAG" \
