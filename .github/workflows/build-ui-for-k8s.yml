@@ -61,6 +61,10 @@ jobs:
             VITE_IS_SELF_HOSTED_DEPLOY=true
           cache-from: type=gha
           cache-to: type=gha,mode=max
+      - name: Verify built UI image has no localhost references
+        run: |
+          IMAGE_TAG=${{ steps.meta.outputs.tags }}
+          docker run --rm --entrypoint sh $IMAGE_TAG -c "if grep -R --line-number -n 'localhost' /usr/share/nginx/html; then echo 'ERROR: Found localhost references in built UI'; exit 1; else echo 'No localhost references found'; fi"
 
       - name: Output image tags
         run: |

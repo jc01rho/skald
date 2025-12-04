@@ -51,6 +51,9 @@ spec:
         # Nginx가 /api 요청을 클러스터 내부 api-service:8080으로 전달
         - name: VITE_API_URL
           value: "/api"
+        # Set VITE_API_HOST as well (some builds / runtime use this env var)
+        - name: VITE_API_HOST
+          value: "/api"
         # Self-hosted 배포 여부 설정
         - name: VITE_IS_SELF_HOSTED_DEPLOY
           value: "true"

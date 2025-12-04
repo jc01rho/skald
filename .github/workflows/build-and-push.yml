@@ -86,8 +86,12 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
           build-args: |
-            VITE_API_HOST=http://localhost:8080
+            VITE_API_HOST=/api
             VITE_IS_SELF_HOSTED_DEPLOY=true
+      - name: Verify built UI image has no localhost references
+        run: |
+          IMAGE_TAG=${{ steps.meta-ui.outputs.tags }}
+          docker run --rm --entrypoint sh $IMAGE_TAG -c "if grep -R --line-number -n 'localhost' /usr/share/nginx/html; then echo 'ERROR: Found localhost references in built UI'; exit 1; else echo 'No localhost references found'; fi"
 
       - name: Build and push embedding-service image
         uses: docker/build-push-action@v5

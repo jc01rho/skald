@@ -106,26 +106,53 @@ data:
                   }
                 </script>
                 </head>';
-                sub_filter_once on;
-                sub_filter_types text/html;
+                # 정적 파일 서빙
+                location / {
+                    try_files $uri $uri/ /index.html;
+
+                    # index.html에 런타임 환경 변수 주입
+                    sub_filter '</head>' '
+                    <script>
+                      // Runtime environment configuration
+                      window.RUNTIME_CONFIG = {
+                        API_URL: ""
+                      };
+
+                      (function() {
+                        if (typeof window !== "undefined") {
+                          window.import = window.import || {};
+                          window.import.meta = window.import.meta || {};
+                          window.import.meta.env = window.import.meta.env || {};
+                          window.import.meta.env.VITE_API_HOST = "";
+                        }
+                      })();
+                    </script>
+                    </head>';
+                    sub_filter_once on;
+                    # Perform replacements on HTML and JS files
+                    sub_filter_types text/html application/javascript text/javascript application/x-javascript;
+
+                    # Replace any remaining hardcoded localhost occurrences in built JS and HTML
+                    # Start with host+path combos to avoid creating '/api/api'
+                    sub_filter 'http://localhost:8080/api' '/api';
+                    sub_filter 'http://localhost:3000/api' '/api';
+                    sub_filter 'http://localhost:8000/api' '/api';
                 
-                # 캐시 설정
-                location ~* \.(js|css|png|jpg|jpeg|gif|ico|svg|woff|woff2|ttf|eot)$ {
-                    expires 1y;
-                    add_header Cache-Control "public, immutable";
+                    # Now replace host-only occurrences
+                    sub_filter 'http://localhost:8080' '/api';
+                    sub_filter 'localhost:8080' '/api';
+                    sub_filter 'http://localhost:3000' '/api';
+                    sub_filter 'localhost:3000' '/api';
+                    sub_filter 'http://localhost:8000' '/api';
+                    sub_filter 'localhost:8000' '/api';
+                    sub_filter 'http://127.0.0.1:8000' '/api';
+                    sub_filter '127.0.0.1:8000' '/api';
+                    sub_filter '/api/api' '/api';
+                    sub_filter_once off;
+
+                    # 캐시 설정
+                    location ~* \.(js|css|png|jpg|jpeg|gif|ico|svg|woff|woff2|ttf|eot)$ {
+                        expires 1y;
+                        add_header Cache-Control "public, immutable";
+                    }
                 }
-            }
-
-            # index.html은 캐시하지 않음
-            location = /index.html {
-                add_header Cache-Control "no-cache, no-store, must-revalidate";
-                add_header Pragma "no-cache";
-                add_header Expires "0";
-            }
-
-            # 보안 헤더
-            add_header X-Frame-Options "SAMEORIGIN" always;
-            add_header X-Content-Type-Options "nosniff" always;
-            add_header X-XSS-Protection "1; mode=block" always;
-        }
-    }
