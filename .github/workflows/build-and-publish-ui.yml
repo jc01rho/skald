@@ -26,3 +26,10 @@ jobs:
           push: true
           tags: ghcr.io/skaldlabs/skald-frontend:latest
           platforms: linux/amd64
+          build-args: |
+            VITE_API_HOST=/api
+            VITE_IS_SELF_HOSTED_DEPLOY=true
+      - name: Verify built UI image has no localhost references
+        run: |
+          IMAGE_TAG=ghcr.io/skaldlabs/skald-frontend:latest
+          docker run --rm --entrypoint sh $IMAGE_TAG -c "if grep -R --line-number -n 'localhost' /usr/share/nginx/html; then echo 'ERROR: Found localhost references in built UI'; exit 1; else echo 'No localhost references found'; fi"
