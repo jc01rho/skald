@@ -297,6 +297,20 @@ deploy_traefik() {
     
     log_info "Step 2: Traefik Ingress Controller 배포"
     
+    # Traefik CRD 설치
+    log_info "Traefik CRD 설치 중..."
+    if [ ! -f "traefik-crds.yaml" ]; then
+        log_info "Traefik CRD 다운로드 중..."
+        curl -sL -o traefik-crds.yaml https://raw.githubusercontent.com/traefik/traefik/v2.11/docs/content/reference/dynamic-configuration/kubernetes-crd-definition-v1.yml
+    fi
+    
+    if kubectl apply -f traefik-crds.yaml; then
+        log_success "Traefik CRD 설치 완료"
+    else
+        log_error "Traefik CRD 설치 실패"
+        exit 1
+    fi
+
     # Traefik 배포
     if kubectl apply -f traefik-deployment.yaml; then
         log_success "Traefik Ingress Controller 배포 완료"
@@ -989,6 +1003,41 @@ undeploy_namespace() {
     fi
 }
 
+# 언디플로이: Traefik 삭제
+undeploy_traefik() {
+    log_info "Step 0: Traefik Ingress Controller 삭제 중..."
+    
+    # Traefik Deployment 삭제
+    if kubectl delete deployment traefik -n default --ignore-not-found=true; then
+        log_success "Traefik Deployment 삭제 완료"
+    else
+        log_error "Traefik Deployment 삭제 실패"
+    fi
+
+    # Traefik Service 삭제
+    if kubectl delete service traefik -n default --ignore-not-found=true; then
+        log_success "Traefik Service 삭제 완료"
+    else
+        log_error "Traefik Service 삭제 실패"
+    fi
+
+    # Traefik ServiceAccount 삭제
+    if kubectl delete serviceaccount traefik-ingress-controller -n default --ignore-not-found=true; then
+        log_success "Traefik ServiceAccount 삭제 완료"
+    fi
+
+    # Traefik ClusterRole & Binding 삭제
+    kubectl delete clusterrole traefik-ingress-controller --ignore-not-found=true
+    kubectl delete clusterrolebinding traefik-ingress-controller --ignore-not-found=true
+    
+    # Traefik PVC 삭제
+    if [ "$KEEP_DATA" = "false" ]; then
+         if kubectl delete pvc traefik-certs-pvc -n default --ignore-not-found=true; then
+            log_success "Traefik PVC 삭제 완료"
+         fi
+    fi
+}
+
 # 언디플로이 함수
 undeploy() {
     echo -e "${BLUE}========================================${NC}"
@@ -1004,7 +1053,8 @@ undeploy() {
     
     show_undeploy_confirmation
     
-    # 삭제 순서: Ingress -> UI -> AI 서비스 -> Backend -> RabbitMQ -> Redis -> PostgreSQL -> ReplicaSets -> PVC -> Configs -> Namespace
+    # 삭제 순서: Traefik -> Ingress -> UI -> AI 서비스 -> Backend -> RabbitMQ -> Redis -> PostgreSQL -> ReplicaSets -> PVC -> Configs -> Namespace
+    undeploy_traefik || log_warning "Traefik 삭제 중 오류 발생"
     undeploy_ingress || log_warning "Ingress 삭제 중 오류 발생"
     undeploy_ui || log_warning "UI 리소스 삭제 중 오류 발생"
     undeploy_ai_services || log_warning "AI 서비스 삭제 중 오류 발생"
@@ -1025,8 +1075,8 @@ undeploy() {
             log_info "PostgreSQL 관련 PVC 삭제 중..."
             echo "$postgres_pvcs" | while read -r pvc; do
                 if [ -n "$pvc" ]; then
-                    pvc_name=$(kubectl get "$pvc" -n "$NAMESPACE" -o jsonpath='{.metadata.name}')
-                    if kubectl delete "$pvc" -n "$NAMESPACE"; then
+                    pvc_name=${pvc#persistentvolumeclaim/}
+                    if kubectl delete "$pvc" -n "$NAMESPACE" 2>/dev/null; then
                         log_success "PostgreSQL PVC '$pvc_name' 삭제 완료"
                     else
                         log_error "PostgreSQL PVC '$pvc_name' 삭제 실패"
@@ -1043,8 +1093,8 @@ undeploy() {
             log_info "RabbitMQ 관련 PVC 삭제 중..."
             echo "$rabbitmq_pvcs" | while read -r pvc; do
                 if [ -n "$pvc" ]; then
-                    pvc_name=$(kubectl get "$pvc" -n "$NAMESPACE" -o jsonpath='{.metadata.name}')
-                    if kubectl delete "$pvc" -n "$NAMESPACE"; then
+                    pvc_name=${pvc#persistentvolumeclaim/}
+                    if kubectl delete "$pvc" -n "$NAMESPACE" 2>/dev/null; then
                         log_success "RabbitMQ PVC '$pvc_name' 삭제 완료"
                     else
                         log_error "RabbitMQ PVC '$pvc_name' 삭제 실패"
@@ -1057,18 +1107,18 @@ undeploy() {
         
         # 삭제 확인
         log_info "PVC 삭제 확인 중..."
-        remaining_pvcs=$(kubectl get pvc -n "$NAMESPACE" -o name)
+        remaining_pvcs=$(kubectl get pvc -n "$NAMESPACE" -o name 2>/dev/null || echo "")
         if [ -n "$remaining_pvcs" ]; then
             log_warning "삭제되지 않은 PVC 목록:"
             echo "$remaining_pvcs" | while read -r pvc; do
                 if [ -n "$pvc" ]; then
-                    pvc_name=$(kubectl get "$pvc" -n "$NAMESPACE" -o jsonpath='{.metadata.name}')
-                    pvc_status=$(kubectl get "$pvc" -n "$NAMESPACE" -o jsonpath='{.status.phase}')
+                    pvc_name=${pvc#persistentvolumeclaim/}
+                    pvc_status=$(kubectl get "$pvc" -n "$NAMESPACE" -o jsonpath='{.status.phase}' 2>/dev/null || echo "Unknown")
                     echo "  - $pvc_name (상태: $pvc_status)"
                     
                     # 강제 삭제 시도
                     log_info "강제 삭제 시도: $pvc_name"
-                    kubectl delete "$pvc" -n "$NAMESPACE" --force --grace-period=0 || true
+                    kubectl delete "$pvc" -n "$NAMESPACE" --force --grace-period=0 2>/dev/null || true
                 fi
             done
         else
@@ -1078,30 +1128,33 @@ undeploy() {
     
     # 남아있는 Pod 강제 종료
     log_info "남아있는 Pod 확인 및 강제 종료 중..."
-    remaining_pods=$(kubectl get pods -n "$NAMESPACE" -o name)
+    remaining_pods=$(kubectl get pods -n "$NAMESPACE" -o name 2>/dev/null || echo "")
     if [ -n "$remaining_pods" ]; then
         log_warning "삭제되지 않은 Pod 목록:"
         echo "$remaining_pods" | while read -r pod; do
             if [ -n "$pod" ]; then
-                pod_name=$(kubectl get "$pod" -n "$NAMESPACE" -o jsonpath='{.metadata.name}')
-                pod_status=$(kubectl get "$pod" -n "$NAMESPACE" -o jsonpath='{.status.phase}')
+                # pod/name 형식에서 name만 추출
+                pod_name=${pod#pod/}
+                
+                # 상태 확인 (실패 시 무시)
+                pod_status=$(kubectl get "$pod" -n "$NAMESPACE" -o jsonpath='{.status.phase}' 2>/dev/null || echo "Unknown")
                 echo "  - $pod_name (상태: $pod_status)"
                 
                 # 강제 삭제 시도
                 log_info "강제 삭제 시도: $pod_name"
-                kubectl delete "$pod" -n "$NAMESPACE" --force --grace-period=0 || true
+                kubectl delete "$pod" -n "$NAMESPACE" --force --grace-period=0 2>/dev/null || true
             fi
         done
         
         # 삭제 확인
         sleep 5
-        remaining_pods_after=$(kubectl get pods -n "$NAMESPACE" -o name)
+        remaining_pods_after=$(kubectl get pods -n "$NAMESPACE" -o name 2>/dev/null || echo "")
         if [ -n "$remaining_pods_after" ]; then
             log_warning "여전히 삭제되지 않은 Pod이 존재합니다:"
             echo "$remaining_pods_after" | while read -r pod; do
                 if [ -n "$pod" ]; then
-                    pod_name=$(kubectl get "$pod" -n "$NAMESPACE" -o jsonpath='{.metadata.name}')
-                    pod_status=$(kubectl get "$pod" -n "$NAMESPACE" -o jsonpath='{.status.phase}')
+                    pod_name=${pod#pod/}
+                    pod_status=$(kubectl get "$pod" -n "$NAMESPACE" -o jsonpath='{.status.phase}' 2>/dev/null || echo "Unknown")
                     echo "  - $pod_name (상태: $pod_status)"
                 fi
             done

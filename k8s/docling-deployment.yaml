@@ -43,6 +43,9 @@ spec:
           name: http
           protocol: TCP
         env:
+        # Application settings
+        - name: DOCLING_SERVE_ENABLE_UI
+          value: "0"
         # 애플리케이션 관련 환경변수
         - name: PORT
           value: "5001"
