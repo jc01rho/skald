@@ -12,7 +12,7 @@ metadata:
     description: "UI Nginx 설정 - API 프록시 포함"
 data:
   nginx.conf: |
-    user nginx;
+    # user nginx;  # Removed to avoid warning about non-root privileges
     worker_processes auto;
     error_log /var/log/nginx/error.log warn;
     pid /var/run/nginx.pid;
@@ -82,77 +82,57 @@ data:
                 proxy_request_buffering off;
             }
 
-            # 정적 파일 서빙
+            # 정적 파일 서빙 및 런타임 설정 주입
             location / {
                 try_files $uri $uri/ /index.html;
                 
+                # sub_filter 설정
+                sub_filter_types application/javascript text/javascript application/x-javascript;
+                sub_filter_once off;
+
                 # index.html에 런타임 환경 변수 주입
                 sub_filter '</head>' '
                 <script>
                   // Runtime environment configuration
-                  // Override VITE build-time variables
                   window.RUNTIME_CONFIG = {
                     API_URL: ""
                   };
-                  
-                  // Override import.meta.env for runtime
-                  if (typeof window !== "undefined") {
-                    window.import = window.import || {};
-                    window.import.meta = window.import.meta || {};
-                    window.import.meta.env = window.import.meta.env || {};
-                    
-                    // Set API host to empty string so it uses relative paths
-                    window.import.meta.env.VITE_API_HOST = "";
-                  }
+
+                  (function() {
+                    if (typeof window !== "undefined") {
+                      window.import = window.import || {};
+                      window.import.meta = window.import.meta || {};
+                      window.import.meta.env = window.import.meta.env || {};
+                      window.import.meta.env.VITE_API_HOST = "";
+                      window.import.meta.env.VITE_API_URL = "";
+                    }
+                  })();
                 </script>
                 </head>';
-                # 정적 파일 서빙
-                location / {
-                    try_files $uri $uri/ /index.html;
 
-                    # index.html에 런타임 환경 변수 주입
-                    sub_filter '</head>' '
-                    <script>
-                      // Runtime environment configuration
-                      window.RUNTIME_CONFIG = {
-                        API_URL: ""
-                      };
+                # Replace any remaining hardcoded localhost occurrences in built JS and HTML
+                # Start with host+path combos to avoid creating '/api/api'
+                # Replacing with empty string because the app likely appends '/api/...'
+                sub_filter 'http://localhost:8080/api' '/api';
+                sub_filter 'http://localhost:3000/api' '/api';
+                sub_filter 'http://localhost:8000/api' '/api';
+            
+                # Now replace host-only occurrences with empty string to allow relative paths
+                # This prevents double '/api/api' if the code appends '/api/...' to the base URL
+                sub_filter 'http://localhost:8080' '';
+                sub_filter 'localhost:8080' '';
+                sub_filter 'http://localhost:3000' '';
+                sub_filter 'localhost:3000' '';
+                sub_filter 'http://localhost:8000' '';
+                sub_filter 'localhost:8000' '';
+                sub_filter 'http://127.0.0.1:8000' '';
+                sub_filter '127.0.0.1:8000' '';
 
-                      (function() {
-                        if (typeof window !== "undefined") {
-                          window.import = window.import || {};
-                          window.import.meta = window.import.meta || {};
-                          window.import.meta.env = window.import.meta.env || {};
-                          window.import.meta.env.VITE_API_HOST = "";
-                        }
-                      })();
-                    </script>
-                    </head>';
-                    sub_filter_once on;
-                    # Perform replacements on HTML and JS files
-                    sub_filter_types text/html application/javascript text/javascript application/x-javascript;
-
-                    # Replace any remaining hardcoded localhost occurrences in built JS and HTML
-                    # Start with host+path combos to avoid creating '/api/api'
-                    sub_filter 'http://localhost:8080/api' '/api';
-                    sub_filter 'http://localhost:3000/api' '/api';
-                    sub_filter 'http://localhost:8000/api' '/api';
-                
-                    # Now replace host-only occurrences
-                    sub_filter 'http://localhost:8080' '/api';
-                    sub_filter 'localhost:8080' '/api';
-                    sub_filter 'http://localhost:3000' '/api';
-                    sub_filter 'localhost:3000' '/api';
-                    sub_filter 'http://localhost:8000' '/api';
-                    sub_filter 'localhost:8000' '/api';
-                    sub_filter 'http://127.0.0.1:8000' '/api';
-                    sub_filter '127.0.0.1:8000' '/api';
-                    sub_filter '/api/api' '/api';
-                    sub_filter_once off;
-
-                    # 캐시 설정
-                    location ~* \.(js|css|png|jpg|jpeg|gif|ico|svg|woff|woff2|ttf|eot)$ {
-                        expires 1y;
-                        add_header Cache-Control "public, immutable";
-                    }
+                # 캐시 설정 (Nested location to inherit sub_filter if needed, though sub_filter usually runs before caching)
+                location ~* \.(js|css|png|jpg|jpeg|gif|ico|svg|woff|woff2|ttf|eot)$ {
+                    expires 1y;
+                    add_header Cache-Control "public, immutable";
                 }
+            }
+        }
+    }

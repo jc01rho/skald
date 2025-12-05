@@ -40,7 +40,7 @@ spec:
       containers:
       - name: ui
         # frontend 디렉토리에서 빌드된 이미지 사용
-        image: ghcr.io/jc01rho/skald-ui:${IMAGE_TAG:-latest}
+        image: ghcr.io/jc01rho/skald-ui:latest
         imagePullPolicy: IfNotPresent
         ports:
         - containerPort: 80
@@ -50,10 +50,10 @@ spec:
         # API 서버 주소 설정 - 동일 오리진에서 /api 경로로 프록시
         # Nginx가 /api 요청을 클러스터 내부 api-service:8080으로 전달
         - name: VITE_API_URL
-          value: "/api"
+          value: ""
         # Set VITE_API_HOST as well (some builds / runtime use this env var)
         - name: VITE_API_HOST
-          value: "/api"
+          value: ""
         # Self-hosted 배포 여부 설정
         - name: VITE_IS_SELF_HOSTED_DEPLOY
           value: "true"

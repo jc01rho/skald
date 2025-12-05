@@ -57,7 +57,7 @@ jobs:
           labels: ${{ steps.meta.outputs.labels }}
           platforms: linux/amd64
           build-args: |
-            VITE_API_HOST=/api
+            VITE_API_HOST=
             VITE_IS_SELF_HOSTED_DEPLOY=true
           cache-from: type=gha
           cache-to: type=gha,mode=max
@@ -76,7 +76,7 @@ jobs:
           echo '```' >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "**Build Arguments:**" >> $GITHUB_STEP_SUMMARY
-          echo "- VITE_API_HOST: /api" >> $GITHUB_STEP_SUMMARY
+          echo "- VITE_API_HOST: (empty - API calls use relative /api path)" >> $GITHUB_STEP_SUMMARY
           echo "- VITE_IS_SELF_HOSTED_DEPLOY: true" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "**Next Steps:**" >> $GITHUB_STEP_SUMMARY
