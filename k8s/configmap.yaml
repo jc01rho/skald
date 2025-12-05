@@ -60,7 +60,7 @@ data:
   # 보안 설정
   ENABLE_SECURITY_SETTINGS: "false" # 보안 설정 비활성화 (Rate Limiter 우회용)
   SECURE_SSL_REDIRECT: "false"  # SSL 리다이렉트 여부 (기본값: false)
-  EMAIL_VERIFICATION_ENABLED: "true"  # 이메일 인증 활성화 여부 (기본값: true)
+  EMAIL_VERIFICATION_ENABLED: "false"  # 이메일 인증 비활성화 (SMTP 설정 없음)
   DISABLE_AUTH: "false"  # 인증 비활성화 여부 (기본값: false)
   
   # Langsmith 설정

@@ -289,50 +289,11 @@ create_namespace() {
 }
 
 # Step 2: Traefik Ingress Controller 배포
+# Step 2: Traefik Ingress Controller 배포 (Cluster에 이미 Nginx/Envoy가 있으므로 생략)
 deploy_traefik() {
-    if [ "$SKIP_INGRESS" = "true" ]; then
-        log_warning "Traefik 배포를 건너뜁니다 (SKIP_INGRESS=true)"
-        return 0
-    fi
-    
-    log_info "Step 2: Traefik Ingress Controller 배포"
-    
-    # Traefik CRD 설치
-    log_info "Traefik CRD 설치 중..."
-    if [ ! -f "traefik-crds.yaml" ]; then
-        log_info "Traefik CRD 다운로드 중..."
-        curl -sL -o traefik-crds.yaml https://raw.githubusercontent.com/traefik/traefik/v2.11/docs/content/reference/dynamic-configuration/kubernetes-crd-definition-v1.yml
-    fi
-    
-    if kubectl apply -f traefik-crds.yaml; then
-        log_success "Traefik CRD 설치 완료"
-    else
-        log_error "Traefik CRD 설치 실패"
-        exit 1
-    fi
-
-    # Traefik 배포
-    if kubectl apply -f traefik-deployment.yaml; then
-        log_success "Traefik Ingress Controller 배포 완료"
-    else
-        log_error "Traefik Ingress Controller 배포 실패"
-        exit 1
-    fi
-    
-    # Traefik Pod 준비 대기 (default 네임스페이스에서 확인)
-    log_info "Waiting for traefik pods to be ready..."
-    if kubectl wait --for=condition=ready pod -l "app=traefik" -n "default" --timeout="600s"; then
-        log_success "Traefik pods are ready"
-    else
-        log_error "Timeout waiting for traefik pods"
-        exit 1
-    fi
-    
-    # Traefik 서비스 확인
-    log_info "Traefik 서비스 확인 중..."
-    kubectl get svc traefik -n default
-    
-    log_success "Traefik Ingress Controller 준비 완료"
+    log_info "Step 2: Traefik Ingress Controller 배포 (생략)"
+    log_info "Cluster에 이미 Ingress Controller(Nginx/Envoy)가 존재하므로 Traefik을 배포하지 않습니다."
+    return 0
 }
 
 # Step 2: ConfigMap 및 Secret 생성
@@ -609,11 +570,11 @@ verify_deployment() {
     log_info "Deployment 상태:"
     kubectl get deployments -n "$NAMESPACE"
     
-    # IngressRoute 상태 확인 (Traefik)
-    if kubectl get ingressroute -n "$NAMESPACE" &> /dev/null; then
-        log_info "IngressRoute 상태:"
-        kubectl get ingressroute -n "$NAMESPACE"
-    fi
+    # IngressRoute 상태 확인 (Traefik) - 생략
+    # if kubectl get ingressroute -n "$NAMESPACE" &> /dev/null; then
+    #     log_info "IngressRoute 상태:"
+    #     kubectl get ingressroute -n "$NAMESPACE"
+    # fi
     
     # 서비스 상세 상태 확인
     verify_service_health
@@ -652,29 +613,17 @@ verify_service_health() {
 verify_ingress_configuration() {
     log_info "Ingress 설정 검증 중..."
     
-    # Traefik 서비스 확인
-    if kubectl get svc traefik -n default &>/dev/null; then
-        local traefik_ip
-        traefik_ip=$(kubectl get svc traefik -n default -o jsonpath='{.status.loadBalancer.ingress[0].ip}' 2>/dev/null)
-        if [ -n "$traefik_ip" ]; then
-            log_success "Traefik LoadBalancer IP: $traefik_ip"
+    # Ingress 리소스 확인
+    if kubectl get ingress skald-ingress -n "$NAMESPACE" &>/dev/null; then
+        local ingress_ip
+        ingress_ip=$(kubectl get ingress skald-ingress -n "$NAMESPACE" -o jsonpath='{.status.loadBalancer.ingress[0].ip}' 2>/dev/null)
+        if [ -n "$ingress_ip" ]; then
+            log_success "Ingress IP 할당됨: $ingress_ip"
         else
-            log_warning "Traefik LoadBalancer IP를 확인할 수 없음"
+            log_warning "Ingress IP가 아직 할당되지 않았습니다. 잠시 후 다시 확인하세요."
         fi
-    fi
-    
-    # IngressRoute 확인
-    if kubectl get ingressroute -n "$NAMESPACE" &>/dev/null; then
-        local ingress_routes
-        ingress_routes=$(kubectl get ingressroute -n "$NAMESPACE" -o jsonpath='{.items[*].metadata.name}' 2>/dev/null)
-        for route in $ingress_routes; do
-            log_info "IngressRoute $route 확인 중..."
-            if kubectl get ingressroute "$route" -n "$NAMESPACE" -o yaml | grep -q "namespace: $NAMESPACE"; then
-                log_success "  $route 네임스페이스 설정 올바름"
-            else
-                log_warning "  $route 네임스페이스 설정 확인 필요"
-            fi
-        done
+    else
+        log_error "Ingress 리소스를 찾을 수 없습니다."
     fi
     
     # 도메인 설정 확인
