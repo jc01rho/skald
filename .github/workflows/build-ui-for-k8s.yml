@@ -43,8 +43,8 @@ jobs:
         with:
           images: ghcr.io/jc01rho/skald-ui
           tags: |
-            type=raw,value=${{ github.event.inputs.image_tag || 'k8s-latest' }}
-            type=raw,value=k8s-${{ github.sha }}
+            type=raw,value=${{ github.event.inputs.image_tag || 'latest' }}
+            type=raw,value=${{ github.sha }}
             type=semver,pattern={{version}}
 
       - name: Build and push Docker image for K8s
