@@ -64,6 +64,11 @@ spec:
             secretKeyRef:
               name: skald-secrets
               key: VOYAGE_API_KEY
+        - name: GEMINI_API_KEY
+          valueFrom:
+            secretKeyRef:
+              name: skald-secrets
+              key: GEMINI_API_KEY
         # 임베딩 프로바이더 설정
         - name: EMBEDDING_PROVIDER
           valueFrom:
@@ -80,6 +85,12 @@ spec:
             configMapKeyRef:
               name: skald-config
               key: LOCAL_RERANK_MODEL
+        # Ollama/Local LLM connection URL
+        - name: LOCAL_LLM_BASE_URL
+          valueFrom:
+            configMapKeyRef:
+              name: skald-config
+              key: LOCAL_LLM_BASE_URL
         - name: TARGET_DIMENSION
           value: "2048"
         # 로깅 설정

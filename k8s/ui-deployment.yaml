@@ -41,7 +41,7 @@ spec:
       - name: ui
         # frontend 디렉토리에서 빌드된 이미지 사용
         image: ghcr.io/jc01rho/skald-ui:latest
-        imagePullPolicy: IfNotPresent
+        imagePullPolicy: Always
         ports:
         - containerPort: 80
           name: http

@@ -1,11 +1,14 @@
+
 import logging
 import os
 import time
 from typing import Literal, Optional
 import httpx
+import google.generativeai as genai
 
 import numpy as np
 from fastapi import FastAPI, HTTPException
+from fastapi.concurrency import run_in_threadpool
 from pydantic import BaseModel, Field
 
 logger = logging.getLogger(__name__)
@@ -21,18 +24,31 @@ logger.setLevel(getattr(logging, LOG_LEVEL, logging.INFO))
 app = FastAPI(title="Embedding Service", version="1.0.0")
 
 # Configuration
-EMBEDDING_MODEL = os.getenv("EMBEDDING_MODEL", "all-MiniLM-L6-v2")
+EMBEDDING_MODEL = os.getenv("EMBEDDING_MODEL", "models/text-embedding-004")
 RERANK_MODEL = os.getenv("RERANK_MODEL", "cross-encoder/ms-marco-MiniLM-L-6-v2")
-TARGET_DIMENSION = int(os.getenv("TARGET_DIMENSION", "2048"))
+TARGET_DIMENSION = int(os.getenv("TARGET_DIMENSION", "768"))
 EMBEDDING_PROVIDER = os.getenv("EMBEDDING_PROVIDER", "local")  # local, ollama, or gemini
 OLLAMA_BASE_URL = os.getenv("LOCAL_LLM_BASE_URL", "http://localhost:11434")
+GEMINI_API_KEYS_STR = os.getenv("GEMINI_API_KEY", "")
+GEMINI_API_KEYS = [k.strip() for k in GEMINI_API_KEYS_STR.split(",") if k.strip()]
 
 print(f"Using embedding provider: {EMBEDDING_PROVIDER}")
 print(f"Using embedding model: {EMBEDDING_MODEL}")
 print(f"Using rerank model: {RERANK_MODEL}")
 print(f"Using target dimension: {TARGET_DIMENSION}")
+
+# Round-robin key iterator
+import itertools
+gemini_key_cycle = None
+
 if EMBEDDING_PROVIDER == "ollama":
     print(f"Using Ollama base URL: {OLLAMA_BASE_URL}")
+elif EMBEDDING_PROVIDER == "gemini":
+    if not GEMINI_API_KEYS:
+        logger.error("GEMINI_API_KEY is not set")
+    else:
+        gemini_key_cycle = itertools.cycle(GEMINI_API_KEYS)
+        print(f"Gemini API configured with {len(GEMINI_API_KEYS)} keys")
 
 # Initialize models lazily based on provider
 embedding_model = None
@@ -82,6 +98,31 @@ async def get_ollama_embedding(text: str) -> list[float]:
         except Exception as e:
             logger.error(f"Failed to get embedding from Ollama: {str(e)}")
             raise HTTPException(status_code=500, detail=f"Ollama connection failed: {str(e)}")
+
+
+def _gemini_call(text: str, api_key: str, model: str) -> list[float]:
+    genai.configure(api_key=api_key)
+    result = genai.embed_content(
+        model=model,
+        content=text,
+        task_type="retrieval_document"
+    )
+    return result['embedding']
+
+
+async def get_gemini_embedding(text: str) -> list[float]:
+    """Get embedding from Gemini API using round-robin keys"""
+    try:
+        # Rotate API key
+        if gemini_key_cycle:
+            current_key = next(gemini_key_cycle)
+        else:
+             raise ValueError("No Gemini API keys configured")
+
+        return await run_in_threadpool(_gemini_call, text, current_key, EMBEDDING_MODEL)
+    except Exception as e:
+        logger.error(f"Failed to get embedding from Gemini: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Gemini API error: {str(e)}")
 
 
 # Request/Response Models
@@ -143,6 +184,8 @@ async def embed(request: EmbedRequest):
     try:
         if EMBEDDING_PROVIDER == "ollama":
             embedding = await get_ollama_embedding(request.content)
+        elif EMBEDDING_PROVIDER == "gemini":
+            embedding = await get_gemini_embedding(request.content)
         elif EMBEDDING_PROVIDER == "local":
             if embedding_model is None:
                 raise HTTPException(status_code=503, detail="Local embedding model not available")
