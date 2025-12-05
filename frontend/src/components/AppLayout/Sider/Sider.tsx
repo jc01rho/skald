@@ -1,5 +1,4 @@
 import { ProjectSwitcher } from '@/components/AppLayout/Sider/ProjectSwitcher'
-import { TalkToFounderModal } from '@/components/AppLayout/Sider/TalkToFounderModal'
 import { UsageTracker } from '@/components/AppLayout/Sider/UsageTracker'
 import { UserMenu } from '@/components/AppLayout/Sider/UserMenu'
 
@@ -20,8 +19,7 @@ import {
 import { isSelfHostedDeploy } from '@/config'
 import { useAuthStore, UserDetails } from '@/stores/authStore'
 import { useProjectStore } from '@/stores/projectStore'
-import { BookOpen, Files, FlaskConical, List, MessageSquare, Rocket, Settings } from 'lucide-react'
-import { useState } from 'react'
+import { BookOpen, File, FlaskConical, List, MessageSquare, Search, Settings, Zap, GraduationCap } from 'lucide-react'
 import { useLocation, useNavigate } from 'react-router-dom'
 
 interface MenuItem {
@@ -39,27 +37,41 @@ export const Sider = () => {
     const location = useLocation()
     const user = useAuthStore((state) => state.user)
     const currentProject = useProjectStore((state) => state.currentProject)
-    const [talkToFounderModalOpen, setTalkToFounderModalOpen] = useState(false)
 
     const mainMenuItems: Record<string, MenuItem[]> = {
         Project: [
             {
-                key: `/projects/${currentProject?.uuid}/get-started`,
-                icon: <Rocket className="h-4 w-4" />,
-                label: 'Get Started',
+                key: '/projects/get-started',
+                icon: <GraduationCap className="h-4 w-4" />,
+                label: 'API Getting Started',
                 hasAccess: () => true,
             },
             {
                 key: `/projects/${currentProject?.uuid}/memos`,
-                icon: <Files className="h-4 w-4" />,
-                label: 'Memos',
+                icon: <File className="h-4 w-4" />,
+                label: 'Ingestion',
                 hasAccess: () => true,
             },
             {
-                key: `/projects/${currentProject?.uuid}/playground`,
-                icon: <MessageSquare className="h-4 w-4" />,
-                label: 'Playground',
+                key: 'retrieval',
+                icon: <Zap className="h-4 w-4" />,
+                label: 'Retrieval',
                 hasAccess: () => true,
+                isParent: true,
+                children: [
+                    {
+                        key: `/projects/${currentProject?.uuid}/playground/chat`,
+                        icon: <MessageSquare className="h-4 w-4" />,
+                        label: 'Chat',
+                        hasAccess: () => true,
+                    },
+                    {
+                        key: `/projects/${currentProject?.uuid}/playground/search`,
+                        icon: <Search className="h-4 w-4" />,
+                        label: 'Search',
+                        hasAccess: () => true,
+                    },
+                ],
             },
             {
                 key: 'evaluate',
@@ -171,12 +183,10 @@ export const Sider = () => {
             </SidebarContent>
 
             <div className="px-4 py-2 text-xs text-muted-foreground text-center">
-                <button onClick={() => setTalkToFounderModalOpen(true)} className="hover:underline cursor-pointer">
+                <a href="https://pedrique.useskald.com" target="_blank" className="hover:underline cursor-pointer">
                     Talk to a founder
-                </button>
+                </a>
             </div>
-
-            <TalkToFounderModal open={talkToFounderModalOpen} onOpenChange={setTalkToFounderModalOpen} />
 
             <SidebarFooter className="border-t p-0">
                 <SidebarGroup>
