@@ -27,6 +27,9 @@ export class User {
     @Property({ length: 150 })
     last_name!: string
 
+    @Property({ nullable: true })
+    phone_number?: string | null
+
     @Property()
     is_staff!: boolean
 
@@ -77,4 +80,7 @@ export class User {
         index: 'skald_user_current_project_id_ed8d14d2',
     })
     current_project?: Project
+
+    @Property({ default: false })
+    onboarding_completed!: boolean & Opt
 }

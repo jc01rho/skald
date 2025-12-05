@@ -6,6 +6,9 @@ import { VerifyEmailPage } from '@/pages/VerifyEmailPage'
 import { CompleteProfilePage } from '@/pages/CompleteProfilePage'
 import { CreateOrganizationPage } from '@/pages/CreateOrganizationPage'
 import { UserDetails } from '@/stores/authStore'
+import { SelfHostedWelcomePage } from '@/pages/SelfHostedWelcomePage'
+import { OnboardingWizard } from '@/components/GettingStarted/OnboardingWizard'
+import { isSelfHostedDeploy } from '@/config'
 
 interface SignupFlowProps {
     currentStep: SignupFlowStep
@@ -16,6 +19,8 @@ export enum SignupFlowStep {
     VerifyEmail = 'verify-email',
     CompleteProfile = 'complete-profile',
     CreateOrganization = 'create-organization',
+    Onboarding = 'onboarding',
+    SelfHostedWelcome = 'self-hosted-welcome',
     Complete = 'complete',
 }
 
@@ -48,11 +53,24 @@ const signupSteps = [
             isAuthenticated && user?.email_verified && user?.role && !user?.default_organization,
     },
     {
+        step: SignupFlowStep.Onboarding,
+        path: '/onboarding',
+        component: <OnboardingWizard />,
+        userShouldCompleteStep: (isAuthenticated: boolean, user: UserDetails) =>
+            isAuthenticated && user?.email_verified && user?.default_organization && !user?.onboarding_completed,
+    },
+    {
+        step: SignupFlowStep.SelfHostedWelcome,
+        path: '/self-hosted-welcome',
+        component: <SelfHostedWelcomePage />,
+        userShouldCompleteStep: () => isSelfHostedDeploy,
+    },
+    {
         step: SignupFlowStep.Complete,
         path: '/',
         component: null,
         userShouldCompleteStep: (isAuthenticated: boolean, user: UserDetails) =>
-            isAuthenticated && user?.email_verified && user?.default_organization,
+            isAuthenticated && user?.email_verified && user?.default_organization && user?.onboarding_completed,
     },
 ]
 
