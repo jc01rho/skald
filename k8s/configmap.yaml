@@ -25,7 +25,7 @@ data:
   
   # AI 서비스 프로바이더 설정
   LLM_PROVIDER: "local"  # LLM 제공자 (기본값: openai)
-  EMBEDDING_PROVIDER: "gemini"  # 임베딩 제공자 (기본값: openai)
+  EMBEDDING_PROVIDER: "local"  # 임베딩 제공자 - 'local'은 embedding-service를 통해 Gemini 사용
   DOCUMENT_EXTRACTION_PROVIDER: "docling"  # 문서 추출 제공자 (기본값: docling)
   
   # 메시지 큐 설정
@@ -69,8 +69,8 @@ data:
   LANGSMITH_PROJECT: "skald"  # Langsmith 프로젝트 이름 (기본값: skald)
   
   # 로컬 LLM 설정
-  LOCAL_LLM_BASE_URL: "http://192.168.30.169:11434"  # 로컬 LLM 베이스 URL (기본값: "")
-  LOCAL_LLM_MODEL: "qwen3-32b"
+  LOCAL_LLM_BASE_URL: "http://192.168.30.169:11434/v1"  # Ollama OpenAI-compatible API (requires /v1 suffix)
+  LOCAL_LLM_MODEL: "qwen3:32b"  # Ollama format uses colon, not hyphen
   
   # 로컬 임베딩 모델 설정
   LOCAL_EMBEDDING_MODEL: "models/text-embedding-004"  # 로컬 임베딩 모델 (기본값: all-MiniLM-L6-v2)

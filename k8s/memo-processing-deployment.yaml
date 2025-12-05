@@ -111,9 +111,9 @@ spec:
         fsGroup: 1000
       containers:
       - name: memo-processing-server
-        # API 서버와 동일한 이미지 사용
-        image: skaldlabs/skald-backend:${IMAGE_TAG:-latest}
-        imagePullPolicy: IfNotPresent
+        # Use forked backend image from GHCR with LLM provider fixes
+        image: ghcr.io/jc01rho/skald-backend:${IMAGE_TAG:-latest}
+        imagePullPolicy: Always
         # 메모 처리 서버 모드로 실행
         command:
         - node
