@@ -74,7 +74,7 @@ spec:
           valueFrom:
             configMapKeyRef:
               name: skald-config
-              key: EMBEDDING_PROVIDER
+              key: EMBEDDING_SERVICE_PROVIDER
         - name: EMBEDDING_MODEL
           valueFrom:
             configMapKeyRef:
@@ -98,6 +98,13 @@ spec:
               key: LOCAL_LLM_BASE_URL
         - name: TARGET_DIMENSION
           value: "2048"
+        # 한글 최적화 설정
+        - name: QUERY_LANGUAGE
+          valueFrom:
+            configMapKeyRef:
+              name: skald-config
+              key: QUERY_LANGUAGE
+              optional: true
         # 로깅 설정
         - name: LOG_LEVEL
           valueFrom:
@@ -128,14 +135,15 @@ spec:
           capabilities:
             drop:
             - ALL
-        # 리소스 설정
+        # 리소스 설정 (CrossEncoder 모델을 위해 메모리 증가)
+        # 참고: 가벼운 환경에서는 RERANK_PROVIDER=ollama로 변경 권장
         resources:
           requests:
-            memory: "1Gi"
+            memory: "2Gi"
             cpu: "500m"
           limits:
-            memory: "2Gi"
-            cpu: "1500m"
+            memory: "4Gi"
+            cpu: "2000m"
         # 임시 볼륨 마운트 (readOnlyRootFilesystem을 위함)
         volumeMounts:
         - name: tmp
