@@ -1,4 +1,5 @@
 
+import asyncio
 import logging
 import os
 import time
@@ -28,11 +29,15 @@ EMBEDDING_MODEL = os.getenv("EMBEDDING_MODEL", "models/text-embedding-004")
 RERANK_MODEL = os.getenv("RERANK_MODEL", "cross-encoder/ms-marco-MiniLM-L-6-v2")
 TARGET_DIMENSION = int(os.getenv("TARGET_DIMENSION", "768"))
 EMBEDDING_PROVIDER = os.getenv("EMBEDDING_PROVIDER", "local")  # local, ollama, or gemini
-OLLAMA_BASE_URL = os.getenv("LOCAL_LLM_BASE_URL", "http://localhost:11434")
+RERANK_PROVIDER = os.getenv("RERANK_PROVIDER", EMBEDDING_PROVIDER)  # ollama, local, or same as embedding
+_ollama_url = os.getenv("LOCAL_LLM_BASE_URL", "http://localhost:11434")
+# Remove /v1 suffix if present (Ollama native API doesn't use /v1)
+OLLAMA_BASE_URL = _ollama_url.rstrip("/").removesuffix("/v1")
 GEMINI_API_KEYS_STR = os.getenv("GEMINI_API_KEY", "")
 GEMINI_API_KEYS = [k.strip() for k in GEMINI_API_KEYS_STR.split(",") if k.strip()]
 
 print(f"Using embedding provider: {EMBEDDING_PROVIDER}")
+print(f"Using rerank provider: {RERANK_PROVIDER}")
 print(f"Using embedding model: {EMBEDDING_MODEL}")
 print(f"Using rerank model: {RERANK_MODEL}")
 print(f"Using target dimension: {TARGET_DIMENSION}")
@@ -41,9 +46,9 @@ print(f"Using target dimension: {TARGET_DIMENSION}")
 import itertools
 gemini_key_cycle = None
 
-if EMBEDDING_PROVIDER == "ollama":
+if EMBEDDING_PROVIDER == "ollama" or RERANK_PROVIDER == "ollama":
     print(f"Using Ollama base URL: {OLLAMA_BASE_URL}")
-elif EMBEDDING_PROVIDER == "gemini":
+if EMBEDDING_PROVIDER == "gemini":
     if not GEMINI_API_KEYS:
         logger.error("GEMINI_API_KEY is not set")
     else:
@@ -56,14 +61,23 @@ rerank_model = None
 
 if EMBEDDING_PROVIDER == "local":
     try:
-        from sentence_transformers import SentenceTransformer, CrossEncoder
+        from sentence_transformers import SentenceTransformer
         embedding_model = SentenceTransformer(EMBEDDING_MODEL)
-        rerank_model = CrossEncoder(RERANK_MODEL)
         logger.info(f"Loaded local embedding model: {EMBEDDING_MODEL}")
     except Exception as e:
-        logger.error(f"Failed to load local models: {e}")
-        logger.info("Falling back to Ollama provider")
+        logger.error(f"Failed to load local embedding model: {e}")
+        logger.info("Falling back to Ollama provider for embedding")
         EMBEDDING_PROVIDER = "ollama"
+
+if RERANK_PROVIDER == "local":
+    try:
+        from sentence_transformers import CrossEncoder
+        rerank_model = CrossEncoder(RERANK_MODEL)
+        logger.info(f"Loaded local rerank model: {RERANK_MODEL}")
+    except Exception as e:
+        logger.error(f"Failed to load local rerank model: {e}")
+        logger.info("Falling back to Ollama provider for rerank")
+        RERANK_PROVIDER = "ollama"
 
 def normalize_embedding(embedding: list[float]) -> list[float]:
     """Pad or validate embedding to match TARGET_DIMENSION"""
@@ -125,7 +139,64 @@ async def get_gemini_embedding(text: str) -> list[float]:
         raise HTTPException(status_code=500, detail=f"Gemini API error: {str(e)}")
 
 
-# Request/Response Models
+async def get_ollama_rerank_embedding(text: str) -> list[float]:
+    """Get embedding from Ollama API using the rerank model"""
+    async with httpx.AsyncClient(timeout=60.0) as client:
+        try:
+            response = await client.post(
+                f"{OLLAMA_BASE_URL}/api/embeddings",
+                json={"model": RERANK_MODEL, "prompt": text}
+            )
+            response.raise_for_status()
+            data = response.json()
+            return data["embedding"]
+        except httpx.HTTPStatusError as e:
+            logger.error(f"Ollama rerank API error: {e.response.status_code} - {e.response.text}")
+            raise HTTPException(status_code=502, detail=f"Ollama rerank API error: {str(e)}")
+        except Exception as e:
+            logger.error(f"Failed to get rerank embedding from Ollama: {str(e)}")
+            raise HTTPException(status_code=500, detail=f"Ollama rerank connection failed: {str(e)}")
+
+
+def cosine_similarity(vec1: list[float], vec2: list[float]) -> float:
+    """Compute cosine similarity between two vectors"""
+    arr1 = np.array(vec1)
+    arr2 = np.array(vec2)
+    dot_product = np.dot(arr1, arr2)
+    norm1 = np.linalg.norm(arr1)
+    norm2 = np.linalg.norm(arr2)
+    if norm1 == 0 or norm2 == 0:
+        return 0.0
+    return float(dot_product / (norm1 * norm2))
+
+
+async def rerank_with_ollama(query: str, documents: list[str]) -> list[tuple[int, float]]:
+    """
+    Rerank documents using Ollama embedding model.
+    Returns list of (index, score) tuples sorted by score descending.
+    """
+    # Get query embedding
+    query_embedding = await get_ollama_rerank_embedding(query)
+    
+    # Get document embeddings in parallel
+    doc_embeddings = await asyncio.gather(
+        *[get_ollama_rerank_embedding(doc) for doc in documents]
+    )
+    
+    # Compute cosine similarities
+    scores = []
+    for idx, doc_emb in enumerate(doc_embeddings):
+        score = cosine_similarity(query_embedding, doc_emb)
+        # Normalize to 0-1 range (cosine similarity is -1 to 1)
+        normalized_score = (score + 1) / 2
+        scores.append((idx, normalized_score))
+    
+    # Sort by score descending
+    scores.sort(key=lambda x: x[1], reverse=True)
+    return scores
+
+
+
 class EmbedRequest(BaseModel):
     content: str = Field(..., description="Text content to embed")
     normalize: bool = Field(
@@ -228,7 +299,42 @@ async def rerank(request: RerankRequest):
         logger.debug(f"Documents check completed (took {time.perf_counter() - check_start:.6f}s)")
 
         # For now, if rerank_model is not available, use simple scoring
-        if rerank_model is None:
+        if RERANK_PROVIDER == "ollama":
+            # Use Ollama embedding-based reranking
+            logger.debug(f"Using Ollama rerank with model: {RERANK_MODEL}")
+            
+            def get_document_text(doc):
+                if isinstance(doc, str):
+                    return doc
+                if isinstance(doc, dict):
+                    for field in ["text", "content", "document", "page_content"]:
+                        if field in doc:
+                            return doc[field]
+                return str(doc)
+            
+            doc_texts = [get_document_text(doc) for doc in request.documents]
+            ollama_start = time.perf_counter()
+            scores = await rerank_with_ollama(request.query, doc_texts)
+            logger.debug(f"Ollama rerank completed (took {time.perf_counter() - ollama_start:.6f}s)")
+            
+            reranked = []
+            for idx, score in scores:
+                reranked.append(
+                    RerankResult(
+                        index=idx,
+                        document=doc_texts[idx],
+                        relevance_score=float(f"{score:.6f}"),
+                    )
+                )
+            
+            if isinstance(request.top_k, int) and request.top_k > 0:
+                reranked = reranked[:request.top_k]
+            
+            total_time = time.perf_counter() - start_time
+            logger.debug(f"Rerank completed successfully: returning {len(reranked)} results (total time: {total_time:.6f}s)")
+            return RerankResponse(results=reranked)
+        
+        elif rerank_model is None:
             logger.warning("Rerank model not available, using fallback scoring")
             # Simple fallback: return documents in original order with decreasing scores
             reranked = []

@@ -85,6 +85,11 @@ spec:
             configMapKeyRef:
               name: skald-config
               key: LOCAL_RERANK_MODEL
+        - name: RERANK_PROVIDER
+          valueFrom:
+            configMapKeyRef:
+              name: skald-config
+              key: RERANK_PROVIDER
         # Ollama/Local LLM connection URL
         - name: LOCAL_LLM_BASE_URL
           valueFrom:
