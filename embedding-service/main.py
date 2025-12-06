@@ -25,11 +25,12 @@ logger.setLevel(getattr(logging, LOG_LEVEL, logging.INFO))
 app = FastAPI(title="Embedding Service", version="1.0.0")
 
 # Configuration
-EMBEDDING_MODEL = os.getenv("EMBEDDING_MODEL", "models/text-embedding-004")
-RERANK_MODEL = os.getenv("RERANK_MODEL", "cross-encoder/ms-marco-MiniLM-L-6-v2")
+EMBEDDING_MODEL = os.getenv("EMBEDDING_MODEL", "models/gemini-embedding-001")
+RERANK_MODEL = os.getenv("RERANK_MODEL", "dragonkue/bge-reranker-v2-m3-ko")
 TARGET_DIMENSION = int(os.getenv("TARGET_DIMENSION", "768"))
-EMBEDDING_PROVIDER = os.getenv("EMBEDDING_PROVIDER", "local")  # local, ollama, or gemini
-RERANK_PROVIDER = os.getenv("RERANK_PROVIDER", EMBEDDING_PROVIDER)  # ollama, local, or same as embedding
+EMBEDDING_PROVIDER = os.getenv("EMBEDDING_PROVIDER", "gemini")  # local, ollama, or gemini
+RERANK_PROVIDER = os.getenv("RERANK_PROVIDER", "local")  # local (CrossEncoder), ollama
+QUERY_LANGUAGE = os.getenv("QUERY_LANGUAGE", "ko")  # 한글 최적화 기본값
 _ollama_url = os.getenv("LOCAL_LLM_BASE_URL", "http://localhost:11434")
 # Remove /v1 suffix if present (Ollama native API doesn't use /v1)
 OLLAMA_BASE_URL = _ollama_url.rstrip("/").removesuffix("/v1")
@@ -41,12 +42,13 @@ print(f"Using rerank provider: {RERANK_PROVIDER}")
 print(f"Using embedding model: {EMBEDDING_MODEL}")
 print(f"Using rerank model: {RERANK_MODEL}")
 print(f"Using target dimension: {TARGET_DIMENSION}")
+print(f"Query language: {QUERY_LANGUAGE}")
 
 # Round-robin key iterator
 import itertools
 gemini_key_cycle = None
 
-if EMBEDDING_PROVIDER == "ollama" or RERANK_PROVIDER == "ollama":
+if EMBEDDING_PROVIDER == "ollama":
     print(f"Using Ollama base URL: {OLLAMA_BASE_URL}")
 if EMBEDDING_PROVIDER == "gemini":
     if not GEMINI_API_KEYS:
@@ -69,15 +71,63 @@ if EMBEDDING_PROVIDER == "local":
         logger.info("Falling back to Ollama provider for embedding")
         EMBEDDING_PROVIDER = "ollama"
 
+# CrossEncoder for reranking (local)
 if RERANK_PROVIDER == "local":
     try:
         from sentence_transformers import CrossEncoder
         rerank_model = CrossEncoder(RERANK_MODEL)
-        logger.info(f"Loaded local rerank model: {RERANK_MODEL}")
+        logger.info(f"Loaded local CrossEncoder rerank model: {RERANK_MODEL}")
     except Exception as e:
-        logger.error(f"Failed to load local rerank model: {e}")
+        logger.error(f"Failed to load local CrossEncoder rerank model: {e}")
         logger.info("Falling back to Ollama provider for rerank")
         RERANK_PROVIDER = "ollama"
+
+
+# ============================================================
+# 한글 최적화 함수들
+# ============================================================
+
+def preprocess_korean_query(query: str) -> str:
+    """
+    한글 쿼리 전처리 함수
+    - 불필요한 공백 제거
+    - 조사 처리 (간단한 정규화)
+    """
+    import re
+    
+    # 중복 공백 제거
+    query = re.sub(r'\s+', ' ', query.strip())
+    
+    # 한글 쿼리인 경우 특수 처리
+    if is_korean_text(query):
+        # 일반적인 조사들을 공백으로 변환하여 검색 품질 향상
+        # (완전히 제거하지 않고 공백으로 대체)
+        pass  # 조사 제거는 오히려 의미를 해칠 수 있으므로 현재는 비활성화
+    
+    return query
+
+
+def is_korean_text(text: str) -> bool:
+    """텍스트가 한글을 포함하는지 확인"""
+    import re
+    korean_pattern = re.compile(r'[가-힣]')
+    return bool(korean_pattern.search(text))
+
+
+def get_task_type_for_korean(usage: str) -> str:
+    """
+    한글 텍스트에 최적화된 task_type 반환
+    Gemini embedding은 task_type에 따라 임베딩 방식이 달라짐
+    """
+    if usage == "search" or usage == "query":
+        return "retrieval_query"
+    else:
+        return "retrieval_document"
+
+
+# ============================================================
+# Embedding 함수들
+# ============================================================
 
 def normalize_embedding(embedding: list[float]) -> list[float]:
     """Pad or validate embedding to match TARGET_DIMENSION"""
@@ -114,18 +164,25 @@ async def get_ollama_embedding(text: str) -> list[float]:
             raise HTTPException(status_code=500, detail=f"Ollama connection failed: {str(e)}")
 
 
-def _gemini_call(text: str, api_key: str, model: str) -> list[float]:
+def _gemini_call(text: str, api_key: str, model: str, task_type: str = "retrieval_document") -> list[float]:
+    """
+    Gemini 임베딩 API 호출
+    한글 텍스트에 최적화된 task_type 사용
+    """
     genai.configure(api_key=api_key)
     result = genai.embed_content(
         model=model,
         content=text,
-        task_type="retrieval_document"
+        task_type=task_type
     )
     return result['embedding']
 
 
-async def get_gemini_embedding(text: str) -> list[float]:
-    """Get embedding from Gemini API using round-robin keys"""
+async def get_gemini_embedding(text: str, usage: str = "storage") -> list[float]:
+    """
+    Get embedding from Gemini API using round-robin keys
+    한글 텍스트에 최적화된 task_type 자동 선택
+    """
     try:
         # Rotate API key
         if gemini_key_cycle:
@@ -133,7 +190,13 @@ async def get_gemini_embedding(text: str) -> list[float]:
         else:
              raise ValueError("No Gemini API keys configured")
 
-        return await run_in_threadpool(_gemini_call, text, current_key, EMBEDDING_MODEL)
+        # 한글 최적화: 적절한 task_type 선택
+        task_type = get_task_type_for_korean(usage)
+        
+        # 한글 쿼리 전처리
+        processed_text = preprocess_korean_query(text) if usage == "search" else text
+        
+        return await run_in_threadpool(_gemini_call, processed_text, current_key, EMBEDDING_MODEL, task_type)
     except Exception as e:
         logger.error(f"Failed to get embedding from Gemini: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Gemini API error: {str(e)}")
@@ -170,9 +233,13 @@ def cosine_similarity(vec1: list[float], vec2: list[float]) -> float:
     return float(dot_product / (norm1 * norm2))
 
 
+# ============================================================
+# Reranking 함수들
+# ============================================================
+
 async def rerank_with_ollama(query: str, documents: list[str]) -> list[tuple[int, float]]:
     """
-    Rerank documents using Ollama embedding model.
+    Rerank documents using Ollama embedding model (fallback).
     Returns list of (index, score) tuples sorted by score descending.
     """
     # Get query embedding
@@ -196,11 +263,54 @@ async def rerank_with_ollama(query: str, documents: list[str]) -> list[tuple[int
     return scores
 
 
+def _rerank_with_crossencoder(query: str, documents: list[str]) -> list[tuple[int, float]]:
+    """
+    CrossEncoder를 사용한 진정한 리랭킹 (bi-encoder 아님)
+    한글 최적화 모델 사용 시 더 높은 성능 발휘
+    """
+    if rerank_model is None:
+        raise ValueError("CrossEncoder rerank model not loaded")
+    
+    # 한글 쿼리 전처리
+    processed_query = preprocess_korean_query(query)
+    
+    # CrossEncoder는 (query, document) 쌍을 직접 입력받아 relevance score 출력
+    pairs = [[processed_query, doc] for doc in documents]
+    
+    # CrossEncoder predict - 직접적인 relevance score 반환
+    scores = rerank_model.predict(pairs)
+    
+    # Sigmoid를 통해 0-1 범위로 정규화
+    normalized_scores = 1 / (1 + np.exp(-np.array(scores)))
+    
+    # (index, score) 튜플 리스트 생성
+    indexed_scores = [(idx, float(score)) for idx, score in enumerate(normalized_scores)]
+    
+    # 점수 기준 내림차순 정렬
+    indexed_scores.sort(key=lambda x: x[1], reverse=True)
+    
+    return indexed_scores
+
+
+async def rerank_with_local_crossencoder(query: str, documents: list[str]) -> list[tuple[int, float]]:
+    """
+    로컬 CrossEncoder를 사용한 비동기 리랭킹
+    sentence-transformers의 CrossEncoder 사용
+    """
+    return await run_in_threadpool(_rerank_with_crossencoder, query, documents)
+
+
+# ============================================================
+# Pydantic 모델들
+# ============================================================
 
 class EmbedRequest(BaseModel):
     content: str = Field(..., description="Text content to embed")
     normalize: bool = Field(
         default=True, description="Whether to normalize to target dimension"
+    )
+    usage: str = Field(
+        default="storage", description="Usage type: 'storage' for documents, 'search' for queries"
     )
 
 
@@ -234,17 +344,28 @@ class RerankResponse(BaseModel):
     )
 
 
-# Endpoints
+# ============================================================
+# API Endpoints
+# ============================================================
+
 @app.get("/health")
 async def health_check():
     """Health check endpoint"""
-    return {"status": "healthy", "provider": EMBEDDING_PROVIDER}
+    return {
+        "status": "healthy", 
+        "embedding_provider": EMBEDDING_PROVIDER,
+        "rerank_provider": RERANK_PROVIDER,
+        "rerank_model": RERANK_MODEL,
+        "embedding_model": EMBEDDING_MODEL,
+        "query_language": QUERY_LANGUAGE,
+    }
 
 
 @app.post("/embed", response_model=EmbedResponse)
 async def embed(request: EmbedRequest):
     """
     Generate embeddings for the provided text content.
+    한글 텍스트에 최적화된 임베딩 생성
 
     Args:
         request: EmbedRequest containing the text content and normalization preference
@@ -253,14 +374,18 @@ async def embed(request: EmbedRequest):
         EmbedResponse with the embedding vector and its dimension
     """
     try:
+        usage = request.usage if hasattr(request, 'usage') else "storage"
+        
         if EMBEDDING_PROVIDER == "ollama":
             embedding = await get_ollama_embedding(request.content)
         elif EMBEDDING_PROVIDER == "gemini":
-            embedding = await get_gemini_embedding(request.content)
+            embedding = await get_gemini_embedding(request.content, usage)
         elif EMBEDDING_PROVIDER == "local":
             if embedding_model is None:
                 raise HTTPException(status_code=503, detail="Local embedding model not available")
-            embedding = embedding_model.encode(request.content).tolist()
+            # 한글 쿼리 전처리
+            processed_content = preprocess_korean_query(request.content) if usage == "search" else request.content
+            embedding = embedding_model.encode(processed_content).tolist()
         else:
             raise HTTPException(status_code=501, detail=f"Provider {EMBEDDING_PROVIDER} not implemented")
 
@@ -280,7 +405,8 @@ async def embed(request: EmbedRequest):
 @app.post("/rerank", response_model=RerankResponse)
 async def rerank(request: RerankRequest):
     """
-    Rerank documents based on their relevance to the query using a cross-encoder model.
+    Rerank documents based on their relevance to the query using CrossEncoder.
+    한국어 최적화 CrossEncoder 모델을 사용한 리랭킹
 
     Args:
         request: RerankRequest containing the query and documents to rerank
@@ -298,9 +424,43 @@ async def rerank(request: RerankRequest):
             return RerankResponse(results=[])
         logger.debug(f"Documents check completed (took {time.perf_counter() - check_start:.6f}s)")
 
-        # For now, if rerank_model is not available, use simple scoring
-        if RERANK_PROVIDER == "ollama":
-            # Use Ollama embedding-based reranking
+        # CrossEncoder를 사용한 로컬 리랭킹 (권장)
+        if RERANK_PROVIDER == "local" and rerank_model is not None:
+            logger.debug(f"Using local CrossEncoder rerank with model: {RERANK_MODEL}")
+            
+            def get_document_text(doc):
+                if isinstance(doc, str):
+                    return doc
+                if isinstance(doc, dict):
+                    for field in ["text", "content", "document", "page_content"]:
+                        if field in doc:
+                            return doc[field]
+                return str(doc)
+            
+            doc_texts = [get_document_text(doc) for doc in request.documents]
+            crossencoder_start = time.perf_counter()
+            scores = await rerank_with_local_crossencoder(request.query, doc_texts)
+            logger.debug(f"CrossEncoder rerank completed (took {time.perf_counter() - crossencoder_start:.6f}s)")
+            
+            reranked = []
+            for idx, score in scores:
+                reranked.append(
+                    RerankResult(
+                        index=idx,
+                        document=doc_texts[idx],
+                        relevance_score=float(f"{score:.6f}"),
+                    )
+                )
+            
+            if isinstance(request.top_k, int) and request.top_k > 0:
+                reranked = reranked[:request.top_k]
+            
+            total_time = time.perf_counter() - start_time
+            logger.debug(f"Rerank completed successfully: returning {len(reranked)} results (total time: {total_time:.6f}s)")
+            return RerankResponse(results=reranked)
+        
+        # Ollama 기반 리랭킹 (fallback)
+        elif RERANK_PROVIDER == "ollama":
             logger.debug(f"Using Ollama rerank with model: {RERANK_MODEL}")
             
             def get_document_text(doc):
@@ -334,9 +494,9 @@ async def rerank(request: RerankRequest):
             logger.debug(f"Rerank completed successfully: returning {len(reranked)} results (total time: {total_time:.6f}s)")
             return RerankResponse(results=reranked)
         
-        elif rerank_model is None:
+        else:
+            # Fallback: return documents in original order with decreasing scores
             logger.warning("Rerank model not available, using fallback scoring")
-            # Simple fallback: return documents in original order with decreasing scores
             reranked = []
             for idx, doc in enumerate(request.documents):
                 score = 1.0 - (idx * 0.01)  # Simple decreasing scores
@@ -351,57 +511,39 @@ async def rerank(request: RerankRequest):
                 reranked = reranked[:request.top_k]
             return RerankResponse(results=reranked)
 
-        def get_document_text(doc):
-            if isinstance(doc, str):
-                return doc
-            if isinstance(doc, dict):
-                for field in ["text", "content", "document", "page_content"]:
-                    if field in doc:
-                        return doc[field]
-            return str(doc)
-
-        pairs_start = time.perf_counter()
-        pairs = [[request.query, get_document_text(doc)] for doc in request.documents]
-        logger.debug(f"Created {len(pairs)} query-document pairs (took {time.perf_counter() - pairs_start:.6f}s)")
-
-        predict_start = time.perf_counter()
-        scores = rerank_model.predict(pairs)
-        logger.debug(f"Model prediction completed for {len(scores)} documents (took {time.perf_counter() - predict_start:.6f}s)")
-
-        normalize_start = time.perf_counter()
-        normalized_scores = 1 / (1 + np.exp(-np.array(scores)))
-        logger.debug(f"Score normalization completed (took {time.perf_counter() - normalize_start:.6f}s)")
-
-        build_start = time.perf_counter()
-        reranked = []
-        for idx, (doc, score) in enumerate(zip(request.documents, normalized_scores)):
-            reranked.append(
-                RerankResult(
-                    index=idx,
-                    document=get_document_text(doc),
-                    relevance_score=float(f"{score:.6f}"),
-                )
-            )
-        logger.debug(f"Built {len(reranked)} reranked results (took {time.perf_counter() - build_start:.6f}s)")
-
-        sort_start = time.perf_counter()
-        reranked.sort(key=lambda r: r.relevance_score, reverse=True)
-        logger.debug(f"Sorted reranked results (took {time.perf_counter() - sort_start:.6f}s)")
-
-        filter_start = time.perf_counter()
-        if isinstance(request.top_k, int) and request.top_k > 0:
-            reranked = reranked[: request.top_k]
-            logger.debug(f"Filtered to top_k={request.top_k} results (took {time.perf_counter() - filter_start:.6f}s)")
-        else:
-            logger.debug(f"No top_k filtering applied (took {time.perf_counter() - filter_start:.6f}s)")
-
-        total_time = time.perf_counter() - start_time
-        logger.debug(f"Rerank completed successfully: returning {len(reranked)} results (total time: {total_time:.6f}s)")
-        return RerankResponse(results=reranked)
     except Exception as e:
         total_time = time.perf_counter() - start_time
         logger.error(f"Rerank failed after {total_time:.6f}s: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Reranking failed: {str(e)}")
+
+
+# ============================================================
+# 추가 유틸리티 엔드포인트
+# ============================================================
+
+@app.get("/info")
+async def get_info():
+    """서비스 정보 및 현재 설정 반환"""
+    return {
+        "service": "Embedding Service",
+        "version": "1.1.0",
+        "features": {
+            "korean_optimization": True,
+            "crossencoder_reranking": RERANK_PROVIDER == "local" and rerank_model is not None,
+        },
+        "configuration": {
+            "embedding_provider": EMBEDDING_PROVIDER,
+            "embedding_model": EMBEDDING_MODEL,
+            "rerank_provider": RERANK_PROVIDER,
+            "rerank_model": RERANK_MODEL,
+            "target_dimension": TARGET_DIMENSION,
+            "query_language": QUERY_LANGUAGE,
+        },
+        "models_loaded": {
+            "embedding_model": embedding_model is not None if EMBEDDING_PROVIDER == "local" else "external",
+            "rerank_model": rerank_model is not None,
+        }
+    }
 
 
 if __name__ == "__main__":
