@@ -68,7 +68,7 @@ spec:
           valueFrom:
             secretKeyRef:
               name: skald-secrets
-              key: GEMINI_API_KEY
+              key: GEMINI_API_KEYS
         # 임베딩 프로바이더 설정
         - name: EMBEDDING_PROVIDER
           valueFrom:
@@ -81,24 +81,18 @@ spec:
               name: skald-config
               key: LOCAL_EMBEDDING_MODEL
         - name: RERANK_MODEL
-          valueFrom:
-            configMapKeyRef:
-              name: skald-config
-              key: LOCAL_RERANK_MODEL
+          value: "xitao/bge-reranker-v2-m3:latest"
         - name: RERANK_PROVIDER
-          valueFrom:
-            configMapKeyRef:
-              name: skald-config
-              key: RERANK_PROVIDER
+          value: "ollama"
         # Ollama/Local LLM connection URL
         - name: LOCAL_LLM_BASE_URL
           valueFrom:
             configMapKeyRef:
               name: skald-config
               key: LOCAL_LLM_BASE_URL
-        # Gemini embedding-001 supports: 768, 1536, 3072 (MRL dimensions)
+        # Gemini embedding-001 supports: 768, 1536, 3072 (default is 768 for efficiency)
         - name: TARGET_DIMENSION
-          value: "1536"
+          value: "2048"
         # 한글 최적화 설정
         - name: QUERY_LANGUAGE
           valueFrom:

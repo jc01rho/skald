@@ -45,56 +45,138 @@ print(f"Using rerank model: {RERANK_MODEL}")
 print(f"Using target dimension: {TARGET_DIMENSION}")
 print(f"Query language: {QUERY_LANGUAGE}")
 
-# Thread-safe round-robin API key management
+# Thread-safe exhaustion-based round-robin API key management
 class GeminiKeyManager:
     """
-    Thread-safe round-robin API key manager with rate-limit handling.
+    Thread-safe API key manager with exhaustion-based round-robin.
+    Uses one key until it's exhausted (rate-limited/quota exceeded), 
+    then switches to the next key.
     """
     def __init__(self, api_keys: list[str]):
         self._keys = api_keys
-        self._index = 0
+        self._current_index = 0  # Current active key index
         self._lock = threading.Lock()
         self._key_count = len(api_keys)
         # Track rate-limited keys: key -> cooldown_until timestamp
         self._rate_limited: dict[str, float] = {}
+        # Track usage count per key for logging
+        self._usage_count: dict[str, int] = {k: 0 for k in api_keys}
+        logger.info(f"Initialized GeminiKeyManager with {self._key_count} keys (exhaustion-based round-robin)")
         
-    def get_next_key(self) -> tuple[str, int]:
+    def get_current_key(self) -> tuple[str, int]:
         """
-        Get the next available API key in round-robin fashion.
+        Get the current active API key.
         Returns (api_key, key_index) tuple.
-        Skips rate-limited keys if possible.
+        Stays on the same key until it's marked as rate-limited.
         """
         with self._lock:
             current_time = time.time()
             
-            # Try to find a non-rate-limited key
-            for _ in range(self._key_count):
-                key = self._keys[self._index]
-                key_idx = self._index
-                self._index = (self._index + 1) % self._key_count
-                
-                # Check if this key is rate-limited
-                if key in self._rate_limited:
-                    if current_time < self._rate_limited[key]:
-                        continue  # Skip this key, still in cooldown
-                    else:
-                        del self._rate_limited[key]  # Cooldown expired
-                
-                return key, key_idx
+            # Clean up expired rate limits
+            expired_keys = [k for k, expire_time in self._rate_limited.items() 
+                           if current_time >= expire_time]
+            for k in expired_keys:
+                del self._rate_limited[k]
+                logger.info(f"API key [{self._keys.index(k) + 1}/{self._key_count}] cooldown expired, now available")
             
-            # All keys are rate-limited, return the one with earliest expiry
-            earliest_key = min(self._rate_limited, key=lambda k: self._rate_limited[k])
-            earliest_idx = self._keys.index(earliest_key)
-            return earliest_key, earliest_idx
+            # Check if current key is rate-limited
+            current_key = self._keys[self._current_index]
+            if current_key in self._rate_limited:
+                # Current key is rate-limited, find next available key
+                return self._find_available_key(current_time)
+            
+            # Count usage
+            self._usage_count[current_key] += 1
+            return current_key, self._current_index
+    
+    def _find_available_key(self, current_time: float) -> tuple[str, int]:
+        """
+        Find the next available (non-rate-limited) key.
+        Called when current key is exhausted.
+        Must be called while holding the lock.
+        """
+        # Try to find a non-rate-limited key starting from current index
+        for offset in range(self._key_count):
+            idx = (self._current_index + offset) % self._key_count
+            key = self._keys[idx]
+            
+            if key not in self._rate_limited:
+                # Found an available key, switch to it
+                old_index = self._current_index
+                self._current_index = idx
+                if offset > 0:
+                    logger.info(f"Switched from key [{old_index + 1}] to key [{idx + 1}] (exhaustion-based rotation)")
+                self._usage_count[key] += 1
+                return key, idx
+        
+        # All keys are rate-limited, return the one with earliest expiry
+        earliest_key = min(self._rate_limited, key=lambda k: self._rate_limited[k])
+        earliest_idx = self._keys.index(earliest_key)
+        remaining_seconds = self._rate_limited[earliest_key] - current_time
+        logger.warning(f"All {self._key_count} keys rate-limited! Using key [{earliest_idx + 1}] (expires in {remaining_seconds:.1f}s)")
+        self._usage_count[earliest_key] += 1
+        return earliest_key, earliest_idx
     
     def mark_rate_limited(self, key: str, cooldown_seconds: float = 60.0):
-        """Mark a key as rate-limited for the specified duration."""
+        """
+        Mark a key as rate-limited/exhausted for the specified duration.
+        This triggers rotation to the next available key.
+        """
         with self._lock:
             self._rate_limited[key] = time.time() + cooldown_seconds
-            logger.warning(f"API key [{self._keys.index(key) + 1}/{self._key_count}] rate-limited for {cooldown_seconds}s")
+            key_idx = self._keys.index(key)
+            usage = self._usage_count.get(key, 0)
+            logger.warning(f"API key [{key_idx + 1}/{self._key_count}] exhausted after {usage} uses, cooldown for {cooldown_seconds}s")
+            
+            # Reset usage count for this key
+            self._usage_count[key] = 0
+            
+            # Try to switch to next available key
+            current_time = time.time()
+            available_count = sum(1 for k in self._keys if k not in self._rate_limited)
+            if available_count > 0:
+                # Find next available key
+                for offset in range(1, self._key_count):
+                    next_idx = (self._current_index + offset) % self._key_count
+                    next_key = self._keys[next_idx]
+                    if next_key not in self._rate_limited:
+                        self._current_index = next_idx
+                        logger.info(f"Auto-rotated to key [{next_idx + 1}/{self._key_count}] ({available_count} keys remaining)")
+                        break
+            else:
+                logger.error(f"All {self._key_count} API keys are now rate-limited!")
     
     def get_key_count(self) -> int:
         return self._key_count
+    
+    def get_available_key_count(self) -> int:
+        """Get the number of currently available (non-rate-limited) keys."""
+        with self._lock:
+            current_time = time.time()
+            return sum(1 for k in self._keys 
+                      if k not in self._rate_limited or current_time >= self._rate_limited[k])
+    
+    def get_status(self) -> dict:
+        """Get detailed status of all keys for monitoring."""
+        with self._lock:
+            current_time = time.time()
+            status = {
+                "total_keys": self._key_count,
+                "current_key_index": self._current_index + 1,
+                "keys": []
+            }
+            for idx, key in enumerate(self._keys):
+                key_status = {
+                    "index": idx + 1,
+                    "is_current": idx == self._current_index,
+                    "usage_count": self._usage_count.get(key, 0),
+                    "is_rate_limited": key in self._rate_limited,
+                }
+                if key in self._rate_limited:
+                    remaining = self._rate_limited[key] - current_time
+                    key_status["cooldown_remaining_seconds"] = max(0, remaining)
+                status["keys"].append(key_status)
+            return status
 
 
 # Dimension error cooldown management
@@ -281,8 +363,8 @@ def _gemini_call(text: str, api_key: str, model: str, task_type: str = "retrieva
 
 async def get_gemini_embedding(text: str, usage: str = "storage") -> list[float]:
     """
-    Get embedding from Gemini API using thread-safe round-robin keys.
-    Includes retry logic for rate-limit errors and dimension error cooldown.
+    Get embedding from Gemini API using exhaustion-based round-robin keys.
+    Uses one key until it's exhausted (rate-limited), then switches to the next.
     한글 텍스트에 최적화된 task_type 자동 선택
     """
     # Check dimension error cooldown first
@@ -306,7 +388,7 @@ async def get_gemini_embedding(text: str, usage: str = "storage") -> list[float]
     last_error = None
     
     for attempt in range(max_retries):
-        current_key, key_index = gemini_key_manager.get_next_key()
+        current_key, key_index = gemini_key_manager.get_current_key()
         
         try:
             return await run_in_threadpool(
@@ -699,6 +781,27 @@ async def get_info():
             "embedding_model": embedding_model is not None if EMBEDDING_PROVIDER == "local" else "external",
             "rerank_model": rerank_model is not None,
         }
+    }
+
+
+@app.get("/api-keys/status")
+async def get_api_keys_status():
+    """
+    Get the status of Gemini API keys for monitoring.
+    Shows usage counts, rate-limit status, and cooldown times.
+    """
+    if gemini_key_manager is None:
+        return {
+            "provider": EMBEDDING_PROVIDER,
+            "message": "Gemini API key management not active",
+            "keys": None
+        }
+    
+    return {
+        "provider": EMBEDDING_PROVIDER,
+        "strategy": "exhaustion-based round-robin",
+        "status": gemini_key_manager.get_status(),
+        "available_keys": gemini_key_manager.get_available_key_count(),
     }
 
 
