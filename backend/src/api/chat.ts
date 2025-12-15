@@ -68,6 +68,26 @@ export const chat = async (req: Request, res: Response) => {
         }
     }
 
+    // For streaming, we want to start the response immediately to avoid 504 timeouts
+    // caused by long-running RAG processes (especially with local LLMs)
+    if (stream) {
+        // Log that we are entering streaming mode
+        logger.info({ chatId, query }, 'Starting streaming response for chat')
+
+        // We do NOT await ragGraph here for streaming. We pass the config into _generateStreamingResponse
+        // and let it run the RAG graph *after* sending headers.
+        return await _generateStreamingResponse({
+            res,
+            query,
+            project,
+            chatId,
+            filters,
+            clientSystemPrompt,
+            parsedRagConfig,
+        })
+    }
+
+    // For non-streaming, we await the graph as before
     const ragResultState = await ragGraph.invoke({
         query,
         project,
@@ -93,54 +113,39 @@ export const chat = async (req: Request, res: Response) => {
     })
 
     try {
-        if (stream) {
-            const fullResponse = await _generateStreamingResponse({
-                res,
-                query: finalQuery,
-                contextStr: contextStr || '',
-                prompt,
-                rerankResults: rerankedResults || [],
-                enableReferences: parsedRagConfig.references.enabled,
-                llmProvider: parsedRagConfig.llmProvider,
-            })
-            const finalChatId = await createChatMessagePair(project, query, fullResponse, chatId, clientSystemPrompt)
-            res.write(`data: ${JSON.stringify({ type: 'done', chat_id: finalChatId })}\n\n`)
-            res.end()
-        } else {
-            // non-streaming response - compose full response from stream
-            let fullResponse = ''
-            let references: Record<number, { memo_uuid: string; memo_title: string }> | undefined
+        // non-streaming response - compose full response from stream
+        let fullResponse = ''
+        let references: Record<number, { memo_uuid: string; memo_title: string }> | undefined
 
-            for await (const chunk of streamChatAgent({
-                query: finalQuery,
-                prompt,
-                contextStr: contextStr || '',
-                rerankResults: rerankedResults || [],
-                enableReferences: parsedRagConfig.references.enabled,
-                llmProvider: parsedRagConfig.llmProvider,
-            })) {
-                if (chunk.type === 'token') {
-                    fullResponse += chunk.content || ''
-                } else if (chunk.type === 'references' && chunk.content) {
-                    references = JSON.parse(chunk.content)
-                }
+        for await (const chunk of streamChatAgent({
+            query: finalQuery,
+            prompt,
+            contextStr: contextStr || '',
+            rerankResults: rerankedResults || [],
+            enableReferences: parsedRagConfig.references.enabled,
+            llmProvider: parsedRagConfig.llmProvider,
+        })) {
+            if (chunk.type === 'token') {
+                fullResponse += chunk.content || ''
+            } else if (chunk.type === 'references' && chunk.content) {
+                references = JSON.parse(chunk.content)
             }
-
-            const finalChatId = await createChatMessagePair(project, query, fullResponse, chatId, clientSystemPrompt)
-
-            const response: any = {
-                ok: true,
-                chat_id: finalChatId,
-                response: fullResponse,
-                intermediate_steps: [],
-            }
-
-            if (references) {
-                response.references = references
-            }
-
-            return res.status(200).json(response)
         }
+
+        const finalChatId = await createChatMessagePair(project, query, fullResponse, chatId, clientSystemPrompt)
+
+        const response: any = {
+            ok: true,
+            chat_id: finalChatId,
+            response: fullResponse,
+            intermediate_steps: [],
+        }
+
+        if (references) {
+            response.references = references
+        }
+
+        return res.status(200).json(response)
     } catch (error) {
         logger.error({ err: error }, 'Chat agent error')
         Sentry.captureException(error)
@@ -163,36 +168,51 @@ interface RerankResult {
 export const _generateStreamingResponse = async ({
     res,
     query,
-    prompt,
-    contextStr,
-    rerankResults,
-    enableReferences,
-    llmProvider,
+    project,
+    chatId,
+    filters,
+    clientSystemPrompt,
+    parsedRagConfig,
 }: {
     res: Response
     query: string
-    prompt: ChatPromptTemplate
-    contextStr: string
-    rerankResults: RerankResult[]
-    enableReferences: boolean
-    llmProvider: 'openai' | 'anthropic' | 'local' | 'groq' | 'gemini'
-}): Promise<string> => {
+    project: Project
+    chatId?: string
+    filters: any[]
+    clientSystemPrompt: string | null
+    parsedRagConfig: any
+}): Promise<void> => {
     _setStreamingResponseHeaders(res)
 
-    // establish connection
+    // establish connection immediately to prevent 504
     res.write(': ping\n\n')
 
-    console.log('llmProvider', llmProvider)
+    // Log providing details
+    console.log(`Starting RAG process for stream (Provider: ${parsedRagConfig.llmProvider})`)
 
     let fullResponse = ''
     try {
-        for await (const chunk of streamChatAgent({
+        // Run RAG graph *after* headers are sent
+        const ragResultState = await ragGraph.invoke({
             query,
+            project,
+            chatId,
+            filters,
+            clientSystemPrompt,
+            ragConfig: parsedRagConfig,
+        })
+
+        const { query: finalQuery, contextStr, prompt, rerankedResults } = ragResultState
+
+        console.log('RAG process completed, starting generation')
+
+        for await (const chunk of streamChatAgent({
+            query: finalQuery,
             prompt,
-            contextStr,
-            rerankResults,
-            enableReferences,
-            llmProvider,
+            contextStr: contextStr || '',
+            rerankResults: rerankedResults || [],
+            enableReferences: parsedRagConfig.references.enabled,
+            llmProvider: parsedRagConfig.llmProvider,
         })) {
             // format as Server-Sent Event
             const data = JSON.stringify(chunk)
@@ -203,6 +223,11 @@ export const _generateStreamingResponse = async ({
                 fullResponse += chunk.content || ''
             }
         }
+
+        // Save chat to DB
+        const finalChatId = await createChatMessagePair(project, query, fullResponse, chatId, clientSystemPrompt)
+        res.write(`data: ${JSON.stringify({ type: 'done', chat_id: finalChatId })}\n\n`)
+
     } catch (error) {
         Sentry.captureException(error)
         logger.error({ err: error }, 'Streaming chat agent error')
@@ -210,8 +235,9 @@ export const _generateStreamingResponse = async ({
             IS_DEVELOPMENT && error instanceof Error ? `${error.message}\n${error.stack}` : 'An error occurred'
         const errorData = JSON.stringify({ type: 'error', content: errorMsg })
         res.write(`data: ${errorData}\n\n`)
+    } finally {
+        res.end()
     }
-    return fullResponse
 }
 
 export const listChats = async (req: Request, res: Response) => {
