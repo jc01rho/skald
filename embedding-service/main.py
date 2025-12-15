@@ -26,17 +26,19 @@ logger.setLevel(getattr(logging, LOG_LEVEL, logging.INFO))
 app = FastAPI(title="Embedding Service", version="1.0.0")
 
 # Configuration
-EMBEDDING_MODEL = os.getenv("EMBEDDING_MODEL", "models/gemini-embedding-001")
-RERANK_MODEL = os.getenv("RERANK_MODEL", "dragonkue/bge-reranker-v2-m3-ko")
+EMBEDDING_MODEL = os.getenv("EMBEDDING_MODEL", "kakaocorp/kanana-nano-2.1b-embedding")
+RERANK_MODEL = os.getenv("RERANK_MODEL", "xitao/bge-reranker-v2-m3:latest")
 TARGET_DIMENSION = int(os.getenv("TARGET_DIMENSION", "768"))
-EMBEDDING_PROVIDER = os.getenv("EMBEDDING_PROVIDER", "gemini")  # local, ollama, or gemini
-RERANK_PROVIDER = os.getenv("RERANK_PROVIDER", "local")  # local (CrossEncoder), ollama
+EMBEDDING_PROVIDER = os.getenv("EMBEDDING_PROVIDER", "external")  # local, ollama, gemini, or external
+RERANK_PROVIDER = os.getenv("RERANK_PROVIDER", "ollama")  # local (CrossEncoder), ollama
 QUERY_LANGUAGE = os.getenv("QUERY_LANGUAGE", "ko")  # 한글 최적화 기본값
 _ollama_url = os.getenv("LOCAL_LLM_BASE_URL", "http://localhost:11434")
 # Remove /v1 suffix if present (Ollama native API doesn't use /v1)
 OLLAMA_BASE_URL = _ollama_url.rstrip("/").removesuffix("/v1")
 GEMINI_API_KEYS_STR = os.getenv("GEMINI_API_KEY", "")
 GEMINI_API_KEYS = [k.strip() for k in GEMINI_API_KEYS_STR.split(",") if k.strip()]
+# External embedding service URL (e.g., vLLM, TGI, or custom embedding server)
+EXTERNAL_EMBEDDING_URL = os.getenv("EXTERNAL_EMBEDDING_URL", "http://192.168.150.37:8889/embeddings")
 
 print(f"Using embedding provider: {EMBEDDING_PROVIDER}")
 print(f"Using rerank provider: {RERANK_PROVIDER}")
@@ -44,6 +46,8 @@ print(f"Using embedding model: {EMBEDDING_MODEL}")
 print(f"Using rerank model: {RERANK_MODEL}")
 print(f"Using target dimension: {TARGET_DIMENSION}")
 print(f"Query language: {QUERY_LANGUAGE}")
+if EMBEDDING_PROVIDER == "external":
+    print(f"Using external embedding URL: {EXTERNAL_EMBEDDING_URL}")
 
 # Thread-safe exhaustion-based round-robin API key management
 class GeminiKeyManager:
@@ -322,6 +326,50 @@ async def get_ollama_embedding(text: str) -> list[float]:
         except Exception as e:
             logger.error(f"Failed to get embedding from Ollama: {str(e)}")
             raise HTTPException(status_code=500, detail=f"Ollama connection failed: {str(e)}")
+
+
+async def get_external_embedding(text: str) -> list[float]:
+    """
+    Get embedding from external embedding service (vLLM, TGI, or OpenAI-compatible API).
+    Supports both OpenAI-compatible format and simple embedding format.
+    """
+    async with httpx.AsyncClient(timeout=60.0) as client:
+        try:
+            # Try OpenAI-compatible format first
+            response = await client.post(
+                EXTERNAL_EMBEDDING_URL,
+                json={
+                    "model": EMBEDDING_MODEL,
+                    "input": text
+                },
+                headers={"Content-Type": "application/json"}
+            )
+            response.raise_for_status()
+            data = response.json()
+            
+            # Handle different response formats
+            if "data" in data and len(data["data"]) > 0:
+                # OpenAI-compatible format: {"data": [{"embedding": [...]}]}
+                embedding = data["data"][0]["embedding"]
+            elif "embedding" in data:
+                # Simple format: {"embedding": [...]}
+                embedding = data["embedding"]
+            elif "embeddings" in data:
+                # Alternative format: {"embeddings": [[...]]}
+                embedding = data["embeddings"][0] if isinstance(data["embeddings"][0], list) else data["embeddings"]
+            else:
+                logger.error(f"Unexpected response format from external embedding service: {data.keys()}")
+                raise HTTPException(status_code=500, detail=f"Unexpected response format: {data.keys()}")
+            
+            logger.debug(f"Got embedding from external service, dimension: {len(embedding)}")
+            return embedding
+            
+        except httpx.HTTPStatusError as e:
+            logger.error(f"External embedding API error: {e.response.status_code} - {e.response.text}")
+            raise HTTPException(status_code=502, detail=f"External embedding API error: {str(e)}")
+        except Exception as e:
+            logger.error(f"Failed to get embedding from external service: {str(e)}")
+            raise HTTPException(status_code=500, detail=f"External embedding connection failed: {str(e)}")
 
 
 def _gemini_call(text: str, api_key: str, model: str, task_type: str = "retrieval_document", key_index: int = 0, total_keys: int = 1) -> list[float]:
@@ -618,6 +666,10 @@ async def embed(request: EmbedRequest):
             embedding = await get_ollama_embedding(request.content)
         elif EMBEDDING_PROVIDER == "gemini":
             embedding = await get_gemini_embedding(request.content, usage)
+        elif EMBEDDING_PROVIDER == "external":
+            # 한글 쿼리 전처리
+            processed_content = preprocess_korean_query(request.content) if usage == "search" else request.content
+            embedding = await get_external_embedding(processed_content)
         elif EMBEDDING_PROVIDER == "local":
             if embedding_model is None:
                 raise HTTPException(status_code=503, detail="Local embedding model not available")

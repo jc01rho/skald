@@ -81,9 +81,22 @@ spec:
               name: skald-config
               key: LOCAL_EMBEDDING_MODEL
         - name: RERANK_MODEL
-          value: "xitao/bge-reranker-v2-m3:latest"
+          valueFrom:
+            configMapKeyRef:
+              name: skald-config
+              key: LOCAL_RERANK_MODEL
         - name: RERANK_PROVIDER
-          value: "ollama"
+          valueFrom:
+            configMapKeyRef:
+              name: skald-config
+              key: RERANK_PROVIDER
+        # 외부 임베딩 서비스 URL (vLLM, TGI 등)
+        - name: EXTERNAL_EMBEDDING_URL
+          valueFrom:
+            configMapKeyRef:
+              name: skald-config
+              key: EXTERNAL_EMBEDDING_URL
+              optional: true
         # Ollama/Local LLM connection URL
         - name: LOCAL_LLM_BASE_URL
           valueFrom:
