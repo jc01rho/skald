@@ -105,7 +105,9 @@ You can deploy Skald without **any** third-party dependencies (including OpenAI)
 
 ## 🗒️ License
 
-[MIT](https://github.com/skaldlabs/skald/blob/main/LICENSE) 🤸
+This repo is available under the [MIT license](https://github.com/skaldlabs/skald/blob/main/LICENSE), except for the `ee` directory (which has [its license here](https://github.com/skaldlabs/skald/blob/main/ee/LICENSE)) if applicable.
+
+If you absolutely need 100% FOSS code, you can use the [skald-foss](https://github.com/skaldlabs/skald-foss) repository, which contains all the code from this repo with the `ee` directory removed. It is fully-featured and as of today we actually run skald-foss on our Cloud offering. Our Enterprise Edition today is meant for on-prem deployments.
 
 ## 🤝 Contributing
 

@@ -17,10 +17,8 @@ import { Project } from '../entities/Project'
 import { Organization } from '../entities/Organization'
 import { OrganizationMembership } from '../entities/OrganizationMembership'
 import cookieParser from 'cookie-parser'
-import { chat } from '../api/chat'
 import { chatRouter } from '../api/chat'
 import { requireProjectAccess } from '../middleware/authMiddleware'
-import * as chatAgentPreprocessing from '../agents/chatAgent/preprocessing'
 import * as chatAgent from '../agents/chatAgent/chatAgent'
 import { ChatMessage } from '@/entities/ChatMessage'
 import { Chat } from '@/entities/Chat'
@@ -329,6 +327,7 @@ describe('Chat API', () => {
             ;(ragGraphModule.ragGraph.invoke as jest.Mock).mockResolvedValue(mockRagState)
 
             async function* mockStreamGenerator() {
+                yield { type: 'token', content: 'This is the AI response' }
                 throw new Error('Chat agent error')
             }
             ;(chatAgent.streamChatAgent as jest.Mock).mockReturnValue(mockStreamGenerator())
@@ -1172,7 +1171,7 @@ describe('Chat API', () => {
                 const query = 'how to auth users api'
                 const result = await rewrite(query, [])
 
-                expect(LLMService.getLLM).toHaveBeenCalledWith(0.3)
+                expect(LLMService.getLLM).toHaveBeenCalledWith({ purpose: 'classification', temperature: 0.3 })
                 expect(mockInvoke).toHaveBeenCalledWith([
                     { role: 'system', content: expect.any(String) },
                     { role: 'user', content: expect.stringContaining(query) },

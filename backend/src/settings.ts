@@ -92,7 +92,12 @@ export const AWS_SECRET_ACCESS_KEY = process.env.AWS_SECRET_ACCESS_KEY
 export const S3_BUCKET_NAME = process.env.S3_BUCKET_NAME
 
 // ---- LLM Configuration ----
-export const LLM_PROVIDER = process.env.LLM_PROVIDER || 'openai'
+export const LLM_PROVIDER = (process.env.LLM_PROVIDER || 'openai') as
+    | 'openai'
+    | 'anthropic'
+    | 'local'
+    | 'groq'
+    | 'gemini'
 
 // OpenAI
 export const OPENAI_API_KEY = process.env.OPENAI_API_KEY
@@ -100,7 +105,7 @@ export const OPENAI_MODEL = process.env.OPENAI_MODEL || 'gpt-4o-mini'
 
 // Anthropic
 export const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY
-export const ANTHROPIC_MODEL = process.env.ANTHROPIC_MODEL || 'claude-3-7-sonnet-20250219'
+export const ANTHROPIC_MODEL = process.env.ANTHROPIC_MODEL || 'claude-sonnet-4-5-20250929'
 
 // Local LLM
 export const LOCAL_LLM_MODEL = process.env.LOCAL_LLM_MODEL || 'llama-3.1-8b-instruct'

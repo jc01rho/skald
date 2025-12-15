@@ -1,43 +1,48 @@
-import express from 'express'
+import express, { NextFunction, Router, RequestHandler, Request, Response } from 'express'
 import cors from 'cors'
 import { RequestContext } from '@mikro-orm/postgresql'
 import { userMiddleware } from '@/middleware/userMiddleware'
+
+import { adminRouter } from '@/api/admin'
+import { authRouter } from '@/api/auth'
 import { chatRouter } from '@/api/chat'
+import { configRouter } from '@/api/config'
+import { emailVerificationRouter } from '@/api/emailVerification'
+import { evaluationDatasetRouter } from '@/api/evaluationDataset'
+import { experimentRouter } from '@/api/experiment'
 import { health } from '@/api/health'
-import { requireAuth } from '@/middleware/authMiddleware'
+import { requireAuth, requireProjectAccess } from '@/middleware/authMiddleware'
 import { initDI } from '@/di'
-import { Request, Response, NextFunction } from 'express'
 import { search } from '@/api/search'
+import { memoRouter } from '@/api/memo'
+import { onboardingRouter } from '@/api/onboarding'
 import { organizationRouter } from '@/api/organization'
+import { planRouter } from '@/api/plan'
 import { projectRouter } from '@/api/project'
+import { stripeWebhook } from '@/api/stripe_webhook'
+import { subscriptionRouter } from '@/api/subscription'
 import { userRouter } from '@/api/user'
-import cookieParser from 'cookie-parser'
+import { logger } from '@/lib/logger'
+import { posthog } from '@/lib/posthogUtils'
+import { authRateLimiter, generalRateLimiter } from '@/middleware/rateLimitMiddleware'
+import { securityHeadersMiddleware } from '@/middleware/securityMiddleware'
 import {
     CORS_ALLOWED_ORIGINS,
     CORS_ALLOW_CREDENTIALS,
-    IS_DEVELOPMENT,
     ENABLE_SECURITY_SETTINGS,
     EXPRESS_SERVER_PORT,
+    IS_DEVELOPMENT,
 } from '@/settings'
-import { emailVerificationRouter } from '@/api/emailVerification'
-import { memoRouter } from '@/api/memo'
-import { subscriptionRouter } from '@/api/subscription'
-import { planRouter } from '@/api/plan'
-import { stripeWebhook } from '@/api/stripe_webhook'
-import { adminRouter } from '@/api/admin'
-import { evaluationDatasetRouter } from '@/api/evaluationDataset'
-import { experimentRouter } from '@/api/experiment'
-import { configRouter } from '@/api/config'
-import { authRouter } from '@/api/auth'
-import { onboardingRouter } from '@/api/onboarding'
-import { securityHeadersMiddleware } from '@/middleware/securityMiddleware'
-import { authRateLimiter, generalRateLimiter } from '@/middleware/rateLimitMiddleware'
-import { requireProjectAccess } from '@/middleware/authMiddleware'
-import { logger } from '@/lib/logger'
-import { posthog } from '@/lib/posthogUtils'
 import * as Sentry from '@sentry/node'
+import cookieParser from 'cookie-parser'
 
-export const startExpressServer = async () => {
+export type ExtraRoute = [string, RequestHandler[], Router]
+export type PublicRoute = [string, 'GET' | 'POST', RequestHandler[], RequestHandler]
+
+export const startExpressServer = async (
+    extraPrivateRoutes: ExtraRoute[] = [],
+    extraPublicRoutes: PublicRoute[] = []
+) => {
     // DI stands for Dependency Injection. the naming/acronym is a bit confusing, but we're using it
     // because it's the established patter used by mikro-orm, and we want to be able to easily find information
     // about our setup online. see e.g. https://github.com/mikro-orm/express-ts-example-app/blob/master/app/server.ts
@@ -79,6 +84,16 @@ export const startExpressServer = async () => {
     privateRoutesRouter.use(requireAuth())
 
     app.get('/api/health', health)
+
+    // register public routes (e.g., enterprise public endpoints)
+    for (const [route, method, middleware, handler] of extraPublicRoutes) {
+        if (method === 'GET') {
+            app.get(route, ...middleware, handler)
+        } else if (method === 'POST') {
+            app.post(route, ...middleware, handler)
+        }
+    }
+
     app.use('/api/auth', authRateLimiter, authRouter)
     app.use('/api/user', authRateLimiter, userRouter)
     privateRoutesRouter.use('/email_verification', emailVerificationRouter)
@@ -95,12 +110,24 @@ export const startExpressServer = async () => {
     privateRoutesRouter.use('/onboarding', onboardingRouter)
     privateRoutesRouter.use('/v1/config', configRouter)
 
+    // register extra private routes (e.g., enterprise features)
+    for (const [route, middleware, router] of extraPrivateRoutes) {
+        privateRoutesRouter.use(route, ...middleware, router)
+    }
+
     app.use('/api', privateRoutesRouter)
 
     app.use(route404)
-
     // the error handler must be registered before any other error middleware and after all controllers
     Sentry.setupExpressErrorHandler(app)
+
+    // Handle JSON parsing errors from body-parser
+    app.use(function onJsonParseError(err: any, req: Request, res: Response, next: NextFunction) {
+        if (err instanceof SyntaxError && 'body' in err) {
+            return res.status(400).json({ error: 'Invalid JSON in request body' })
+        }
+        next(err)
+    })
 
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
     app.use(function onError(err: any, req: Request, res: Response, next: NextFunction) {
@@ -108,6 +135,7 @@ export const startExpressServer = async () => {
             logger.error({ err })
             return res.status(500).json({ error: String(err) })
         }
+        logger.error({ err })
 
         res.statusCode = 503
         // res.sentry is the sentry error id and the client can use this when reporting the error to support.
