@@ -96,8 +96,9 @@ spec:
             configMapKeyRef:
               name: skald-config
               key: LOCAL_LLM_BASE_URL
+        # Gemini embedding-001 supports: 768, 1536, 3072 (MRL dimensions)
         - name: TARGET_DIMENSION
-          value: "2048"
+          value: "1536"
         # 한글 최적화 설정
         - name: QUERY_LANGUAGE
           valueFrom:
@@ -150,9 +151,17 @@ spec:
           mountPath: /tmp
         - name: cache
           mountPath: /app/cache
+        - name: huggingface-cache
+          mountPath: /.cache
+        - name: home-cache
+          mountPath: /home/appuser/.cache
       # 임시 볼륨
       volumes:
       - name: tmp
         emptyDir: {}
       - name: cache
+        emptyDir: {}
+      - name: huggingface-cache
+        emptyDir: {}
+      - name: home-cache
         emptyDir: {}

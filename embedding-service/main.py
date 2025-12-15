@@ -3,6 +3,7 @@ import asyncio
 import logging
 import os
 import time
+import threading
 from typing import Literal, Optional
 import httpx
 import google.generativeai as genai
@@ -44,9 +45,87 @@ print(f"Using rerank model: {RERANK_MODEL}")
 print(f"Using target dimension: {TARGET_DIMENSION}")
 print(f"Query language: {QUERY_LANGUAGE}")
 
-# Round-robin key iterator
-import itertools
-gemini_key_cycle = None
+# Thread-safe round-robin API key management
+class GeminiKeyManager:
+    """
+    Thread-safe round-robin API key manager with rate-limit handling.
+    """
+    def __init__(self, api_keys: list[str]):
+        self._keys = api_keys
+        self._index = 0
+        self._lock = threading.Lock()
+        self._key_count = len(api_keys)
+        # Track rate-limited keys: key -> cooldown_until timestamp
+        self._rate_limited: dict[str, float] = {}
+        
+    def get_next_key(self) -> tuple[str, int]:
+        """
+        Get the next available API key in round-robin fashion.
+        Returns (api_key, key_index) tuple.
+        Skips rate-limited keys if possible.
+        """
+        with self._lock:
+            current_time = time.time()
+            
+            # Try to find a non-rate-limited key
+            for _ in range(self._key_count):
+                key = self._keys[self._index]
+                key_idx = self._index
+                self._index = (self._index + 1) % self._key_count
+                
+                # Check if this key is rate-limited
+                if key in self._rate_limited:
+                    if current_time < self._rate_limited[key]:
+                        continue  # Skip this key, still in cooldown
+                    else:
+                        del self._rate_limited[key]  # Cooldown expired
+                
+                return key, key_idx
+            
+            # All keys are rate-limited, return the one with earliest expiry
+            earliest_key = min(self._rate_limited, key=lambda k: self._rate_limited[k])
+            earliest_idx = self._keys.index(earliest_key)
+            return earliest_key, earliest_idx
+    
+    def mark_rate_limited(self, key: str, cooldown_seconds: float = 60.0):
+        """Mark a key as rate-limited for the specified duration."""
+        with self._lock:
+            self._rate_limited[key] = time.time() + cooldown_seconds
+            logger.warning(f"API key [{self._keys.index(key) + 1}/{self._key_count}] rate-limited for {cooldown_seconds}s")
+    
+    def get_key_count(self) -> int:
+        return self._key_count
+
+
+# Dimension error cooldown management
+class DimensionErrorCooldown:
+    """
+    Manages cooldown period when dimension mismatch errors occur.
+    """
+    def __init__(self, cooldown_seconds: float = 3600.0):  # 1 hour default
+        self._cooldown_until: float = 0.0
+        self._lock = threading.Lock()
+        self._cooldown_duration = cooldown_seconds
+    
+    def is_in_cooldown(self) -> tuple[bool, float]:
+        """Check if currently in cooldown. Returns (is_in_cooldown, remaining_seconds)."""
+        with self._lock:
+            current_time = time.time()
+            if current_time < self._cooldown_until:
+                remaining = self._cooldown_until - current_time
+                return True, remaining
+            return False, 0.0
+    
+    def activate_cooldown(self):
+        """Activate the cooldown period."""
+        with self._lock:
+            self._cooldown_until = time.time() + self._cooldown_duration
+            logger.error(f"Dimension error detected! Embedding service entering {self._cooldown_duration/60:.0f} minute cooldown.")
+
+
+# Initialize managers
+gemini_key_manager: GeminiKeyManager | None = None
+dimension_error_cooldown = DimensionErrorCooldown(cooldown_seconds=3600.0)  # 1 hour
 
 if EMBEDDING_PROVIDER == "ollama":
     print(f"Using Ollama base URL: {OLLAMA_BASE_URL}")
@@ -54,8 +133,8 @@ if EMBEDDING_PROVIDER == "gemini":
     if not GEMINI_API_KEYS:
         logger.error("GEMINI_API_KEY is not set")
     else:
-        gemini_key_cycle = itertools.cycle(GEMINI_API_KEYS)
-        print(f"Gemini API configured with {len(GEMINI_API_KEYS)} keys")
+        gemini_key_manager = GeminiKeyManager(GEMINI_API_KEYS)
+        print(f"Gemini API configured with {len(GEMINI_API_KEYS)} keys (thread-safe round-robin)")
 
 # Initialize models lazily based on provider
 embedding_model = None
@@ -139,10 +218,9 @@ def normalize_embedding(embedding: list[float]) -> list[float]:
         # Pad with zeros
         return embedding + [0.0] * (TARGET_DIMENSION - current_dim)
     else:
-        # Vector too large - not supported
-        raise ValueError(
-            f"Embedding dimension {current_dim} exceeds maximum supported dimension {TARGET_DIMENSION}"
-        )
+        # Vector too large - truncate (slicing)
+        # Matryoshka Representation Learning 지원 모델은 앞부분만 사용해도 성능이 유지됨
+        return embedding[:TARGET_DIMENSION]
 
 
 async def get_ollama_embedding(text: str) -> list[float]:
@@ -164,42 +242,120 @@ async def get_ollama_embedding(text: str) -> list[float]:
             raise HTTPException(status_code=500, detail=f"Ollama connection failed: {str(e)}")
 
 
-def _gemini_call(text: str, api_key: str, model: str, task_type: str = "retrieval_document") -> list[float]:
+def _gemini_call(text: str, api_key: str, model: str, task_type: str = "retrieval_document", key_index: int = 0, total_keys: int = 1) -> list[float]:
     """
     Gemini 임베딩 API 호출
     한글 텍스트에 최적화된 task_type 사용
+    output_dimensionality를 사용하여 차원을 TARGET_DIMENSION에 맞춤 (Matryoshka Representation Learning 지원 모델)
     """
+    logger.debug(f"Using Gemini API key [{key_index + 1}/{total_keys}]")
     genai.configure(api_key=api_key)
-    result = genai.embed_content(
-        model=model,
-        content=text,
-        task_type=task_type
-    )
-    return result['embedding']
+    
+    # output_dimensionality 지원 여부는 모델에 따라 다르지만, 
+    # 최신 모델들은 지원하며 지원하지 않는 경우 무시되거나 에러가 발생할 수 있음.
+    # 안전하게 try-except 또는 파라미터 전달
+    try:
+        result = genai.embed_content(
+            model=model,
+            content=text,
+            task_type=task_type,
+            output_dimensionality=TARGET_DIMENSION
+        )
+    except TypeError:
+        # output_dimensionality 파라미터를 지원하지 않는 경우 (구버전 라이브러리 등)
+        logger.warning(f"Model {model} does not support output_dimensionality parameter, falling back to default")
+        result = genai.embed_content(
+            model=model,
+            content=text,
+            task_type=task_type
+        )
+    
+    embedding = result['embedding']
+    
+    # Log dimension info for debugging (MRL truncation happens in normalize_embedding)
+    if len(embedding) != TARGET_DIMENSION:
+        logger.debug(f"Gemini embedding dimension {len(embedding)} will be normalized to {TARGET_DIMENSION} via MRL truncation")
+        
+    return embedding
 
 
 async def get_gemini_embedding(text: str, usage: str = "storage") -> list[float]:
     """
-    Get embedding from Gemini API using round-robin keys
+    Get embedding from Gemini API using thread-safe round-robin keys.
+    Includes retry logic for rate-limit errors and dimension error cooldown.
     한글 텍스트에 최적화된 task_type 자동 선택
     """
-    try:
-        # Rotate API key
-        if gemini_key_cycle:
-            current_key = next(gemini_key_cycle)
-        else:
-             raise ValueError("No Gemini API keys configured")
-
-        # 한글 최적화: 적절한 task_type 선택
-        task_type = get_task_type_for_korean(usage)
+    # Check dimension error cooldown first
+    is_cooldown, remaining = dimension_error_cooldown.is_in_cooldown()
+    if is_cooldown:
+        remaining_minutes = remaining / 60
+        error_msg = f"Embedding service in cooldown due to dimension error. Retry after {remaining_minutes:.1f} minutes."
+        logger.warning(error_msg)
+        raise HTTPException(status_code=503, detail=error_msg)
+    
+    if not gemini_key_manager:
+        raise HTTPException(status_code=503, detail="No Gemini API keys configured")
+    
+    # 한글 최적화: 적절한 task_type 선택
+    task_type = get_task_type_for_korean(usage)
+    
+    # 한글 쿼리 전처리
+    processed_text = preprocess_korean_query(text) if usage == "search" else text
+    
+    max_retries = gemini_key_manager.get_key_count()
+    last_error = None
+    
+    for attempt in range(max_retries):
+        current_key, key_index = gemini_key_manager.get_next_key()
         
-        # 한글 쿼리 전처리
-        processed_text = preprocess_korean_query(text) if usage == "search" else text
-        
-        return await run_in_threadpool(_gemini_call, processed_text, current_key, EMBEDDING_MODEL, task_type)
-    except Exception as e:
-        logger.error(f"Failed to get embedding from Gemini: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"Gemini API error: {str(e)}")
+        try:
+            return await run_in_threadpool(
+                _gemini_call, 
+                processed_text, 
+                current_key, 
+                EMBEDDING_MODEL, 
+                task_type,
+                key_index,
+                gemini_key_manager.get_key_count()
+            )
+        except ValueError as e:
+            # Dimension mismatch error - activate 1 hour cooldown
+            error_str = str(e)
+            if "dimension" in error_str.lower() and "exceeds" in error_str.lower():
+                dimension_error_cooldown.activate_cooldown()
+                raise HTTPException(
+                    status_code=503, 
+                    detail=f"Dimension error detected. Service entering 1-hour cooldown. Error: {error_str}"
+                )
+            raise HTTPException(status_code=500, detail=f"Gemini API error: {error_str}")
+        except Exception as e:
+            error_str = str(e)
+            last_error = e
+            
+            # Check for rate limit (429) or quota exceeded errors
+            is_rate_limit = (
+                "429" in error_str or 
+                "rate" in error_str.lower() or 
+                "quota" in error_str.lower() or
+                "resource_exhausted" in error_str.lower()
+            )
+            
+            if is_rate_limit:
+                # Mark this key as rate-limited and try next key
+                gemini_key_manager.mark_rate_limited(current_key, cooldown_seconds=60.0)
+                logger.warning(f"Rate limit hit on key [{key_index + 1}/{gemini_key_manager.get_key_count()}], trying next key (attempt {attempt + 1}/{max_retries})")
+                continue
+            else:
+                # Non-rate-limit error, don't retry
+                logger.error(f"Failed to get embedding from Gemini: {error_str}")
+                raise HTTPException(status_code=500, detail=f"Gemini API error: {error_str}")
+    
+    # All retries exhausted
+    logger.error(f"All {max_retries} API keys exhausted due to rate limiting")
+    raise HTTPException(
+        status_code=429, 
+        detail=f"All API keys rate-limited. Please try again later. Last error: {str(last_error)}"
+    )
 
 
 async def get_ollama_rerank_embedding(text: str) -> list[float]:
