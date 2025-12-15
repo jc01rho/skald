@@ -404,7 +404,10 @@ deploy_backend() {
     log_info "Step 5: Backend 서비스 배포"
     
     # 환경변수 치환을 위한 임시 파일 생성
-    sed "s|\${DOCKER_REGISTRY:-skaldlabs}|$DOCKER_REGISTRY|g" api-deployment.yaml | \
+    # Backend-specific registry override (as per user request)
+    local BACKEND_REGISTRY="ghcr.io/jc01rho"
+    
+    sed "s|\${DOCKER_REGISTRY:-skaldlabs}|$BACKEND_REGISTRY|g" api-deployment.yaml | \
     sed "s|\${IMAGE_TAG:-latest}|$IMAGE_TAG|g" > /tmp/api-deployment.yaml
     echo "API Deployment 임시 파일 생성 완료: /tmp/api-deployment.yaml"
     echo "DOCKER_REGISTRY in temp file: $(grep 'image:' /tmp/api-deployment.yaml)"
@@ -425,7 +428,7 @@ deploy_backend() {
     fi
     
     # Memo Processing 서비스 배포
-    sed "s|\${DOCKER_REGISTRY:-skaldlabs}|$DOCKER_REGISTRY|g" memo-processing-deployment.yaml | \
+    sed "s|\${DOCKER_REGISTRY:-skaldlabs}|$BACKEND_REGISTRY|g" memo-processing-deployment.yaml | \
     sed "s|\${IMAGE_TAG:-latest}|$IMAGE_TAG|g" > /tmp/memo-processing-deployment.yaml
     
     if kubectl apply -f /tmp/memo-processing-deployment.yaml -n "$NAMESPACE"; then

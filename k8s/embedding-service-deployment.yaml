@@ -15,7 +15,7 @@ metadata:
   annotations:
     description: "Skald 임베딩 서비스 Deployment (Python FastAPI 기반)"
 spec:
-  replicas: 2
+  replicas: 1
   strategy:
     type: RollingUpdate
     rollingUpdate:
@@ -147,11 +147,13 @@ spec:
         # 참고: 가벼운 환경에서는 RERANK_PROVIDER=ollama로 변경 권장
         resources:
           requests:
-            memory: "2Gi"
-            cpu: "500m"
-          limits:
             memory: "4Gi"
-            cpu: "2000m"
+            cpu: "1000m"
+            nvidia.com/gpu: 1
+          limits:
+            memory: "8Gi"
+            cpu: "4000m"
+            nvidia.com/gpu: 1
         # 임시 볼륨 마운트 (readOnlyRootFilesystem을 위함)
         volumeMounts:
         - name: tmp
@@ -172,3 +174,6 @@ spec:
         emptyDir: {}
       - name: home-cache
         emptyDir: {}
+      # ML 노드에 배포 (GPU 사용)
+      nodeSelector:
+        kubernetes.io/hostname: ml.node.k8s.sparrow.local
