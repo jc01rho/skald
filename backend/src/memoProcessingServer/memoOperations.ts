@@ -9,7 +9,7 @@ import { MemoTag } from '@/entities/MemoTag'
 import { MemoSummary } from '@/entities/MemoSummary'
 import { logger } from '@/lib/logger'
 
-const MAX_TOKENS_FOR_LLM = 100000
+const MAX_TOKENS_FOR_LLM = 4096
 // Rough estimate: 1 token is approximately 4 characters (conservative)
 const CHARS_PER_TOKEN = 4
 const MAX_CHARS_FOR_LLM = MAX_TOKENS_FOR_LLM * CHARS_PER_TOKEN

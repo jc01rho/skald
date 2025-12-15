@@ -35,19 +35,26 @@ export function createMemoSummaryAgent() {
         async summarize(memoContent: string): Promise<MemoSummaryOutput> {
             const prompt = MEMO_SUMMARY_AGENT_INSTRUCTIONS + '\n\n' + `Text to summarize:\n${memoContent}`
 
-            const result = await structuredLlm.invoke(
-                [
+            console.log(`[MemoSummaryAgent] Starting summary generation (length: ${memoContent.length})`)
+            try {
+                const result = await structuredLlm.invoke(
+                    [
+                        {
+                            role: 'user',
+                            content: prompt,
+                        },
+                    ],
                     {
-                        role: 'user',
-                        content: prompt,
-                    },
-                ],
-                {
-                    callbacks: [], // Disable LangSmith tracing
-                }
-            )
-
-            return result as MemoSummaryOutput
+                        callbacks: [], // Disable LangSmith tracing
+                    }
+                )
+                console.log(`[MemoSummaryAgent] Summary generation successful`)
+                return result as MemoSummaryOutput
+            } catch (error) {
+                console.error(`[MemoSummaryAgent] Summary generation failed:`, error)
+                // Fallback to basic string if structured output fails (optional, but good for robustness)
+                throw error
+            }
         },
     }
 }
