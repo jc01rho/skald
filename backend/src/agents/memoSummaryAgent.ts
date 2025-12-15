@@ -9,9 +9,11 @@ const MemoSummaryOutputSchema = z.object({
 export type MemoSummaryOutput = z.infer<typeof MemoSummaryOutputSchema>
 
 const MEMO_SUMMARY_AGENT_INSTRUCTIONS = `
-You're an expert assistant that summarizes text content. Given a text, summarize its content in at max one paragraph.
-Be concise but make sure to include all the important information.
-If the content follows a format like markdown, include the outline of the document at the end of your summary, covering all headings.
+당신은 텍스트 내용을 요약하는 전문 보조 도구입니다. 주어진 텍스트의 내용을 최대 한 단락으로 요약하세요.
+
+간결하게 작성하되 모든 중요한 정보를 포함해야 합니다.
+
+내용이 마크다운과 같은 형식을 따를 경우, 요약문 끝에 문서의 개요를 포함하여 모든 제목을 다루도록 하세요.
 `
 
 /**
@@ -33,7 +35,7 @@ export function createMemoSummaryAgent() {
          * @returns Promise resolving to the generated summary
          */
         async summarize(memoContent: string): Promise<MemoSummaryOutput> {
-            const prompt = MEMO_SUMMARY_AGENT_INSTRUCTIONS + '\n\n' + `Text to summarize:\n${memoContent}`
+            const prompt = MEMO_SUMMARY_AGENT_INSTRUCTIONS + '\n\n' + `요약할 텍스트:\n${memoContent}`
 
             console.log(`[MemoSummaryAgent] Starting summary generation (length: ${memoContent.length})`)
             try {

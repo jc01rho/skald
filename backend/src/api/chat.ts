@@ -227,7 +227,6 @@ export const _generateStreamingResponse = async ({
         // Save chat to DB
         const finalChatId = await createChatMessagePair(project, query, fullResponse, chatId, clientSystemPrompt)
         res.write(`data: ${JSON.stringify({ type: 'done', chat_id: finalChatId })}\n\n`)
-
     } catch (error) {
         Sentry.captureException(error)
         logger.error({ err: error }, 'Streaming chat agent error')

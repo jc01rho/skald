@@ -438,6 +438,17 @@ deploy_backend() {
         exit 1
     fi
     
+    # 강제 롤아웃 리스타트 (latest 태그 갱신을 위해)
+    # 이미지가 변경되지 않았더라도(latest), 파드를 재시작하여 새 이미지를 pull하도록 함
+    log_info "Deployments 롤아웃 리스타트 실행..."
+    kubectl rollout restart deployment/api-server -n "$NAMESPACE"
+    kubectl rollout restart deployment/memo-processing-server -n "$NAMESPACE"
+    
+    # 롤아웃 완료 대기
+    log_info "롤아웃 완료 대기 중..."
+    kubectl rollout status deployment/api-server -n "$NAMESPACE"
+    kubectl rollout status deployment/memo-processing-server -n "$NAMESPACE"
+    
     # Backend Pod 준비 대기
     wait_for_pods "component=api" 300
     wait_for_pods "component=memo-processing" 300
