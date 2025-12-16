@@ -17,10 +17,7 @@ metadata:
 spec:
   replicas: 1
   strategy:
-    type: RollingUpdate
-    rollingUpdate:
-      maxSurge: 1
-      maxUnavailable: 0
+    type: Recreate
   selector:
     matchLabels:
       app: skald
@@ -153,6 +150,7 @@ spec:
           limits:
             memory: "8Gi"
             cpu: "4000m"
+            nvidia.com/gpu: "1"
         # 임시 볼륨 마운트 (readOnlyRootFilesystem을 위함)
         volumeMounts:
         - name: source-code

@@ -931,32 +931,37 @@ groq_rate_limiter = GroqRateLimiter()
 # Model fallback chains (Primary -> [Fallbacks])
 GROQ_MODEL_FALLBACKS = {
     # High Intelligence / Chat Tier
-    "qwen/qwen3-32b": [
-        "qwen/qwen3-32b", 
-        "moonshotai/kimi-k2-instruct", # 60 RPM
-        "llama-3.3-70b-versatile", 
-        "meta-llama/llama-4-scout-17b-16e-instruct",
-        "openai/gpt-oss-120b", 
-        "groq/compound"
-    ],
     "llama-3.3-70b-versatile": [
         "llama-3.3-70b-versatile", 
-        "moonshotai/kimi-k2-instruct", # 60 RPM
         "qwen/qwen3-32b", 
-        "meta-llama/llama-4-maverick-17b-128e-instruct",
+        "moonshotai/kimi-k2-instruct", # 60 RPM
+# Fallback to Fast Tier if High Tier is exhausted
         "openai/gpt-oss-120b", 
-        "groq/compound"
-    ],
-    
-    # Fast / Classification Tier
-    "llama-3.1-8b-instant": [
+        "groq/compound",
         "llama-3.1-8b-instant", 
-        "moonshotai/kimi-k2-instruct-0905", # 60 RPM
+        "moonshotai/kimi-k2-instruct-0905",
+        "meta-llama/llama-4-scout-17b-16e-instruct",
         "meta-llama/llama-4-maverick-17b-128e-instruct",
         "openai/gpt-oss-20b", 
         "openai/gpt-oss-safeguard-20b",
         "allam-2-7b", 
-        "groq/compound-mini"
+        "groq/compound-mini",
+    ],
+    
+    # Fast / Classification Tier
+    "llama-3.1-8b-instant": [
+        "openai/gpt-oss-120b", 
+        "groq/compound",
+        "llama-3.1-8b-instant", 
+        "moonshotai/kimi-k2-instruct-0905", # 60 RPM
+        "meta-llama/llama-4-scout-17b-16e-instruct", # 30 RPM, 30k TPM
+        "meta-llama/llama-4-maverick-17b-128e-instruct", # 30 RPM
+        "openai/gpt-oss-20b", 
+        "openai/gpt-oss-safeguard-20b",
+        "allam-2-7b", 
+        "groq/compound-mini",
+        "meta-llama/llama-guard-4-12b",
+        "meta-llama/llama-prompt-guard-2-22m"
     ],
 }
 
@@ -1015,8 +1020,8 @@ async def chat_completions(request: ChatCompletionRequest):
                 break
         
         if not found:
-            logger.info(f"Requested model {requested_model} unknown, defaulting to qwen/qwen3-32b chain")
-            model_chain = GROQ_MODEL_FALLBACKS["qwen/qwen3-32b"]
+            logger.info(f"Requested model {requested_model} unknown, defaulting to llama-3.3-70b-versatile chain")
+            model_chain = GROQ_MODEL_FALLBACKS["llama-3.3-70b-versatile"]
 
     if not groq_key_manager:
         raise HTTPException(status_code=503, detail="Groq API keys not configured")
@@ -1030,8 +1035,8 @@ async def chat_completions(request: ChatCompletionRequest):
     last_exception = None
     
     # Try models in the fallback chain
-    for target_model in model_chain:
-        logger.debug(f"Trying Model: {target_model}")
+    for model_index, target_model in enumerate(model_chain):
+        logger.info(f"Fallback Chain [{model_index+1}/{len(model_chain)}]: Trying Model '{target_model}'")
         
         # Try all keys for this model
         for key_index, current_key in enumerate(all_keys):
@@ -1045,7 +1050,7 @@ async def chat_completions(request: ChatCompletionRequest):
                 # Update usage time immediately (optimistic)
                 await groq_rate_limiter.update_request_time(current_key, target_model)
 
-                # logger.debug(f"Attempting Chat: Model={target_model}, KeyIndex={key_index + 1}")
+                logger.info(f"  > Attempting Chat: Model={target_model} | KeyIndex={key_index + 1}/{len(all_keys)} | KeyPrefix={current_key[:8]}...")
                 client = AsyncGroq(api_key=current_key, max_retries=0)
                 
                 completion = await client.chat.completions.create(
