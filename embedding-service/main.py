@@ -877,6 +877,30 @@ async def get_api_keys_status():
 # Chat Proxy (Groq Round-Robin)
 # ============================================================
 
+
+# Rate limits per model (RPM)
+GROQ_MODEL_LIMITS = {
+    "llama-3.1-8b-instant": 30,
+    "llama-3.3-70b-versatile": 30,
+    "qwen/qwen3-32b": 60,
+    "openai/gpt-oss-120b": 30, # Assumed similar to versatile
+    "openai/gpt-oss-20b": 30,  # Assumed similar to instant
+    "allam-2-7b": 30,
+    "groq/compound": 30,
+    "groq/compound-mini": 30,
+}
+
+# Model fallback chains (Primary -> [Fallbacks])
+GROQ_MODEL_FALLBACKS = {
+    # High Intelligence / Chat Tier
+    "qwen/qwen3-32b": ["qwen/qwen3-32b", "llama-3.3-70b-versatile", "openai/gpt-oss-120b", "groq/compound"],
+    "llama-3.3-70b-versatile": ["llama-3.3-70b-versatile", "qwen/qwen3-32b", "openai/gpt-oss-120b", "groq/compound"],
+    
+    # Fast / Classification Tier
+    "llama-3.1-8b-instant": ["llama-3.1-8b-instant", "openai/gpt-oss-20b", "allam-2-7b", "groq/compound-mini"],
+}
+
+
 async def _stream_groq_response(response_iterator, model_name: str):
     """Generator for streaming Groq response in OpenAI format"""
     try:
@@ -909,94 +933,125 @@ async def _stream_groq_response(response_iterator, model_name: str):
 async def chat_completions(request: ChatCompletionRequest):
     """
     OpenAI-compatible chat completion endpoint.
-    Routes to Groq with Round-Robin key management.
-    Supported models: qwen/qwen3-32b, llama-3.3-70b-versatile
+    Routes to Groq with Round-Robin key management AND Model Fallback.
     """
     
-    # Default to qwen/qwen3-32b if not specified or different
-    # User requested specific models: qwen/qwen3-32b, llama-3.3-70b-versatile
-    target_model = request.model
-    if target_model not in ["qwen/qwen3-32b", "llama-3.3-70b-versatile"]:
-         logger.info(f"Requested model {request.model} not explicitly allowed/optimized, defaulting to qwen/qwen3-32b")
-         target_model = "qwen/qwen3-32b"
+    requested_model = request.model
     
+    # Determined fallback chain based on requested model
+    # If requested model is not in our known list, try to map it or default to Qwen
+    if requested_model in GROQ_MODEL_FALLBACKS:
+        model_chain = GROQ_MODEL_FALLBACKS[requested_model]
+    else:
+        # Check if it's one of the known models but not a primary key
+        found = False
+        for chain in GROQ_MODEL_FALLBACKS.values():
+            if requested_model in chain:
+                model_chain = chain # Use the chain that contains this model
+                # Move requested model to front of chain
+                model_chain = [m for m in model_chain if m != requested_model]
+                model_chain.insert(0, requested_model)
+                found = True
+                break
+        
+        if not found:
+            logger.info(f"Requested model {requested_model} unknown, defaulting to qwen/qwen3-32b chain")
+            model_chain = GROQ_MODEL_FALLBACKS["qwen/qwen3-32b"]
+
     if not groq_key_manager:
         raise HTTPException(status_code=503, detail="Groq API keys not configured")
         
     messages_payload = [{"role": m.role, "content": m.content} for m in request.messages]
-
-    max_retries = groq_key_manager.get_key_count()
-    last_error = None
     
-    for attempt in range(max_retries):
-        current_key, key_index = groq_key_manager.get_current_key()
+    # Try models in the fallback chain one by one
+    for target_model in model_chain:
         
-        try:
-            logger.debug(f"Using Groq Key [{key_index + 1}] for chat (model={target_model})")
-            client = Groq(api_key=current_key)
+        # For each model, try all API keys (Round Robin)
+        max_retries = groq_key_manager.get_key_count()
+        
+        for attempt in range(max_retries):
+            current_key, key_index = groq_key_manager.get_current_key()
             
-            completion = client.chat.completions.create(
-                model=target_model,
-                messages=messages_payload,
-                temperature=request.temperature or 0.6,
-                max_completion_tokens=request.max_tokens or 4096,
-                top_p=0.95,
-                stream=request.stream,
-                reasoning_effort="default" 
-            )
-            
-            if request.stream:
-                return StreamingResponse(
-                    _stream_groq_response(completion, target_model), 
-                    media_type="text/event-stream"
-                )
-            else:
-                # Non-streaming response
-                return {
-                    "id": f"chatcmpl-{int(time.time())}",
-                    "object": "chat.completion",
-                    "created": int(time.time()),
-                    "model": target_model,
-                    "choices": [
-                        {
-                            "index": 0,
-                            "message": {
-                                "role": "assistant",
-                                "content": completion.choices[0].message.content
-                            },
-                            "finish_reason": completion.choices[0].finish_reason
-                        }
-                    ],
-                    "usage": {
-                        "prompt_tokens": completion.usage.prompt_tokens,
-                        "completion_tokens": completion.usage.completion_tokens,
-                        "total_tokens": completion.usage.total_tokens
-                    }
-                }
+            try:
+                # Basic throttling based on RPM (Reactive sleep if needed could be added here, 
+                # but relying on 429 backoff is safer for distributed systems)
                 
-        except Exception as e:
-            error_str = str(e)
-            last_error = e
-            
-            is_rate_limit = (
-                "429" in error_str or 
-                "rate" in error_str.lower() or 
-                "limit" in error_str.lower()
-            )
-            
-            if is_rate_limit:
-                groq_key_manager.mark_rate_limited(current_key, cooldown_seconds=60.0)
-                logger.warning(f"Rate limit hit during chat on key [{key_index + 1}], next key...")
-                continue
-            else:
-                # Non-retriable error
-                logger.error(f"Groq chat error: {error_str}")
-                raise HTTPException(status_code=500, detail=f"Groq Error: {error_str}")
+                logger.debug(f"Attempting Chat: Model={target_model}, KeyIndex={key_index + 1}")
+                client = Groq(api_key=current_key)
+                
+                completion = client.chat.completions.create(
+                    model=target_model,
+                    messages=messages_payload,
+                    temperature=request.temperature or 0.6,
+                    max_completion_tokens=request.max_tokens or 4096,
+                    top_p=0.95,
+                    stream=request.stream,
+                    reasoning_effort="default" 
+                )
+                
+                if request.stream:
+                    return StreamingResponse(
+                        _stream_groq_response(completion, target_model), 
+                        media_type="text/event-stream"
+                    )
+                else:
+                    return {
+                        "id": f"chatcmpl-{int(time.time())}",
+                        "object": "chat.completion",
+                        "created": int(time.time()),
+                        "model": target_model,
+                        "choices": [
+                            {
+                                "index": 0,
+                                "message": {
+                                    "role": "assistant",
+                                    "content": completion.choices[0].message.content
+                                },
+                                "finish_reason": completion.choices[0].finish_reason
+                            }
+                        ],
+                        "usage": {
+                            "prompt_tokens": completion.usage.prompt_tokens,
+                            "completion_tokens": completion.usage.completion_tokens,
+                            "total_tokens": completion.usage.total_tokens
+                        }
+                    }
+                    
+            except Exception as e:
+                error_str = str(e)
+                
+                is_rate_limit = (
+                    "429" in error_str or 
+                    "rate" in error_str.lower() or 
+                    "limit" in error_str.lower()
+                )
+                
+                if is_rate_limit:
+                    # Mark key as rate-limited and try next key
+                    groq_key_manager.mark_rate_limited(current_key, cooldown_seconds=60.0)
+                    logger.warning(f"Rate limit (429) on Key [{key_index + 1}] for Model [{target_model}]. Rotating key...")
+                    continue # Try next key
+                else:
+                    # Non-retriable error -> Log and maybe try next model if it's a model error?
+                    # If it's a model not found / overload error, maybe we should try next model.
+                    if "not found" in error_str.lower() or "load" in error_str.lower():
+                         logger.warning(f"Model error ({error_str}) on {target_model}. Skipping to next model in chain.")
+                         break # Break key loop, go to next model
+                    
+                    # Other errors (auth, bad request) -> fail immediately
+                    logger.error(f"Groq chat error: {error_str}")
+                    raise HTTPException(status_code=500, detail=f"Groq Error: {error_str}")
 
+        # If we loop through all keys for this model and fail with Rate Limits, 
+        # we naturally fall through here to the next model in 'model_chain'
+        logger.warning(f"All keys exhausted for model {target_model}. Falling back to next model...")
+
+    # If we fall through ALL models and ALL keys
     raise HTTPException(
         status_code=429, 
-        detail=f"All API keys rate-limited. Last error: {str(last_error)}"
+        detail=f"All API keys and fallback models exhausted. Please try again later."
     )
+
 
 
 if __name__ == "__main__":
