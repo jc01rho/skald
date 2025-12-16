@@ -7,7 +7,7 @@ import threading
 from typing import Literal, Optional
 import httpx
 import httpx
-from groq import Groq
+from groq import Groq, AsyncGroq
 
 import numpy as np
 from fastapi import FastAPI, HTTPException
@@ -184,7 +184,10 @@ class GroqKeyManager:
                     remaining = self._rate_limited[key] - current_time
                     key_status["cooldown_remaining_seconds"] = max(0, remaining)
                 status["keys"].append(key_status)
-            return status
+    def get_all_keys(self) -> list[str]:
+        """Return all managed keys for manual iteration."""
+        return self._keys
+
 
 
 # Dimension error cooldown management
@@ -904,7 +907,7 @@ GROQ_MODEL_FALLBACKS = {
 async def _stream_groq_response(response_iterator, model_name: str):
     """Generator for streaming Groq response in OpenAI format"""
     try:
-        for chunk in response_iterator:
+        async for chunk in response_iterator:
             content = chunk.choices[0].delta.content
             if content:
                 data = {
@@ -963,23 +966,26 @@ async def chat_completions(request: ChatCompletionRequest):
         
     messages_payload = [{"role": m.role, "content": m.content} for m in request.messages]
     
-    # Try models in the fallback chain one by one
+    # Get all available keys
+    all_keys = groq_key_manager.get_all_keys()
+    
+    # Track errors to report if all fail
+    last_exception = None
+    
+    # Try models in the fallback chain
     for target_model in model_chain:
+        logger.debug(f"Trying Model: {target_model}")
         
-        # For each model, try all API keys (Round Robin)
-        max_retries = groq_key_manager.get_key_count()
-        
-        for attempt in range(max_retries):
-            current_key, key_index = groq_key_manager.get_current_key()
-            
+        # Try all keys for this model
+        for key_index, current_key in enumerate(all_keys):
             try:
                 # Basic throttling based on RPM (Reactive sleep if needed could be added here, 
                 # but relying on 429 backoff is safer for distributed systems)
                 
-                logger.debug(f"Attempting Chat: Model={target_model}, KeyIndex={key_index + 1}")
-                client = Groq(api_key=current_key)
+                # logger.debug(f"Attempting Chat: Model={target_model}, KeyIndex={key_index + 1}")
+                client = AsyncGroq(api_key=current_key, max_retries=0)
                 
-                completion = client.chat.completions.create(
+                completion = await client.chat.completions.create(
                     model=target_model,
                     messages=messages_payload,
                     temperature=request.temperature or 0.6,
@@ -1018,6 +1024,7 @@ async def chat_completions(request: ChatCompletionRequest):
                     
             except Exception as e:
                 error_str = str(e)
+                last_exception = e
                 
                 is_rate_limit = (
                     "429" in error_str or 
@@ -1026,29 +1033,35 @@ async def chat_completions(request: ChatCompletionRequest):
                 )
                 
                 if is_rate_limit:
-                    # Mark key as rate-limited and try next key
-                    groq_key_manager.mark_rate_limited(current_key, cooldown_seconds=60.0)
-                    logger.warning(f"Rate limit (429) on Key [{key_index + 1}] for Model [{target_model}]. Rotating key...")
-                    continue # Try next key
+                    # Rate limit hit on this (Key, Model) combination.
+                    # Just log and try next KEY for this model.
+                    # DO NOT mark key as globally dead, because it might work for the next model!
+                    logger.warning(f"Rate Limit (429) on Model [{target_model}] with Key [{key_index + 1}]. Trying next key...")
+                    continue 
                 else:
-                    # Non-retriable error -> Log and maybe try next model if it's a model error?
-                    # If it's a model not found / overload error, maybe we should try next model.
+                    # Non-rate-limit error.
                     if "not found" in error_str.lower() or "load" in error_str.lower():
-                         logger.warning(f"Model error ({error_str}) on {target_model}. Skipping to next model in chain.")
+                         # Model specific error? Skip to next MODEL.
+                         logger.warning(f"Model error ({error_str}) on {target_model}. Skipping to next model.")
                          break # Break key loop, go to next model
                     
+                    # Connection errors etc might be retryable on next key
+                    if "connect" in error_str.lower() or "timeout" in error_str.lower():
+                        logger.warning(f"Connection error on Key [{key_index + 1}] for {target_model}: {error_str}. Trying next key...")
+                        continue
+
                     # Other errors (auth, bad request) -> fail immediately
-                    logger.error(f"Groq chat error: {error_str}")
+                    logger.error(f"Groq chat fatal error: {error_str}")
                     raise HTTPException(status_code=500, detail=f"Groq Error: {error_str}")
 
-        # If we loop through all keys for this model and fail with Rate Limits, 
-        # we naturally fall through here to the next model in 'model_chain'
-        logger.warning(f"All keys exhausted for model {target_model}. Falling back to next model...")
+        # If we exit the key loop naturally, it means all keys failed (likely 429s) for this model.
+        # We proceed to the next model in 'model_chain'.
+        logger.warning(f"All keys exhausted for model {target_model}. Falling back to next model in chain...")
 
     # If we fall through ALL models and ALL keys
     raise HTTPException(
         status_code=429, 
-        detail=f"All API keys and fallback models exhausted. Please try again later."
+        detail=f"All models and API keys exhausted. Please try again later. Last error: {str(last_exception)}"
     )
 
 
