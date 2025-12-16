@@ -8,13 +8,13 @@ const logger = pino({
     transport:
         process.env.NODE_ENV === 'development'
             ? {
-                  target: 'pino-pretty',
-                  options: {
-                      colorize: true,
-                      translateTime: 'HH:MM:ss Z',
-                      ignore: 'pid,hostname',
-                  },
-              }
+                target: 'pino-pretty',
+                options: {
+                    colorize: true,
+                    translateTime: 'HH:MM:ss Z',
+                    ignore: 'pid,hostname',
+                },
+            }
             : undefined,
 })
 
@@ -109,6 +109,8 @@ export const ANTHROPIC_MODEL = process.env.ANTHROPIC_MODEL || 'claude-sonnet-4-5
 
 // Local LLM
 export const LOCAL_LLM_MODEL = process.env.LOCAL_LLM_MODEL || 'llama-3.1-8b-instruct'
+export const LOCAL_LLM_CHAT_MODEL = process.env.LOCAL_LLM_CHAT_MODEL || LOCAL_LLM_MODEL
+export const LOCAL_LLM_CLASSIFICATION_MODEL = process.env.LOCAL_LLM_CLASSIFICATION_MODEL || LOCAL_LLM_MODEL
 export const LOCAL_LLM_BASE_URL = process.env.LOCAL_LLM_BASE_URL
 export const LOCAL_LLM_API_KEY = process.env.LOCAL_LLM_API_KEY || 'not-needed'
 

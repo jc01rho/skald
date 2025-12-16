@@ -316,6 +316,13 @@ create_configs() {
         exit 1
     fi
     
+    # Embedding Service Source ConfigMap 생성 (Hotfix code injection)
+    if kubectl create configmap embedding-service-source --from-file=main.py=../embedding-service/main.py -n "$NAMESPACE" --dry-run=client -o yaml | kubectl apply -f -; then
+        log_success "Embedding Service Source ConfigMap 생성 완료"
+    else
+        log_warning "Embedding Service Source ConfigMap 생성 실패 (소스 파일 경로 확인 필요)"
+    fi
+    
     # Secret 확인
     if [ ! -f "secret.yaml" ]; then
         log_warning "secret.yaml 파일이 없습니다. secret.yaml.example를 복사하여 설정하세요."

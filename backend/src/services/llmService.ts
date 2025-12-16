@@ -7,6 +7,8 @@ import {
     OPENAI_API_KEY,
     ANTHROPIC_API_KEY,
     LOCAL_LLM_MODEL,
+    LOCAL_LLM_CHAT_MODEL,
+    LOCAL_LLM_CLASSIFICATION_MODEL,
     LOCAL_LLM_BASE_URL,
     LOCAL_LLM_API_KEY,
     GROQ_API_KEY,
@@ -70,7 +72,10 @@ export class LLMService {
             // Local LLM with OpenAI-compatible API
             // Works with: Ollama, LM Studio, vLLM, LocalAI, etc.
             return new ChatOpenAI({
-                model: LOCAL_LLM_MODEL,
+                model:
+                    purpose === 'chat'
+                        ? LOCAL_LLM_CHAT_MODEL
+                        : LOCAL_LLM_CLASSIFICATION_MODEL,
                 configuration: {
                     baseURL: LOCAL_LLM_BASE_URL,
                 },

@@ -6,12 +6,15 @@ import time
 import threading
 from typing import Literal, Optional
 import httpx
-import google.generativeai as genai
+import httpx
+from groq import Groq
 
 import numpy as np
 from fastapi import FastAPI, HTTPException
 from fastapi.concurrency import run_in_threadpool
 from pydantic import BaseModel, Field
+from fastapi.responses import StreamingResponse
+import json
 
 logger = logging.getLogger(__name__)
 
@@ -26,7 +29,7 @@ logger.setLevel(getattr(logging, LOG_LEVEL, logging.INFO))
 app = FastAPI(title="Embedding Service", version="1.0.0")
 
 # Configuration
-EMBEDDING_MODEL = os.getenv("EMBEDDING_MODEL", "kakaocorp/kanana-nano-2.1b-embedding")
+EMBEDDING_MODEL = os.getenv("EMBEDDING_MODEL", "BAAI/bge-m3")
 RERANK_MODEL = os.getenv("RERANK_MODEL", "xitao/bge-reranker-v2-m3:latest")
 TARGET_DIMENSION = int(os.getenv("TARGET_DIMENSION", "768"))
 EMBEDDING_PROVIDER = os.getenv("EMBEDDING_PROVIDER", "external")  # local, ollama, gemini, or external
@@ -35,8 +38,9 @@ QUERY_LANGUAGE = os.getenv("QUERY_LANGUAGE", "ko")  # 한글 최적화 기본값
 _ollama_url = os.getenv("LOCAL_LLM_BASE_URL", "http://localhost:11434")
 # Remove /v1 suffix if present (Ollama native API doesn't use /v1)
 OLLAMA_BASE_URL = _ollama_url.rstrip("/").removesuffix("/v1")
-GEMINI_API_KEYS_STR = os.getenv("GEMINI_API_KEY", "")
-GEMINI_API_KEYS = [k.strip() for k in GEMINI_API_KEYS_STR.split(",") if k.strip()]
+GROQ_API_KEYS_STR = os.getenv("GROQ_API_KEYS", "")
+GROQ_API_KEYS = [k.strip() for k in GROQ_API_KEYS_STR.split(",") if k.strip()]
+# OPENROUTER_API_KEY removed as per user request
 # External embedding service URL (e.g., vLLM, TGI, or custom embedding server)
 EXTERNAL_EMBEDDING_URL = os.getenv("EXTERNAL_EMBEDDING_URL", "http://192.168.150.37:8889/embeddings")
 
@@ -50,7 +54,7 @@ if EMBEDDING_PROVIDER == "external":
     print(f"Using external embedding URL: {EXTERNAL_EMBEDDING_URL}")
 
 # Thread-safe exhaustion-based round-robin API key management
-class GeminiKeyManager:
+class GroqKeyManager:
     """
     Thread-safe API key manager with exhaustion-based round-robin.
     Uses one key until it's exhausted (rate-limited/quota exceeded), 
@@ -65,7 +69,7 @@ class GeminiKeyManager:
         self._rate_limited: dict[str, float] = {}
         # Track usage count per key for logging
         self._usage_count: dict[str, int] = {k: 0 for k in api_keys}
-        logger.info(f"Initialized GeminiKeyManager with {self._key_count} keys (exhaustion-based round-robin)")
+        logger.info(f"Initialized GroqKeyManager with {self._key_count} keys (exhaustion-based round-robin)")
         
     def get_current_key(self) -> tuple[str, int]:
         """
@@ -209,18 +213,32 @@ class DimensionErrorCooldown:
             logger.error(f"Dimension error detected! Embedding service entering {self._cooldown_duration/60:.0f} minute cooldown.")
 
 
+# OpenAI-compatible Chat Models
+class ChatMessage(BaseModel):
+    role: str
+    content: str
+
+class ChatCompletionRequest(BaseModel):
+    model: str
+    messages: list[ChatMessage]
+    stream: bool = False
+    temperature: Optional[float] = 0.7
+    max_tokens: Optional[int] = None
+
 # Initialize managers
-gemini_key_manager: GeminiKeyManager | None = None
+# Initialize managers
+groq_key_manager: GroqKeyManager | None = None
 dimension_error_cooldown = DimensionErrorCooldown(cooldown_seconds=3600.0)  # 1 hour
+
+# Initialize Groq Manager if keys are present
+if GROQ_API_KEYS:
+    groq_key_manager = GroqKeyManager(GROQ_API_KEYS)
+    print(f"Groq API configured with {len(GROQ_API_KEYS)} keys (thread-safe round-robin)")
+else:
+    logger.warning("GROQ_API_KEY is not set. Groq features (chat) will not work.")
 
 if EMBEDDING_PROVIDER == "ollama":
     print(f"Using Ollama base URL: {OLLAMA_BASE_URL}")
-if EMBEDDING_PROVIDER == "gemini":
-    if not GEMINI_API_KEYS:
-        logger.error("GEMINI_API_KEY is not set")
-    else:
-        gemini_key_manager = GeminiKeyManager(GEMINI_API_KEYS)
-        print(f"Gemini API configured with {len(GEMINI_API_KEYS)} keys (thread-safe round-robin)")
 
 # Initialize models lazily based on provider
 embedding_model = None
@@ -664,8 +682,6 @@ async def embed(request: EmbedRequest):
         
         if EMBEDDING_PROVIDER == "ollama":
             embedding = await get_ollama_embedding(request.content)
-        elif EMBEDDING_PROVIDER == "gemini":
-            embedding = await get_gemini_embedding(request.content, usage)
         elif EMBEDDING_PROVIDER == "external":
             # 한글 쿼리 전처리
             processed_content = preprocess_korean_query(request.content) if usage == "search" else request.content
@@ -839,22 +855,148 @@ async def get_info():
 @app.get("/api-keys/status")
 async def get_api_keys_status():
     """
-    Get the status of Gemini API keys for monitoring.
+    Get the status of Groq API keys for monitoring.
     Shows usage counts, rate-limit status, and cooldown times.
     """
-    if gemini_key_manager is None:
+    if groq_key_manager is None:
         return {
             "provider": EMBEDDING_PROVIDER,
-            "message": "Gemini API key management not active",
+            "message": "Groq API key management not active",
             "keys": None
         }
     
     return {
         "provider": EMBEDDING_PROVIDER,
         "strategy": "exhaustion-based round-robin",
-        "status": gemini_key_manager.get_status(),
-        "available_keys": gemini_key_manager.get_available_key_count(),
+        "status": groq_key_manager.get_status(),
+        "available_keys": groq_key_manager.get_available_key_count(),
     }
+
+
+# ============================================================
+# Chat Proxy (Groq Round-Robin)
+# ============================================================
+
+async def _stream_groq_response(response_iterator, model_name: str):
+    """Generator for streaming Groq response in OpenAI format"""
+    try:
+        for chunk in response_iterator:
+            content = chunk.choices[0].delta.content
+            if content:
+                data = {
+                    "id": f"chatcmpl-{int(time.time())}",
+                    "object": "chat.completion.chunk",
+                    "created": int(time.time()),
+                    "model": model_name,
+                    "choices": [
+                        {
+                            "index": 0,
+                            "delta": {"content": content},
+                            "finish_reason": None
+                        }
+                    ]
+                }
+                yield f"data: {json.dumps(data)}\n\n"
+        
+        # End of stream
+        yield "data: [DONE]\n\n"
+    except Exception as e:
+        logger.error(f"Error during streaming: {e}")
+        error_data = {"error": str(e)}
+        yield f"data: {json.dumps(error_data)}\n\n"
+
+@app.post("/v1/chat/completions")
+async def chat_completions(request: ChatCompletionRequest):
+    """
+    OpenAI-compatible chat completion endpoint.
+    Routes to Groq with Round-Robin key management.
+    Supported models: qwen/qwen3-32b, llama-3.3-70b-versatile
+    """
+    
+    # Default to qwen/qwen3-32b if not specified or different
+    # User requested specific models: qwen/qwen3-32b, llama-3.3-70b-versatile
+    target_model = request.model
+    if target_model not in ["qwen/qwen3-32b", "llama-3.3-70b-versatile"]:
+         logger.info(f"Requested model {request.model} not explicitly allowed/optimized, defaulting to qwen/qwen3-32b")
+         target_model = "qwen/qwen3-32b"
+    
+    if not groq_key_manager:
+        raise HTTPException(status_code=503, detail="Groq API keys not configured")
+        
+    messages_payload = [{"role": m.role, "content": m.content} for m in request.messages]
+
+    max_retries = groq_key_manager.get_key_count()
+    last_error = None
+    
+    for attempt in range(max_retries):
+        current_key, key_index = groq_key_manager.get_current_key()
+        
+        try:
+            logger.debug(f"Using Groq Key [{key_index + 1}] for chat (model={target_model})")
+            client = Groq(api_key=current_key)
+            
+            completion = client.chat.completions.create(
+                model=target_model,
+                messages=messages_payload,
+                temperature=request.temperature or 0.6,
+                max_completion_tokens=request.max_tokens or 4096,
+                top_p=0.95,
+                stream=request.stream,
+                reasoning_effort="default" 
+            )
+            
+            if request.stream:
+                return StreamingResponse(
+                    _stream_groq_response(completion, target_model), 
+                    media_type="text/event-stream"
+                )
+            else:
+                # Non-streaming response
+                return {
+                    "id": f"chatcmpl-{int(time.time())}",
+                    "object": "chat.completion",
+                    "created": int(time.time()),
+                    "model": target_model,
+                    "choices": [
+                        {
+                            "index": 0,
+                            "message": {
+                                "role": "assistant",
+                                "content": completion.choices[0].message.content
+                            },
+                            "finish_reason": completion.choices[0].finish_reason
+                        }
+                    ],
+                    "usage": {
+                        "prompt_tokens": completion.usage.prompt_tokens,
+                        "completion_tokens": completion.usage.completion_tokens,
+                        "total_tokens": completion.usage.total_tokens
+                    }
+                }
+                
+        except Exception as e:
+            error_str = str(e)
+            last_error = e
+            
+            is_rate_limit = (
+                "429" in error_str or 
+                "rate" in error_str.lower() or 
+                "limit" in error_str.lower()
+            )
+            
+            if is_rate_limit:
+                groq_key_manager.mark_rate_limited(current_key, cooldown_seconds=60.0)
+                logger.warning(f"Rate limit hit during chat on key [{key_index + 1}], next key...")
+                continue
+            else:
+                # Non-retriable error
+                logger.error(f"Groq chat error: {error_str}")
+                raise HTTPException(status_code=500, detail=f"Groq Error: {error_str}")
+
+    raise HTTPException(
+        status_code=429, 
+        detail=f"All API keys rate-limited. Last error: {str(last_error)}"
+    )
 
 
 if __name__ == "__main__":

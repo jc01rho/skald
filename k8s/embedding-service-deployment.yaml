@@ -64,11 +64,12 @@ spec:
             secretKeyRef:
               name: skald-secrets
               key: VOYAGE_API_KEY
-        - name: GEMINI_API_KEY
+        - name: GROQ_API_KEYS
           valueFrom:
             secretKeyRef:
               name: skald-secrets
-              key: GEMINI_API_KEYS
+              key: GROQ_API_KEYS
+
         # 임베딩 프로바이더 설정
         - name: EMBEDDING_PROVIDER
           valueFrom:
@@ -149,13 +150,14 @@ spec:
           requests:
             memory: "4Gi"
             cpu: "1000m"
-            nvidia.com/gpu: 1
           limits:
             memory: "8Gi"
             cpu: "4000m"
-            nvidia.com/gpu: 1
         # 임시 볼륨 마운트 (readOnlyRootFilesystem을 위함)
         volumeMounts:
+        - name: source-code
+          mountPath: /app/main.py
+          subPath: main.py
         - name: tmp
           mountPath: /tmp
         - name: cache
@@ -166,6 +168,9 @@ spec:
           mountPath: /home/appuser/.cache
       # 임시 볼륨
       volumes:
+      - name: source-code
+        configMap:
+          name: embedding-service-source
       - name: tmp
         emptyDir: {}
       - name: cache
