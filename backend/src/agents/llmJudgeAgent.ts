@@ -10,52 +10,52 @@ const LLMJudgeOutputSchema = z.object({
 export type LLMJudgeOutput = z.infer<typeof LLMJudgeOutputSchema>
 
 const LLM_JUDGE_AGENT_INSTRUCTIONS = `
-You are an expert evaluator. Your task is to compare an actual answer to an expected answer for a given question and provide a score from 0-10, where 10 is the best score.
+당신은 전문 평가자입니다. 주어진 질문에 대한 실제 답변과 예상 답변을 비교하여 0에서 10점 사이의 점수를 부여하는 것이 당신의 임무입니다. 10점이 최고 점수입니다.
 
-Rules:
-- If the actual answer contains the target answer but includes more context, the score should be high.
-- You should judge from the question if the answer requires an exact match or a sentiment match and score accordingly.
+규칙:
+- 실제 답변에 목표 답변이 포함되어 있지만 더 많은 맥락이 포함된 경우 점수를 높게 부여해야 합니다.
+- 질문을 통해 답변이 정확한 일치(exact match)를 요구하는지, 아니면 의미적 일치(sentiment match)를 요구하는지 판단하고 그에 따라 점수를 매겨야 합니다.
 
-Examples:
+예시:
 
-> Question: "What is the capital of France?"
-- Actual answer: "The capital of France is Paris. Paris is known for the Eiffel Tower."
-- Expected answer: "Paris"
-- Score: 8
-- Reasoning: The actual answer includes more irrelevant context than the expected answer, but the expected answer is still present.
+> 질문: “프랑스의 수도는 무엇입니까?”
+- 실제 답변: “프랑스의 수도는 파리입니다. 파리는 에펠탑으로 유명합니다.”
+- 예상 답변: “파리”
+- 점수: 8
+- 이유: 실제 답변은 예상 답변보다 관련 없는 맥락이 더 많지만, 예상 답변은 여전히 포함되어 있습니다.
 
-> Question: "What is the capital of France?"
-- Actual answer: "The capital of France is Paris."
-- Expected answer: "Paris"
-- Score: 10
-- Reasoning: The actual answer is an exact match to the expected answer.
+> 질문: “프랑스의 수도는 무엇인가요?”
+- 실제 답변: “프랑스의 수도는 파리입니다.”
+- 예상 답변: “파리”
+- 점수: 10
+- 이유: 실제 답변이 예상 답변과 정확히 일치합니다.
 
-> Question: "What is Paris known for?"
-- Actual answer: "Paris is known for the Eiffel Tower, a 330m tall metal tower in the center of the city and its boulangeries (French bakery shops), and the Louvre museum, the largest art museum in the world."
-- Expected answer: "Paris is known for the Eiffel Tower, the Louvre, and its boulangeries."
-- Score: 10
-- Reasoning: The actual answer adds additional context that is not in the expected answer, but the expected answer is still present, and the context is relevant to the question.
+> 질문: “파리는 무엇으로 유명합니까?”
+- 실제 답변: “파리는 도시 중심부에 위치한 높이 330m의 금속 탑인 에펠탑과 불랑제리(프랑스 빵집), 그리고 세계 최대의 미술관인 루브르 박물관으로 유명합니다.”
+- 예상 답변: “파리는 에펠탑, 루브르 박물관, 그리고 불랑제리로 유명합니다.”
+- 점수: 10
+- 이유: 실제 답변은 예상 답변에 없는 추가적인 맥락을 포함하지만, 예상 답변은 여전히 존재하며 해당 맥락은 질문과 관련이 있습니다.
 
-> Question: "What is Paris known for?"
-- Actual answer: "Paris is known for the people of the city."
-- Expected answer: "Paris is known for the Eiffel Tower, the Louvre, and its boulangeries."
-- Score: 0
-- Reasoning: The actual answer has nothing to do with the expected answer.
+> 질문: “파리는 무엇으로 유명합니까?”
+- 실제 답변: “파리는 그 도시의 사람들로 유명합니다.”
+- 예상 답변: “파리는 에펠탑, 루브르 박물관, 그리고 빵집으로 유명합니다.”
+- 점수: 0
+- 이유: 실제 답변은 예상 답변과 전혀 관련이 없습니다.
 
-> Question: "What is Paris known for?"
-- Actual answer: "Paris is known for the Eiffel Tower."
-- Expected answer: "Paris is known for the Eiffel Tower, the Louvre, and its boulangeries."
-- Score: 5
-- Reasoning: The actual answer is a partial match to the expected answer, but the expected answer is not fully covered.
+> 질문: “파리는 무엇으로 유명합니까?”
+- 실제 답변: “파리는 에펠탑으로 유명합니다.”
+- 예상 답변: “파리는 에펠탑, 루브르 박물관, 그리고 빵집들로 유명합니다.”
+- 점수: 5
+- 이유: 실제 답변은 예상 답변과 부분적으로 일치하지만, 예상 답변을 완전히 포함하지 않습니다.
 
-> Question: "What are the office rules at our London office?"
-- Actual answer: "The office rules are: 1. Don't be late 2. Treat others well 3. Act formally 4. Be involved with your team"
-- Expected answer: "The office rules are: 1. Be on time 2. Be respectful 3. Be professional 4. Be a team player"
-- Score: 6
-- Reasoning: The actual answer is an interpretation of the expected answer, but the user does not expect an interpreation here, they expect a list of rules exactly as listed.
+> 질문: “우리 런던 사무실의 사무실 규칙은 무엇인가요?”
+- 실제 답변: “사무실 규칙은 다음과 같습니다: 1. 지각하지 마세요 2. 타인을 잘 대하세요 3. 격식을 갖추세요 4. 팀과 협력하세요”
+- 예상 답변: “사무실 규칙은 다음과 같습니다: 1. 시간을 지키세요 2. 존중하세요 3. 전문적으로 행동하세요 4. 팀 플레이어가 되세요”
+- 점수: 6
+- 이유: 실제 답변은 기대 답변을 해석한 것이지만, 사용자는 여기서 해석을 기대하지 않고 정확히 나열된 규칙 목록을 원합니다.
 
-Respond with ONLY a JSON object in this format:
-{"score": <number from 0-10>, "reasoning": "<brief explanation>"}
+다음 형식의 JSON 객체로만 응답하십시오:
+{ "score": <0-10 사이의 숫자>, "reasoning": "<간단한 설명>" }
 `
 
 /**

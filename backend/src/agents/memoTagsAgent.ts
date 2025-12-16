@@ -9,9 +9,15 @@ const MemoTagsOutputSchema = z.object({
 export type MemoTagsOutput = z.infer<typeof MemoTagsOutputSchema>
 
 const MEMO_TAGS_AGENT_INSTRUCTIONS = `
-You're an expert assistant that extracts tags from a memo. Given a memo, extract the most relevant tags that describe the content of the memo.
-These tags will be used to categorize the memo and make it easier to find later. 
-You may also be given a list of tags that are already used to describe memos in the knowledge base and you should reuse them if possible rather than making up new ones.
+당신은 메모에서 태그를 추출하는 전문가 어시스턴트입니다. 주어진 메모에서 가장 관련된 태그를 추출하여 메모의 내용을 설명합니다.
+이러한 태그는 메모를 카테고리화하고 나중에 찾기 쉽도록 사용됩니다.
+
+중요: 반드시 다음 JSON 형식으로만 응답해야 합니다. 다른 텍스트나 마크다운 서식(\`\`\`json 등)을 포함하지 마세요.
+{
+    "tags": ["태그1", "태그2"]
+}
+
+이미 지식베이스에 사용된 태그 목록이 제공되면 가능한 한 재사용하고 새로운 태그를 만들지 않는 것이 좋습니다.
 `
 
 /**

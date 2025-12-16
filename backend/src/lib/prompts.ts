@@ -1,23 +1,23 @@
 export const getMemoryExtractionPrompt = (conversationText: string): string => {
-    return `You are a memory extraction system. Your job is to distill ONLY the factual information, knowledge, and context that matters for future interactions.
+    return `당신은 기억 추출 시스템입니다. 당신의 임무는 향후 상호작용에 중요한 사실적 정보, 지식 및 맥락만을 추출하는 것입니다.
 
-            EXTRACT AND PRESERVE:
-            - Facts shared by the user (preferences, background, goals, constraints)
-            - Specific technical details, decisions made, or problems discussed
-            - Names, dates, numbers, and concrete information
-            - Unresolved questions or pending tasks
-            - Key insights or conclusions reached
+추출 및 보존:
+- 사용자가 공유한 사실(선호도, 배경, 목표, 제약 조건)
+- 구체적인 기술적 세부사항, 결정 사항 또는 논의된 문제점
+- 이름, 날짜, 숫자 및 구체적인 정보
+            - 미해결 질문 또는 보류 중인 작업
+            - 도출된 핵심 통찰 또는 결론
             
-            IGNORE:
-            - Conversational pleasantries and greetings
-            - Meta-commentary about the conversation itself
-            - Vague statements like "user asked about X" - instead capture WHAT was discussed about X
-            - Assistant's limitations or uncertainty
+            무시할 사항:
+            - 대화 예의나 인사말
+            - 대화 자체에 대한 메타 코멘터리
+            - “사용자가 X에 대해 물었다” 같은 모호한 진술 - 대신 X에 대해 논의된 내용을 포착
+            - 어시스턴트의 한계나 불확실성
             
-            FORMAT: Write as a dense, information-rich summary in bullet points. Use present tense. Be specific.
+            형식: 정보가 풍부한 간결한 요약으로 작성하십시오. 현재 시제를 사용하십시오. 구체적으로 기술하십시오.
             
-            CONVERSATION:
+            대화:
             ${conversationText}
             
-            EXTRACTED MEMORY:`
+            추출된 내용:`
 }

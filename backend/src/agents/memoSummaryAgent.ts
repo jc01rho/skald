@@ -11,6 +11,11 @@ export type MemoSummaryOutput = z.infer<typeof MemoSummaryOutputSchema>
 const MEMO_SUMMARY_AGENT_INSTRUCTIONS = `
 당신은 텍스트 내용을 요약하는 전문 보조 도구입니다. 주어진 텍스트의 내용을 최대 한 단락으로 요약하세요.
 
+중요: 반드시 다음 JSON 형식으로만 응답해야 합니다. 다른 텍스트나 마크다운 서식(\`\`\`json 등)을 포함하지 마세요.
+{
+    "summary": "요약 내용..."
+}
+
 간결하게 작성하되 모든 중요한 정보를 포함해야 합니다.
 
 내용이 마크다운과 같은 형식을 따를 경우, 요약문 끝에 문서의 개요를 포함하여 모든 제목을 다루도록 하세요.
