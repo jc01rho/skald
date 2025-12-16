@@ -986,7 +986,6 @@ async def chat_completions(request: ChatCompletionRequest):
                     max_completion_tokens=request.max_tokens or 4096,
                     top_p=0.95,
                     stream=request.stream,
-                    reasoning_effort="default" 
                 )
                 
                 if request.stream:
