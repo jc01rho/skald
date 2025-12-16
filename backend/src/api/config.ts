@@ -30,7 +30,7 @@ if (ANTHROPIC_API_KEY) {
         model: DEFAULT_LLM_MODELS.anthropic.defaultChatModel.name,
     })
 }
-if (GROQ_API_KEY) {
+if (GROQ_API_KEY || LOCAL_LLM_BASE_URL) {
     AVAILABLE_LLM_PROVIDERS.push({
         provider: 'groq',
         label: 'Groq',

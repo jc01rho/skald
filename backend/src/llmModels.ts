@@ -13,6 +13,18 @@ export const SUPPORTED_LLM_MODELS = {
     },
     groq: {
         'llama-3.1-8b-instant': { slug: 'llama-3.1-8b-instant', name: 'Llama 3.1 8B Instant' },
+        'llama-3.3-70b-versatile': { slug: 'llama-3.3-70b-versatile', name: 'Llama 3.3 70B Versatile' },
+        'qwen/qwen3-32b': { slug: 'qwen/qwen3-32b', name: 'Qwen 3 32B' },
+        'moonshotai/kimi-k2-instruct': { slug: 'moonshotai/kimi-k2-instruct', name: 'Kimi K2 Instruct' },
+        'openai/gpt-oss-120b': { slug: 'openai/gpt-oss-120b', name: 'GPT OSS 120B' },
+        'groq/compound': { slug: 'groq/compound', name: 'Groq Compound' },
+        'moonshotai/kimi-k2-instruct-0905': { slug: 'moonshotai/kimi-k2-instruct-0905', name: 'Kimi K2 Instruct 0905' },
+        'meta-llama/llama-4-scout-17b-16e-instruct': { slug: 'meta-llama/llama-4-scout-17b-16e-instruct', name: 'Llama 4 Scout 17B' },
+        'meta-llama/llama-4-maverick-17b-128e-instruct': { slug: 'meta-llama/llama-4-maverick-17b-128e-instruct', name: 'Llama 4 Maverick 17B' },
+        'openai/gpt-oss-20b': { slug: 'openai/gpt-oss-20b', name: 'GPT OSS 20B' },
+        'openai/gpt-oss-safeguard-20b': { slug: 'openai/gpt-oss-safeguard-20b', name: 'GPT OSS Safeguard 20B' },
+        'allam-2-7b': { slug: 'allam-2-7b', name: 'Allam 2 7B' },
+        'groq/compound-mini': { slug: 'groq/compound-mini', name: 'Groq Compound Mini' },
     },
 }
 
@@ -30,7 +42,7 @@ export const DEFAULT_LLM_MODELS = {
         defaultClassificationModel: SUPPORTED_LLM_MODELS.gemini['gemini-2.5-flash'],
     },
     groq: {
-        defaultChatModel: SUPPORTED_LLM_MODELS.groq['llama-3.1-8b-instant'],
+        defaultChatModel: SUPPORTED_LLM_MODELS.groq['llama-3.3-70b-versatile'],
         defaultClassificationModel: SUPPORTED_LLM_MODELS.groq['llama-3.1-8b-instant'],
     },
 }

@@ -83,17 +83,33 @@ export class LLMService {
                 temperature,
             })
         } else if (provider === 'groq') {
-            if (!GROQ_API_KEY) {
+            let apiKey = GROQ_API_KEY
+            let baseURL = 'https://api.groq.com/openai/v1'
+
+            if (LOCAL_LLM_BASE_URL) {
+                // Use local proxy (embedding-service) if available
+                // Ensure /v1 suffix for OpenAI compatibility
+                baseURL = LOCAL_LLM_BASE_URL.endsWith('/v1')
+                    ? LOCAL_LLM_BASE_URL
+                    : `${LOCAL_LLM_BASE_URL.replace(/\/$/, '')}/v1`
+
+                // If using proxy, we can use a dummy key if actual key is missing
+                // (Proxy handles the actual rotation)
+                if (!apiKey) {
+                    apiKey = 'managed'
+                }
+            } else if (!apiKey) {
                 throw new Error('Groq provider is not configured. Please set GROQ_API_KEY.')
             }
+
             return new ChatOpenAI({
                 model:
                     purpose === 'chat'
                         ? DEFAULT_LLM_MODELS.groq.defaultChatModel.slug
                         : DEFAULT_LLM_MODELS.groq.defaultClassificationModel.slug,
-                apiKey: GROQ_API_KEY,
+                apiKey: apiKey,
                 configuration: {
-                    baseURL: 'https://api.groq.com/openai/v1',
+                    baseURL,
                 },
                 temperature,
             })
