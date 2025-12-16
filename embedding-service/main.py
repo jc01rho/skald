@@ -883,24 +883,81 @@ async def get_api_keys_status():
 
 # Rate limits per model (RPM)
 GROQ_MODEL_LIMITS = {
-    "llama-3.1-8b-instant": 30,
-    "llama-3.3-70b-versatile": 30,
-    "qwen/qwen3-32b": 60,
-    "openai/gpt-oss-120b": 30, # Assumed similar to versatile
-    "openai/gpt-oss-20b": 30,  # Assumed similar to instant
     "allam-2-7b": 30,
     "groq/compound": 30,
     "groq/compound-mini": 30,
+    "llama-3.1-8b-instant": 30,
+    "llama-3.3-70b-versatile": 30,
+    "meta-llama/llama-4-maverick-17b-128e-instruct": 30,
+    "meta-llama/llama-4-scout-17b-16e-instruct": 30,
+    "meta-llama/llama-guard-4-12b": 30,
+    "meta-llama/llama-prompt-guard-2-22m": 30,
+    "meta-llama/llama-prompt-guard-2-86m": 30,
+    "moonshotai/kimi-k2-instruct": 60,
+    "moonshotai/kimi-k2-instruct-0905": 60,
+    "openai/gpt-oss-120b": 30,
+    "openai/gpt-oss-20b": 30,
+    "openai/gpt-oss-safeguard-20b": 30,
+    "qwen/qwen3-32b": 60,
 }
+
+class GroqRateLimiter:
+    def __init__(self):
+        self._last_request_times = {} # {key: {model: timestamp}}
+        self._lock = asyncio.Lock()
+    
+    def get_wait_time(self, key: str, model: str) -> float:
+        rpm = GROQ_MODEL_LIMITS.get(model, 30) # default 30 RPM
+        interval = 60.0 / rpm
+        
+        # Check last request time
+        key_usage = self._last_request_times.get(key, {})
+        last_time = key_usage.get(model, 0)
+        now = time.time()
+        
+        elapsed = now - last_time
+        if elapsed < interval:
+            return interval - elapsed
+        return 0.0
+
+    async def update_request_time(self, key: str, model: str):
+        async with self._lock:
+            if key not in self._last_request_times:
+                self._last_request_times[key] = {}
+            self._last_request_times[key][model] = time.time()
+
+groq_rate_limiter = GroqRateLimiter()
 
 # Model fallback chains (Primary -> [Fallbacks])
 GROQ_MODEL_FALLBACKS = {
     # High Intelligence / Chat Tier
-    "qwen/qwen3-32b": ["qwen/qwen3-32b", "llama-3.3-70b-versatile", "openai/gpt-oss-120b", "groq/compound"],
-    "llama-3.3-70b-versatile": ["llama-3.3-70b-versatile", "qwen/qwen3-32b", "openai/gpt-oss-120b", "groq/compound"],
+    "qwen/qwen3-32b": [
+        "qwen/qwen3-32b", 
+        "moonshotai/kimi-k2-instruct", # 60 RPM
+        "llama-3.3-70b-versatile", 
+        "meta-llama/llama-4-scout-17b-16e-instruct",
+        "openai/gpt-oss-120b", 
+        "groq/compound"
+    ],
+    "llama-3.3-70b-versatile": [
+        "llama-3.3-70b-versatile", 
+        "moonshotai/kimi-k2-instruct", # 60 RPM
+        "qwen/qwen3-32b", 
+        "meta-llama/llama-4-maverick-17b-128e-instruct",
+        "openai/gpt-oss-120b", 
+        "groq/compound"
+    ],
     
     # Fast / Classification Tier
-    "llama-3.1-8b-instant": ["llama-3.1-8b-instant", "openai/gpt-oss-20b", "allam-2-7b", "groq/compound-mini"],
+    "llama-3.1-8b-instant": [
+        "llama-3.1-8b-instant", 
+        "moonshotai/kimi-k2-instruct-0905", # 60 RPM
+        "meta-llama/llama-4-maverick-17b-128e-instruct",
+        "openai/gpt-oss-20b", 
+        "openai/gpt-oss-safeguard-20b",
+        "allam-2-7b", 
+        "groq/compound-mini"
+    ],
 }
 
 
@@ -979,9 +1036,15 @@ async def chat_completions(request: ChatCompletionRequest):
         # Try all keys for this model
         for key_index, current_key in enumerate(all_keys):
             try:
-                # Basic throttling based on RPM (Reactive sleep if needed could be added here, 
-                # but relying on 429 backoff is safer for distributed systems)
+                # Gentle Throttling: Check local rate limit (RPM)
+                wait_time = groq_rate_limiter.get_wait_time(current_key, target_model)
+                if wait_time > 0:
+                    logger.info(f"Throttling: Model {target_model} (Key {key_index+1}) requires {wait_time:.2f}s wait. Sleeping...")
+                    await asyncio.sleep(wait_time)
                 
+                # Update usage time immediately (optimistic)
+                await groq_rate_limiter.update_request_time(current_key, target_model)
+
                 # logger.debug(f"Attempting Chat: Model={target_model}, KeyIndex={key_index + 1}")
                 client = AsyncGroq(api_key=current_key, max_retries=0)
                 
