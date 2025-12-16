@@ -1034,102 +1034,109 @@ async def chat_completions(request: ChatCompletionRequest):
     # Track errors to report if all fail
     last_exception = None
     
-    # Try models in the fallback chain
-    for model_index, target_model in enumerate(model_chain):
-        logger.info(f"Fallback Chain [{model_index+1}/{len(model_chain)}]: Trying Model '{target_model}'")
-        
-        # Try all keys for this model
-        for key_index, current_key in enumerate(all_keys):
-            try:
-                # Gentle Throttling: Check local rate limit (RPM)
-                wait_time = groq_rate_limiter.get_wait_time(current_key, target_model)
-                if wait_time > 0:
-                    logger.info(f"Throttling: Model {target_model} (Key {key_index+1}) requires {wait_time:.2f}s wait. Sleeping...")
-                    await asyncio.sleep(wait_time)
-                
-                # Update usage time immediately (optimistic)
-                await groq_rate_limiter.update_request_time(current_key, target_model)
+    # Try everything twice (with a 30s wait in between)
+    for attempt in range(2):
+        if attempt > 0:
+            logger.warning("All keys and models exhausted on first attempt. Waiting 30 seconds before final retry...")
+            await asyncio.sleep(30)
+            logger.info("Resuming retry after 30s wait...")
 
-                logger.info(f"  > Attempting Chat: Model={target_model} | KeyIndex={key_index + 1}/{len(all_keys)} | KeyPrefix={current_key[:8]}...")
-                client = AsyncGroq(api_key=current_key, max_retries=0)
-                
-                completion = await client.chat.completions.create(
-                    model=target_model,
-                    messages=messages_payload,
-                    temperature=request.temperature or 0.6,
-                    max_completion_tokens=request.max_tokens or 4096,
-                    top_p=0.95,
-                    stream=request.stream,
-                )
-                
-                if request.stream:
-                    return StreamingResponse(
-                        _stream_groq_response(completion, target_model), 
-                        media_type="text/event-stream"
+        # Try models in the fallback chain
+        for model_index, target_model in enumerate(model_chain):
+            logger.info(f"Fallback Chain [{model_index+1}/{len(model_chain)}]: Trying Model '{target_model}' (Attempt {attempt+1})")
+            
+            # Try all keys for this model
+            for key_index, current_key in enumerate(all_keys):
+                try:
+                    # Gentle Throttling: Check local rate limit (RPM)
+                    wait_time = groq_rate_limiter.get_wait_time(current_key, target_model)
+                    if wait_time > 0:
+                        logger.info(f"Throttling: Model {target_model} (Key {key_index+1}) requires {wait_time:.2f}s wait. Sleeping...")
+                        await asyncio.sleep(wait_time)
+                    
+                    # Update usage time immediately (optimistic)
+                    await groq_rate_limiter.update_request_time(current_key, target_model)
+
+                    logger.info(f"  > Attempting Chat: Model={target_model} | KeyIndex={key_index + 1}/{len(all_keys)} | KeyPrefix={current_key[:8]}...")
+                    client = AsyncGroq(api_key=current_key, max_retries=0)
+                    
+                    completion = await client.chat.completions.create(
+                        model=target_model,
+                        messages=messages_payload,
+                        temperature=request.temperature or 0.6,
+                        max_completion_tokens=request.max_tokens or 4096,
+                        top_p=0.95,
+                        stream=request.stream,
                     )
-                else:
-                    return {
-                        "id": f"chatcmpl-{int(time.time())}",
-                        "object": "chat.completion",
-                        "created": int(time.time()),
-                        "model": target_model,
-                        "choices": [
-                            {
-                                "index": 0,
-                                "message": {
-                                    "role": "assistant",
-                                    "content": completion.choices[0].message.content
-                                },
-                                "finish_reason": completion.choices[0].finish_reason
+                    
+                    if request.stream:
+                        return StreamingResponse(
+                            _stream_groq_response(completion, target_model), 
+                            media_type="text/event-stream"
+                        )
+                    else:
+                        return {
+                            "id": f"chatcmpl-{int(time.time())}",
+                            "object": "chat.completion",
+                            "created": int(time.time()),
+                            "model": target_model,
+                            "choices": [
+                                {
+                                    "index": 0,
+                                    "message": {
+                                        "role": "assistant",
+                                        "content": completion.choices[0].message.content
+                                    },
+                                    "finish_reason": completion.choices[0].finish_reason
+                                }
+                            ],
+                            "usage": {
+                                "prompt_tokens": completion.usage.prompt_tokens,
+                                "completion_tokens": completion.usage.completion_tokens,
+                                "total_tokens": completion.usage.total_tokens
                             }
-                        ],
-                        "usage": {
-                            "prompt_tokens": completion.usage.prompt_tokens,
-                            "completion_tokens": completion.usage.completion_tokens,
-                            "total_tokens": completion.usage.total_tokens
                         }
-                    }
+                        
+                except Exception as e:
+                    error_str = str(e)
+                    last_exception = e
                     
-            except Exception as e:
-                error_str = str(e)
-                last_exception = e
-                
-                is_rate_limit = (
-                    "429" in error_str or 
-                    "rate" in error_str.lower() or 
-                    "limit" in error_str.lower()
-                )
-                
-                if is_rate_limit:
-                    # Rate limit hit on this (Key, Model) combination.
-                    # Just log and try next KEY for this model.
-                    # DO NOT mark key as globally dead, because it might work for the next model!
-                    logger.warning(f"Rate Limit (429) on Model [{target_model}] with Key [{key_index + 1}]. Trying next key...")
-                    continue 
-                else:
-                    # Non-rate-limit error.
-                    if "not found" in error_str.lower() or "load" in error_str.lower():
-                         # Model specific error? Skip to next MODEL.
-                         logger.warning(f"Model error ({error_str}) on {target_model}. Skipping to next model.")
-                         break # Break key loop, go to next model
+                    is_rate_limit = (
+                        "429" in error_str or 
+                        "rate" in error_str.lower() or 
+                        "limit" in error_str.lower()
+                    )
                     
-                    # Connection errors etc might be retryable on next key
-                    if "connect" in error_str.lower() or "timeout" in error_str.lower():
-                        logger.warning(f"Connection error on Key [{key_index + 1}] for {target_model}: {error_str}. Trying next key...")
-                        continue
+                    if is_rate_limit:
+                        # Rate limit hit on this (Key, Model) combination.
+                        # Just log and try next KEY for this model.
+                        # DO NOT mark key as globally dead, because it might work for the next model!
+                        logger.warning(f"Rate Limit (429) on Model [{target_model}] with Key [{key_index + 1}]. Trying next key...")
+                        continue 
+                    else:
+                        # Non-rate-limit error.
+                        if "not found" in error_str.lower() or "load" in error_str.lower():
+                             # Model specific error? Skip to next MODEL.
+                             logger.warning(f"Model error ({error_str}) on {target_model}. Skipping to next model.")
+                             break # Break key loop, go to next model
+                        
+                        # Connection errors etc might be retryable on next key
+                        if "connect" in error_str.lower() or "timeout" in error_str.lower():
+                            logger.warning(f"Connection error on Key [{key_index + 1}] for {target_model}: {error_str}. Trying next key...")
+                            continue
 
-                    # Other errors (auth, bad request) -> fail immediately
-                    logger.error(f"Groq chat fatal error: {error_str}")
-                    raise HTTPException(status_code=500, detail=f"Groq Error: {error_str}")
+                        # Other errors (auth, bad request) -> fail immediately
+                        logger.error(f"Groq chat fatal error: {error_str}")
+                        raise HTTPException(status_code=500, detail=f"Groq Error: {error_str}")
 
-        # If we exit the key loop naturally, it means all keys failed (likely 429s) for this model.
-        # We proceed to the next model in 'model_chain'.
-        logger.warning(f"All keys exhausted for model {target_model}. Falling back to next model in chain...")
+            # If we exit the key loop naturally, it means all keys failed (likely 429s) for this model.
+            # We proceed to the next model in 'model_chain'.
+            logger.warning(f"All keys exhausted for model {target_model}. Falling back to next model in chain...")
 
-    # If we fall through ALL models and ALL keys
+    # If we fall through ALL models and ALL keys TWICE
     raise HTTPException(
         status_code=429, 
-        detail=f"All models and API keys exhausted. Please try again later. Last error: {str(last_exception)}"
+        detail=f"All models and API keys exhausted after retry. Please try again later. Last error: {str(last_exception)}"
     )
 
 
