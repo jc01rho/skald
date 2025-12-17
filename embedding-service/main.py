@@ -44,6 +44,22 @@ GROQ_API_KEYS = [k.strip() for k in GROQ_API_KEYS_STR.split(",") if k.strip()]
 # External embedding service URL (e.g., vLLM, TGI, or custom embedding server)
 EXTERNAL_EMBEDDING_URL = os.getenv("EXTERNAL_EMBEDDING_URL", "http://192.168.150.37:8889/embeddings")
 
+# Local LLM endpoints for fallback when Groq payload is too large
+LOCAL_LLM_ENDPOINTS = [
+    {
+        "name": "kanana-local",
+        "url": "http://192.168.150.37:8889/chat/completions",
+        "type": "openai-compatible",  # Uses messages format directly
+        "model": None,  # Not needed for this endpoint
+    },
+    {
+        "name": "ollama-kanana",
+        "url": "http://192.168.30.169:11434",
+        "type": "ollama",
+        "model": "cookieshake/kanana-1.5-8b-instruct-2505:Q4_K_M",
+    },
+]
+
 print(f"Using embedding provider: {EMBEDDING_PROVIDER}")
 print(f"Using rerank provider: {RERANK_PROVIDER}")
 print(f"Using embedding model: {EMBEDDING_MODEL}")
@@ -1178,6 +1194,172 @@ GROQ_MODEL_FALLBACKS = {
 }
 
 
+async def _call_local_llm_fallback(
+    messages: list[dict], 
+    temperature: float | None = 0.7, 
+    max_tokens: int | None = 4096
+) -> dict | None:
+    """
+    Call local LLM endpoints when Groq returns 413 Payload Too Large.
+    Randomly selects between available local LLM endpoints.
+    
+    Supported endpoints:
+    1. kanana-local (http://localhost:8889/chat/completions) - OpenAI-compatible
+    2. ollama-kanana (http://192.168.30.169:11434) - Ollama API
+    """
+    if not LOCAL_LLM_ENDPOINTS:
+        logger.warning("No local LLM endpoints configured")
+        return None
+    
+    # Randomly shuffle endpoints for load balancing
+    endpoints = LOCAL_LLM_ENDPOINTS.copy()
+    random.shuffle(endpoints)
+    
+    last_error = None
+    
+    for endpoint in endpoints:
+        endpoint_name = endpoint["name"]
+        endpoint_url = endpoint["url"]
+        endpoint_type = endpoint["type"]
+        endpoint_model = endpoint.get("model")
+        
+        logger.info(f"Trying local LLM fallback: {endpoint_name} ({endpoint_type})")
+        
+        try:
+            async with httpx.AsyncClient(timeout=120.0) as client:
+                if endpoint_type == "openai-compatible":
+                    # Direct OpenAI-compatible endpoint (like kanana API)
+                    payload = {"messages": messages}
+                    if temperature is not None:
+                        payload["temperature"] = temperature
+                    if max_tokens is not None:
+                        payload["max_tokens"] = max_tokens
+                    
+                    response = await client.post(
+                        endpoint_url,
+                        json=payload,
+                        headers={"Content-Type": "application/json"}
+                    )
+                    response.raise_for_status()
+                    data = response.json()
+                    
+                    # Handle different response formats
+                    if "choices" in data:
+                        # Standard OpenAI format
+                        content = data["choices"][0]["message"]["content"]
+                    elif "content" in data:
+                        # Simple format
+                        content = data["content"]
+                    elif "response" in data:
+                        # Alternative format
+                        content = data["response"]
+                    else:
+                        content = str(data)
+                    
+                    logger.info(f"Local LLM fallback ({endpoint_name}) succeeded")
+                    return {
+                        "id": f"chatcmpl-local-{int(time.time())}",
+                        "object": "chat.completion",
+                        "created": int(time.time()),
+                        "model": f"local/{endpoint_name}",
+                        "choices": [
+                            {
+                                "index": 0,
+                                "message": {
+                                    "role": "assistant",
+                                    "content": content
+                                },
+                                "finish_reason": "stop"
+                            }
+                        ],
+                        "usage": {
+                            "prompt_tokens": sum(len(m.get("content", "") or "") // 4 for m in messages),
+                            "completion_tokens": len(content) // 4,
+                            "total_tokens": sum(len(m.get("content", "") or "") // 4 for m in messages) + len(content) // 4
+                        }
+                    }
+                    
+                elif endpoint_type == "ollama":
+                    # Ollama API format
+                    ollama_url = f"{endpoint_url}/api/chat"
+                    
+                    # Convert messages to Ollama format
+                    ollama_messages = [
+                        {"role": m["role"], "content": m["content"]}
+                        for m in messages
+                    ]
+                    
+                    payload = {
+                        "model": endpoint_model,
+                        "messages": ollama_messages,
+                        "stream": False,
+                        "options": {}
+                    }
+                    if temperature is not None:
+                        payload["options"]["temperature"] = temperature
+                    if max_tokens is not None:
+                        payload["options"]["num_predict"] = max_tokens
+                    
+                    response = await client.post(
+                        ollama_url,
+                        json=payload,
+                        headers={"Content-Type": "application/json"}
+                    )
+                    response.raise_for_status()
+                    data = response.json()
+                    
+                    # Log raw output for debugging
+                    logger.debug(f"Ollama response data: {str(data)[:200]}...")
+                    
+                    content = ""
+                    if "message" in data and "content" in data["message"]:
+                        content = data["message"]["content"]
+                    elif "response" in data:
+                        content = data["response"]
+                    else:
+                        logger.error(f"Unexpected Ollama response format: {data.keys()}")
+                    
+                    logger.info(f"Local LLM fallback ({endpoint_name}) succeeded")
+                    return {
+                        "id": f"chatcmpl-local-{int(time.time())}",
+                        "object": "chat.completion",
+                        "created": int(time.time()),
+                        "model": f"local/{endpoint_model or endpoint_name}",
+                        "choices": [
+                            {
+                                "index": 0,
+                                "message": {
+                                    "role": "assistant",
+                                    "content": content
+                                },
+                                "finish_reason": "stop"
+                            }
+                        ],
+                        "usage": {
+                            "prompt_tokens": data.get("prompt_eval_count", sum(len(m.get("content", "") or "") // 4 for m in messages)),
+                            "completion_tokens": data.get("eval_count", len(content) // 4),
+                            "total_tokens": data.get("prompt_eval_count", 0) + data.get("eval_count", 0)
+                        }
+                    }
+                else:
+                    logger.warning(f"Unknown endpoint type: {endpoint_type}")
+                    continue
+                    
+        except httpx.HTTPStatusError as e:
+            last_error = e
+            logger.warning(f"Local LLM fallback ({endpoint_name}) HTTP error: {e.response.status_code} - {e.response.text[:200]}")
+            continue
+        except Exception as e:
+            last_error = e
+            logger.warning(f"Local LLM fallback ({endpoint_name}) failed: {str(e)}")
+            continue
+    
+    # All endpoints failed
+    if last_error:
+        raise last_error
+    return None
+
+
 async def _stream_groq_response(response_iterator, model_name: str):
     """Generator for streaming Groq response in OpenAI format"""
     try:
@@ -1210,8 +1392,8 @@ async def _stream_groq_response(response_iterator, model_name: str):
 class MemoProcessingThrottler:
     """
     Throttler for memo processing to enforce a duty cycle:
-    - Run for 30 seconds
-    - Wait for 10 minutes (600 seconds)
+    - Run for 120 seconds
+    - Wait for 3 minutes (180 seconds)
     """
     def __init__(self, run_duration: float = 30.0, cooldown_duration: float = 600.0):
         self.run_duration = run_duration
@@ -1262,7 +1444,7 @@ class MemoProcessingThrottler:
             
             return True, 0.0, ""
 
-memo_throttler = MemoProcessingThrottler(run_duration=30.0, cooldown_duration=600.0)
+memo_throttler = MemoProcessingThrottler(run_duration=120.0, cooldown_duration=180.0)
 
 
 @app.post("/v1/chat/completions")
@@ -1320,6 +1502,11 @@ async def chat_completions(request: ChatCompletionRequest):
         raise HTTPException(status_code=503, detail="Groq API keys not configured")
         
     messages_payload = [{"role": m.role, "content": m.content} for m in request.messages]
+    
+    # Log input size for debugging "Request Entity Too Large" errors
+    total_chars = sum(len(m.get("content", "") or "") for m in messages_payload)
+    estimated_tokens = total_chars // 4  # Rough estimate: 1 token ≈ 4 chars
+    logger.info(f"Chat request: model={requested_model}, messages={len(messages_payload)}, chars={total_chars}, est_tokens≈{estimated_tokens}")
     
     # Get all available keys
     all_keys = groq_key_manager.get_all_keys()
@@ -1428,6 +1615,30 @@ async def chat_completions(request: ChatCompletionRequest):
                         "account" in error_str.lower() and "suspended" in error_str.lower()
                     )
                     
+                    # Check for 413 Payload Too Large FIRST - fallback to local LLM immediately
+                    is_payload_too_large = (
+                        "413" in error_str or 
+                        "payload too large" in error_str.lower() or
+                        "request entity too large" in error_str.lower() or
+                        "content too large" in error_str.lower()
+                    )
+                    
+                    if is_payload_too_large:
+                        logger.warning(f"� Payload Too Large (413) on Groq. Immediately falling back to local LLM...")
+                        
+                        # Try local LLM fallback immediately - no more Groq attempts
+                        try:
+                            local_response = await _call_local_llm_fallback(messages_payload, request.temperature, request.max_tokens)
+                            if local_response:
+                                logger.info(f"✅ Local LLM fallback succeeded for 413 error")
+                                return local_response
+                        except Exception as local_err:
+                            logger.error(f"❌ Local LLM fallback also failed: {local_err}")
+                            raise HTTPException(
+                                status_code=413, 
+                                detail=f"Payload too large for Groq and local LLM fallback failed: {str(local_err)}"
+                            )
+                    
                     if is_org_restricted:
                         # CRITICAL: This key is now permanently unusable
                         groq_key_manager.mark_permanently_blocked(current_key, f"Organization Restricted: {error_str[:100]}")
@@ -1445,13 +1656,13 @@ async def chat_completions(request: ChatCompletionRequest):
                     )
                     
                     if is_rate_limit:
-                        # Rate limit hit -> Block this (Key, Model) for 180s (increased from 90s)
-                        await groq_rate_limiter.block_key_model(current_key, target_model, duration=180)
-                        logger.warning(f"Rate Limit (429) on Model [{target_model}] with Key [{key_index + 1}]. Blocking for 180s and trying next key...")
+                        # Rate limit hit -> Block this (Key, Model) for 300s (increased from 180s)
+                        await groq_rate_limiter.block_key_model(current_key, target_model, duration=300)
+                        logger.warning(f"Rate Limit (429) on Model [{target_model}] with Key [{key_index + 1}]. Blocking THIS KEY for 300s.")
                         
-                        # PROTECTION: Longer delay (30s) before switching to avoid aggressive behavior
-                        logger.info("PROTECTION: Waiting 30s before switching key to avoid aggressive behavior...")
-                        await asyncio.sleep(30)
+                        # PROTECTION: Short delay before switching to avoid aggressive behavior
+                        logger.info("PROTECTION: Waiting 5s before trying NEXT KEY to avoid aggressive behavior...")
+                        await asyncio.sleep(5)
                         continue 
                     else:
                         # Non-rate-limit error.
