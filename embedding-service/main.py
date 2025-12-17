@@ -141,7 +141,8 @@ class GroqKeyManager:
             
             # PROTECTION: Skip keys that exceeded daily limit
             if not self._is_key_within_daily_limit(current_key):
-                logger.warning(f"API key [{self._current_index + 1}] exceeded daily limit ({self.DAILY_LIMIT_PER_KEY} requests), switching...")
+                logger.warning(f"API key [{self._current_index + 1}] exceeded daily limit ({self.DAILY_LIMIT_PER_KEY} requests). Blocking for 6 hours.")
+                self.mark_rate_limited(current_key, cooldown_seconds=21600.0)
                 return self._find_available_key(current_time)
             
             if current_key in self._rate_limited:
@@ -170,6 +171,8 @@ class GroqKeyManager:
                 
             # PROTECTION: Skip keys that exceeded daily limit
             if not self._is_key_within_daily_limit(key):
+                if key not in self._rate_limited:
+                     self._rate_limited[key] = time.time() + 21600.0
                 continue
             
             if key not in self._rate_limited:
@@ -1056,7 +1059,7 @@ async def get_api_keys_status():
 # Rate limits per model (RPM)
 # PROTECTION: Lowered to 5 RPM (1 request every 12 seconds) to avoid organization restrictions
 # Combined with jitter delays, this should keep us under Groq's radar
-DEFAULT_RPM = 5
+DEFAULT_RPM = 15
 
 # PROTECTION: Minimum delay between requests (seconds) + random jitter
 MIN_REQUEST_DELAY = 10.0  # Base minimum delay
@@ -1081,11 +1084,23 @@ GROQ_MODEL_LIMITS = {
 }
 
 class GroqRateLimiter:
+    """
+    Rate limiter with Key+Model level Cooldown management.
+    Supports Running (120s) and Cooldown (180s) cycle per (key, model) pair.
+    """
+    # Cooldown duration for (key, model) pairs after running period expires
+    KEY_MODEL_COOLDOWN_DURATION = 180.0  # 180 seconds cooldown
+    KEY_MODEL_RUNNING_DURATION = 120.0   # 120 seconds running window
+    ERROR_COOLDOWN_DURATION = 900.0      # 15 minutes (900 seconds) for 429/413 errors
+    DAILY_LIMIT_COOLDOWN_DURATION = 21600.0  # 6 hours for daily limit exceeded
+    
     def __init__(self):
         self._last_request_times = {} # {key: {model: timestamp}}
         self._blocked_until = {} # {(key, model): timestamp_when_available}
         self._global_block_until = 0.0
         self._lock = asyncio.Lock()
+        # Track (key, model) cycle: {(key, model): {"cycle_start": timestamp, "state": "RUNNING"|"COOLDOWN"}}
+        self._key_model_cycle = {}
     
     def get_wait_time(self, key: str, model: str) -> float:
         # First check if specifically blocked due to recent 429
@@ -1109,6 +1124,65 @@ class GroqRateLimiter:
         """Check if this (key, model) is currently in penalty box due to 429"""
         unlock_time = self._blocked_until.get((key, model), 0)
         return time.time() < unlock_time
+    
+    def is_in_cooldown(self, key: str, model: str) -> tuple[bool, float]:
+        """
+        Check if (key, model) is in cooldown state based on Running/Cooldown cycle.
+        Returns (is_in_cooldown, remaining_seconds).
+        
+        Cycle: Running (120s) -> Cooldown (180s) -> Running ...
+        """
+        now = time.time()
+        key_model = (key, model)
+        
+        if key_model not in self._key_model_cycle:
+            # No cycle started yet, start a new one
+            self._key_model_cycle[key_model] = {
+                "cycle_start": now,
+                "state": "RUNNING"
+            }
+            return False, 0.0
+        
+        cycle = self._key_model_cycle[key_model]
+        elapsed = now - cycle["cycle_start"]
+        
+        if cycle["state"] == "RUNNING":
+            if elapsed > self.KEY_MODEL_RUNNING_DURATION:
+                # Running time exceeded, enter cooldown
+                cycle["state"] = "COOLDOWN"
+                cycle["cycle_start"] = now
+                logger.warning(f"Key+Model [{key[:8]}..., {model}] running period ({self.KEY_MODEL_RUNNING_DURATION}s) ended. Entering COOLDOWN for {self.KEY_MODEL_COOLDOWN_DURATION}s")
+                return True, self.KEY_MODEL_COOLDOWN_DURATION
+            return False, 0.0
+        
+        elif cycle["state"] == "COOLDOWN":
+            if elapsed > self.KEY_MODEL_COOLDOWN_DURATION:
+                # Cooldown finished, back to running
+                cycle["state"] = "RUNNING"
+                cycle["cycle_start"] = now
+                logger.info(f"Key+Model [{key[:8]}..., {model}] cooldown finished. Starting NEW running cycle.")
+                return False, 0.0
+            remaining = self.KEY_MODEL_COOLDOWN_DURATION - elapsed
+            return True, remaining
+        
+        return False, 0.0
+    
+    def get_any_key_model_in_cooldown(self) -> list[tuple[str, str, float]]:
+        """
+        Get all (key, model) pairs currently in cooldown state.
+        Returns list of (key, model, remaining_seconds).
+        """
+        now = time.time()
+        in_cooldown = []
+        
+        for (key, model), cycle in self._key_model_cycle.items():
+            if cycle["state"] == "COOLDOWN":
+                elapsed = now - cycle["cycle_start"]
+                if elapsed < self.KEY_MODEL_COOLDOWN_DURATION:
+                    remaining = self.KEY_MODEL_COOLDOWN_DURATION - elapsed
+                    in_cooldown.append((key, model, remaining))
+        
+        return in_cooldown
 
     def is_globally_blocked(self) -> tuple[bool, float]:
         """Check if global block is active"""
@@ -1117,10 +1191,19 @@ class GroqRateLimiter:
             return True, self._global_block_until - now
         return False, 0.0
 
-    async def block_key_model(self, key: str, model: str, duration: int = 90):
-        """Put this (key, model) in penalty box"""
+    async def block_key_model(self, key: str, model: str, duration: float = 900.0):
+        """
+        Put this (key, model) in penalty box.
+        Default duration: 900 seconds (15 minutes) for errors.
+        """
         async with self._lock:
             self._blocked_until[(key, model)] = time.time() + duration
+            logger.warning(f"Blocked (key={key[:8]}..., model={model}) for {duration}s")
+
+    async def block_key_model_daily_limit(self, key: str, model: str):
+        """Block (key, model) for 6 hours due to daily limit exceeded."""
+        await self.block_key_model(key, model, duration=self.DAILY_LIMIT_COOLDOWN_DURATION)
+        logger.warning(f"Daily limit exceeded for (key={key[:8]}..., model={model}). Blocked for 6 hours.")
 
     async def activate_global_block(self, duration: float = 300.0):
         """Block ALL Groq requests for 'duration' seconds"""
@@ -1146,12 +1229,28 @@ class GroqRateLimiter:
                     "remaining_seconds": round(remaining, 1)
                 })
         
+        # Add key+model cooldown status
+        cooldown_status = []
+        for (key, model), cycle in self._key_model_cycle.items():
+            if cycle["state"] == "COOLDOWN":
+                elapsed = now - cycle["cycle_start"]
+                if elapsed < self.KEY_MODEL_COOLDOWN_DURATION:
+                    remaining = self.KEY_MODEL_COOLDOWN_DURATION - elapsed
+                    cooldown_status.append({
+                        "key_prefix": key[:8] + "...",
+                        "model": model,
+                        "remaining_seconds": round(remaining, 1),
+                        "type": "cycle_cooldown"
+                    })
+        
         remaining_global = max(0.0, self._global_block_until - now)
         
         return {
             "global_block_remaining": round(remaining_global, 1),
             "blocked_keys": blocked_status,
-            "total_blocked": len(blocked_status)
+            "cycle_cooldowns": cooldown_status,
+            "total_blocked": len(blocked_status),
+            "total_in_cooldown_cycle": len(cooldown_status)
         }
 
 groq_rate_limiter = GroqRateLimiter()
@@ -1194,6 +1293,44 @@ GROQ_MODEL_FALLBACKS = {
 }
 
 
+class LocalLLMCooldown:
+    """
+    Simple cooldown tracker for Local LLM endpoints.
+    Prevents excessive calls to local LLM by enforcing a cooldown period.
+    """
+    COOLDOWN_DURATION = 15.0  # 15 seconds cooldown
+    
+    def __init__(self):
+        self._last_call_time: float = 0.0
+        self._lock = threading.Lock()
+    
+    def is_in_cooldown(self) -> tuple[bool, float]:
+        """Check if Local LLM is in cooldown. Returns (is_in_cooldown, remaining_seconds)."""
+        with self._lock:
+            now = time.time()
+            elapsed = now - self._last_call_time
+            if elapsed < self.COOLDOWN_DURATION:
+                remaining = self.COOLDOWN_DURATION - elapsed
+                return True, remaining
+            return False, 0.0
+    
+    def update_call_time(self):
+        """Update the last call time to now."""
+        with self._lock:
+            self._last_call_time = time.time()
+    
+    def get_status(self) -> dict:
+        """Get cooldown status for monitoring."""
+        is_cooldown, remaining = self.is_in_cooldown()
+        return {
+            "is_in_cooldown": is_cooldown,
+            "remaining_seconds": round(remaining, 1),
+            "cooldown_duration": self.COOLDOWN_DURATION
+        }
+
+# Initialize Local LLM cooldown tracker
+local_llm_cooldown = LocalLLMCooldown()
+
 async def _call_local_llm_fallback(
     messages: list[dict], 
     temperature: float | None = 0.7, 
@@ -1203,10 +1340,18 @@ async def _call_local_llm_fallback(
     Call local LLM endpoints when Groq returns 413 Payload Too Large.
     Randomly selects between available local LLM endpoints.
     
+    Includes 15-second cooldown to prevent excessive calls.
+    
     Supported endpoints:
     1. kanana-local (http://localhost:8889/chat/completions) - OpenAI-compatible
     2. ollama-kanana (http://192.168.30.169:11434) - Ollama API
     """
+    # Check Local LLM cooldown first
+    is_cooldown, remaining = local_llm_cooldown.is_in_cooldown()
+    if is_cooldown:
+        logger.info(f"⏳ Local LLM in cooldown ({remaining:.1f}s remaining). Skipping.")
+        return None
+    
     if not LOCAL_LLM_ENDPOINTS:
         logger.warning("No local LLM endpoints configured")
         return None
@@ -1257,6 +1402,8 @@ async def _call_local_llm_fallback(
                         content = str(data)
                     
                     logger.info(f"Local LLM fallback ({endpoint_name}) succeeded")
+                    # Update cooldown after successful call
+                    local_llm_cooldown.update_call_time()
                     return {
                         "id": f"chatcmpl-local-{int(time.time())}",
                         "object": "chat.completion",
@@ -1320,6 +1467,8 @@ async def _call_local_llm_fallback(
                         logger.error(f"Unexpected Ollama response format: {data.keys()}")
                     
                     logger.info(f"Local LLM fallback ({endpoint_name}) succeeded")
+                    # Update cooldown after successful call
+                    local_llm_cooldown.update_call_time()
                     return {
                         "id": f"chatcmpl-local-{int(time.time())}",
                         "object": "chat.completion",
@@ -1358,6 +1507,61 @@ async def _call_local_llm_fallback(
     if last_error:
         raise last_error
     return None
+
+
+async def _stream_single_response(response_dict: dict):
+    """
+    Converts a single JSON response into an SSE stream.
+    Used for local fallback when the client requested a stream but we got a full response.
+    """
+    try:
+        # Extract content from the response
+        content = ""
+        if "choices" in response_dict and len(response_dict["choices"]) > 0:
+            message = response_dict["choices"][0].get("message", {})
+            content = message.get("content", "")
+        
+        model = response_dict.get("model", "local-fallback")
+        created = response_dict.get("created", int(time.time()))
+        completion_id = response_dict.get("id", f"chatcmpl-{created}")
+        
+        # Create a single chunk with content
+        chunk_data = {
+            "id": completion_id,
+            "object": "chat.completion.chunk",
+            "created": created,
+            "model": model,
+            "choices": [
+                {
+                    "index": 0,
+                    "delta": {"content": content},
+                    "finish_reason": None
+                }
+            ]
+        }
+        yield f"data: {json.dumps(chunk_data)}\n\n"
+        
+        # Send finish chunk
+        finish_data = {
+            "id": completion_id,
+            "object": "chat.completion.chunk",
+            "created": created,
+            "model": model,
+            "choices": [
+                {
+                    "index": 0,
+                    "delta": {},
+                    "finish_reason": "stop"
+                }
+            ]
+        }
+        yield f"data: {json.dumps(finish_data)}\n\n"
+        yield "data: [DONE]\n\n"
+        
+    except Exception as e:
+        logger.error(f"Error streaming single response: {e}")
+        error_data = {"error": str(e)}
+        yield f"data: {json.dumps(error_data)}\n\n"
 
 
 async def _stream_groq_response(response_iterator, model_name: str):
@@ -1452,31 +1656,79 @@ async def chat_completions(request: ChatCompletionRequest):
     """
     OpenAI-compatible chat completion endpoint.
     Routes to Groq with Round-Robin key management AND Model Fallback.
+    
+    Key+Model Cooldown Logic:
+    - When a (key, model) pair enters cooldown (after 120s running period):
+      1. First attempt: Try Local LLM endpoint
+      2. If Local fails: Continue with Model → Key → Local fallback order
     """
     
     requested_model = request.model
+    messages_payload = [{"role": m.role, "content": m.content} for m in request.messages]
 
-    # 1. Check Global Rate Limit
+    # 1. Check Global Rate Limit - Try Local LLM as last resort fallback
     is_globally_blocked, remaining_global = groq_rate_limiter.is_globally_blocked()
     if is_globally_blocked:
+        logger.warning(f"🚨 Global Block active ({remaining_global:.1f}s remaining). Attempting Local LLM as last resort...")
+        try:
+            local_response = await _call_local_llm_fallback(messages_payload, request.temperature, request.max_tokens)
+            if local_response:
+                logger.info("✅ Local LLM succeeded during global block (last resort fallback)")
+                if request.stream:
+                    return StreamingResponse(
+                        _stream_single_response(local_response), 
+                        media_type="text/event-stream"
+                    )
+                return local_response
+        except Exception as e:
+            logger.error(f"❌ Local LLM fallback also failed during global block: {e}")
+        
+        # Local LLM failed, raise the original error
         raise HTTPException(
              status_code=429,
-             detail=f"System is in global cooldown due to excessive rate limits. Retry in {int(remaining_global)} seconds.",
+             detail=f"System is in global cooldown and local fallback failed. Retry in {int(remaining_global)} seconds.",
              headers={"Retry-After": str(int(remaining_global))}
         )
+    
+    # 2. Check if any (key, model) pairs are in cooldown cycle
+    # If so, try Local LLM first before attempting Groq
+    cooldown_pairs = groq_rate_limiter.get_any_key_model_in_cooldown()
+    if cooldown_pairs:
+        logger.info(f"🔄 {len(cooldown_pairs)} (key,model) pairs in cooldown cycle. Trying Local LLM FIRST.")
+        try:
+            local_response = await _call_local_llm_fallback(messages_payload, request.temperature, request.max_tokens)
+            if local_response:
+                logger.info("✅ Local LLM succeeded (cooldown fallback)")
+                if request.stream:
+                    return StreamingResponse(
+                        _stream_single_response(local_response), 
+                        media_type="text/event-stream"
+                    )
+                return local_response
+        except Exception as e:
+            logger.warning(f"Local LLM fallback failed during cooldown: {e}. Proceeding with Model→Key→Local fallback.")
 
     # Check for Memo Processing Throttle (Targeting Classification Model)
     # The default classification model is 'llama-3.1-8b-instant'
     if "llama-3.1-8b-instant" in requested_model:
         is_allowed, wait_time, msg = await memo_throttler.check_throttling()
         if not is_allowed:
-            # Return 429 with specific message
-            logger.warning(f"Blocking memo processing request: {msg}")
-            raise HTTPException(
-                status_code=429,
-                detail=msg,
-                headers={"Retry-After": str(int(wait_time))}
-            )
+            logger.warning(f"Memo throttler active ({msg}). Attempting LOCAL LLM fallback first.")
+            # Try Local Fallback
+            try:
+                local_response = await _call_local_llm_fallback(messages_payload, request.temperature, request.max_tokens)
+                if local_response:
+                    logger.info("✅ Local LLM fallback succeeded during throttling")
+                    if request.stream:
+                        return StreamingResponse(
+                            _stream_single_response(local_response), 
+                            media_type="text/event-stream"
+                        )
+                    return local_response
+            except Exception as e:
+                logger.error(f"Local fallback failed during throttling: {e}")
+            
+            logger.warning("Local fallback failed or unavailable during throttle. Proceeding to standard Groq fallback chain.")
     
     # Determined fallback chain based on requested model
     # If requested model is not in our known list, try to map it or default to Qwen
@@ -1500,8 +1752,6 @@ async def chat_completions(request: ChatCompletionRequest):
 
     if not groq_key_manager:
         raise HTTPException(status_code=503, detail="Groq API keys not configured")
-        
-    messages_payload = [{"role": m.role, "content": m.content} for m in request.messages]
     
     # Log input size for debugging "Request Entity Too Large" errors
     total_chars = sum(len(m.get("content", "") or "") for m in messages_payload)
@@ -1541,7 +1791,25 @@ async def chat_completions(request: ChatCompletionRequest):
                         logger.warning(f"  > Skipping Permanently Blocked: KeyIndex={key_index + 1}")
                         continue
                     
-                    # Check if currently blocked (Circuit Breaker)
+                    # Check (key, model) cooldown cycle - if in cooldown, try local first
+                    is_cooldown, cooldown_remaining = groq_rate_limiter.is_in_cooldown(current_key, target_model)
+                    if is_cooldown:
+                        logger.info(f"  > (Key={key_index + 1}, Model={target_model}) in COOLDOWN cycle ({cooldown_remaining:.1f}s remaining). Trying Local LLM...")
+                        try:
+                            local_response = await _call_local_llm_fallback(messages_payload, request.temperature, request.max_tokens)
+                            if local_response:
+                                logger.info(f"✅ Local LLM fallback succeeded during cooldown cycle")
+                                if request.stream:
+                                    return StreamingResponse(
+                                        _stream_single_response(local_response), 
+                                        media_type="text/event-stream"
+                                    )
+                                return local_response
+                        except Exception as e:
+                            logger.warning(f"Local LLM fallback failed: {e}. Continuing to next (key, model)...")
+                        continue  # Skip this (key, model) and try next
+                    
+                    # Check if currently blocked (Circuit Breaker due to errors)
                     if groq_rate_limiter.is_blocked(current_key, target_model):
                         logger.warning(f"  > Skipping Blocked: Model={target_model} | KeyIndex={key_index + 1} (Recent 429)")
                         continue
@@ -1631,7 +1899,15 @@ async def chat_completions(request: ChatCompletionRequest):
                             local_response = await _call_local_llm_fallback(messages_payload, request.temperature, request.max_tokens)
                             if local_response:
                                 logger.info(f"✅ Local LLM fallback succeeded for 413 error")
-                                return local_response
+                                
+                                # If client requested stream, we need to convert the single response to a stream
+                                if request.stream:
+                                    return StreamingResponse(
+                                        _stream_single_response(local_response), 
+                                        media_type="text/event-stream"
+                                    )
+                                else:
+                                    return local_response
                         except Exception as local_err:
                             logger.error(f"❌ Local LLM fallback also failed: {local_err}")
                             raise HTTPException(
@@ -1656,9 +1932,24 @@ async def chat_completions(request: ChatCompletionRequest):
                     )
                     
                     if is_rate_limit:
-                        # Rate limit hit -> Block this (Key, Model) for 300s (increased from 180s)
-                        await groq_rate_limiter.block_key_model(current_key, target_model, duration=300)
-                        logger.warning(f"Rate Limit (429) on Model [{target_model}] with Key [{key_index + 1}]. Blocking THIS KEY for 300s.")
+                        # Rate limit hit -> Block this (Key, Model) for 15 minutes (900s)
+                        await groq_rate_limiter.block_key_model(current_key, target_model, duration=groq_rate_limiter.ERROR_COOLDOWN_DURATION)
+                        logger.warning(f"Rate Limit (429) on Model [{target_model}] with Key [{key_index + 1}]. Blocking for {groq_rate_limiter.ERROR_COOLDOWN_DURATION}s (15 min).")
+                        
+                        # Try Local LLM as fallback for this error
+                        logger.info("Attempting Local LLM fallback after 429 error...")
+                        try:
+                            local_response = await _call_local_llm_fallback(messages_payload, request.temperature, request.max_tokens)
+                            if local_response:
+                                logger.info(f"✅ Local LLM fallback succeeded after 429 error")
+                                if request.stream:
+                                    return StreamingResponse(
+                                        _stream_single_response(local_response), 
+                                        media_type="text/event-stream"
+                                    )
+                                return local_response
+                        except Exception as local_err:
+                            logger.warning(f"Local LLM fallback also failed: {local_err}")
                         
                         # PROTECTION: Short delay before switching to avoid aggressive behavior
                         logger.info("PROTECTION: Waiting 5s before trying NEXT KEY to avoid aggressive behavior...")
