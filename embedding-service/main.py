@@ -4,8 +4,9 @@ import logging
 import os
 import time
 import threading
+import random
+from datetime import date
 from typing import Literal, Optional
-import httpx
 import httpx
 from groq import Groq, AsyncGroq
 
@@ -1056,32 +1057,365 @@ async def get_api_keys_status():
 # ============================================================
 
 
-# Rate limits per model (RPM)
-# PROTECTION: Lowered to 5 RPM (1 request every 12 seconds) to avoid organization restrictions
-# Combined with jitter delays, this should keep us under Groq's radar
-DEFAULT_RPM = 15
+# Groq Official Model Limits (as of 2024-12)
+# RPM: Requests per Minute, RPD: Requests per Day
+# TPM: Tokens per Minute, TPD: Tokens per Day
+GROQ_MODEL_LIMITS = {
+    "allam-2-7b": {"rpm": 30, "rpd": 7000, "tpm": 6000, "tpd": 500000},
+    "groq/compound": {"rpm": 30, "rpd": 250, "tpm": 70000, "tpd": None},  # No limit
+    "groq/compound-mini": {"rpm": 30, "rpd": 250, "tpm": 70000, "tpd": None},
+    "llama-3.1-8b-instant": {"rpm": 30, "rpd": 14400, "tpm": 6000, "tpd": 500000},
+    "llama-3.3-70b-versatile": {"rpm": 30, "rpd": 1000, "tpm": 12000, "tpd": 100000},
+    "meta-llama/llama-4-maverick-17b-128e-instruct": {"rpm": 30, "rpd": 1000, "tpm": 6000, "tpd": 500000},
+    "meta-llama/llama-4-scout-17b-16e-instruct": {"rpm": 30, "rpd": 1000, "tpm": 30000, "tpd": 500000},
+    "meta-llama/llama-guard-4-12b": {"rpm": 30, "rpd": 14400, "tpm": 15000, "tpd": 500000},
+    "meta-llama/llama-prompt-guard-2-22m": {"rpm": 30, "rpd": 14400, "tpm": 15000, "tpd": 500000},
+    "meta-llama/llama-prompt-guard-2-86m": {"rpm": 30, "rpd": 14400, "tpm": 15000, "tpd": 500000},
+    "moonshotai/kimi-k2-instruct": {"rpm": 60, "rpd": 1000, "tpm": 10000, "tpd": 300000},
+    "moonshotai/kimi-k2-instruct-0905": {"rpm": 60, "rpd": 1000, "tpm": 10000, "tpd": 300000},
+    "openai/gpt-oss-120b": {"rpm": 30, "rpd": 1000, "tpm": 8000, "tpd": 200000},
+    "openai/gpt-oss-20b": {"rpm": 30, "rpd": 1000, "tpm": 8000, "tpd": 200000},
+    "openai/gpt-oss-safeguard-20b": {"rpm": 30, "rpd": 1000, "tpm": 8000, "tpd": 200000},
+    "qwen/qwen3-32b": {"rpm": 60, "rpd": 1000, "tpm": 6000, "tpd": 500000},
+}
+
+# Default limits for unknown models
+DEFAULT_MODEL_LIMITS = {"rpm": 30, "rpd": 1000, "tpm": 6000, "tpd": 100000}
 
 # PROTECTION: Minimum delay between requests (seconds) + random jitter
-MIN_REQUEST_DELAY = 10.0  # Base minimum delay
-MAX_JITTER = 5.0  # Additional random delay (0 to MAX_JITTER)
-GROQ_MODEL_LIMITS = {
-    "allam-2-7b": DEFAULT_RPM,
-    "groq/compound": DEFAULT_RPM,
-    "groq/compound-mini": DEFAULT_RPM,
-    "llama-3.1-8b-instant": DEFAULT_RPM,
-    "llama-3.3-70b-versatile": DEFAULT_RPM,
-    "meta-llama/llama-4-maverick-17b-128e-instruct": DEFAULT_RPM,
-    "meta-llama/llama-4-scout-17b-16e-instruct": DEFAULT_RPM,
-    "meta-llama/llama-guard-4-12b": DEFAULT_RPM,
-    "meta-llama/llama-prompt-guard-2-22m": DEFAULT_RPM,
-    "meta-llama/llama-prompt-guard-2-86m": DEFAULT_RPM,
-    "moonshotai/kimi-k2-instruct": DEFAULT_RPM,
-    "moonshotai/kimi-k2-instruct-0905": DEFAULT_RPM,
-    "openai/gpt-oss-120b": DEFAULT_RPM,
-    "openai/gpt-oss-20b": DEFAULT_RPM,
-    "openai/gpt-oss-safeguard-20b": DEFAULT_RPM,
-    "qwen/qwen3-32b": DEFAULT_RPM,
-}
+MIN_REQUEST_DELAY = 5.0  # Base minimum delay (reduced from 10s for better responsiveness)
+MAX_JITTER = 3.0  # Additional random delay (0 to MAX_JITTER)
+
+# Preemptive thresholds (percentage of limit before entering preemptive cooldown)
+PREEMPTIVE_RPD_THRESHOLD = 0.80  # 80% of daily request limit
+PREEMPTIVE_TPD_THRESHOLD = 0.80  # 80% of daily token limit
+
+
+class KeyHealthTracker:
+    """
+    Tracks API key health based on success/error rates.
+    Prioritizes healthier keys for better reliability.
+    """
+    def __init__(self):
+        self._lock = threading.Lock()
+        # {key: {"success": int, "error": int, "last_error_time": float, "score": float}}
+        self._health_data: dict[str, dict] = {}
+        self._window_size = 100  # Track last N requests for scoring
+    
+    def record_success(self, key: str):
+        """Record a successful request for this key."""
+        with self._lock:
+            if key not in self._health_data:
+                self._health_data[key] = {"success": 0, "error": 0, "last_error_time": 0, "score": 1.0}
+            self._health_data[key]["success"] += 1
+            self._update_score(key)
+    
+    def record_error(self, key: str, error_type: str = "unknown"):
+        """Record an error for this key."""
+        with self._lock:
+            if key not in self._health_data:
+                self._health_data[key] = {"success": 0, "error": 0, "last_error_time": 0, "score": 1.0}
+            self._health_data[key]["error"] += 1
+            self._health_data[key]["last_error_time"] = time.time()
+            self._health_data[key]["last_error_type"] = error_type
+            self._update_score(key)
+    
+    def _update_score(self, key: str):
+        """Update health score based on success/error ratio."""
+        data = self._health_data[key]
+        total = data["success"] + data["error"]
+        if total == 0:
+            data["score"] = 1.0
+            return
+        
+        # Base score from success rate
+        success_rate = data["success"] / total
+        
+        # Decay factor based on recency of last error
+        time_since_error = time.time() - data["last_error_time"]
+        decay = min(1.0, time_since_error / 3600)  # Full recovery after 1 hour
+        
+        # Combined score
+        data["score"] = success_rate * 0.7 + decay * 0.3
+    
+    def get_score(self, key: str) -> float:
+        """Get health score for a key (0.0 to 1.0)."""
+        with self._lock:
+            if key not in self._health_data:
+                return 1.0  # Unknown keys start with perfect score
+            return self._health_data[key]["score"]
+    
+    def get_healthiest_keys(self, keys: list[str]) -> list[str]:
+        """Return keys sorted by health score (healthiest first)."""
+        with self._lock:
+            return sorted(keys, key=lambda k: self._health_data.get(k, {}).get("score", 1.0), reverse=True)
+    
+    def get_status(self) -> dict:
+        """Get health status for all tracked keys."""
+        with self._lock:
+            return {
+                k[:8] + "...": {
+                    "score": round(v["score"], 3),
+                    "success": v["success"],
+                    "error": v["error"]
+                }
+                for k, v in self._health_data.items()
+            }
+
+
+class TokenBudgetManager:
+    """
+    Tracks token usage per (key, model) pair for budget management.
+    Provides preemptive warnings when approaching limits.
+    """
+    def __init__(self):
+        self._lock = threading.Lock()
+        # {(key, model): {"tpm_usage": [], "tpd_usage": int, "rpd_usage": int, "last_reset": date}}
+        self._usage: dict[tuple[str, str], dict] = {}
+    
+    def _get_or_create(self, key: str, model: str) -> dict:
+        """Get or create usage tracking for (key, model) pair."""
+        key_model = (key, model)
+        if key_model not in self._usage:
+            self._usage[key_model] = {
+                "tpm_window": [],  # [(timestamp, tokens), ...]
+                "tpd_usage": 0,
+                "rpd_usage": 0,
+                "last_reset_date": str(date.today())
+            }
+        
+        # Reset daily counters if new day
+        today = str(date.today())
+        if self._usage[key_model]["last_reset_date"] != today:
+            self._usage[key_model]["tpd_usage"] = 0
+            self._usage[key_model]["rpd_usage"] = 0
+            self._usage[key_model]["last_reset_date"] = today
+        
+        return self._usage[key_model]
+    
+    def record_usage(self, key: str, model: str, tokens: int):
+        """Record token usage for a request."""
+        with self._lock:
+            usage = self._get_or_create(key, model)
+            now = time.time()
+            
+            # Add to TPM window
+            usage["tpm_window"].append((now, tokens))
+            
+            # Clean old entries (older than 60 seconds)
+            usage["tpm_window"] = [(t, tok) for t, tok in usage["tpm_window"] if now - t < 60]
+            
+            # Update daily counters
+            usage["tpd_usage"] += tokens
+            usage["rpd_usage"] += 1
+    
+    def get_tpm_usage(self, key: str, model: str) -> int:
+        """Get current tokens per minute usage."""
+        with self._lock:
+            usage = self._get_or_create(key, model)
+            now = time.time()
+            # Clean and sum
+            usage["tpm_window"] = [(t, tok) for t, tok in usage["tpm_window"] if now - t < 60]
+            return sum(tok for _, tok in usage["tpm_window"])
+    
+    def check_limits(self, key: str, model: str, estimated_tokens: int) -> tuple[bool, str]:
+        """
+        Check if making a request would exceed limits.
+        Returns (is_ok, message).
+        """
+        with self._lock:
+            usage = self._get_or_create(key, model)
+            limits = GROQ_MODEL_LIMITS.get(model, DEFAULT_MODEL_LIMITS)
+            
+            # Check TPM
+            current_tpm = sum(tok for _, tok in usage["tpm_window"] if time.time() - _[0] < 60)
+            if current_tpm + estimated_tokens > limits["tpm"]:
+                return False, f"TPM limit ({limits['tpm']}) would be exceeded"
+            
+            # Check TPD
+            if limits["tpd"] and usage["tpd_usage"] + estimated_tokens > limits["tpd"]:
+                return False, f"TPD limit ({limits['tpd']}) would be exceeded"
+            
+            # Check RPD
+            if usage["rpd_usage"] + 1 > limits["rpd"]:
+                return False, f"RPD limit ({limits['rpd']}) would be exceeded"
+            
+            return True, "OK"
+    
+    def is_approaching_limit(self, key: str, model: str) -> tuple[bool, str]:
+        """Check if approaching daily limits (preemptive warning)."""
+        with self._lock:
+            usage = self._get_or_create(key, model)
+            limits = GROQ_MODEL_LIMITS.get(model, DEFAULT_MODEL_LIMITS)
+            
+            # Check RPD preemptive threshold
+            if usage["rpd_usage"] > limits["rpd"] * PREEMPTIVE_RPD_THRESHOLD:
+                pct = usage["rpd_usage"] / limits["rpd"] * 100
+                return True, f"RPD at {pct:.1f}% ({usage['rpd_usage']}/{limits['rpd']})"
+            
+            # Check TPD preemptive threshold
+            if limits["tpd"] and usage["tpd_usage"] > limits["tpd"] * PREEMPTIVE_TPD_THRESHOLD:
+                pct = usage["tpd_usage"] / limits["tpd"] * 100
+                return True, f"TPD at {pct:.1f}% ({usage['tpd_usage']}/{limits['tpd']})"
+            
+            return False, "OK"
+    
+    def get_status(self, key: str = None) -> dict:
+        """Get usage status for monitoring."""
+        with self._lock:
+            result = {}
+            for (k, m), usage in self._usage.items():
+                if key and k != key:
+                    continue
+                limits = GROQ_MODEL_LIMITS.get(m, DEFAULT_MODEL_LIMITS)
+                key_prefix = k[:8] + "..."
+                if key_prefix not in result:
+                    result[key_prefix] = {}
+                result[key_prefix][m] = {
+                    "rpd": f"{usage['rpd_usage']}/{limits['rpd']}",
+                    "tpd": f"{usage['tpd_usage']}/{limits['tpd'] or 'unlimited'}",
+                }
+            return result
+
+
+class AdaptiveThrottler:
+    """
+    Adaptive rate limiting based on recent error rates.
+    Automatically increases delays when seeing many errors.
+    """
+    def __init__(self):
+        self._lock = threading.Lock()
+        self._recent_errors: list[float] = []  # Timestamps of recent errors
+        self._recent_requests: list[float] = []  # Timestamps of recent requests
+        self._window = 300.0  # 5 minute window
+        self._base_delay = MIN_REQUEST_DELAY
+        self._max_multiplier = 5.0  # Maximum delay multiplier
+    
+    def record_request(self):
+        """Record a request attempt."""
+        with self._lock:
+            now = time.time()
+            self._recent_requests.append(now)
+            self._clean_old_entries(now)
+    
+    def record_error(self):
+        """Record an error."""
+        with self._lock:
+            now = time.time()
+            self._recent_errors.append(now)
+            self._clean_old_entries(now)
+    
+    def _clean_old_entries(self, now: float):
+        """Remove entries older than window."""
+        self._recent_errors = [t for t in self._recent_errors if now - t < self._window]
+        self._recent_requests = [t for t in self._recent_requests if now - t < self._window]
+    
+    def get_delay_multiplier(self) -> float:
+        """Get delay multiplier based on error rate."""
+        with self._lock:
+            now = time.time()
+            self._clean_old_entries(now)
+            
+            if len(self._recent_requests) < 5:
+                return 1.0  # Not enough data
+            
+            error_rate = len(self._recent_errors) / len(self._recent_requests)
+            
+            # Scale multiplier based on error rate
+            # 0% errors -> 1.0x, 50% errors -> 3.0x, 100% errors -> 5.0x
+            multiplier = 1.0 + (self._max_multiplier - 1.0) * min(1.0, error_rate * 2)
+            return multiplier
+    
+    def get_recommended_delay(self) -> float:
+        """Get recommended delay before next request."""
+        multiplier = self.get_delay_multiplier()
+        jitter = random.uniform(0, MAX_JITTER)
+        return self._base_delay * multiplier + jitter
+    
+    def get_status(self) -> dict:
+        """Get throttler status."""
+        with self._lock:
+            now = time.time()
+            self._clean_old_entries(now)
+            req_count = len(self._recent_requests)
+            err_count = len(self._recent_errors)
+            return {
+                "window_seconds": self._window,
+                "recent_requests": req_count,
+                "recent_errors": err_count,
+                "error_rate": round(err_count / req_count, 3) if req_count > 0 else 0,
+                "delay_multiplier": round(self.get_delay_multiplier(), 2),
+                "recommended_delay": round(self.get_recommended_delay(), 2)
+            }
+
+
+class ResponseCache:
+    """
+    Simple LRU cache for LLM responses.
+    Caches based on message content hash.
+    """
+    def __init__(self, max_size: int = 100, ttl_seconds: float = 3600):
+        self._lock = threading.Lock()
+        self._cache: dict[str, tuple[dict, float]] = {}  # {hash: (response, timestamp)}
+        self._max_size = max_size
+        self._ttl = ttl_seconds
+        self._hits = 0
+        self._misses = 0
+    
+    def _hash_messages(self, messages: list[dict], model: str) -> str:
+        """Create a hash key from messages and model."""
+        import hashlib
+        content = json.dumps({"messages": messages, "model": model}, sort_keys=True)
+        return hashlib.md5(content.encode()).hexdigest()
+    
+    def get(self, messages: list[dict], model: str) -> dict | None:
+        """Try to get a cached response."""
+        with self._lock:
+            key = self._hash_messages(messages, model)
+            if key in self._cache:
+                response, timestamp = self._cache[key]
+                if time.time() - timestamp < self._ttl:
+                    self._hits += 1
+                    logger.debug(f"Cache HIT for request (hits={self._hits})")
+                    return response
+                else:
+                    # Expired
+                    del self._cache[key]
+            self._misses += 1
+            return None
+    
+    def set(self, messages: list[dict], model: str, response: dict):
+        """Cache a response."""
+        with self._lock:
+            key = self._hash_messages(messages, model)
+            
+            # Evict oldest if at capacity
+            if len(self._cache) >= self._max_size:
+                oldest_key = min(self._cache, key=lambda k: self._cache[k][1])
+                del self._cache[oldest_key]
+            
+            self._cache[key] = (response, time.time())
+    
+    def get_status(self) -> dict:
+        """Get cache statistics."""
+        with self._lock:
+            total = self._hits + self._misses
+            return {
+                "size": len(self._cache),
+                "max_size": self._max_size,
+                "hits": self._hits,
+                "misses": self._misses,
+                "hit_rate": round(self._hits / total, 3) if total > 0 else 0,
+                "ttl_seconds": self._ttl
+            }
+
+
+# Initialize all managers
+key_health_tracker = KeyHealthTracker()
+token_budget_manager = TokenBudgetManager()
+adaptive_throttler = AdaptiveThrottler()
+response_cache = ResponseCache(max_size=200, ttl_seconds=1800)  # 30 min TTL
+
 
 class GroqRateLimiter:
     """
@@ -1107,7 +1441,9 @@ class GroqRateLimiter:
         if self.is_blocked(key, model):
             return 999.0 # Arbitrary large number to signal block
 
-        rpm = GROQ_MODEL_LIMITS.get(model, 30) # default 30 RPM
+        # Get RPM from new limits structure
+        limits = GROQ_MODEL_LIMITS.get(model, DEFAULT_MODEL_LIMITS)
+        rpm = limits["rpm"]
         interval = 60.0 / rpm
         
         # Check last request time
@@ -1657,14 +1993,22 @@ async def chat_completions(request: ChatCompletionRequest):
     OpenAI-compatible chat completion endpoint.
     Routes to Groq with Round-Robin key management AND Model Fallback.
     
-    Key+Model Cooldown Logic:
-    - When a (key, model) pair enters cooldown (after 120s running period):
-      1. First attempt: Try Local LLM endpoint
-      2. If Local fails: Continue with Model → Key → Local fallback order
+    Enhanced Features:
+    - Response Caching: Returns cached responses for identical requests
+    - Key Health Scoring: Prioritizes healthier API keys
+    - Token Budget Management: Tracks and limits TPM/TPD usage
+    - Adaptive Throttling: Adjusts request delays based on error rate
+    - Preemptive Cooldown: Warns when approaching daily limits
     """
     
     requested_model = request.model
     messages_payload = [{"role": m.role, "content": m.content} for m in request.messages]
+
+    # 0. Check Response Cache FIRST (fastest path)
+    cached_response = response_cache.get(messages_payload, requested_model)
+    if cached_response and not request.stream:
+        logger.info("📋 Returning cached response")
+        return cached_response
 
     # 1. Check Global Rate Limit - Try Local LLM as last resort fallback
     is_globally_blocked, remaining_global = groq_rate_limiter.is_globally_blocked()
@@ -1758,11 +2102,15 @@ async def chat_completions(request: ChatCompletionRequest):
     estimated_tokens = total_chars // 4  # Rough estimate: 1 token ≈ 4 chars
     logger.info(f"Chat request: model={requested_model}, messages={len(messages_payload)}, chars={total_chars}, est_tokens≈{estimated_tokens}")
     
-    # Get all available keys
+    # Get all available keys and sort by health score (healthiest first)
     all_keys = groq_key_manager.get_all_keys()
+    all_keys = key_health_tracker.get_healthiest_keys(all_keys)
     
     # Track errors to report if all fail
     last_exception = None
+    
+    # Record request in adaptive throttler
+    adaptive_throttler.record_request()
     
 
     # Try everything twice (with a 90s wait in between)
@@ -1813,22 +2161,33 @@ async def chat_completions(request: ChatCompletionRequest):
                     if groq_rate_limiter.is_blocked(current_key, target_model):
                         logger.warning(f"  > Skipping Blocked: Model={target_model} | KeyIndex={key_index + 1} (Recent 429)")
                         continue
+                    
+                    # Token Budget Check: Skip if this (key, model) would exceed limits
+                    is_ok, budget_msg = token_budget_manager.check_limits(current_key, target_model, estimated_tokens)
+                    if not is_ok:
+                        logger.warning(f"  > Skipping due to budget: {budget_msg} | Key={key_index + 1} Model={target_model}")
+                        continue
+                    
+                    # Preemptive Cooldown Check: Warn if approaching limits
+                    is_approaching, approach_msg = token_budget_manager.is_approaching_limit(current_key, target_model)
+                    if is_approaching:
+                        logger.warning(f"⚠️ Approaching limit: {approach_msg} | Key={key_index + 1} Model={target_model}")
 
-                    # PROTECTION: Add random jitter delay to avoid looking like a bot
-                    jitter = random.uniform(0, MAX_JITTER)
-                    base_delay = MIN_REQUEST_DELAY
+                    # Adaptive Throttling: Get recommended delay based on recent error rate
+                    recommended_delay = adaptive_throttler.get_recommended_delay()
                     
                     # Gentle Throttling: Check local rate limit (RPM)
-                    wait_time = groq_rate_limiter.get_wait_time(current_key, target_model)
+                    rpm_wait = groq_rate_limiter.get_wait_time(current_key, target_model)
                     
-                    # Apply the larger of RPM-based wait or minimum delay
-                    actual_wait = max(wait_time, base_delay) + jitter
-                    if actual_wait > 0 and actual_wait < 300: # Wait only if reasonable
-                        logger.debug(f"PROTECTION: Waiting {actual_wait:.2f}s (base={base_delay}, jitter={jitter:.2f}, rpm_wait={wait_time:.2f}) for Model {target_model}")
+                    # Apply the larger of RPM-based wait or adaptive delay
+                    actual_wait = max(rpm_wait, recommended_delay)
+                    if actual_wait > 0 and actual_wait < 300:  # Wait only if reasonable
+                        logger.debug(f"THROTTLE: Waiting {actual_wait:.2f}s (adaptive={recommended_delay:.2f}, rpm_wait={rpm_wait:.2f}) for Model {target_model}")
                         await asyncio.sleep(actual_wait)
                     
                     # Update usage time immediately (optimistic)
                     await groq_rate_limiter.update_request_time(current_key, target_model)
+
 
                     logger.info(f"  > Attempting Chat: Model={target_model} | KeyIndex={key_index + 1}/{len(all_keys)} | KeyPrefix={current_key[:8]}...")
                     client = AsyncGroq(api_key=current_key, max_retries=0)
@@ -1842,13 +2201,24 @@ async def chat_completions(request: ChatCompletionRequest):
                         stream=request.stream,
                     )
                     
+                    # Record success in health tracker
+                    key_health_tracker.record_success(current_key)
+                    
+                    # Record token usage in budget manager
+                    if hasattr(completion, 'usage') and completion.usage:
+                        token_budget_manager.record_usage(
+                            current_key, 
+                            target_model, 
+                            completion.usage.total_tokens
+                        )
+                    
                     if request.stream:
                         return StreamingResponse(
                             _stream_groq_response(completion, target_model), 
                             media_type="text/event-stream"
                         )
                     else:
-                        return {
+                        response_data = {
                             "id": f"chatcmpl-{int(time.time())}",
                             "object": "chat.completion",
                             "created": int(time.time()),
@@ -1870,9 +2240,18 @@ async def chat_completions(request: ChatCompletionRequest):
                             }
                         }
                         
+                        # Cache the response for future identical requests
+                        response_cache.set(messages_payload, target_model, response_data)
+                        
+                        return response_data
+                        
                 except Exception as e:
                     error_str = str(e)
                     last_exception = e
+                    
+                    # Record error in health tracker and adaptive throttler
+                    key_health_tracker.record_error(current_key, error_str[:50])
+                    adaptive_throttler.record_error()
                     
                     # PROTECTION: Check for organization restriction (PERMANENT BLOCK)
                     is_org_restricted = (
@@ -1989,11 +2368,60 @@ async def chat_completions(request: ChatCompletionRequest):
     )
 
 
-
 @app.get("/groq/status")
 async def get_groq_status():
-    """Get current status of Groq keys (blocked status, etc.)"""
-    return groq_rate_limiter.get_status()
+    """
+    Get comprehensive status of Groq API management including:
+    - Rate limiter status (blocked keys, cooldown cycles)
+    - Key health scores
+    - Token budget usage
+    - Adaptive throttler status
+    - Response cache statistics
+    - Local LLM cooldown status
+    """
+    return {
+        "rate_limiter": groq_rate_limiter.get_status(),
+        "key_health": key_health_tracker.get_status(),
+        "token_budget": token_budget_manager.get_status(),
+        "adaptive_throttler": adaptive_throttler.get_status(),
+        "response_cache": response_cache.get_status(),
+        "local_llm_cooldown": local_llm_cooldown.get_status(),
+        "groq_model_limits": {
+            model: {
+                "rpm": limits["rpm"],
+                "rpd": limits["rpd"],
+                "tpm": limits["tpm"],
+                "tpd": limits["tpd"] or "unlimited"
+            }
+            for model, limits in GROQ_MODEL_LIMITS.items()
+        }
+    }
+
+
+@app.get("/groq/health")
+async def get_groq_health():
+    """Get quick health summary of Groq API usage."""
+    throttler_status = adaptive_throttler.get_status()
+    cache_status = response_cache.get_status()
+    
+    # Determine overall health
+    error_rate = throttler_status["error_rate"]
+    if error_rate < 0.1:
+        health_status = "healthy"
+    elif error_rate < 0.3:
+        health_status = "degraded"
+    else:
+        health_status = "unhealthy"
+    
+    return {
+        "status": health_status,
+        "error_rate": error_rate,
+        "delay_multiplier": throttler_status["delay_multiplier"],
+        "cache_hit_rate": cache_status["hit_rate"],
+        "is_globally_blocked": groq_rate_limiter.is_globally_blocked()[0],
+        "available_keys": groq_key_manager.get_available_key_count() if groq_key_manager else 0,
+    }
+
 
 if __name__ == "__main__":
     import uvicorn
