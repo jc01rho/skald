@@ -21,3 +21,4 @@ This file tracks the project's progress using a task list format.
 2025-12-03 13:38:57 - [Task Completed] Updated VITE_API_URL in k8s/ui-deployment.yaml from "https://${API_DOMAIN}" to "https://api.skald.sparrow.local" as requested.
 2025-12-03 13:39:56 - [Task Completed] Restarted UI deployment in skald namespace using kubectl rollout restart deployment/ui -n skald command.
 2025-12-03 13:57:17 - [Task Completed] Analyzed Kubernetes deployment files (docling, embedding-service, api, memo-processing) to identify potential reasons for automatic revival after undeploy.
+2025-12-23 05:32:54 - [Task Completed] Z.ai API 문서 수집 및 구조화 완료

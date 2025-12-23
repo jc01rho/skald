@@ -48,12 +48,6 @@ EXTERNAL_EMBEDDING_URL = os.getenv("EXTERNAL_EMBEDDING_URL", "http://192.168.150
 # Local LLM endpoints for fallback when Groq payload is too large
 LOCAL_LLM_ENDPOINTS = [
     {
-        "name": "kanana-local",
-        "url": "http://192.168.150.37:8889/chat/completions",
-        "type": "openai-compatible",  # Uses messages format directly
-        "model": None,  # Not needed for this endpoint
-    },
-    {
         "name": "ollama-kanana",
         "url": "http://192.168.30.169:11434",
         "type": "ollama",
@@ -76,229 +70,127 @@ from datetime import datetime, date
 
 class GroqKeyManager:
     """
-    Thread-safe API key manager with exhaustion-based round-robin.
-    Uses one key until it's exhausted (rate-limited/quota exceeded), 
-    then switches to the next key.
-    
-    PROTECTION MECHANISMS for avoiding Organization Restriction:
-    1. Permanent blocking for keys that get "organization restricted" errors
-    2. Daily usage limits per key
-    3. Conservative rate limiting
+    Simple API key manager with RPM-based rate limiting at 90% of allowed RPM.
+    No cooldowns, no protection logic - just simple round-robin with RPM throttling.
     """
-    # Daily usage limit per key to avoid triggering organization restrictions
-    DAILY_LIMIT_PER_KEY = 500  # Max requests per key per day
+    RPM_USAGE_PERCENT = 0.90  # Use 90% of allowed RPM
     
     def __init__(self, api_keys: list[str]):
         self._keys = api_keys
-        self._current_index = 0  # Current active key index
+        self._current_index = 0
         self._lock = threading.Lock()
         self._key_count = len(api_keys)
-        # Track rate-limited keys: key -> cooldown_until timestamp
-        self._rate_limited: dict[str, float] = {}
-        # Track usage count per key for logging
         self._usage_count: dict[str, int] = {k: 0 for k in api_keys}
-        # PROTECTION: Permanently blocked keys (organization restricted)
-        self._permanently_blocked: set[str] = set()
-        # PROTECTION: Daily usage tracking: key -> {date: count}
-        self._daily_usage: dict[str, dict[str, int]] = {k: {} for k in api_keys}
-        logger.info(f"Initialized GroqKeyManager with {self._key_count} keys (exhaustion-based round-robin with protection)")
-        
-    def _is_key_within_daily_limit(self, key: str) -> bool:
-        """Check if key is within daily usage limit."""
-        today = str(date.today())
-        usage_today = self._daily_usage.get(key, {}).get(today, 0)
-        return usage_today < self.DAILY_LIMIT_PER_KEY
-    
-    def _increment_daily_usage(self, key: str):
-        """Increment daily usage counter for key."""
-        today = str(date.today())
-        if key not in self._daily_usage:
-            self._daily_usage[key] = {}
-        # Clean old dates (keep only today)
-        self._daily_usage[key] = {today: self._daily_usage[key].get(today, 0) + 1}
+        logger.info(f"Initialized GroqKeyManager with {self._key_count} keys (simple RPM-based at 90%)")
     
     def get_current_key(self) -> tuple[str, int]:
-        """
-        Get the current active API key.
-        Returns (api_key, key_index) tuple.
-        Stays on the same key until it's marked as rate-limited or daily limit exceeded.
-        """
+        """Get the current active API key. Returns (api_key, key_index) tuple."""
         with self._lock:
-            current_time = time.time()
-            
-            # Clean up expired rate limits
-            expired_keys = [k for k, expire_time in self._rate_limited.items() 
-                           if current_time >= expire_time]
-            for k in expired_keys:
-                del self._rate_limited[k]
-                logger.info(f"API key [{self._keys.index(k) + 1}/{self._key_count}] cooldown expired, now available")
-            
-            # Check if current key is available
             current_key = self._keys[self._current_index]
-            
-            # PROTECTION: Skip permanently blocked keys
-            if current_key in self._permanently_blocked:
-                return self._find_available_key(current_time)
-            
-            # PROTECTION: Skip keys that exceeded daily limit
-            if not self._is_key_within_daily_limit(current_key):
-                logger.warning(f"API key [{self._current_index + 1}] exceeded daily limit ({self.DAILY_LIMIT_PER_KEY} requests). Blocking for 6 hours.")
-                self.mark_rate_limited(current_key, cooldown_seconds=21600.0)
-                return self._find_available_key(current_time)
-            
-            if current_key in self._rate_limited:
-                # Current key is rate-limited, find next available key
-                return self._find_available_key(current_time)
-            
-            # PROTECTION: Increment daily usage
-            self._increment_daily_usage(current_key)
             self._usage_count[current_key] += 1
             return current_key, self._current_index
     
-    def _find_available_key(self, current_time: float) -> tuple[str, int]:
-        """
-        Find the next available (non-rate-limited, non-permanently-blocked) key.
-        Called when current key is exhausted.
-        Must be called while holding the lock.
-        """
-        # Try to find an available key starting from current index
-        for offset in range(self._key_count):
-            idx = (self._current_index + offset) % self._key_count
-            key = self._keys[idx]
-            
-            # PROTECTION: Skip permanently blocked keys
-            if key in self._permanently_blocked:
-                continue
-                
-            # PROTECTION: Skip keys that exceeded daily limit
-            if not self._is_key_within_daily_limit(key):
-                if key not in self._rate_limited:
-                     self._rate_limited[key] = time.time() + 21600.0
-                continue
-            
-            if key not in self._rate_limited:
-                # Found an available key, switch to it
-                old_index = self._current_index
-                self._current_index = idx
-                if offset > 0:
-                    logger.info(f"Switched from key [{old_index + 1}] to key [{idx + 1}] (exhaustion-based rotation)")
-                self._increment_daily_usage(key)
-                self._usage_count[key] += 1
-                return key, idx
-        
-        # All usable keys are rate-limited, find one with earliest expiry from non-blocked keys
-        usable_rate_limited = {k: v for k, v in self._rate_limited.items() 
-                               if k not in self._permanently_blocked and self._is_key_within_daily_limit(k)}
-        
-        if usable_rate_limited:
-            earliest_key = min(usable_rate_limited, key=lambda k: usable_rate_limited[k])
-            earliest_idx = self._keys.index(earliest_key)
-            remaining_seconds = usable_rate_limited[earliest_key] - current_time
-            logger.warning(f"All available keys rate-limited! Using key [{earliest_idx + 1}] (expires in {remaining_seconds:.1f}s)")
-            self._increment_daily_usage(earliest_key)
-            self._usage_count[earliest_key] += 1
-            return earliest_key, earliest_idx
-        
-        # No keys available at all
-        raise ValueError(f"All {self._key_count} API keys are either permanently blocked, rate-limited, or exceeded daily limit!")
-    
-    def mark_rate_limited(self, key: str, cooldown_seconds: float = 60.0):
-        """
-        Mark a key as rate-limited/exhausted for the specified duration.
-        This triggers rotation to the next available key.
-        """
+    def rotate_key(self):
+        """Rotate to the next key in round-robin fashion."""
         with self._lock:
-            self._rate_limited[key] = time.time() + cooldown_seconds
-            key_idx = self._keys.index(key)
-            usage = self._usage_count.get(key, 0)
-            logger.warning(f"API key [{key_idx + 1}/{self._key_count}] exhausted after {usage} uses, cooldown for {cooldown_seconds}s")
-            
-            # Reset usage count for this key
-            self._usage_count[key] = 0
-            
-            # Try to switch to next available key
-            current_time = time.time()
-            available_count = sum(1 for k in self._keys 
-                                  if k not in self._rate_limited 
-                                  and k not in self._permanently_blocked
-                                  and self._is_key_within_daily_limit(k))
-            if available_count > 0:
-                # Find next available key
-                for offset in range(1, self._key_count):
-                    next_idx = (self._current_index + offset) % self._key_count
-                    next_key = self._keys[next_idx]
-                    if (next_key not in self._rate_limited 
-                        and next_key not in self._permanently_blocked
-                        and self._is_key_within_daily_limit(next_key)):
-                        self._current_index = next_idx
-                        logger.info(f"Auto-rotated to key [{next_idx + 1}/{self._key_count}] ({available_count} usable keys remaining)")
-                        break
-            else:
-                logger.error(f"All {self._key_count} API keys are now rate-limited, blocked, or exceeded daily limits!")
-    
-    def mark_permanently_blocked(self, key: str, reason: str = "organization_restricted"):
-        """
-        PROTECTION: Permanently block a key that received organization-level restriction.
-        This key will not be used again until the service restarts.
-        """
-        with self._lock:
-            if key not in self._permanently_blocked:
-                self._permanently_blocked.add(key)
-                key_idx = self._keys.index(key)
-                logger.critical(f"🚨 API key [{key_idx + 1}/{self._key_count}] PERMANENTLY BLOCKED: {reason}")
-                logger.critical(f"🚨 Remaining usable keys: {self._key_count - len(self._permanently_blocked)}")
-                
-                # Force rotation away from this key
-                if self._current_index == key_idx:
-                    for offset in range(1, self._key_count):
-                        next_idx = (self._current_index + offset) % self._key_count
-                        if self._keys[next_idx] not in self._permanently_blocked:
-                            self._current_index = next_idx
-                            logger.info(f"Force rotated to key [{next_idx + 1}] after permanent block")
-                            break
+            old_index = self._current_index
+            self._current_index = (self._current_index + 1) % self._key_count
+            logger.info(f"Rotated from key [{old_index + 1}] to key [{self._current_index + 1}]")
     
     def get_key_count(self) -> int:
         return self._key_count
     
     def get_available_key_count(self) -> int:
-        """Get the number of currently available (non-rate-limited) keys."""
-        with self._lock:
-            current_time = time.time()
-            return sum(1 for k in self._keys 
-                      if k not in self._rate_limited or current_time >= self._rate_limited[k])
+        return self._key_count
+    
+    def get_all_keys(self) -> list[str]:
+        """Return all managed keys."""
+        return self._keys
     
     def get_status(self) -> dict:
-        """Get detailed status of all keys for monitoring."""
+        """Get simple status of all keys."""
         with self._lock:
-            current_time = time.time()
-            today = str(date.today())
-            status = {
+            return {
                 "total_keys": self._key_count,
                 "current_key_index": self._current_index + 1,
-                "permanently_blocked_count": len(self._permanently_blocked),
-                "daily_limit_per_key": self.DAILY_LIMIT_PER_KEY,
-                "keys": []
+                "rpm_usage_percent": self.RPM_USAGE_PERCENT,
+                "keys": [
+                    {
+                        "index": idx + 1,
+                        "is_current": idx == self._current_index,
+                        "usage_count": self._usage_count.get(key, 0),
+                    }
+                    for idx, key in enumerate(self._keys)
+                ]
             }
-            for idx, key in enumerate(self._keys):
-                daily_usage = self._daily_usage.get(key, {}).get(today, 0)
-                key_status = {
-                    "index": idx + 1,
-                    "is_current": idx == self._current_index,
-                    "usage_count": self._usage_count.get(key, 0),
-                    "daily_usage": daily_usage,
-                    "daily_remaining": max(0, self.DAILY_LIMIT_PER_KEY - daily_usage),
-                    "is_rate_limited": key in self._rate_limited,
-                    "is_permanently_blocked": key in self._permanently_blocked,
+
+
+# Simple RPM-based rate limiter (no cooldowns, just timing)
+class SimpleRPMThrottler:
+    """
+    Simple rate limiter that enforces RPM at 90% of allowed limit.
+    No cooldowns, no complex logic - just wait if we're going too fast.
+    """
+    def __init__(self):
+        self._last_request_times: dict[str, list[float]] = {}  # model -> list of timestamps
+        self._lock = threading.Lock()
+    
+    def get_wait_time(self, model: str) -> float:
+        """Calculate wait time to stay within 90% of RPM limit."""
+        with self._lock:
+            now = time.time()
+            limits = GROQ_MODEL_LIMITS.get(model, DEFAULT_MODEL_LIMITS)
+            rpm = limits["rpm"]
+            effective_rpm = rpm * 0.90  # 90% of allowed RPM
+            
+            if model not in self._last_request_times:
+                self._last_request_times[model] = []
+            
+            # Clean old timestamps (older than 60 seconds)
+            self._last_request_times[model] = [
+                t for t in self._last_request_times[model] if now - t < 60
+            ]
+            
+            # Count requests in last minute
+            recent_count = len(self._last_request_times[model])
+            
+            if recent_count < effective_rpm:
+                return 0.0  # Under limit, no wait needed
+            
+            # Calculate wait time based on oldest request
+            if self._last_request_times[model]:
+                oldest = min(self._last_request_times[model])
+                wait_until = oldest + 60  # Wait until oldest request expires
+                wait_time = max(0, wait_until - now)
+                return wait_time
+            
+            return 0.0
+    
+    def record_request(self, model: str):
+        """Record a request timestamp for the model."""
+        with self._lock:
+            now = time.time()
+            if model not in self._last_request_times:
+                self._last_request_times[model] = []
+            self._last_request_times[model].append(now)
+    
+    def get_status(self) -> dict:
+        """Get current status."""
+        with self._lock:
+            now = time.time()
+            status = {}
+            for model, times in self._last_request_times.items():
+                recent_times = [t for t in times if now - t < 60]
+                limits = GROQ_MODEL_LIMITS.get(model, DEFAULT_MODEL_LIMITS)
+                status[model] = {
+                    "requests_last_minute": len(recent_times),
+                    "rpm_limit": limits["rpm"],
+                    "effective_rpm": int(limits["rpm"] * 0.90),
                 }
-                if key in self._rate_limited:
-                    remaining = self._rate_limited[key] - current_time
-                    key_status["cooldown_remaining_seconds"] = max(0, remaining)
-                if key in self._permanently_blocked:
-                    key_status["block_reason"] = "organization_restricted"
-                status["keys"].append(key_status)
-    def get_all_keys(self) -> list[str]:
-        """Return all managed keys for manual iteration."""
-        return self._keys
+            return status
+
+
+
 
 
 
@@ -1082,514 +974,10 @@ GROQ_MODEL_LIMITS = {
 # Default limits for unknown models
 DEFAULT_MODEL_LIMITS = {"rpm": 30, "rpd": 1000, "tpm": 6000, "tpd": 100000}
 
-# PROTECTION: Minimum delay between requests (seconds) + random jitter
-MIN_REQUEST_DELAY = 5.0  # Base minimum delay (reduced from 10s for better responsiveness)
-MAX_JITTER = 3.0  # Additional random delay (0 to MAX_JITTER)
-
-# Preemptive thresholds (percentage of limit before entering preemptive cooldown)
-PREEMPTIVE_RPD_THRESHOLD = 0.80  # 80% of daily request limit
-PREEMPTIVE_TPD_THRESHOLD = 0.80  # 80% of daily token limit
+# Simple RPM throttler - initialized
+rpm_throttler = SimpleRPMThrottler()
 
 
-class KeyHealthTracker:
-    """
-    Tracks API key health based on success/error rates.
-    Prioritizes healthier keys for better reliability.
-    """
-    def __init__(self):
-        self._lock = threading.Lock()
-        # {key: {"success": int, "error": int, "last_error_time": float, "score": float}}
-        self._health_data: dict[str, dict] = {}
-        self._window_size = 100  # Track last N requests for scoring
-    
-    def record_success(self, key: str):
-        """Record a successful request for this key."""
-        with self._lock:
-            if key not in self._health_data:
-                self._health_data[key] = {"success": 0, "error": 0, "last_error_time": 0, "score": 1.0}
-            self._health_data[key]["success"] += 1
-            self._update_score(key)
-    
-    def record_error(self, key: str, error_type: str = "unknown"):
-        """Record an error for this key."""
-        with self._lock:
-            if key not in self._health_data:
-                self._health_data[key] = {"success": 0, "error": 0, "last_error_time": 0, "score": 1.0}
-            self._health_data[key]["error"] += 1
-            self._health_data[key]["last_error_time"] = time.time()
-            self._health_data[key]["last_error_type"] = error_type
-            self._update_score(key)
-    
-    def _update_score(self, key: str):
-        """Update health score based on success/error ratio."""
-        data = self._health_data[key]
-        total = data["success"] + data["error"]
-        if total == 0:
-            data["score"] = 1.0
-            return
-        
-        # Base score from success rate
-        success_rate = data["success"] / total
-        
-        # Decay factor based on recency of last error
-        time_since_error = time.time() - data["last_error_time"]
-        decay = min(1.0, time_since_error / 3600)  # Full recovery after 1 hour
-        
-        # Combined score
-        data["score"] = success_rate * 0.7 + decay * 0.3
-    
-    def get_score(self, key: str) -> float:
-        """Get health score for a key (0.0 to 1.0)."""
-        with self._lock:
-            if key not in self._health_data:
-                return 1.0  # Unknown keys start with perfect score
-            return self._health_data[key]["score"]
-    
-    def get_healthiest_keys(self, keys: list[str]) -> list[str]:
-        """Return keys sorted by health score (healthiest first)."""
-        with self._lock:
-            return sorted(keys, key=lambda k: self._health_data.get(k, {}).get("score", 1.0), reverse=True)
-    
-    def get_status(self) -> dict:
-        """Get health status for all tracked keys."""
-        with self._lock:
-            return {
-                k[:8] + "...": {
-                    "score": round(v["score"], 3),
-                    "success": v["success"],
-                    "error": v["error"]
-                }
-                for k, v in self._health_data.items()
-            }
-
-
-class TokenBudgetManager:
-    """
-    Tracks token usage per (key, model) pair for budget management.
-    Provides preemptive warnings when approaching limits.
-    """
-    def __init__(self):
-        self._lock = threading.Lock()
-        # {(key, model): {"tpm_usage": [], "tpd_usage": int, "rpd_usage": int, "last_reset": date}}
-        self._usage: dict[tuple[str, str], dict] = {}
-    
-    def _get_or_create(self, key: str, model: str) -> dict:
-        """Get or create usage tracking for (key, model) pair."""
-        key_model = (key, model)
-        if key_model not in self._usage:
-            self._usage[key_model] = {
-                "tpm_window": [],  # [(timestamp, tokens), ...]
-                "tpd_usage": 0,
-                "rpd_usage": 0,
-                "last_reset_date": str(date.today())
-            }
-        
-        # Reset daily counters if new day
-        today = str(date.today())
-        if self._usage[key_model]["last_reset_date"] != today:
-            self._usage[key_model]["tpd_usage"] = 0
-            self._usage[key_model]["rpd_usage"] = 0
-            self._usage[key_model]["last_reset_date"] = today
-        
-        return self._usage[key_model]
-    
-    def record_usage(self, key: str, model: str, tokens: int):
-        """Record token usage for a request."""
-        with self._lock:
-            usage = self._get_or_create(key, model)
-            now = time.time()
-            
-            # Add to TPM window
-            usage["tpm_window"].append((now, tokens))
-            
-            # Clean old entries (older than 60 seconds)
-            usage["tpm_window"] = [(t, tok) for t, tok in usage["tpm_window"] if now - t < 60]
-            
-            # Update daily counters
-            usage["tpd_usage"] += tokens
-            usage["rpd_usage"] += 1
-    
-    def get_tpm_usage(self, key: str, model: str) -> int:
-        """Get current tokens per minute usage."""
-        with self._lock:
-            usage = self._get_or_create(key, model)
-            now = time.time()
-            # Clean and sum
-            usage["tpm_window"] = [(t, tok) for t, tok in usage["tpm_window"] if now - t < 60]
-            return sum(tok for _, tok in usage["tpm_window"])
-    
-    def check_limits(self, key: str, model: str, estimated_tokens: int) -> tuple[bool, str]:
-        """
-        Check if making a request would exceed limits.
-        Returns (is_ok, message).
-        """
-        with self._lock:
-            usage = self._get_or_create(key, model)
-            limits = GROQ_MODEL_LIMITS.get(model, DEFAULT_MODEL_LIMITS)
-            
-            # Check TPM
-            current_tpm = sum(tok for _, tok in usage["tpm_window"] if time.time() - _[0] < 60)
-            if current_tpm + estimated_tokens > limits["tpm"]:
-                return False, f"TPM limit ({limits['tpm']}) would be exceeded"
-            
-            # Check TPD
-            if limits["tpd"] and usage["tpd_usage"] + estimated_tokens > limits["tpd"]:
-                return False, f"TPD limit ({limits['tpd']}) would be exceeded"
-            
-            # Check RPD
-            if usage["rpd_usage"] + 1 > limits["rpd"]:
-                return False, f"RPD limit ({limits['rpd']}) would be exceeded"
-            
-            return True, "OK"
-    
-    def is_approaching_limit(self, key: str, model: str) -> tuple[bool, str]:
-        """Check if approaching daily limits (preemptive warning)."""
-        with self._lock:
-            usage = self._get_or_create(key, model)
-            limits = GROQ_MODEL_LIMITS.get(model, DEFAULT_MODEL_LIMITS)
-            
-            # Check RPD preemptive threshold
-            if usage["rpd_usage"] > limits["rpd"] * PREEMPTIVE_RPD_THRESHOLD:
-                pct = usage["rpd_usage"] / limits["rpd"] * 100
-                return True, f"RPD at {pct:.1f}% ({usage['rpd_usage']}/{limits['rpd']})"
-            
-            # Check TPD preemptive threshold
-            if limits["tpd"] and usage["tpd_usage"] > limits["tpd"] * PREEMPTIVE_TPD_THRESHOLD:
-                pct = usage["tpd_usage"] / limits["tpd"] * 100
-                return True, f"TPD at {pct:.1f}% ({usage['tpd_usage']}/{limits['tpd']})"
-            
-            return False, "OK"
-    
-    def get_status(self, key: str = None) -> dict:
-        """Get usage status for monitoring."""
-        with self._lock:
-            result = {}
-            for (k, m), usage in self._usage.items():
-                if key and k != key:
-                    continue
-                limits = GROQ_MODEL_LIMITS.get(m, DEFAULT_MODEL_LIMITS)
-                key_prefix = k[:8] + "..."
-                if key_prefix not in result:
-                    result[key_prefix] = {}
-                result[key_prefix][m] = {
-                    "rpd": f"{usage['rpd_usage']}/{limits['rpd']}",
-                    "tpd": f"{usage['tpd_usage']}/{limits['tpd'] or 'unlimited'}",
-                }
-            return result
-
-
-class AdaptiveThrottler:
-    """
-    Adaptive rate limiting based on recent error rates.
-    Automatically increases delays when seeing many errors.
-    """
-    def __init__(self):
-        self._lock = threading.Lock()
-        self._recent_errors: list[float] = []  # Timestamps of recent errors
-        self._recent_requests: list[float] = []  # Timestamps of recent requests
-        self._window = 300.0  # 5 minute window
-        self._base_delay = MIN_REQUEST_DELAY
-        self._max_multiplier = 5.0  # Maximum delay multiplier
-    
-    def record_request(self):
-        """Record a request attempt."""
-        with self._lock:
-            now = time.time()
-            self._recent_requests.append(now)
-            self._clean_old_entries(now)
-    
-    def record_error(self):
-        """Record an error."""
-        with self._lock:
-            now = time.time()
-            self._recent_errors.append(now)
-            self._clean_old_entries(now)
-    
-    def _clean_old_entries(self, now: float):
-        """Remove entries older than window."""
-        self._recent_errors = [t for t in self._recent_errors if now - t < self._window]
-        self._recent_requests = [t for t in self._recent_requests if now - t < self._window]
-    
-    def get_delay_multiplier(self) -> float:
-        """Get delay multiplier based on error rate."""
-        with self._lock:
-            now = time.time()
-            self._clean_old_entries(now)
-            
-            if len(self._recent_requests) < 5:
-                return 1.0  # Not enough data
-            
-            error_rate = len(self._recent_errors) / len(self._recent_requests)
-            
-            # Scale multiplier based on error rate
-            # 0% errors -> 1.0x, 50% errors -> 3.0x, 100% errors -> 5.0x
-            multiplier = 1.0 + (self._max_multiplier - 1.0) * min(1.0, error_rate * 2)
-            return multiplier
-    
-    def get_recommended_delay(self) -> float:
-        """Get recommended delay before next request."""
-        multiplier = self.get_delay_multiplier()
-        jitter = random.uniform(0, MAX_JITTER)
-        return self._base_delay * multiplier + jitter
-    
-    def get_status(self) -> dict:
-        """Get throttler status."""
-        with self._lock:
-            now = time.time()
-            self._clean_old_entries(now)
-            req_count = len(self._recent_requests)
-            err_count = len(self._recent_errors)
-            return {
-                "window_seconds": self._window,
-                "recent_requests": req_count,
-                "recent_errors": err_count,
-                "error_rate": round(err_count / req_count, 3) if req_count > 0 else 0,
-                "delay_multiplier": round(self.get_delay_multiplier(), 2),
-                "recommended_delay": round(self.get_recommended_delay(), 2)
-            }
-
-
-class ResponseCache:
-    """
-    Simple LRU cache for LLM responses.
-    Caches based on message content hash.
-    """
-    def __init__(self, max_size: int = 100, ttl_seconds: float = 3600):
-        self._lock = threading.Lock()
-        self._cache: dict[str, tuple[dict, float]] = {}  # {hash: (response, timestamp)}
-        self._max_size = max_size
-        self._ttl = ttl_seconds
-        self._hits = 0
-        self._misses = 0
-    
-    def _hash_messages(self, messages: list[dict], model: str) -> str:
-        """Create a hash key from messages and model."""
-        import hashlib
-        content = json.dumps({"messages": messages, "model": model}, sort_keys=True)
-        return hashlib.md5(content.encode()).hexdigest()
-    
-    def get(self, messages: list[dict], model: str) -> dict | None:
-        """Try to get a cached response."""
-        with self._lock:
-            key = self._hash_messages(messages, model)
-            if key in self._cache:
-                response, timestamp = self._cache[key]
-                if time.time() - timestamp < self._ttl:
-                    self._hits += 1
-                    logger.debug(f"Cache HIT for request (hits={self._hits})")
-                    return response
-                else:
-                    # Expired
-                    del self._cache[key]
-            self._misses += 1
-            return None
-    
-    def set(self, messages: list[dict], model: str, response: dict):
-        """Cache a response."""
-        with self._lock:
-            key = self._hash_messages(messages, model)
-            
-            # Evict oldest if at capacity
-            if len(self._cache) >= self._max_size:
-                oldest_key = min(self._cache, key=lambda k: self._cache[k][1])
-                del self._cache[oldest_key]
-            
-            self._cache[key] = (response, time.time())
-    
-    def get_status(self) -> dict:
-        """Get cache statistics."""
-        with self._lock:
-            total = self._hits + self._misses
-            return {
-                "size": len(self._cache),
-                "max_size": self._max_size,
-                "hits": self._hits,
-                "misses": self._misses,
-                "hit_rate": round(self._hits / total, 3) if total > 0 else 0,
-                "ttl_seconds": self._ttl
-            }
-
-
-# Initialize all managers
-key_health_tracker = KeyHealthTracker()
-token_budget_manager = TokenBudgetManager()
-adaptive_throttler = AdaptiveThrottler()
-response_cache = ResponseCache(max_size=200, ttl_seconds=1800)  # 30 min TTL
-
-
-class GroqRateLimiter:
-    """
-    Rate limiter with Key+Model level Cooldown management.
-    Supports Running (120s) and Cooldown (180s) cycle per (key, model) pair.
-    """
-    # Cooldown duration for (key, model) pairs after running period expires
-    KEY_MODEL_COOLDOWN_DURATION = 180.0  # 180 seconds cooldown
-    KEY_MODEL_RUNNING_DURATION = 120.0   # 120 seconds running window
-    ERROR_COOLDOWN_DURATION = 900.0      # 15 minutes (900 seconds) for 429/413 errors
-    DAILY_LIMIT_COOLDOWN_DURATION = 21600.0  # 6 hours for daily limit exceeded
-    
-    def __init__(self):
-        self._last_request_times = {} # {key: {model: timestamp}}
-        self._blocked_until = {} # {(key, model): timestamp_when_available}
-        self._global_block_until = 0.0
-        self._lock = asyncio.Lock()
-        # Track (key, model) cycle: {(key, model): {"cycle_start": timestamp, "state": "RUNNING"|"COOLDOWN"}}
-        self._key_model_cycle = {}
-    
-    def get_wait_time(self, key: str, model: str) -> float:
-        # First check if specifically blocked due to recent 429
-        if self.is_blocked(key, model):
-            return 999.0 # Arbitrary large number to signal block
-
-        # Get RPM from new limits structure
-        limits = GROQ_MODEL_LIMITS.get(model, DEFAULT_MODEL_LIMITS)
-        rpm = limits["rpm"]
-        interval = 60.0 / rpm
-        
-        # Check last request time
-        key_usage = self._last_request_times.get(key, {})
-        last_time = key_usage.get(model, 0)
-        now = time.time()
-        
-        elapsed = now - last_time
-        if elapsed < interval:
-            return interval - elapsed
-        return 0.0
-
-    def is_blocked(self, key: str, model: str) -> bool:
-        """Check if this (key, model) is currently in penalty box due to 429"""
-        unlock_time = self._blocked_until.get((key, model), 0)
-        return time.time() < unlock_time
-    
-    def is_in_cooldown(self, key: str, model: str) -> tuple[bool, float]:
-        """
-        Check if (key, model) is in cooldown state based on Running/Cooldown cycle.
-        Returns (is_in_cooldown, remaining_seconds).
-        
-        Cycle: Running (120s) -> Cooldown (180s) -> Running ...
-        """
-        now = time.time()
-        key_model = (key, model)
-        
-        if key_model not in self._key_model_cycle:
-            # No cycle started yet, start a new one
-            self._key_model_cycle[key_model] = {
-                "cycle_start": now,
-                "state": "RUNNING"
-            }
-            return False, 0.0
-        
-        cycle = self._key_model_cycle[key_model]
-        elapsed = now - cycle["cycle_start"]
-        
-        if cycle["state"] == "RUNNING":
-            if elapsed > self.KEY_MODEL_RUNNING_DURATION:
-                # Running time exceeded, enter cooldown
-                cycle["state"] = "COOLDOWN"
-                cycle["cycle_start"] = now
-                logger.warning(f"Key+Model [{key[:8]}..., {model}] running period ({self.KEY_MODEL_RUNNING_DURATION}s) ended. Entering COOLDOWN for {self.KEY_MODEL_COOLDOWN_DURATION}s")
-                return True, self.KEY_MODEL_COOLDOWN_DURATION
-            return False, 0.0
-        
-        elif cycle["state"] == "COOLDOWN":
-            if elapsed > self.KEY_MODEL_COOLDOWN_DURATION:
-                # Cooldown finished, back to running
-                cycle["state"] = "RUNNING"
-                cycle["cycle_start"] = now
-                logger.info(f"Key+Model [{key[:8]}..., {model}] cooldown finished. Starting NEW running cycle.")
-                return False, 0.0
-            remaining = self.KEY_MODEL_COOLDOWN_DURATION - elapsed
-            return True, remaining
-        
-        return False, 0.0
-    
-    def get_any_key_model_in_cooldown(self) -> list[tuple[str, str, float]]:
-        """
-        Get all (key, model) pairs currently in cooldown state.
-        Returns list of (key, model, remaining_seconds).
-        """
-        now = time.time()
-        in_cooldown = []
-        
-        for (key, model), cycle in self._key_model_cycle.items():
-            if cycle["state"] == "COOLDOWN":
-                elapsed = now - cycle["cycle_start"]
-                if elapsed < self.KEY_MODEL_COOLDOWN_DURATION:
-                    remaining = self.KEY_MODEL_COOLDOWN_DURATION - elapsed
-                    in_cooldown.append((key, model, remaining))
-        
-        return in_cooldown
-
-    def is_globally_blocked(self) -> tuple[bool, float]:
-        """Check if global block is active"""
-        now = time.time()
-        if now < self._global_block_until:
-            return True, self._global_block_until - now
-        return False, 0.0
-
-    async def block_key_model(self, key: str, model: str, duration: float = 900.0):
-        """
-        Put this (key, model) in penalty box.
-        Default duration: 900 seconds (15 minutes) for errors.
-        """
-        async with self._lock:
-            self._blocked_until[(key, model)] = time.time() + duration
-            logger.warning(f"Blocked (key={key[:8]}..., model={model}) for {duration}s")
-
-    async def block_key_model_daily_limit(self, key: str, model: str):
-        """Block (key, model) for 6 hours due to daily limit exceeded."""
-        await self.block_key_model(key, model, duration=self.DAILY_LIMIT_COOLDOWN_DURATION)
-        logger.warning(f"Daily limit exceeded for (key={key[:8]}..., model={model}). Blocked for 6 hours.")
-
-    async def activate_global_block(self, duration: float = 300.0):
-        """Block ALL Groq requests for 'duration' seconds"""
-        async with self._lock:
-            self._global_block_until = time.time() + duration
-            logger.error(f"Global Rate Limit triggered! Blocking ALL Groq requests for {duration} seconds.")
-
-    async def update_request_time(self, key: str, model: str):
-        async with self._lock:
-            if key not in self._last_request_times:
-                self._last_request_times[key] = {}
-            self._last_request_times[key][model] = time.time()
-
-    def get_status(self):
-        now = time.time()
-        blocked_status = []
-        for (key, model), unlock_time in self._blocked_until.items():
-            if now < unlock_time:
-                remaining = unlock_time - now
-                blocked_status.append({
-                    "key_prefix": key[:8] + "...",
-                    "model": model,
-                    "remaining_seconds": round(remaining, 1)
-                })
-        
-        # Add key+model cooldown status
-        cooldown_status = []
-        for (key, model), cycle in self._key_model_cycle.items():
-            if cycle["state"] == "COOLDOWN":
-                elapsed = now - cycle["cycle_start"]
-                if elapsed < self.KEY_MODEL_COOLDOWN_DURATION:
-                    remaining = self.KEY_MODEL_COOLDOWN_DURATION - elapsed
-                    cooldown_status.append({
-                        "key_prefix": key[:8] + "...",
-                        "model": model,
-                        "remaining_seconds": round(remaining, 1),
-                        "type": "cycle_cooldown"
-                    })
-        
-        remaining_global = max(0.0, self._global_block_until - now)
-        
-        return {
-            "global_block_remaining": round(remaining_global, 1),
-            "blocked_keys": blocked_status,
-            "cycle_cooldowns": cooldown_status,
-            "total_blocked": len(blocked_status),
-            "total_in_cooldown_cycle": len(cooldown_status)
-        }
-
-groq_rate_limiter = GroqRateLimiter()
 
 # Model fallback chains (Primary -> [Fallbacks])
 GROQ_MODEL_FALLBACKS = {
@@ -1629,44 +1017,6 @@ GROQ_MODEL_FALLBACKS = {
 }
 
 
-class LocalLLMCooldown:
-    """
-    Simple cooldown tracker for Local LLM endpoints.
-    Prevents excessive calls to local LLM by enforcing a cooldown period.
-    """
-    COOLDOWN_DURATION = 15.0  # 15 seconds cooldown
-    
-    def __init__(self):
-        self._last_call_time: float = 0.0
-        self._lock = threading.Lock()
-    
-    def is_in_cooldown(self) -> tuple[bool, float]:
-        """Check if Local LLM is in cooldown. Returns (is_in_cooldown, remaining_seconds)."""
-        with self._lock:
-            now = time.time()
-            elapsed = now - self._last_call_time
-            if elapsed < self.COOLDOWN_DURATION:
-                remaining = self.COOLDOWN_DURATION - elapsed
-                return True, remaining
-            return False, 0.0
-    
-    def update_call_time(self):
-        """Update the last call time to now."""
-        with self._lock:
-            self._last_call_time = time.time()
-    
-    def get_status(self) -> dict:
-        """Get cooldown status for monitoring."""
-        is_cooldown, remaining = self.is_in_cooldown()
-        return {
-            "is_in_cooldown": is_cooldown,
-            "remaining_seconds": round(remaining, 1),
-            "cooldown_duration": self.COOLDOWN_DURATION
-        }
-
-# Initialize Local LLM cooldown tracker
-local_llm_cooldown = LocalLLMCooldown()
-
 async def _call_local_llm_fallback(
     messages: list[dict], 
     temperature: float | None = 0.7, 
@@ -1679,14 +1029,10 @@ async def _call_local_llm_fallback(
     Includes 15-second cooldown to prevent excessive calls.
     
     Supported endpoints:
-    1. kanana-local (http://localhost:8889/chat/completions) - OpenAI-compatible
-    2. ollama-kanana (http://192.168.30.169:11434) - Ollama API
+    1. ollama-kanana (http://192.168.30.169:11434) - Ollama API
     """
-    # Check Local LLM cooldown first
-    is_cooldown, remaining = local_llm_cooldown.is_in_cooldown()
-    if is_cooldown:
-        logger.info(f"⏳ Local LLM in cooldown ({remaining:.1f}s remaining). Skipping.")
-        return None
+    # No cooldown check here, as the main chat_completions function handles it
+    # or it's called as a direct fallback.
     
     if not LOCAL_LLM_ENDPOINTS:
         logger.warning("No local LLM endpoints configured")
@@ -1707,7 +1053,7 @@ async def _call_local_llm_fallback(
         logger.info(f"Trying local LLM fallback: {endpoint_name} ({endpoint_type})")
         
         try:
-            async with httpx.AsyncClient(timeout=120.0) as client:
+            async with httpx.AsyncClient(timeout=600.0) as client:
                 if endpoint_type == "openai-compatible":
                     # Direct OpenAI-compatible endpoint (like kanana API)
                     payload = {"messages": messages}
@@ -1738,8 +1084,6 @@ async def _call_local_llm_fallback(
                         content = str(data)
                     
                     logger.info(f"Local LLM fallback ({endpoint_name}) succeeded")
-                    # Update cooldown after successful call
-                    local_llm_cooldown.update_call_time()
                     return {
                         "id": f"chatcmpl-local-{int(time.time())}",
                         "object": "chat.completion",
@@ -1803,8 +1147,6 @@ async def _call_local_llm_fallback(
                         logger.error(f"Unexpected Ollama response format: {data.keys()}")
                     
                     logger.info(f"Local LLM fallback ({endpoint_name}) succeeded")
-                    # Update cooldown after successful call
-                    local_llm_cooldown.update_call_time()
                     return {
                         "id": f"chatcmpl-local-{int(time.time())}",
                         "object": "chat.completion",
@@ -1943,7 +1285,7 @@ class MemoProcessingThrottler:
         self.cooldown_start_time = 0.0
         self._lock = asyncio.Lock()
         
-    async def check_throttling(self) -> tuple[bool, float, str]:
+    async def check_throttling(self, model: str = "unknown", key_info: str = "unknown") -> tuple[bool, float, str]:
         """
         Check if request is allowed.
         Returns: (is_allowed, wait_time, message)
@@ -1965,8 +1307,8 @@ class MemoProcessingThrottler:
                     self.state = "COOLDOWN"
                     self.cooldown_start_time = now
                     remaining = self.cooldown_duration
-                    logger.warning(f"Memo Processing Throttler: Run time exceeded ({elapsed:.1f}s). Entering COOLDOWN for {self.cooldown_duration}s")
-                    return False, remaining, f"Memo processing limit reached. Cooling down for {int(remaining)}s."
+                    logger.warning(f"Memo Processing Throttler: Run time exceeded ({elapsed:.1f}s). Entering COOLDOWN for {self.cooldown_duration}s. Model: {model}, Key: {key_info}")
+                    return False, remaining, f"Memo processing limit reached. Cooling down for {int(remaining)}s. Model: {model}, Key: {key_info}"
                 else:
                     return True, 0.0, ""
                     
@@ -1980,7 +1322,7 @@ class MemoProcessingThrottler:
                     return True, 0.0, ""
                 else:
                     remaining = self.cooldown_duration - elapsed
-                    return False, remaining, f"Memo processing in cooldown. Wait {int(remaining)}s."
+                    return False, remaining, f"Memo processing in cooldown. Wait {int(remaining)}s. Model: {model}, Key: {key_info}"
             
             return True, 0.0, ""
 
@@ -1991,100 +1333,21 @@ memo_throttler = MemoProcessingThrottler(run_duration=120.0, cooldown_duration=1
 async def chat_completions(request: ChatCompletionRequest):
     """
     OpenAI-compatible chat completion endpoint.
-    Routes to Groq with Round-Robin key management AND Model Fallback.
-    
-    Enhanced Features:
-    - Response Caching: Returns cached responses for identical requests
-    - Key Health Scoring: Prioritizes healthier API keys
-    - Token Budget Management: Tracks and limits TPM/TPD usage
-    - Adaptive Throttling: Adjusts request delays based on error rate
-    - Preemptive Cooldown: Warns when approaching daily limits
+    Routes to Groq with simple RPM-based rate limiting at 90% of allowed RPM.
+    No cooldowns, no complex protection - just simple rate limiting.
     """
     
     requested_model = request.model
     messages_payload = [{"role": m.role, "content": m.content} for m in request.messages]
-
-    # 0. Check Response Cache FIRST (fastest path)
-    cached_response = response_cache.get(messages_payload, requested_model)
-    if cached_response and not request.stream:
-        logger.info("📋 Returning cached response")
-        return cached_response
-
-    # 1. Check Global Rate Limit - Try Local LLM as last resort fallback
-    is_globally_blocked, remaining_global = groq_rate_limiter.is_globally_blocked()
-    if is_globally_blocked:
-        logger.warning(f"🚨 Global Block active ({remaining_global:.1f}s remaining). Attempting Local LLM as last resort...")
-        try:
-            local_response = await _call_local_llm_fallback(messages_payload, request.temperature, request.max_tokens)
-            if local_response:
-                logger.info("✅ Local LLM succeeded during global block (last resort fallback)")
-                if request.stream:
-                    return StreamingResponse(
-                        _stream_single_response(local_response), 
-                        media_type="text/event-stream"
-                    )
-                return local_response
-        except Exception as e:
-            logger.error(f"❌ Local LLM fallback also failed during global block: {e}")
-        
-        # Local LLM failed, raise the original error
-        raise HTTPException(
-             status_code=429,
-             detail=f"System is in global cooldown and local fallback failed. Retry in {int(remaining_global)} seconds.",
-             headers={"Retry-After": str(int(remaining_global))}
-        )
     
-    # 2. Check if any (key, model) pairs are in cooldown cycle
-    # If so, try Local LLM first before attempting Groq
-    cooldown_pairs = groq_rate_limiter.get_any_key_model_in_cooldown()
-    if cooldown_pairs:
-        logger.info(f"🔄 {len(cooldown_pairs)} (key,model) pairs in cooldown cycle. Trying Local LLM FIRST.")
-        try:
-            local_response = await _call_local_llm_fallback(messages_payload, request.temperature, request.max_tokens)
-            if local_response:
-                logger.info("✅ Local LLM succeeded (cooldown fallback)")
-                if request.stream:
-                    return StreamingResponse(
-                        _stream_single_response(local_response), 
-                        media_type="text/event-stream"
-                    )
-                return local_response
-        except Exception as e:
-            logger.warning(f"Local LLM fallback failed during cooldown: {e}. Proceeding with Model→Key→Local fallback.")
-
-    # Check for Memo Processing Throttle (Targeting Classification Model)
-    # The default classification model is 'llama-3.1-8b-instant'
-    if "llama-3.1-8b-instant" in requested_model:
-        is_allowed, wait_time, msg = await memo_throttler.check_throttling()
-        if not is_allowed:
-            logger.warning(f"Memo throttler active ({msg}). Attempting LOCAL LLM fallback first.")
-            # Try Local Fallback
-            try:
-                local_response = await _call_local_llm_fallback(messages_payload, request.temperature, request.max_tokens)
-                if local_response:
-                    logger.info("✅ Local LLM fallback succeeded during throttling")
-                    if request.stream:
-                        return StreamingResponse(
-                            _stream_single_response(local_response), 
-                            media_type="text/event-stream"
-                        )
-                    return local_response
-            except Exception as e:
-                logger.error(f"Local fallback failed during throttling: {e}")
-            
-            logger.warning("Local fallback failed or unavailable during throttle. Proceeding to standard Groq fallback chain.")
-    
-    # Determined fallback chain based on requested model
-    # If requested model is not in our known list, try to map it or default to Qwen
+    # Determine fallback chain based on requested model
     if requested_model in GROQ_MODEL_FALLBACKS:
         model_chain = GROQ_MODEL_FALLBACKS[requested_model]
     else:
-        # Check if it's one of the known models but not a primary key
         found = False
         for chain in GROQ_MODEL_FALLBACKS.values():
             if requested_model in chain:
-                model_chain = chain # Use the chain that contains this model
-                # Move requested model to front of chain
+                model_chain = chain.copy()
                 model_chain = [m for m in model_chain if m != requested_model]
                 model_chain.insert(0, requested_model)
                 found = True
@@ -2097,295 +1360,136 @@ async def chat_completions(request: ChatCompletionRequest):
     if not groq_key_manager:
         raise HTTPException(status_code=503, detail="Groq API keys not configured")
     
-    # Log input size for debugging "Request Entity Too Large" errors
+    # Log input size
     total_chars = sum(len(m.get("content", "") or "") for m in messages_payload)
-    estimated_tokens = total_chars // 4  # Rough estimate: 1 token ≈ 4 chars
+    estimated_tokens = total_chars // 4
     logger.info(f"Chat request: model={requested_model}, messages={len(messages_payload)}, chars={total_chars}, est_tokens≈{estimated_tokens}")
     
-    # Get all available keys and sort by health score (healthiest first)
-    all_keys = groq_key_manager.get_all_keys()
-    all_keys = key_health_tracker.get_healthiest_keys(all_keys)
-    
-    # Track errors to report if all fail
     last_exception = None
     
-    # Record request in adaptive throttler
-    adaptive_throttler.record_request()
-    
-
-    # Try everything twice (with a 90s wait in between)
-    for attempt in range(2):
-        if attempt > 0:
-            logger.warning("All keys and models exhausted on first attempt. Waiting 90 seconds before final retry...")
-            await asyncio.sleep(90)
-            logger.info("Resuming retry after 90s wait...")
-
-        # Strategy: Iterate through models in the fallback chain (Model-First)
-        # For each model, try ALL available keys.
-        for model_index, target_model in enumerate(model_chain):
-            logger.info(f"Fallback Chain [{model_index+1}/{len(model_chain)}]: Trying Model '{target_model}' (Attempt {attempt+1})")
+    # Try models in fallback chain
+    for model_index, target_model in enumerate(model_chain):
+        logger.info(f"Trying Model [{model_index+1}/{len(model_chain)}]: '{target_model}'")
+        
+        # Simple RPM-based throttling at 90%
+        wait_time = rpm_throttler.get_wait_time(target_model)
+        if wait_time > 0:
+            logger.info(f"RPM throttle: waiting {wait_time:.2f}s for model {target_model}")
+            await asyncio.sleep(wait_time)
+        
+        # Get current key
+        try:
+            current_key, key_index = groq_key_manager.get_current_key()
+        except ValueError as e:
+            logger.error(f"No API keys available: {e}")
+            continue
+        
+        try:
+            logger.info(f"  > Attempting Chat: Model={target_model} | KeyIndex={key_index + 1}/{groq_key_manager.get_key_count()} | KeyPrefix={current_key[:8]}...")
             
-            # Key Rotation Optimization:
-            # Shift the keys list so we don't always start with the same key (Load Balancing)
-            # We use a simple counter from GroqKeyManager if possible, or just random
-            # For strictness, let's just use the order but maybe randomized start? 
-            # Actually, let's just use simple iteration but log explicitly.
+            # Record request before making it
+            rpm_throttler.record_request(target_model)
             
-            # Try all keys for this model
-            for key_index, current_key in enumerate(all_keys):
-                try:
-                    # PROTECTION: Skip permanently blocked keys
-                    if current_key in groq_key_manager._permanently_blocked:
-                        logger.warning(f"  > Skipping Permanently Blocked: KeyIndex={key_index + 1}")
-                        continue
-                    
-                    # Check (key, model) cooldown cycle - if in cooldown, try local first
-                    is_cooldown, cooldown_remaining = groq_rate_limiter.is_in_cooldown(current_key, target_model)
-                    if is_cooldown:
-                        logger.info(f"  > (Key={key_index + 1}, Model={target_model}) in COOLDOWN cycle ({cooldown_remaining:.1f}s remaining). Trying Local LLM...")
-                        try:
-                            local_response = await _call_local_llm_fallback(messages_payload, request.temperature, request.max_tokens)
-                            if local_response:
-                                logger.info(f"✅ Local LLM fallback succeeded during cooldown cycle")
-                                if request.stream:
-                                    return StreamingResponse(
-                                        _stream_single_response(local_response), 
-                                        media_type="text/event-stream"
-                                    )
-                                return local_response
-                        except Exception as e:
-                            logger.warning(f"Local LLM fallback failed: {e}. Continuing to next (key, model)...")
-                        continue  # Skip this (key, model) and try next
-                    
-                    # Check if currently blocked (Circuit Breaker due to errors)
-                    if groq_rate_limiter.is_blocked(current_key, target_model):
-                        logger.warning(f"  > Skipping Blocked: Model={target_model} | KeyIndex={key_index + 1} (Recent 429)")
-                        continue
-                    
-                    # Token Budget Check: Skip if this (key, model) would exceed limits
-                    is_ok, budget_msg = token_budget_manager.check_limits(current_key, target_model, estimated_tokens)
-                    if not is_ok:
-                        logger.warning(f"  > Skipping due to budget: {budget_msg} | Key={key_index + 1} Model={target_model}")
-                        continue
-                    
-                    # Preemptive Cooldown Check: Warn if approaching limits
-                    is_approaching, approach_msg = token_budget_manager.is_approaching_limit(current_key, target_model)
-                    if is_approaching:
-                        logger.warning(f"⚠️ Approaching limit: {approach_msg} | Key={key_index + 1} Model={target_model}")
-
-                    # Adaptive Throttling: Get recommended delay based on recent error rate
-                    recommended_delay = adaptive_throttler.get_recommended_delay()
-                    
-                    # Gentle Throttling: Check local rate limit (RPM)
-                    rpm_wait = groq_rate_limiter.get_wait_time(current_key, target_model)
-                    
-                    # Apply the larger of RPM-based wait or adaptive delay
-                    actual_wait = max(rpm_wait, recommended_delay)
-                    if actual_wait > 0 and actual_wait < 300:  # Wait only if reasonable
-                        logger.debug(f"THROTTLE: Waiting {actual_wait:.2f}s (adaptive={recommended_delay:.2f}, rpm_wait={rpm_wait:.2f}) for Model {target_model}")
-                        await asyncio.sleep(actual_wait)
-                    
-                    # Update usage time immediately (optimistic)
-                    await groq_rate_limiter.update_request_time(current_key, target_model)
-
-
-                    logger.info(f"  > Attempting Chat: Model={target_model} | KeyIndex={key_index + 1}/{len(all_keys)} | KeyPrefix={current_key[:8]}...")
-                    client = AsyncGroq(api_key=current_key, max_retries=0)
-                    
-                    completion = await client.chat.completions.create(
-                        model=target_model,
-                        messages=messages_payload,
-                        temperature=request.temperature or 0.6,
-                        max_completion_tokens=request.max_tokens or 4096,
-                        top_p=0.95,
-                        stream=request.stream,
-                    )
-                    
-                    # Record success in health tracker
-                    key_health_tracker.record_success(current_key)
-                    
-                    # Record token usage in budget manager
-                    if hasattr(completion, 'usage') and completion.usage:
-                        token_budget_manager.record_usage(
-                            current_key, 
-                            target_model, 
-                            completion.usage.total_tokens
-                        )
-                    
-                    if request.stream:
-                        return StreamingResponse(
-                            _stream_groq_response(completion, target_model), 
-                            media_type="text/event-stream"
-                        )
-                    else:
-                        response_data = {
-                            "id": f"chatcmpl-{int(time.time())}",
-                            "object": "chat.completion",
-                            "created": int(time.time()),
-                            "model": target_model,
-                            "choices": [
-                                {
-                                    "index": 0,
-                                    "message": {
-                                        "role": "assistant",
-                                        "content": completion.choices[0].message.content
-                                    },
-                                    "finish_reason": completion.choices[0].finish_reason
-                                }
-                            ],
-                            "usage": {
-                                "prompt_tokens": completion.usage.prompt_tokens,
-                                "completion_tokens": completion.usage.completion_tokens,
-                                "total_tokens": completion.usage.total_tokens
-                            }
+            client = AsyncGroq(api_key=current_key, max_retries=0)
+            
+            completion = await client.chat.completions.create(
+                model=target_model,
+                messages=messages_payload,
+                temperature=request.temperature or 0.6,
+                max_completion_tokens=request.max_tokens or 4096,
+                top_p=0.95,
+                stream=request.stream,
+            )
+            
+            if request.stream:
+                return StreamingResponse(
+                    _stream_groq_response(completion, target_model), 
+                    media_type="text/event-stream"
+                )
+            else:
+                return {
+                    "id": f"chatcmpl-{int(time.time())}",
+                    "object": "chat.completion",
+                    "created": int(time.time()),
+                    "model": target_model,
+                    "choices": [
+                        {
+                            "index": 0,
+                            "message": {
+                                "role": "assistant",
+                                "content": completion.choices[0].message.content
+                            },
+                            "finish_reason": completion.choices[0].finish_reason
                         }
-                        
-                        # Cache the response for future identical requests
-                        response_cache.set(messages_payload, target_model, response_data)
-                        
-                        return response_data
-                        
-                except Exception as e:
-                    error_str = str(e)
-                    last_exception = e
-                    
-                    # Record error in health tracker and adaptive throttler
-                    key_health_tracker.record_error(current_key, error_str[:50])
-                    adaptive_throttler.record_error()
-                    
-                    # PROTECTION: Check for organization restriction (PERMANENT BLOCK)
-                    is_org_restricted = (
-                        "organization" in error_str.lower() and "restricted" in error_str.lower()
-                    ) or (
-                        "org" in error_str.lower() and "block" in error_str.lower()
-                    ) or (
-                        "account" in error_str.lower() and "suspended" in error_str.lower()
-                    )
-                    
-                    # Check for 413 Payload Too Large FIRST - fallback to local LLM immediately
-                    is_payload_too_large = (
-                        "413" in error_str or 
-                        "payload too large" in error_str.lower() or
-                        "request entity too large" in error_str.lower() or
-                        "content too large" in error_str.lower()
-                    )
-                    
-                    if is_payload_too_large:
-                        logger.warning(f"� Payload Too Large (413) on Groq. Immediately falling back to local LLM...")
-                        
-                        # Try local LLM fallback immediately - no more Groq attempts
-                        try:
-                            local_response = await _call_local_llm_fallback(messages_payload, request.temperature, request.max_tokens)
-                            if local_response:
-                                logger.info(f"✅ Local LLM fallback succeeded for 413 error")
-                                
-                                # If client requested stream, we need to convert the single response to a stream
-                                if request.stream:
-                                    return StreamingResponse(
-                                        _stream_single_response(local_response), 
-                                        media_type="text/event-stream"
-                                    )
-                                else:
-                                    return local_response
-                        except Exception as local_err:
-                            logger.error(f"❌ Local LLM fallback also failed: {local_err}")
-                            raise HTTPException(
-                                status_code=413, 
-                                detail=f"Payload too large for Groq and local LLM fallback failed: {str(local_err)}"
+                    ],
+                    "usage": {
+                        "prompt_tokens": completion.usage.prompt_tokens,
+                        "completion_tokens": completion.usage.completion_tokens,
+                        "total_tokens": completion.usage.total_tokens
+                    }
+                }
+                
+        except Exception as e:
+            error_str = str(e)
+            last_exception = e
+            
+            # Check for 413 Payload Too Large - fallback to local LLM
+            is_payload_too_large = (
+                "413" in error_str or 
+                "payload too large" in error_str.lower() or
+                "request entity too large" in error_str.lower()
+            )
+            
+            if is_payload_too_large:
+                logger.warning(f"Payload Too Large (413). Falling back to local LLM...")
+                try:
+                    local_response = await _call_local_llm_fallback(messages_payload, request.temperature, request.max_tokens)
+                    if local_response:
+                        logger.info(f"✅ Local LLM fallback succeeded for 413 error")
+                        if request.stream:
+                            return StreamingResponse(
+                                _stream_single_response(local_response), 
+                                media_type="text/event-stream"
                             )
-                    
-                    if is_org_restricted:
-                        # CRITICAL: This key is now permanently unusable
-                        groq_key_manager.mark_permanently_blocked(current_key, f"Organization Restricted: {error_str[:100]}")
-                        logger.critical(f"🚨 KEY [{key_index + 1}] GOT ORGANIZATION RESTRICTED! Permanently blocked.")
-                        
-                        # Long delay before trying another key to avoid triggering more restrictions
-                        logger.warning("Waiting 60s before trying another key to avoid more restrictions...")
-                        await asyncio.sleep(60)
-                        continue
-                    
-                    is_rate_limit = (
-                        "429" in error_str or 
-                        "rate" in error_str.lower() or 
-                        "limit" in error_str.lower()
+                        return local_response
+                except Exception as local_err:
+                    logger.error(f"Local LLM fallback also failed: {local_err}")
+                    raise HTTPException(
+                        status_code=413, 
+                        detail=f"Payload too large and local fallback failed: {str(local_err)}"
                     )
-                    
-                    if is_rate_limit:
-                        # Rate limit hit -> Block this (Key, Model) for 15 minutes (900s)
-                        await groq_rate_limiter.block_key_model(current_key, target_model, duration=groq_rate_limiter.ERROR_COOLDOWN_DURATION)
-                        logger.warning(f"Rate Limit (429) on Model [{target_model}] with Key [{key_index + 1}]. Blocking for {groq_rate_limiter.ERROR_COOLDOWN_DURATION}s (15 min).")
-                        
-                        # Try Local LLM as fallback for this error
-                        logger.info("Attempting Local LLM fallback after 429 error...")
-                        try:
-                            local_response = await _call_local_llm_fallback(messages_payload, request.temperature, request.max_tokens)
-                            if local_response:
-                                logger.info(f"✅ Local LLM fallback succeeded after 429 error")
-                                if request.stream:
-                                    return StreamingResponse(
-                                        _stream_single_response(local_response), 
-                                        media_type="text/event-stream"
-                                    )
-                                return local_response
-                        except Exception as local_err:
-                            logger.warning(f"Local LLM fallback also failed: {local_err}")
-                        
-                        # PROTECTION: Short delay before switching to avoid aggressive behavior
-                        logger.info("PROTECTION: Waiting 5s before trying NEXT KEY to avoid aggressive behavior...")
-                        await asyncio.sleep(5)
-                        continue 
-                    else:
-                        # Non-rate-limit error.
-                        if "not found" in error_str.lower() or "load" in error_str.lower():
-                             # Model specific error? Skip to next MODEL.
-                             logger.warning(f"Model error ({error_str}) on {target_model}. Skipping to next model.")
-                             break # Break inner loop, go to next outer loop (Model)
-                        
-                        # Connection errors etc might be retryable on next key
-                        if "connect" in error_str.lower() or "timeout" in error_str.lower():
-                            logger.warning(f"Connection error on Key [{key_index + 1}] for {target_model}: {error_str}. Trying next key...")
-                            
-                            # Add 10s delay even for connection errors just in case
-                            logger.info("Waiting 10s before switching key...")
-                            await asyncio.sleep(10)
-                            continue
+            
+            # Rate limit - rotate key and try next model
+            is_rate_limit = "429" in error_str or "rate" in error_str.lower()
+            if is_rate_limit:
+                logger.warning(f"Rate Limit (429) on Model [{target_model}]. Rotating key and trying next model...")
+                groq_key_manager.rotate_key()
+                continue
+            
+            # Model not found - try next model
+            if "not found" in error_str.lower():
+                logger.warning(f"Model {target_model} not found. Trying next model...")
+                continue
+            
+            # Other error - log and try next model
+            logger.error(f"Error on {target_model}: {error_str}")
+            continue
 
-                        # Other errors (auth, bad request) -> fail immediately
-                        logger.error(f"Groq chat fatal error: {error_str}")
-                        raise HTTPException(status_code=500, detail=f"Groq Error: {error_str}")
-
-            # If we exit the key loop naturally, it means all keys failed (likely 429s) for this model.
-            # We proceed to the next model in 'model_chain'.
-            logger.warning(f"All keys exhausted for model {target_model}. Falling back to next model in chain...")
-
-    # If we fall through ALL models and ALL keys TWICE
-    # Activate global cooldown for 300 seconds
-    await groq_rate_limiter.activate_global_block(300.0)
-
+    # All models exhausted
     raise HTTPException(
         status_code=429, 
-        detail=f"All models and API keys exhausted after retry. System entering global cooldown (300s). Last error: {str(last_exception)}"
+        detail=f"All models exhausted. Last error: {str(last_exception)}"
     )
 
 
 @app.get("/groq/status")
 async def get_groq_status():
     """
-    Get comprehensive status of Groq API management including:
-    - Rate limiter status (blocked keys, cooldown cycles)
-    - Key health scores
-    - Token budget usage
-    - Adaptive throttler status
-    - Response cache statistics
-    - Local LLM cooldown status
+    Get simple status of Groq API management.
     """
     return {
-        "rate_limiter": groq_rate_limiter.get_status(),
-        "key_health": key_health_tracker.get_status(),
-        "token_budget": token_budget_manager.get_status(),
-        "adaptive_throttler": adaptive_throttler.get_status(),
-        "response_cache": response_cache.get_status(),
-        "local_llm_cooldown": local_llm_cooldown.get_status(),
+        "key_manager": groq_key_manager.get_status() if groq_key_manager else None,
+        "rpm_throttler": rpm_throttler.get_status(),
         "groq_model_limits": {
             model: {
                 "rpm": limits["rpm"],
@@ -2401,25 +1505,10 @@ async def get_groq_status():
 @app.get("/groq/health")
 async def get_groq_health():
     """Get quick health summary of Groq API usage."""
-    throttler_status = adaptive_throttler.get_status()
-    cache_status = response_cache.get_status()
-    
-    # Determine overall health
-    error_rate = throttler_status["error_rate"]
-    if error_rate < 0.1:
-        health_status = "healthy"
-    elif error_rate < 0.3:
-        health_status = "degraded"
-    else:
-        health_status = "unhealthy"
-    
     return {
-        "status": health_status,
-        "error_rate": error_rate,
-        "delay_multiplier": throttler_status["delay_multiplier"],
-        "cache_hit_rate": cache_status["hit_rate"],
-        "is_globally_blocked": groq_rate_limiter.is_globally_blocked()[0],
+        "status": "healthy",
         "available_keys": groq_key_manager.get_available_key_count() if groq_key_manager else 0,
+        "rpm_status": rpm_throttler.get_status()
     }
 
 
@@ -2427,3 +1516,4 @@ if __name__ == "__main__":
     import uvicorn
 
     uvicorn.run(app, host="0.0.0.0", port=8000)
+
