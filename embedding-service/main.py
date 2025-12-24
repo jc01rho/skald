@@ -47,6 +47,8 @@ OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY", "")
 OPENROUTER_MODEL = os.getenv("OPENROUTER_MODEL", "xiaomi/mimo-v2-flash:free")
 MISTRAL_API_KEY = os.getenv("MISTRAL_API_KEY", "")
 MISTRAL_MODEL = os.getenv("MISTRAL_MODEL", "mistral-medium-latest")
+GITHUB_TOKEN = os.getenv("GITHUB_TOKEN", "")
+GITHUB_MODEL = os.getenv("GITHUB_MODEL", "microsoft/Phi-4-mini-instruct")
 # OPENROUTER_API_KEY removed as per user request
 # External embedding service URL (e.g., vLLM, TGI, or custom embedding server)
 EXTERNAL_EMBEDDING_URL = os.getenv("EXTERNAL_EMBEDDING_URL", "http://localhost:8889/embeddings")
@@ -1496,15 +1498,65 @@ async def _stream_mistral_response(response, model_name):
         await response.aclose()
 
 
+async def _call_github(messages: list[dict], temperature: float = 0.7, max_tokens: int = 4096, stream: bool = False):
+    if not GITHUB_TOKEN:
+        return None
+    
+    url = "https://models.github.ai/inference/chat/completions"
+    headers = {
+        "Authorization": f"Bearer {GITHUB_TOKEN}",
+        "Content-Type": "application/json"
+    }
+    
+    payload = {
+        "model": GITHUB_MODEL,
+        "messages": messages,
+        "temperature": temperature,
+        "max_tokens": max_tokens,
+        "stream": stream
+    }
+
+    async with httpx.AsyncClient(timeout=120.0) as client:
+        if stream:
+            return await client.post(url, json=payload, headers=headers)
+        else:
+            response = await client.post(url, json=payload, headers=headers)
+            response.raise_for_status()
+            return response.json()
+
+
+async def _stream_github_response(response, model_name):
+    """
+    Stream GitHub Models API response in OpenAI format.
+    """
+    try:
+        async for line in response.aiter_lines():
+            if not line.strip():
+                continue
+            if line.startswith("data: "):
+                data_str = line[6:].strip()
+                if data_str == "[DONE]":
+                    yield "data: [DONE]\n\n"
+                    break
+                
+                yield f"data: {data_str}\n\n"
+    except Exception as e:
+        logger.error(f"Error during GitHub streaming: {e}")
+        yield f"data: {json.dumps({'error': str(e)})}\n\n"
+    finally:
+        await response.aclose()
+
+
 @app.post("/v1/chat/completions")
 async def chat_completions(request: ChatCompletionRequest):
     """
     OpenAI-compatible chat completion endpoint.
     Primary: SiliconFlow (DeepSeek-V3)
-    Fallback 1: Mistral (Mistral Medium)
-    Fallback 2: OpenRouter (Xiaomi Mimo-V2-Flash)
-    Fallback 3: Groq (llama-3.3-70b/70b-versatile etc)
-    Fallback 4: Local LLM (ollama)
+    Fallback 1: GitHub (DeepSeek-V3)
+    Fallback 2: Mistral (Mistral Medium)
+    Fallback 3: OpenRouter (Xiaomi Mimo-V2-Flash)
+    Fallback 4: Groq (llama-3.3-70b/70b-versatile etc)
+    Fallback 5: Local LLM (ollama)
     """
     
     requested_model = request.model
@@ -1540,6 +1592,33 @@ async def chat_completions(request: ChatCompletionRequest):
                     return sf_data
         except Exception as e:
             logger.error(f"SiliconFlow error: {e}")
+            # Continue to GitHub fallback
+
+    # ==========================================
+    # 2. Try GitHub (Fallback 1)
+    # ==========================================
+    if GITHUB_TOKEN:
+        try:
+            logger.info(f"Attempting GitHub: Model={GITHUB_MODEL}")
+            if request.stream:
+                gh_response = await _call_github(messages_payload, request.temperature or 0.7, request.max_tokens or 4096, stream=True)
+                if gh_response.status_code == 200:
+                    logger.info("✅ GitHub (stream) succeeded")
+                    return StreamingResponse(
+                        _stream_github_response(gh_response, GITHUB_MODEL),
+                        media_type="text/event-stream"
+                    )
+                else:
+                    error_body = await gh_response.aread()
+                    logger.warning(f"GitHub failed with status {gh_response.status_code}: {error_body.decode()}")
+                    await gh_response.aclose()
+            else:
+                gh_data = await _call_github(messages_payload, request.temperature or 0.7, request.max_tokens or 4096, stream=False)
+                if gh_data:
+                    logger.info("✅ GitHub succeeded")
+                    return gh_data
+        except Exception as e:
+            logger.error(f"GitHub Models error: {e}")
             # Continue to Mistral fallback
 
     # ==========================================
@@ -1756,6 +1835,13 @@ async def get_groq_status():
         "key_manager": groq_key_manager.get_status() if groq_key_manager else None,
         "rpm_throttler": rpm_throttler.get_status(),
         "openrouter_usage": openrouter_usage_tracker.get_status(),
+        "providers": {
+            "siliconflow": {"configured": bool(SILICONFLOW_API_KEY), "model": SILICONFLOW_MODEL},
+            "github": {"configured": bool(GITHUB_TOKEN), "model": GITHUB_MODEL},
+            "mistral": {"configured": bool(MISTRAL_API_KEY), "model": MISTRAL_MODEL},
+            "openrouter": {"configured": bool(OPENROUTER_API_KEY), "model": OPENROUTER_MODEL},
+            "groq": {"configured": bool(GROQ_API_KEYS), "keys_count": len(GROQ_API_KEYS)}
+        },
         "groq_model_limits": {
             model: {
                 "rpm": limits["rpm"],
