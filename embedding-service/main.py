@@ -29,6 +29,13 @@ logger.setLevel(getattr(logging, LOG_LEVEL, logging.INFO))
 
 app = FastAPI(title="Embedding Service", version="1.0.0")
 
+# Global HTTPX client for reused connections and streaming stability
+global_httpx_client = httpx.AsyncClient(timeout=120.0)
+
+@app.on_event("shutdown")
+async def shutdown_event():
+    await global_httpx_client.aclose()
+
 # Configuration
 EMBEDDING_MODEL = os.getenv("EMBEDDING_MODEL", "BAAI/bge-m3")
 RERANK_MODEL = os.getenv("RERANK_MODEL", "xitao/bge-reranker-v2-m3:latest")
@@ -48,7 +55,17 @@ OPENROUTER_MODEL = os.getenv("OPENROUTER_MODEL", "xiaomi/mimo-v2-flash:free")
 MISTRAL_API_KEY = os.getenv("MISTRAL_API_KEY", "")
 MISTRAL_MODEL = os.getenv("MISTRAL_MODEL", "mistral-medium-latest")
 GITHUB_TOKEN = os.getenv("GITHUB_TOKEN", "")
-GITHUB_MODEL = os.getenv("GITHUB_MODEL", "microsoft/Phi-4-mini-instruct")
+GITHUB_MODELS_STR = os.getenv("GITHUB_MODELS", "deepseek/DeepSeek-R1,xai/grok-3-mini,xai/grok-3,deepseek/DeepSeek-V3-0324,openai/gpt-4o-mini,openai/o4-mini")
+GITHUB_MODELS = [m.strip() for m in GITHUB_MODELS_STR.split(",") if m.strip()]
+# GITHUB_MODEL fallback for backward compatibility
+if not GITHUB_MODELS:
+    _model = os.getenv("GITHUB_MODEL", "deepseek/DeepSeek-V3-0324")
+    GITHUB_MODELS = [_model]
+
+POLLINATIONS_API_KEY = os.getenv("POLLINATIONS_API_KEY", "")
+POLLINATIONS_MODELS_STR = os.getenv("POLLINATIONS_MODELS", "nova-micro,openai,mistral,mistral-large")
+POLLINATIONS_MODELS = [m.strip() for m in POLLINATIONS_MODELS_STR.split(",") if m.strip()]
+
 # OPENROUTER_API_KEY removed as per user request
 # External embedding service URL (e.g., vLLM, TGI, or custom embedding server)
 EXTERNAL_EMBEDDING_URL = os.getenv("EXTERNAL_EMBEDDING_URL", "http://localhost:8889/embeddings")
@@ -178,6 +195,33 @@ class DailyUsageTracker:
 
 # Tracker for OpenRouter (800 calls per day)
 openrouter_usage_tracker = DailyUsageTracker(limit=800, name="OpenRouter")
+
+
+class RoundRobinManager:
+    """
+    Manages a list of items (keys, models, etc.) in a round-robin fashion.
+    """
+    def __init__(self, items: list[str], name: str = "Items"):
+        self.items = items
+        self.name = name
+        self._index = 0
+        self._lock = threading.Lock()
+    
+    def get_current(self) -> str:
+        with self._lock:
+            return self.items[self._index]
+    
+    def rotate(self):
+        with self._lock:
+            old = self.items[self._index]
+            self._index = (self._index + 1) % len(self.items)
+            logger.info(f"🔄 {self.name} rotated from {old} to {self.items[self._index]}")
+
+    def get_all(self) -> list[str]:
+        return self.items
+
+github_model_manager = RoundRobinManager(GITHUB_MODELS, name="GitHub Models")
+pollinations_model_manager = RoundRobinManager(POLLINATIONS_MODELS, name="Pollinations Models")
 
 # Simple RPM-based rate limiter (no cooldowns, just timing)
 class SimpleRPMThrottler:
@@ -1362,14 +1406,12 @@ async def _call_siliconflow(messages: list[dict], temperature: float = 0.7, max_
     if is_json:
         payload["response_format"] = {"type": "json_object"}
 
-    async with httpx.AsyncClient(timeout=120.0) as client:
-        if stream:
-            # For streaming, we need to handle the request differently to keep the connection open
-            return await client.post(url, json=payload, headers=headers)
-        else:
-            response = await client.post(url, json=payload, headers=headers)
-            response.raise_for_status()
-            return response.json()
+    if stream:
+        return await global_httpx_client.post(url, json=payload, headers=headers)
+    else:
+        response = await global_httpx_client.post(url, json=payload, headers=headers)
+        response.raise_for_status()
+        return response.json()
 
 
 async def _stream_siliconflow_response(response, model_name):
@@ -1418,13 +1460,12 @@ async def _call_openrouter(messages: list[dict], temperature: float = 0.7, max_t
         "stream": stream
     }
 
-    async with httpx.AsyncClient(timeout=120.0) as client:
-        if stream:
-            return await client.post(url, json=payload, headers=headers)
-        else:
-            response = await client.post(url, json=payload, headers=headers)
-            response.raise_for_status()
-            return response.json()
+    if stream:
+        return await global_httpx_client.post(url, json=payload, headers=headers)
+    else:
+        response = await global_httpx_client.post(url, json=payload, headers=headers)
+        response.raise_for_status()
+        return response.json()
 
 
 async def _stream_openrouter_response(response, model_name):
@@ -1467,13 +1508,12 @@ async def _call_mistral(messages: list[dict], temperature: float = 0.7, max_toke
         "stream": stream
     }
 
-    async with httpx.AsyncClient(timeout=120.0) as client:
-        if stream:
-            return await client.post(url, json=payload, headers=headers)
-        else:
-            response = await client.post(url, json=payload, headers=headers)
-            response.raise_for_status()
-            return response.json()
+    if stream:
+        return await global_httpx_client.post(url, json=payload, headers=headers)
+    else:
+        response = await global_httpx_client.post(url, json=payload, headers=headers)
+        response.raise_for_status()
+        return response.json()
 
 
 async def _stream_mistral_response(response, model_name):
@@ -1498,31 +1538,30 @@ async def _stream_mistral_response(response, model_name):
         await response.aclose()
 
 
-async def _call_github(messages: list[dict], temperature: float = 0.7, max_tokens: int = 4096, stream: bool = False):
+async def _call_github(messages: list[dict], model: str, temperature: float = 0.7, max_tokens: int = 4096, stream: bool = False):
     if not GITHUB_TOKEN:
         return None
     
-    url = "https://models.github.ai/inference/chat/completions"
+    url = "https://models.github.ai/inference/chat/completions?api-version=2024-05-01-preview"
     headers = {
         "Authorization": f"Bearer {GITHUB_TOKEN}",
         "Content-Type": "application/json"
     }
     
     payload = {
-        "model": GITHUB_MODEL,
+        "model": model,
         "messages": messages,
         "temperature": temperature,
         "max_tokens": max_tokens,
         "stream": stream
     }
 
-    async with httpx.AsyncClient(timeout=120.0) as client:
-        if stream:
-            return await client.post(url, json=payload, headers=headers)
-        else:
-            response = await client.post(url, json=payload, headers=headers)
-            response.raise_for_status()
-            return response.json()
+    if stream:
+        return await global_httpx_client.post(url, json=payload, headers=headers)
+    else:
+        response = await global_httpx_client.post(url, json=payload, headers=headers)
+        response.raise_for_status()
+        return response.json()
 
 
 async def _stream_github_response(response, model_name):
@@ -1547,16 +1586,66 @@ async def _stream_github_response(response, model_name):
         await response.aclose()
 
 
+async def _call_pollinations(messages: list[dict], model: str, temperature: float = 0.7, max_tokens: int = 2048, stream: bool = False):
+    if not POLLINATIONS_API_KEY:
+        return None
+    
+    url = "https://gen.pollinations.ai/v1/chat/completions"
+    headers = {
+        "Authorization": f"Bearer {POLLINATIONS_API_KEY}",
+        "Content-Type": "application/json"
+    }
+    
+    payload = {
+        "model": model,
+        "messages": messages,
+        "temperature": temperature,
+        "max_tokens": max_tokens,
+        "stream": stream,
+        "modalities": ["text"]
+    }
+
+    if stream:
+        return await global_httpx_client.post(url, json=payload, headers=headers)
+    else:
+        response = await global_httpx_client.post(url, json=payload, headers=headers)
+        response.raise_for_status()
+        return response.json()
+
+
+async def _stream_pollinations_response(response, model_name):
+    """
+    Stream Pollinations AI response in OpenAI format.
+    """
+    try:
+        async for line in response.aiter_lines():
+            if not line.strip():
+                continue
+            if line.startswith("data: "):
+                data_str = line[6:].strip()
+                if data_str == "[DONE]":
+                    yield "data: [DONE]\n\n"
+                    break
+                
+                yield f"data: {data_str}\n\n"
+    except Exception as e:
+        logger.error(f"Error during Pollinations streaming: {e}")
+        yield f"data: {json.dumps({'error': str(e)})}\n\n"
+    finally:
+        await response.aclose()
+
+
 @app.post("/v1/chat/completions")
 async def chat_completions(request: ChatCompletionRequest):
     """
     OpenAI-compatible chat completion endpoint.
     Primary: SiliconFlow (DeepSeek-V3)
-    Fallback 1: GitHub (DeepSeek-V3)
-    Fallback 2: Mistral (Mistral Medium)
-    Fallback 3: OpenRouter (Xiaomi Mimo-V2-Flash)
-    Fallback 4: Groq (llama-3.3-70b/70b-versatile etc)
-    Fallback 5: Local LLM (ollama)
+    Fallback 1: GitHub (DeepSeek-V3 Round-Robin)
+    Fallback 2: Pollinations.ai (Nova-Micro etc)
+    Fallback 3: Mistral (Mistral Medium)
+    Fallback 4: OpenRouter (Xiaomi Mimo-V2-Flash)
+    Fallback 5: Groq (llama-3.3-70b/70b-versatile etc)
+    Fallback 6: Local LLM (ollama)
     """
     
     requested_model = request.model
@@ -1597,32 +1686,101 @@ async def chat_completions(request: ChatCompletionRequest):
     # ==========================================
     # 2. Try GitHub (Fallback 1)
     # ==========================================
-    if GITHUB_TOKEN:
-        try:
-            logger.info(f"Attempting GitHub: Model={GITHUB_MODEL}")
-            if request.stream:
-                gh_response = await _call_github(messages_payload, request.temperature or 0.7, request.max_tokens or 4096, stream=True)
-                if gh_response.status_code == 200:
-                    logger.info("✅ GitHub (stream) succeeded")
-                    return StreamingResponse(
-                        _stream_github_response(gh_response, GITHUB_MODEL),
-                        media_type="text/event-stream"
-                    )
+    if GITHUB_TOKEN and GITHUB_MODELS:
+        # Try models in GitHub list
+        all_gh_models = github_model_manager.get_all()
+        start_model = github_model_manager.get_current()
+        start_idx = all_gh_models.index(start_model)
+        
+        # We try all models starting from current index
+        for i in range(len(all_gh_models)):
+            current_idx = (start_idx + i) % len(all_gh_models)
+            target_gh_model = all_gh_models[current_idx]
+            
+            try:
+                logger.info(f"Attempting GitHub [{i+1}/{len(all_gh_models)}]: Model={target_gh_model}")
+                if request.stream:
+                    gh_response = await _call_github(messages_payload, target_gh_model, request.temperature or 0.7, request.max_tokens or 4096, stream=True)
+                    if gh_response.status_code == 200:
+                        logger.info(f"✅ GitHub (stream) succeeded with {target_gh_model}")
+                        return StreamingResponse(
+                            _stream_github_response(gh_response, target_gh_model),
+                            media_type="text/event-stream"
+                        )
+                    else:
+                        error_body = await gh_response.aread()
+                        error_msg = error_body.decode()
+                        logger.warning(f"GitHub model {target_gh_model} failed ({gh_response.status_code}): {error_msg}")
+                        await gh_response.aclose()
+                        
+                        # If quota/rate limit, rotate and try next GitHub model
+                        if gh_response.status_code in [429, 403] or "quota" in error_msg.lower():
+                            github_model_manager.rotate()
+                            continue
+                        else:
+                            # Other error, move on to Mistral fallback entirely? 
+                            # Or try next model? Let's try next model for now.
+                            continue
                 else:
-                    error_body = await gh_response.aread()
-                    logger.warning(f"GitHub failed with status {gh_response.status_code}: {error_body.decode()}")
-                    await gh_response.aclose()
-            else:
-                gh_data = await _call_github(messages_payload, request.temperature or 0.7, request.max_tokens or 4096, stream=False)
-                if gh_data:
-                    logger.info("✅ GitHub succeeded")
-                    return gh_data
-        except Exception as e:
-            logger.error(f"GitHub Models error: {e}")
-            # Continue to Mistral fallback
+                    gh_data = await _call_github(messages_payload, target_gh_model, request.temperature or 0.7, request.max_tokens or 4096, stream=False)
+                    if gh_data:
+                        logger.info(f"✅ GitHub succeeded with {target_gh_model}")
+                        return gh_data
+            except Exception as e:
+                logger.error(f"GitHub Models error on {target_gh_model}: {e}")
+                github_model_manager.rotate()
+                continue
+        
+        # If we exhausted all GitHub models
+        logger.warning("All GitHub models failed, moving to Pollinations fallback")
 
     # ==========================================
-    # 2. Try Mistral (Fallback 1)
+    # 3. Try Pollinations.ai (Fallback 2)
+    # ==========================================
+    if POLLINATIONS_API_KEY and POLLINATIONS_MODELS:
+        # Try models in Pollinations list
+        all_pl_models = pollinations_model_manager.get_all()
+        start_model = pollinations_model_manager.get_current()
+        start_idx = all_pl_models.index(start_model)
+        
+        for i in range(len(all_pl_models)):
+            current_idx = (start_idx + i) % len(all_pl_models)
+            target_pl_model = all_pl_models[current_idx]
+            
+            try:
+                logger.info(f"Attempting Pollinations [{i+1}/{len(all_pl_models)}]: Model={target_pl_model}")
+                if request.stream:
+                    pl_response = await _call_pollinations(messages_payload, target_pl_model, request.temperature or 0.7, request.max_tokens or 2048, stream=True)
+                    if pl_response.status_code == 200:
+                        logger.info(f"✅ Pollinations (stream) succeeded with {target_pl_model}")
+                        return StreamingResponse(
+                            _stream_pollinations_response(pl_response, target_pl_model),
+                            media_type="text/event-stream"
+                        )
+                    else:
+                        error_body = await pl_response.aread()
+                        error_msg = error_body.decode()
+                        logger.warning(f"Pollinations model {target_pl_model} failed ({pl_response.status_code}): {error_msg}")
+                        await pl_response.aclose()
+                        
+                        if pl_response.status_code in [429, 403]:
+                            pollinations_model_manager.rotate()
+                            continue
+                        continue
+                else:
+                    pl_data = await _call_pollinations(messages_payload, target_pl_model, request.temperature or 0.7, request.max_tokens or 2048, stream=False)
+                    if pl_data:
+                        logger.info(f"✅ Pollinations succeeded with {target_pl_model}")
+                        return pl_data
+            except Exception as e:
+                logger.error(f"Pollinations AI error on {target_pl_model}: {e}")
+                pollinations_model_manager.rotate()
+                continue
+        
+        logger.warning("All Pollinations models failed, moving to Mistral fallback")
+
+    # ==========================================
+    # 4. Try Mistral (Fallback 3)
     # ==========================================
     if MISTRAL_API_KEY:
         try:
@@ -1822,7 +1980,7 @@ async def chat_completions(request: ChatCompletionRequest):
     # If all else fails
     raise HTTPException(
         status_code=503, 
-        detail="All providers (SiliconFlow, Groq, Local LLM) failed or are unavailable."
+        detail="All providers (SiliconFlow, GitHub, Pollinations, Mistral, OpenRouter, Groq, Local LLM) failed or are unavailable."
     )
 
 
@@ -1837,7 +1995,16 @@ async def get_groq_status():
         "openrouter_usage": openrouter_usage_tracker.get_status(),
         "providers": {
             "siliconflow": {"configured": bool(SILICONFLOW_API_KEY), "model": SILICONFLOW_MODEL},
-            "github": {"configured": bool(GITHUB_TOKEN), "model": GITHUB_MODEL},
+            "github": {
+                "configured": bool(GITHUB_TOKEN), 
+                "current_model": github_model_manager.get_current(),
+                "all_models": github_model_manager.get_all()
+            },
+            "pollinations": {
+                "configured": bool(POLLINATIONS_API_KEY),
+                "current_model": pollinations_model_manager.get_current(),
+                "all_models": pollinations_model_manager.get_all()
+            },
             "mistral": {"configured": bool(MISTRAL_API_KEY), "model": MISTRAL_MODEL},
             "openrouter": {"configured": bool(OPENROUTER_API_KEY), "model": OPENROUTER_MODEL},
             "groq": {"configured": bool(GROQ_API_KEYS), "keys_count": len(GROQ_API_KEYS)}

@@ -154,11 +154,21 @@ spec:
             secretKeyRef:
               name: skald-secrets
               key: GITHUB_TOKEN
-        - name: GITHUB_MODEL
+        - name: GITHUB_MODELS
           valueFrom:
             configMapKeyRef:
               name: skald-config
-              key: GITHUB_MODEL
+              key: GITHUB_MODELS
+        - name: POLLINATIONS_API_KEY
+          valueFrom:
+            secretKeyRef:
+              name: skald-secrets
+              key: POLLINATIONS_API_KEY
+        - name: POLLINATIONS_MODELS
+          valueFrom:
+            configMapKeyRef:
+              name: skald-config
+              key: POLLINATIONS_MODELS
         # 헬스체크 설정
         readinessProbe:
           httpGet:
