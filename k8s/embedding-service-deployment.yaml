@@ -164,11 +164,21 @@ spec:
             secretKeyRef:
               name: skald-secrets
               key: POLLINATIONS_API_KEY
-        - name: POLLINATIONS_MODELS
+        - name: POLLINATIONS_MODEL
           valueFrom:
             configMapKeyRef:
               name: skald-config
-              key: POLLINATIONS_MODELS
+              key: POLLINATIONS_MODEL
+        - name: MOVEMENTLABS_API_KEY
+          valueFrom:
+            secretKeyRef:
+              name: skald-secrets
+              key: MOVEMENTLABS_API_KEY
+        - name: MOVEMENTLABS_MODEL
+          valueFrom:
+            configMapKeyRef:
+              name: skald-config
+              key: MOVEMENTLABS_MODEL
         # 헬스체크 설정
         readinessProbe:
           httpGet:

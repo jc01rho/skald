@@ -13,12 +13,14 @@ import {
     LOCAL_LLM_API_KEY,
     GROQ_API_KEY,
     GEMINI_API_KEY,
+    ZAI_API_KEY,
+    ZAI_MODEL,
 } from '../settings'
 import { DEFAULT_LLM_MODELS } from '@/llmModels'
 
 interface GetLLMParams {
     temperature?: number
-    providerOverride?: 'openai' | 'anthropic' | 'local' | 'groq' | 'gemini'
+    providerOverride?: 'openai' | 'anthropic' | 'local' | 'groq' | 'gemini' | 'zai'
     purpose?: 'chat' | 'classification'
 }
 
@@ -125,9 +127,22 @@ export class LLMService {
                 apiKey: GEMINI_API_KEY,
                 temperature,
             })
+        } else if (provider === 'zai') {
+            if (!ZAI_API_KEY) {
+                throw new Error('Z.ai provider is not configured. Please set ZAI_API_KEY.')
+            }
+            // Z.ai (ChatGLM) with OpenAI-compatible API
+            return new ChatOpenAI({
+                model: ZAI_MODEL,
+                apiKey: ZAI_API_KEY,
+                configuration: {
+                    baseURL: 'https://api.z.ai/api/paas/v4',
+                },
+                temperature,
+            })
         } else {
             throw new Error(
-                `Unsupported LLM provider: ${provider}. Supported providers: openai, anthropic, local, groq, gemini`
+                `Unsupported LLM provider: ${provider}. Supported providers: openai, anthropic, local, groq, gemini, zai`
             )
         }
     }

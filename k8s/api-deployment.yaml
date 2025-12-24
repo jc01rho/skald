@@ -276,6 +276,18 @@ spec:
               name: skald-secrets
               key: GEMINI_API_KEY
               optional: true
+        - name: ZAI_API_KEY
+          valueFrom:
+            secretKeyRef:
+              name: skald-secrets
+              key: ZAI_API_KEY
+              optional: true
+        - name: ZAI_MODEL
+          valueFrom:
+            configMapKeyRef:
+              name: skald-config
+              key: ZAI_MODEL
+              optional: true
         # 마이크로서비스 URL 설정
         - name: EMBEDDING_SERVICE_URL
           valueFrom:

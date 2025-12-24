@@ -63,8 +63,10 @@ if not GITHUB_MODELS:
     GITHUB_MODELS = [_model]
 
 POLLINATIONS_API_KEY = os.getenv("POLLINATIONS_API_KEY", "")
-POLLINATIONS_MODELS_STR = os.getenv("POLLINATIONS_MODELS", "nova-micro,openai,mistral,mistral-large")
-POLLINATIONS_MODELS = [m.strip() for m in POLLINATIONS_MODELS_STR.split(",") if m.strip()]
+POLLINATIONS_MODEL = os.getenv("POLLINATIONS_MODEL", "nova-micro")
+
+MOVEMENTLABS_API_KEY = os.getenv("MOVEMENTLABS_API_KEY", "")
+MOVEMENTLABS_MODEL = os.getenv("MOVEMENTLABS_MODEL", "hawk-max")
 
 # OPENROUTER_API_KEY removed as per user request
 # External embedding service URL (e.g., vLLM, TGI, or custom embedding server)
@@ -221,7 +223,7 @@ class RoundRobinManager:
         return self.items
 
 github_model_manager = RoundRobinManager(GITHUB_MODELS, name="GitHub Models")
-pollinations_model_manager = RoundRobinManager(POLLINATIONS_MODELS, name="Pollinations Models")
+# pollinations_model_manager removed to disable round-robin
 
 # Simple RPM-based rate limiter (no cooldowns, just timing)
 class SimpleRPMThrottler:
@@ -1414,6 +1416,54 @@ async def _call_siliconflow(messages: list[dict], temperature: float = 0.7, max_
         return response.json()
 
 
+async def _call_movementlabs(messages: list[dict], temperature: float = 0.7, max_tokens: int = 4096, stream: bool = False):
+    if not MOVEMENTLABS_API_KEY:
+        return None
+    
+    url = "https://api.movementlabs.ai/v1/chat/completions"
+    headers = {
+        "Authorization": f"Bearer {MOVEMENTLABS_API_KEY}",
+        "Content-Type": "application/json"
+    }
+    
+    payload = {
+        "model": MOVEMENTLABS_MODEL,
+        "messages": messages,
+        "temperature": temperature,
+        "max_tokens": max_tokens,
+        "stream": stream
+    }
+
+    if stream:
+        return await global_httpx_client.post(url, json=payload, headers=headers)
+    else:
+        response = await global_httpx_client.post(url, json=payload, headers=headers)
+        response.raise_for_status()
+        return response.json()
+
+
+async def _stream_movementlabs_response(response, model_name):
+    """
+    Stream Movement Labs API response in OpenAI format.
+    """
+    try:
+        async for line in response.aiter_lines():
+            if not line.strip():
+                continue
+            if line.startswith("data: "):
+                data_str = line[6:].strip()
+                if data_str == "[DONE]":
+                    yield "data: [DONE]\n\n"
+                    break
+                
+                yield f"data: {data_str}\n\n"
+    except Exception as e:
+        logger.error(f"Error during Movement Labs streaming: {e}")
+        yield f"data: {json.dumps({'error': str(e)})}\n\n"
+    finally:
+        await response.aclose()
+
+
 async def _stream_siliconflow_response(response, model_name):
     """
     Stream SiliconFlow API response in OpenAI format.
@@ -1640,12 +1690,13 @@ async def chat_completions(request: ChatCompletionRequest):
     """
     OpenAI-compatible chat completion endpoint.
     Primary: SiliconFlow (DeepSeek-V3)
-    Fallback 1: GitHub (DeepSeek-V3 Round-Robin)
-    Fallback 2: Pollinations.ai (Nova-Micro etc)
-    Fallback 3: Mistral (Mistral Medium)
-    Fallback 4: OpenRouter (Xiaomi Mimo-V2-Flash)
-    Fallback 5: Groq (llama-3.3-70b/70b-versatile etc)
-    Fallback 6: Local LLM (ollama)
+    Fallback 1: MovementLabs (hawk-max)
+    Fallback 2: GitHub (DeepSeek-V3 Round-Robin)
+    Fallback 3: Pollinations.ai (Nova-Micro etc)
+    Fallback 4: Mistral (Mistral Medium)
+    Fallback 5: OpenRouter (Xiaomi Mimo-V2-Flash)
+    Fallback 6: Groq (llama-3.3-70b/70b-versatile etc)
+    Fallback 7: Local LLM (ollama)
     """
     
     requested_model = request.model
@@ -1681,10 +1732,37 @@ async def chat_completions(request: ChatCompletionRequest):
                     return sf_data
         except Exception as e:
             logger.error(f"SiliconFlow error: {e}")
+            # Continue to MovementLabs fallback
+
+    # ==========================================
+    # 2. Try MovementLabs (Fallback 1)
+    # ==========================================
+    if MOVEMENTLABS_API_KEY:
+        try:
+            logger.info(f"Attempting MovementLabs: Model={MOVEMENTLABS_MODEL}")
+            if request.stream:
+                ml_response = await _call_movementlabs(messages_payload, request.temperature or 0.7, request.max_tokens or 4096, stream=True)
+                if ml_response.status_code == 200:
+                    logger.info("✅ MovementLabs (stream) succeeded")
+                    return StreamingResponse(
+                        _stream_movementlabs_response(ml_response, MOVEMENTLABS_MODEL), 
+                        media_type="text/event-stream"
+                    )
+                else:
+                    error_body = await ml_response.aread()
+                    logger.warning(f"MovementLabs failed with status {ml_response.status_code}: {error_body.decode()}")
+                    await ml_response.aclose()
+            else:
+                ml_data = await _call_movementlabs(messages_payload, request.temperature or 0.7, request.max_tokens or 4096, stream=False)
+                if ml_data:
+                    logger.info("✅ MovementLabs succeeded")
+                    return ml_data
+        except Exception as e:
+            logger.error(f"MovementLabs error: {e}")
             # Continue to GitHub fallback
 
     # ==========================================
-    # 2. Try GitHub (Fallback 1)
+    # 3. Try GitHub (Fallback 2)
     # ==========================================
     if GITHUB_TOKEN and GITHUB_MODELS:
         # Try models in GitHub list
@@ -1735,52 +1813,35 @@ async def chat_completions(request: ChatCompletionRequest):
         logger.warning("All GitHub models failed, moving to Pollinations fallback")
 
     # ==========================================
-    # 3. Try Pollinations.ai (Fallback 2)
+    # 4. Try Pollinations.ai (Fallback 3)
     # ==========================================
-    if POLLINATIONS_API_KEY and POLLINATIONS_MODELS:
-        # Try models in Pollinations list
-        all_pl_models = pollinations_model_manager.get_all()
-        start_model = pollinations_model_manager.get_current()
-        start_idx = all_pl_models.index(start_model)
-        
-        for i in range(len(all_pl_models)):
-            current_idx = (start_idx + i) % len(all_pl_models)
-            target_pl_model = all_pl_models[current_idx]
-            
-            try:
-                logger.info(f"Attempting Pollinations [{i+1}/{len(all_pl_models)}]: Model={target_pl_model}")
-                if request.stream:
-                    pl_response = await _call_pollinations(messages_payload, target_pl_model, request.temperature or 0.7, request.max_tokens or 2048, stream=True)
-                    if pl_response.status_code == 200:
-                        logger.info(f"✅ Pollinations (stream) succeeded with {target_pl_model}")
-                        return StreamingResponse(
-                            _stream_pollinations_response(pl_response, target_pl_model),
-                            media_type="text/event-stream"
-                        )
-                    else:
-                        error_body = await pl_response.aread()
-                        error_msg = error_body.decode()
-                        logger.warning(f"Pollinations model {target_pl_model} failed ({pl_response.status_code}): {error_msg}")
-                        await pl_response.aclose()
-                        
-                        if pl_response.status_code in [429, 403]:
-                            pollinations_model_manager.rotate()
-                            continue
-                        continue
+    if POLLINATIONS_API_KEY:
+        try:
+            logger.info(f"Attempting Pollinations: Model={POLLINATIONS_MODEL}")
+            if request.stream:
+                pl_response = await _call_pollinations(messages_payload, POLLINATIONS_MODEL, request.temperature or 0.7, request.max_tokens or 2048, stream=True)
+                if pl_response.status_code == 200:
+                    logger.info(f"✅ Pollinations (stream) succeeded")
+                    return StreamingResponse(
+                        _stream_pollinations_response(pl_response, POLLINATIONS_MODEL),
+                        media_type="text/event-stream"
+                    )
                 else:
-                    pl_data = await _call_pollinations(messages_payload, target_pl_model, request.temperature or 0.7, request.max_tokens or 2048, stream=False)
-                    if pl_data:
-                        logger.info(f"✅ Pollinations succeeded with {target_pl_model}")
-                        return pl_data
-            except Exception as e:
-                logger.error(f"Pollinations AI error on {target_pl_model}: {e}")
-                pollinations_model_manager.rotate()
-                continue
+                    error_body = await pl_response.aread()
+                    logger.warning(f"Pollinations failed with status {pl_response.status_code}: {error_body.decode()}")
+                    await pl_response.aclose()
+            else:
+                pl_data = await _call_pollinations(messages_payload, POLLINATIONS_MODEL, request.temperature or 0.7, request.max_tokens or 2048, stream=False)
+                if pl_data:
+                    logger.info("✅ Pollinations succeeded")
+                    return pl_data
+        except Exception as e:
+            logger.error(f"Pollinations AI error: {e}")
         
-        logger.warning("All Pollinations models failed, moving to Mistral fallback")
+        logger.warning("Pollinations failed, moving to Mistral fallback")
 
     # ==========================================
-    # 4. Try Mistral (Fallback 3)
+    # 5. Try Mistral (Fallback 4)
     # ==========================================
     if MISTRAL_API_KEY:
         try:
@@ -1807,7 +1868,7 @@ async def chat_completions(request: ChatCompletionRequest):
             # Continue to OpenRouter fallback
 
     # ==========================================
-    # 3. Try OpenRouter (Fallback 2)
+    # 6. Try OpenRouter (Fallback 5)
     # ==========================================
     if OPENROUTER_API_KEY:
         if not openrouter_usage_tracker.can_make_request():
@@ -1839,7 +1900,7 @@ async def chat_completions(request: ChatCompletionRequest):
                 # Continue to Groq fallback
     
     # ==========================================
-    # 4. Try Groq (Fallback 3)
+    # 7. Try Groq (Fallback 6)
     # ==========================================
     logger.info("Falling back to Groq...")
     
@@ -2002,11 +2063,11 @@ async def get_groq_status():
             },
             "pollinations": {
                 "configured": bool(POLLINATIONS_API_KEY),
-                "current_model": pollinations_model_manager.get_current(),
-                "all_models": pollinations_model_manager.get_all()
+                "model": POLLINATIONS_MODEL
             },
             "mistral": {"configured": bool(MISTRAL_API_KEY), "model": MISTRAL_MODEL},
             "openrouter": {"configured": bool(OPENROUTER_API_KEY), "model": OPENROUTER_MODEL},
+            "movementlabs": {"configured": bool(MOVEMENTLABS_API_KEY), "model": MOVEMENTLABS_MODEL},
             "groq": {"configured": bool(GROQ_API_KEYS), "keys_count": len(GROQ_API_KEYS)}
         },
         "groq_model_limits": {

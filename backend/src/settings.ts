@@ -98,6 +98,7 @@ export const LLM_PROVIDER = (process.env.LLM_PROVIDER || 'openai') as
     | 'local'
     | 'groq'
     | 'gemini'
+    | 'zai'
 
 // OpenAI
 export const OPENAI_API_KEY = process.env.OPENAI_API_KEY
@@ -122,6 +123,10 @@ export const GROQ_MODEL = process.env.GROQ_MODEL || 'llama-3.1-8b-instant'
 export const GEMINI_API_KEY = process.env.GEMINI_API_KEY
 export const GEMINI_MODEL = process.env.GEMINI_MODEL || 'gemini-2.5-flash'
 
+// Z.ai (ChatGLM)
+export const ZAI_API_KEY = process.env.ZAI_API_KEY
+export const ZAI_MODEL = process.env.ZAI_MODEL || 'glm-4.7'
+
 // ---- Embedding Provider Configuration ----
 export const EMBEDDING_PROVIDER = process.env.EMBEDDING_PROVIDER || 'voyage'
 
@@ -145,7 +150,7 @@ export const VECTOR_SEARCH_TOP_K = parseInt(process.env.VECTOR_SEARCH_TOP_K || '
 export const POST_RERANK_TOP_K = parseInt(process.env.POST_RERANK_TOP_K || '50')
 
 // Validation of LLM and embedding provider configuration on startup
-export const SUPPORTED_LLM_PROVIDERS = ['openai', 'anthropic', 'local', 'groq', 'gemini']
+export const SUPPORTED_LLM_PROVIDERS = ['openai', 'anthropic', 'local', 'groq', 'gemini', 'zai']
 if (!SUPPORTED_LLM_PROVIDERS.includes(LLM_PROVIDER)) {
     throw new Error(`Invalid LLM_PROVIDER: ${LLM_PROVIDER}. Supported: ${SUPPORTED_LLM_PROVIDERS.join(', ')}`)
 }
@@ -168,6 +173,8 @@ if (!IS_DEVELOPMENT && LLM_PROVIDER === 'openai' && !OPENAI_API_KEY) {
     logger.warn('GROQ_API_KEY not set in production')
 } else if (!IS_DEVELOPMENT && LLM_PROVIDER === 'gemini' && !GEMINI_API_KEY) {
     logger.warn('GEMINI_API_KEY not set in production')
+} else if (!IS_DEVELOPMENT && LLM_PROVIDER === 'zai' && !ZAI_API_KEY) {
+    logger.warn('ZAI_API_KEY not set in production')
 }
 
 // Warn if embedding provider API keys are missing

@@ -6,11 +6,13 @@ import {
     LOCAL_LLM_BASE_URL,
     LOCAL_LLM_MODEL,
     GEMINI_API_KEY,
+    ZAI_API_KEY,
+    ZAI_MODEL,
 } from '@/settings'
 import { DEFAULT_LLM_MODELS } from '@/llmModels'
 
 interface LLMProvider {
-    provider: 'openai' | 'anthropic' | 'groq' | 'local' | 'gemini'
+    provider: 'openai' | 'anthropic' | 'groq' | 'local' | 'gemini' | 'zai'
     label: string
     model: string
 }
@@ -45,6 +47,13 @@ if (GEMINI_API_KEY) {
         provider: 'gemini',
         label: 'Gemini',
         model: DEFAULT_LLM_MODELS.gemini.defaultChatModel.name,
+    })
+}
+if (ZAI_API_KEY) {
+    AVAILABLE_LLM_PROVIDERS.push({
+        provider: 'zai',
+        label: 'Z.ai',
+        model: ZAI_MODEL,
     })
 }
 
