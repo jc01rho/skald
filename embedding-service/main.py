@@ -41,9 +41,15 @@ _ollama_url = os.getenv("LOCAL_LLM_BASE_URL", "http://localhost:11434")
 OLLAMA_BASE_URL = _ollama_url.rstrip("/").removesuffix("/v1")
 GROQ_API_KEYS_STR = os.getenv("GROQ_API_KEYS", "")
 GROQ_API_KEYS = [k.strip() for k in GROQ_API_KEYS_STR.split(",") if k.strip()]
+SILICONFLOW_API_KEY = os.getenv("SILICONFLOW_API_KEY", "")
+SILICONFLOW_MODEL = os.getenv("SILICONFLOW_MODEL", "nex-agi/DeepSeek-V3.1-Nex-N1")
+OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY", "")
+OPENROUTER_MODEL = os.getenv("OPENROUTER_MODEL", "xiaomi/mimo-v2-flash:free")
+MISTRAL_API_KEY = os.getenv("MISTRAL_API_KEY", "")
+MISTRAL_MODEL = os.getenv("MISTRAL_MODEL", "mistral-medium-latest")
 # OPENROUTER_API_KEY removed as per user request
 # External embedding service URL (e.g., vLLM, TGI, or custom embedding server)
-EXTERNAL_EMBEDDING_URL = os.getenv("EXTERNAL_EMBEDDING_URL", "http://192.168.150.37:8889/embeddings")
+EXTERNAL_EMBEDDING_URL = os.getenv("EXTERNAL_EMBEDDING_URL", "http://localhost:8889/embeddings")
 
 # Local LLM endpoints for fallback when Groq payload is too large
 LOCAL_LLM_ENDPOINTS = [
@@ -124,6 +130,52 @@ class GroqKeyManager:
                 ]
             }
 
+
+
+
+class DailyUsageTracker:
+    """
+    Tracks daily usage and enforces a request limit.
+    Resets automatically on day change.
+    """
+    def __init__(self, limit: int, name: str = "Unknown"):
+        self.limit = limit
+        self.name = name
+        self.count = 0
+        self.today = date.today()
+        self._lock = threading.Lock()
+
+    def can_make_request(self) -> bool:
+        with self._lock:
+            self._check_reset()
+            return self.count < self.limit
+
+    def record_request(self):
+        with self._lock:
+            self._check_reset()
+            self.count += 1
+            if self.count >= self.limit:
+                logger.warning(f"🚨 {self.name} daily limit reached ({self.limit})")
+
+    def _check_reset(self):
+        now = date.today()
+        if now != self.today:
+            logger.info(f"📅 New day detected ({now}). Resetting {self.name} usage count from {self.count}")
+            self.today = now
+            self.count = 0
+
+    def get_status(self) -> dict:
+        with self._lock:
+            self._check_reset()
+            return {
+                "name": self.name,
+                "count": self.count,
+                "limit": self.limit,
+                "remaining": max(0, self.limit - self.count)
+            }
+
+# Tracker for OpenRouter (800 calls per day)
+openrouter_usage_tracker = DailyUsageTracker(limit=800, name="OpenRouter")
 
 # Simple RPM-based rate limiter (no cooldowns, just timing)
 class SimpleRPMThrottler:
@@ -1054,59 +1106,7 @@ async def _call_local_llm_fallback(
         
         try:
             async with httpx.AsyncClient(timeout=600.0) as client:
-                if endpoint_type == "openai-compatible":
-                    # Direct OpenAI-compatible endpoint (like kanana API)
-                    payload = {"messages": messages}
-                    if temperature is not None:
-                        payload["temperature"] = temperature
-                    if max_tokens is not None:
-                        payload["max_tokens"] = max_tokens
-                    
-                    response = await client.post(
-                        endpoint_url,
-                        json=payload,
-                        headers={"Content-Type": "application/json"}
-                    )
-                    response.raise_for_status()
-                    data = response.json()
-                    
-                    # Handle different response formats
-                    if "choices" in data:
-                        # Standard OpenAI format
-                        content = data["choices"][0]["message"]["content"]
-                    elif "content" in data:
-                        # Simple format
-                        content = data["content"]
-                    elif "response" in data:
-                        # Alternative format
-                        content = data["response"]
-                    else:
-                        content = str(data)
-                    
-                    logger.info(f"Local LLM fallback ({endpoint_name}) succeeded")
-                    return {
-                        "id": f"chatcmpl-local-{int(time.time())}",
-                        "object": "chat.completion",
-                        "created": int(time.time()),
-                        "model": f"local/{endpoint_name}",
-                        "choices": [
-                            {
-                                "index": 0,
-                                "message": {
-                                    "role": "assistant",
-                                    "content": content
-                                },
-                                "finish_reason": "stop"
-                            }
-                        ],
-                        "usage": {
-                            "prompt_tokens": sum(len(m.get("content", "") or "") // 4 for m in messages),
-                            "completion_tokens": len(content) // 4,
-                            "total_tokens": sum(len(m.get("content", "") or "") // 4 for m in messages) + len(content) // 4
-                        }
-                    }
-                    
-                elif endpoint_type == "ollama":
+                if endpoint_type == "ollama":
                     # Ollama API format
                     ollama_url = f"{endpoint_url}/api/chat"
                     
@@ -1329,16 +1329,282 @@ class MemoProcessingThrottler:
 memo_throttler = MemoProcessingThrottler(run_duration=120.0, cooldown_duration=180.0)
 
 
+async def _call_siliconflow(messages: list[dict], temperature: float = 0.7, max_tokens: int = 4095, stream: bool = False):
+    if not SILICONFLOW_API_KEY:
+        return None
+    
+    url = "https://api.siliconflow.com/v1/chat/completions"
+    headers = {
+        "Authorization": f"Bearer {SILICONFLOW_API_KEY}",
+        "Content-Type": "application/json"
+    }
+    
+    # Check if JSON format is requested
+    is_json = any("json" in m.get("content", "").lower() for m in messages)
+    
+    payload = {
+        "model": SILICONFLOW_MODEL,
+        "messages": messages,
+        "temperature": temperature,
+        "max_tokens": max_tokens,
+        "stream": stream,
+        "enable_thinking": False,
+        "thinking_budget": 4096,
+        "min_p": 0.05,
+        "top_p": 0.7,
+        "top_k": 50,
+        "frequency_penalty": 0.5,
+        "n": 1
+    }
+    
+    if is_json:
+        payload["response_format"] = {"type": "json_object"}
+
+    async with httpx.AsyncClient(timeout=120.0) as client:
+        if stream:
+            # For streaming, we need to handle the request differently to keep the connection open
+            return await client.post(url, json=payload, headers=headers)
+        else:
+            response = await client.post(url, json=payload, headers=headers)
+            response.raise_for_status()
+            return response.json()
+
+
+async def _stream_siliconflow_response(response, model_name):
+    """
+    Stream SiliconFlow API response in OpenAI format.
+    """
+    try:
+        async for line in response.aiter_lines():
+            if not line.strip():
+                continue
+            if line.startswith("data: "):
+                data_str = line[6:].strip()
+                if data_str == "[DONE]":
+                    yield "data: [DONE]\n\n"
+                    break
+                
+                try:
+                    # SiliconFlow typically returns OpenAI format
+                    yield f"data: {data_str}\n\n"
+                except Exception:
+                    continue
+    except Exception as e:
+        logger.error(f"Error during SiliconFlow streaming: {e}")
+        yield f"data: {json.dumps({'error': str(e)})}\n\n"
+    finally:
+        await response.aclose()
+
+
+async def _call_openrouter(messages: list[dict], temperature: float = 0.7, max_tokens: int = 4096, stream: bool = False):
+    if not OPENROUTER_API_KEY:
+        return None
+    
+    url = "https://openrouter.ai/api/v1/chat/completions"
+    headers = {
+        "Authorization": f"Bearer {OPENROUTER_API_KEY}",
+        "Content-Type": "application/json",
+        "HTTP-Referer": "https://skald.sparrow.local",
+        "X-Title": "Skald AI"
+    }
+    
+    payload = {
+        "model": OPENROUTER_MODEL,
+        "messages": messages,
+        "temperature": temperature,
+        "max_tokens": max_tokens,
+        "stream": stream
+    }
+
+    async with httpx.AsyncClient(timeout=120.0) as client:
+        if stream:
+            return await client.post(url, json=payload, headers=headers)
+        else:
+            response = await client.post(url, json=payload, headers=headers)
+            response.raise_for_status()
+            return response.json()
+
+
+async def _stream_openrouter_response(response, model_name):
+    """
+    Stream OpenRouter API response in OpenAI format.
+    """
+    try:
+        async for line in response.aiter_lines():
+            if not line.strip():
+                continue
+            if line.startswith("data: "):
+                data_str = line[6:].strip()
+                if data_str == "[DONE]":
+                    yield "data: [DONE]\n\n"
+                    break
+                
+                yield f"data: {data_str}\n\n"
+    except Exception as e:
+        logger.error(f"Error during OpenRouter streaming: {e}")
+        yield f"data: {json.dumps({'error': str(e)})}\n\n"
+    finally:
+        await response.aclose()
+
+
+async def _call_mistral(messages: list[dict], temperature: float = 0.7, max_tokens: int = 4096, stream: bool = False):
+    if not MISTRAL_API_KEY:
+        return None
+    
+    url = "https://api.mistral.ai/v1/chat/completions"
+    headers = {
+        "Authorization": f"Bearer {MISTRAL_API_KEY}",
+        "Content-Type": "application/json"
+    }
+    
+    payload = {
+        "model": MISTRAL_MODEL,
+        "messages": messages,
+        "temperature": temperature,
+        "max_tokens": max_tokens,
+        "stream": stream
+    }
+
+    async with httpx.AsyncClient(timeout=120.0) as client:
+        if stream:
+            return await client.post(url, json=payload, headers=headers)
+        else:
+            response = await client.post(url, json=payload, headers=headers)
+            response.raise_for_status()
+            return response.json()
+
+
+async def _stream_mistral_response(response, model_name):
+    """
+    Stream Mistral API response in OpenAI format.
+    """
+    try:
+        async for line in response.aiter_lines():
+            if not line.strip():
+                continue
+            if line.startswith("data: "):
+                data_str = line[6:].strip()
+                if data_str == "[DONE]":
+                    yield "data: [DONE]\n\n"
+                    break
+                
+                yield f"data: {data_str}\n\n"
+    except Exception as e:
+        logger.error(f"Error during Mistral streaming: {e}")
+        yield f"data: {json.dumps({'error': str(e)})}\n\n"
+    finally:
+        await response.aclose()
+
+
 @app.post("/v1/chat/completions")
 async def chat_completions(request: ChatCompletionRequest):
     """
     OpenAI-compatible chat completion endpoint.
-    Routes to Groq with simple RPM-based rate limiting at 90% of allowed RPM.
-    No cooldowns, no complex protection - just simple rate limiting.
+    Primary: SiliconFlow (DeepSeek-V3)
+    Fallback 1: Mistral (Mistral Medium)
+    Fallback 2: OpenRouter (Xiaomi Mimo-V2-Flash)
+    Fallback 3: Groq (llama-3.3-70b/70b-versatile etc)
+    Fallback 4: Local LLM (ollama)
     """
     
     requested_model = request.model
     messages_payload = [{"role": m.role, "content": m.content} for m in request.messages]
+    
+    # Log input size
+    total_chars = sum(len(m.get("content", "") or "") for m in messages_payload)
+    estimated_tokens = total_chars // 4
+    logger.info(f"Chat request: model={requested_model}, messages={len(messages_payload)}, chars={total_chars}, est_tokens≈{estimated_tokens}")
+
+    # ==========================================
+    # 1. Try SiliconFlow (Main)
+    # ==========================================
+    if SILICONFLOW_API_KEY:
+        try:
+            logger.info(f"Attempting SiliconFlow: Model={SILICONFLOW_MODEL}")
+            if request.stream:
+                sf_response = await _call_siliconflow(messages_payload, request.temperature or 0.7, request.max_tokens or 4095, stream=True)
+                if sf_response.status_code == 200:
+                    logger.info("✅ SiliconFlow (stream) succeeded")
+                    return StreamingResponse(
+                        _stream_siliconflow_response(sf_response, SILICONFLOW_MODEL),
+                        media_type="text/event-stream"
+                    )
+                else:
+                    error_body = await sf_response.aread()
+                    logger.warning(f"SiliconFlow failed with status {sf_response.status_code}: {error_body.decode()}")
+                    await sf_response.aclose()
+            else:
+                sf_data = await _call_siliconflow(messages_payload, request.temperature or 0.7, request.max_tokens or 4095, stream=False)
+                if sf_data:
+                    logger.info("✅ SiliconFlow succeeded")
+                    return sf_data
+        except Exception as e:
+            logger.error(f"SiliconFlow error: {e}")
+            # Continue to Mistral fallback
+
+    # ==========================================
+    # 2. Try Mistral (Fallback 1)
+    # ==========================================
+    if MISTRAL_API_KEY:
+        try:
+            logger.info(f"Attempting Mistral: Model={MISTRAL_MODEL}")
+            if request.stream:
+                m_response = await _call_mistral(messages_payload, request.temperature or 0.7, request.max_tokens or 4096, stream=True)
+                if m_response.status_code == 200:
+                    logger.info("✅ Mistral (stream) succeeded")
+                    return StreamingResponse(
+                        _stream_mistral_response(m_response, MISTRAL_MODEL),
+                        media_type="text/event-stream"
+                    )
+                else:
+                    error_body = await m_response.aread()
+                    logger.warning(f"Mistral failed with status {m_response.status_code}: {error_body.decode()}")
+                    await m_response.aclose()
+            else:
+                m_data = await _call_mistral(messages_payload, request.temperature or 0.7, request.max_tokens or 4096, stream=False)
+                if m_data:
+                    logger.info("✅ Mistral succeeded")
+                    return m_data
+        except Exception as e:
+            logger.error(f"Mistral error: {e}")
+            # Continue to OpenRouter fallback
+
+    # ==========================================
+    # 3. Try OpenRouter (Fallback 2)
+    # ==========================================
+    if OPENROUTER_API_KEY:
+        if not openrouter_usage_tracker.can_make_request():
+            logger.warning("OpenRouter daily limit reached, skipping to next fallback")
+        else:
+            try:
+                logger.info(f"Attempting OpenRouter: Model={OPENROUTER_MODEL} (Usage: {openrouter_usage_tracker.count + 1}/{openrouter_usage_tracker.limit})")
+                if request.stream:
+                    or_response = await _call_openrouter(messages_payload, request.temperature or 0.7, request.max_tokens or 4096, stream=True)
+                    if or_response.status_code == 200:
+                        logger.info("✅ OpenRouter (stream) succeeded")
+                        openrouter_usage_tracker.record_request()
+                        return StreamingResponse(
+                            _stream_openrouter_response(or_response, OPENROUTER_MODEL),
+                            media_type="text/event-stream"
+                        )
+                    else:
+                        error_body = await or_response.aread()
+                        logger.warning(f"OpenRouter failed with status {or_response.status_code}: {error_body.decode()}")
+                        await or_response.aclose()
+                else:
+                    or_data = await _call_openrouter(messages_payload, request.temperature or 0.7, request.max_tokens or 4096, stream=False)
+                    if or_data:
+                        logger.info("✅ OpenRouter succeeded")
+                        openrouter_usage_tracker.record_request()
+                        return or_data
+            except Exception as e:
+                logger.error(f"OpenRouter error: {e}")
+                # Continue to Groq fallback
+    
+    # ==========================================
+    # 4. Try Groq (Fallback 3)
+    # ==========================================
+    logger.info("Falling back to Groq...")
     
     # Determine fallback chain based on requested model
     if requested_model in GROQ_MODEL_FALLBACKS:
@@ -1358,138 +1624,138 @@ async def chat_completions(request: ChatCompletionRequest):
             model_chain = GROQ_MODEL_FALLBACKS["llama-3.3-70b-versatile"]
 
     if not groq_key_manager:
-        raise HTTPException(status_code=503, detail="Groq API keys not configured")
-    
-    # Log input size
-    total_chars = sum(len(m.get("content", "") or "") for m in messages_payload)
-    estimated_tokens = total_chars // 4
-    logger.info(f"Chat request: model={requested_model}, messages={len(messages_payload)}, chars={total_chars}, est_tokens≈{estimated_tokens}")
-    
-    last_exception = None
-    
-    # Try models in fallback chain
-    for model_index, target_model in enumerate(model_chain):
-        logger.info(f"Trying Model [{model_index+1}/{len(model_chain)}]: '{target_model}'")
+        logger.warning("Groq API keys not configured, jumping to local LLM fallback")
+    else:
+        last_exception = None
         
-        # Simple RPM-based throttling at 90%
-        wait_time = rpm_throttler.get_wait_time(target_model)
-        if wait_time > 0:
-            logger.info(f"RPM throttle: waiting {wait_time:.2f}s for model {target_model}")
-            await asyncio.sleep(wait_time)
-        
-        # Get current key
-        try:
-            current_key, key_index = groq_key_manager.get_current_key()
-        except ValueError as e:
-            logger.error(f"No API keys available: {e}")
-            continue
-        
-        try:
-            logger.info(f"  > Attempting Chat: Model={target_model} | KeyIndex={key_index + 1}/{groq_key_manager.get_key_count()} | KeyPrefix={current_key[:8]}...")
+        # Try models in fallback chain
+        for model_index, target_model in enumerate(model_chain):
+            logger.info(f"Trying Groq Model [{model_index+1}/{len(model_chain)}]: '{target_model}'")
             
-            # Record request before making it
-            rpm_throttler.record_request(target_model)
+            # Simple RPM-based throttling at 90%
+            wait_time = rpm_throttler.get_wait_time(target_model)
+            if wait_time > 0:
+                logger.info(f"RPM throttle: waiting {wait_time:.2f}s for model {target_model}")
+                await asyncio.sleep(wait_time)
             
-            client = AsyncGroq(api_key=current_key, max_retries=0)
+            # Get current key
+            try:
+                current_key, key_index = groq_key_manager.get_current_key()
+            except ValueError as e:
+                logger.error(f"No Groq API keys available: {e}")
+                break
             
-            completion = await client.chat.completions.create(
-                model=target_model,
-                messages=messages_payload,
-                temperature=request.temperature or 0.6,
-                max_completion_tokens=request.max_tokens or 4096,
-                top_p=0.95,
-                stream=request.stream,
-            )
-            
+            try:
+                logger.info(f"  > Attempting Groq: Model={target_model} | KeyIndex={key_index + 1}/{groq_key_manager.get_key_count()} | KeyPrefix={current_key[:8]}...")
+                
+                # Record request before making it
+                rpm_throttler.record_request(target_model)
+                
+                client = AsyncGroq(api_key=current_key, max_retries=0)
+                
+                completion = await client.chat.completions.create(
+                    model=target_model,
+                    messages=messages_payload,
+                    temperature=request.temperature or 0.6,
+                    max_completion_tokens=request.max_tokens or 4096,
+                    top_p=0.95,
+                    stream=request.stream,
+                )
+                
+                if request.stream:
+                    logger.info("✅ Groq (stream) succeeded")
+                    return StreamingResponse(
+                        _stream_groq_response(completion, target_model), 
+                        media_type="text/event-stream"
+                    )
+                else:
+                    logger.info("✅ Groq succeeded")
+                    return {
+                        "id": f"chatcmpl-{int(time.time())}",
+                        "object": "chat.completion",
+                        "created": int(time.time()),
+                        "model": target_model,
+                        "choices": [
+                            {
+                                "index": 0,
+                                "message": {
+                                    "role": "assistant",
+                                    "content": completion.choices[0].message.content
+                                },
+                                "finish_reason": completion.choices[0].finish_reason
+                            }
+                        ],
+                        "usage": {
+                            "prompt_tokens": completion.usage.prompt_tokens,
+                            "completion_tokens": completion.usage.completion_tokens,
+                            "total_tokens": completion.usage.total_tokens
+                        }
+                    }
+                    
+            except Exception as e:
+                error_str = str(e)
+                last_exception = e
+                
+                # Check for 413 Payload Too Large - fallback immediately
+                is_payload_too_large = (
+                    "413" in error_str or 
+                    "payload too large" in error_str.lower() or
+                    "request entity too large" in error_str.lower()
+                )
+                
+                if is_payload_too_large:
+                    logger.warning(f"Payload Too Large (413) on Groq. Jumping to local LLM...")
+                    break # Go to local LLM
+                
+                # Rate limit - rotate key and try next model
+                is_rate_limit = "429" in error_str or "rate" in error_str.lower()
+                if is_rate_limit:
+                    logger.warning(f"Rate Limit (429) on Groq Model [{target_model}]. Rotating key and trying next model...")
+                    groq_key_manager.rotate_key()
+                    continue
+                
+                # Model not found - try next model
+                if "not found" in error_str.lower():
+                    logger.warning(f"Groq Model {target_model} not found. Trying next model...")
+                    continue
+                
+                # Other error - log and try next model
+                logger.error(f"Error on Groq {target_model}: {error_str}")
+                continue
+
+    # ==========================================
+    # 3. Try Local LLM (Fallback 2)
+    # ==========================================
+    logger.info("Attempting Local LLM fallback...")
+    try:
+        local_response = await _call_local_llm_fallback(messages_payload, request.temperature, request.max_tokens)
+        if local_response:
+            logger.info(f"✅ Local LLM fallback succeeded")
             if request.stream:
                 return StreamingResponse(
-                    _stream_groq_response(completion, target_model), 
+                    _stream_single_response(local_response), 
                     media_type="text/event-stream"
                 )
-            else:
-                return {
-                    "id": f"chatcmpl-{int(time.time())}",
-                    "object": "chat.completion",
-                    "created": int(time.time()),
-                    "model": target_model,
-                    "choices": [
-                        {
-                            "index": 0,
-                            "message": {
-                                "role": "assistant",
-                                "content": completion.choices[0].message.content
-                            },
-                            "finish_reason": completion.choices[0].finish_reason
-                        }
-                    ],
-                    "usage": {
-                        "prompt_tokens": completion.usage.prompt_tokens,
-                        "completion_tokens": completion.usage.completion_tokens,
-                        "total_tokens": completion.usage.total_tokens
-                    }
-                }
-                
-        except Exception as e:
-            error_str = str(e)
-            last_exception = e
-            
-            # Check for 413 Payload Too Large - fallback to local LLM
-            is_payload_too_large = (
-                "413" in error_str or 
-                "payload too large" in error_str.lower() or
-                "request entity too large" in error_str.lower()
-            )
-            
-            if is_payload_too_large:
-                logger.warning(f"Payload Too Large (413). Falling back to local LLM...")
-                try:
-                    local_response = await _call_local_llm_fallback(messages_payload, request.temperature, request.max_tokens)
-                    if local_response:
-                        logger.info(f"✅ Local LLM fallback succeeded for 413 error")
-                        if request.stream:
-                            return StreamingResponse(
-                                _stream_single_response(local_response), 
-                                media_type="text/event-stream"
-                            )
-                        return local_response
-                except Exception as local_err:
-                    logger.error(f"Local LLM fallback also failed: {local_err}")
-                    raise HTTPException(
-                        status_code=413, 
-                        detail=f"Payload too large and local fallback failed: {str(local_err)}"
-                    )
-            
-            # Rate limit - rotate key and try next model
-            is_rate_limit = "429" in error_str or "rate" in error_str.lower()
-            if is_rate_limit:
-                logger.warning(f"Rate Limit (429) on Model [{target_model}]. Rotating key and trying next model...")
-                groq_key_manager.rotate_key()
-                continue
-            
-            # Model not found - try next model
-            if "not found" in error_str.lower():
-                logger.warning(f"Model {target_model} not found. Trying next model...")
-                continue
-            
-            # Other error - log and try next model
-            logger.error(f"Error on {target_model}: {error_str}")
-            continue
+            return local_response
+    except Exception as local_err:
+        logger.error(f"Final fallback to Local LLM also failed: {local_err}")
 
-    # All models exhausted
+    # If all else fails
     raise HTTPException(
-        status_code=429, 
-        detail=f"All models exhausted. Last error: {str(last_exception)}"
+        status_code=503, 
+        detail="All providers (SiliconFlow, Groq, Local LLM) failed or are unavailable."
     )
 
 
 @app.get("/groq/status")
 async def get_groq_status():
     """
-    Get simple status of Groq API management.
+    Get simple status of LLM API management.
     """
     return {
         "key_manager": groq_key_manager.get_status() if groq_key_manager else None,
         "rpm_throttler": rpm_throttler.get_status(),
+        "openrouter_usage": openrouter_usage_tracker.get_status(),
         "groq_model_limits": {
             model: {
                 "rpm": limits["rpm"],
