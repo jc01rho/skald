@@ -63,8 +63,10 @@ jobs:
           cache-to: type=gha,mode=max
       - name: Verify built UI image has no localhost references
         run: |
-          IMAGE_TAG=${{ steps.meta.outputs.tags }}
-          docker run --rm --entrypoint sh $IMAGE_TAG -c "if grep -R --line-number -n 'localhost' /usr/share/nginx/html; then echo 'ERROR: Found localhost references in built UI'; exit 1; else echo 'No localhost references found'; fi"
+          # Use only the first tag (latest) from the multi-line tags output
+          IMAGE_TAG=$(echo "${{ steps.meta.outputs.tags }}" | head -n 1)
+          echo "Verifying image: $IMAGE_TAG"
+          docker run --rm --entrypoint sh "$IMAGE_TAG" -c "if grep -R --line-number -n 'localhost' /usr/share/nginx/html; then echo 'ERROR: Found localhost references in built UI'; exit 1; else echo 'No localhost references found'; fi"
 
       - name: Output image tags
         run: |
