@@ -1,3 +1,4 @@
+# Trigger rebuild: 2026-01-01 - New container naming scheme (ghcr.io/jc01rho/skald/embedding-service)
 FROM python:3.11-slim
 
 WORKDIR /app

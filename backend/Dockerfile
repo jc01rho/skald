@@ -1,4 +1,5 @@
 # Build stage
+# Trigger rebuild: 2026-01-01 - New container naming scheme (ghcr.io/jc01rho/skald/backend)
 FROM node:24-slim AS builder
 
 # Install pnpm
