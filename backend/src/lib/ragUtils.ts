@@ -87,7 +87,7 @@ export function parseRagConfig(ragConfig: Record<string, any>): {
 
     const result = {
         parsedRagConfig: {
-            llmProvider: llmProvider as 'openai' | 'anthropic' | 'local' | 'groq' | 'gemini',
+            llmProvider: llmProvider as 'openai' | 'anthropic' | 'local' | 'groq' | 'gemini' | 'zai',
             references: {
                 enabled: referencesEnabled,
             },

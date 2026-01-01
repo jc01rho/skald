@@ -20,7 +20,7 @@ interface RerankResult {
 }
 
 export interface RAGConfig {
-    llmProvider: 'openai' | 'anthropic' | 'local' | 'groq' | 'gemini'
+    llmProvider: 'openai' | 'anthropic' | 'local' | 'groq' | 'gemini' | 'zai'
     references: {
         enabled: boolean
     }

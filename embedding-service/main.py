@@ -68,6 +68,10 @@ POLLINATIONS_MODEL = os.getenv("POLLINATIONS_MODEL", "nova-micro")
 MOVEMENTLABS_API_KEY = os.getenv("MOVEMENTLABS_API_KEY", "")
 MOVEMENTLABS_MODEL = os.getenv("MOVEMENTLABS_MODEL", "hawk-max")
 
+# Z.ai LLM Provider
+ZAI_API_KEY = os.getenv("ZAI_API_KEY", "")
+ZAI_MODEL = os.getenv("ZAI_MODEL", "glm-4.7")
+
 # OPENROUTER_API_KEY removed as per user request
 # External embedding service URL (e.g., vLLM, TGI, or custom embedding server)
 EXTERNAL_EMBEDDING_URL = os.getenv("EXTERNAL_EMBEDDING_URL", "http://localhost:8889/embeddings")
@@ -331,6 +335,7 @@ class ChatCompletionRequest(BaseModel):
     stream: bool = False
     temperature: Optional[float] = 0.7
     max_tokens: Optional[int] = None
+    llm_provider: Optional[str] = None  # Optional: 'zai', etc. to force specific provider
 
 # Initialize managers
 # Initialize managers
@@ -1490,6 +1495,58 @@ async def _stream_siliconflow_response(response, model_name):
         await response.aclose()
 
 
+async def _call_zai(messages: list[dict], temperature: float = 0.7, max_tokens: int = 4096, stream: bool = False):
+    """
+    Call Z.ai API (ChatGLM).
+    Z.ai API endpoint: https://api.z.ai/api/paas/v4/chat/completions
+    """
+    if not ZAI_API_KEY:
+        return None
+    
+    url = "https://api.z.ai/api/paas/v4/chat/completions"
+    headers = {
+        "Authorization": f"Bearer {ZAI_API_KEY}",
+        "Content-Type": "application/json"
+    }
+    
+    payload = {
+        "model": ZAI_MODEL,
+        "messages": messages,
+        "temperature": temperature,
+        "max_tokens": max_tokens,
+        "stream": stream
+    }
+
+    if stream:
+        return await global_httpx_client.post(url, json=payload, headers=headers)
+    else:
+        response = await global_httpx_client.post(url, json=payload, headers=headers)
+        response.raise_for_status()
+        return response.json()
+
+
+async def _stream_zai_response(response, model_name):
+    """
+    Stream Z.ai API response in OpenAI format.
+    """
+    try:
+        async for line in response.aiter_lines():
+            if not line.strip():
+                continue
+            if line.startswith("data: "):
+                data_str = line[6:].strip()
+                if data_str == "[DONE]":
+                    yield "data: [DONE]\n\n"
+                    break
+                
+                yield f"data: {data_str}\n\n"
+    except Exception as e:
+        logger.error(f"Error during Z.ai streaming: {e}")
+        yield f"data: {json.dumps({'error': str(e)})}\n\n"
+    finally:
+        await response.aclose()
+
+
 async def _call_openrouter(messages: list[dict], temperature: float = 0.7, max_tokens: int = 4096, stream: bool = False):
     if not OPENROUTER_API_KEY:
         return None
@@ -1706,6 +1763,42 @@ async def chat_completions(request: ChatCompletionRequest):
     total_chars = sum(len(m.get("content", "") or "") for m in messages_payload)
     estimated_tokens = total_chars // 4
     logger.info(f"Chat request: model={requested_model}, messages={len(messages_payload)}, chars={total_chars}, est_tokens≈{estimated_tokens}")
+
+    # ==========================================
+    # 0. Check for explicit LLM provider (Z.ai)
+    # ==========================================
+    if request.llm_provider and request.llm_provider.lower() == "zai":
+        if not ZAI_API_KEY:
+            raise HTTPException(status_code=503, detail="Z.ai provider requested but ZAI_API_KEY is not configured")
+        
+        try:
+            logger.info(f"Attempting Z.ai (explicit provider): Model={ZAI_MODEL}")
+            if request.stream:
+                zai_response = await _call_zai(messages_payload, request.temperature or 0.7, request.max_tokens or 4096, stream=True)
+                if zai_response.status_code == 200:
+                    logger.info("✅ Z.ai (stream) succeeded")
+                    return StreamingResponse(
+                        _stream_zai_response(zai_response, ZAI_MODEL),
+                        media_type="text/event-stream"
+                    )
+                else:
+                    error_body = await zai_response.aread()
+                    error_msg = error_body.decode()
+                    logger.error(f"Z.ai failed with status {zai_response.status_code}: {error_msg}")
+                    await zai_response.aclose()
+                    raise HTTPException(status_code=zai_response.status_code, detail=f"Z.ai error: {error_msg}")
+            else:
+                zai_data = await _call_zai(messages_payload, request.temperature or 0.7, request.max_tokens or 4096, stream=False)
+                if zai_data:
+                    logger.info("✅ Z.ai succeeded")
+                    return zai_data
+                else:
+                    raise HTTPException(status_code=500, detail="Z.ai returned empty response")
+        except HTTPException:
+            raise
+        except Exception as e:
+            logger.error(f"Z.ai error: {e}")
+            raise HTTPException(status_code=500, detail=f"Z.ai error: {str(e)}")
 
     # ==========================================
     # 1. Try SiliconFlow (Main)

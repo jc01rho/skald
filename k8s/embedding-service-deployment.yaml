@@ -179,6 +179,19 @@ spec:
             configMapKeyRef:
               name: skald-config
               key: MOVEMENTLABS_MODEL
+        # Z.ai LLM Provider
+        - name: ZAI_API_KEY
+          valueFrom:
+            secretKeyRef:
+              name: skald-secrets
+              key: ZAI_API_KEY
+              optional: true
+        - name: ZAI_MODEL
+          valueFrom:
+            configMapKeyRef:
+              name: skald-config
+              key: ZAI_MODEL
+              optional: true
         # 헬스체크 설정
         readinessProbe:
           httpGet:
