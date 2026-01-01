@@ -30,7 +30,7 @@ logger.setLevel(getattr(logging, LOG_LEVEL, logging.INFO))
 app = FastAPI(title="Embedding Service", version="1.0.0")
 
 # Global HTTPX client for reused connections and streaming stability
-global_httpx_client = httpx.AsyncClient(timeout=120.0)
+global_httpx_client = httpx.AsyncClient(timeout=300.0)
 
 @app.on_event("shutdown")
 async def shutdown_event():
