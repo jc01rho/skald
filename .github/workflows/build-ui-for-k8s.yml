@@ -41,7 +41,7 @@ jobs:
         id: meta
         uses: docker/metadata-action@v5
         with:
-          images: ghcr.io/jc01rho/skald-ui
+          images: ghcr.io/${{ github.repository }}/ui
           tags: |
             type=raw,value=${{ github.event.inputs.image_tag || 'latest' }}
             type=raw,value=${{ github.sha }}
