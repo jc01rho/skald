@@ -1,4 +1,3 @@
-
 import asyncio
 import logging
 import os
@@ -32,15 +31,19 @@ app = FastAPI(title="Embedding Service", version="1.0.0")
 # Global HTTPX client for reused connections and streaming stability
 global_httpx_client = httpx.AsyncClient(timeout=300.0)
 
+
 @app.on_event("shutdown")
 async def shutdown_event():
     await global_httpx_client.aclose()
+
 
 # Configuration
 EMBEDDING_MODEL = os.getenv("EMBEDDING_MODEL", "BAAI/bge-m3")
 RERANK_MODEL = os.getenv("RERANK_MODEL", "xitao/bge-reranker-v2-m3:latest")
 TARGET_DIMENSION = int(os.getenv("TARGET_DIMENSION", "768"))
-EMBEDDING_PROVIDER = os.getenv("EMBEDDING_PROVIDER", "external")  # local, ollama, gemini, or external
+EMBEDDING_PROVIDER = os.getenv(
+    "EMBEDDING_PROVIDER", "external"
+)  # local, ollama, gemini, or external
 RERANK_PROVIDER = os.getenv("RERANK_PROVIDER", "ollama")  # local (CrossEncoder), ollama
 QUERY_LANGUAGE = os.getenv("QUERY_LANGUAGE", "ko")  # 한글 최적화 기본값
 _ollama_url = os.getenv("LOCAL_LLM_BASE_URL", "http://localhost:11434")
@@ -55,7 +58,10 @@ OPENROUTER_MODEL = os.getenv("OPENROUTER_MODEL", "xiaomi/mimo-v2-flash:free")
 MISTRAL_API_KEY = os.getenv("MISTRAL_API_KEY", "")
 MISTRAL_MODEL = os.getenv("MISTRAL_MODEL", "mistral-medium-latest")
 GITHUB_TOKEN = os.getenv("GITHUB_TOKEN", "")
-GITHUB_MODELS_STR = os.getenv("GITHUB_MODELS", "deepseek/DeepSeek-R1,xai/grok-3-mini,xai/grok-3,deepseek/DeepSeek-V3-0324,openai/gpt-4o-mini,openai/o4-mini")
+GITHUB_MODELS_STR = os.getenv(
+    "GITHUB_MODELS",
+    "deepseek/DeepSeek-R1,xai/grok-3-mini,xai/grok-3,deepseek/DeepSeek-V3-0324,openai/gpt-4o-mini,openai/o4-mini",
+)
 GITHUB_MODELS = [m.strip() for m in GITHUB_MODELS_STR.split(",") if m.strip()]
 # GITHUB_MODEL fallback for backward compatibility
 if not GITHUB_MODELS:
@@ -63,7 +69,7 @@ if not GITHUB_MODELS:
     GITHUB_MODELS = [_model]
 
 POLLINATIONS_API_KEY = os.getenv("POLLINATIONS_API_KEY", "")
-POLLINATIONS_MODEL = os.getenv("POLLINATIONS_MODEL", "nova-micro")
+POLLINATIONS_MODEL = os.getenv("POLLINATIONS_MODEL", "openai-fast")
 
 MOVEMENTLABS_API_KEY = os.getenv("MOVEMENTLABS_API_KEY", "")
 MOVEMENTLABS_MODEL = os.getenv("MOVEMENTLABS_MODEL", "hawk-max")
@@ -74,7 +80,9 @@ ZAI_MODEL = os.getenv("ZAI_MODEL", "glm-4.7")
 
 # OPENROUTER_API_KEY removed as per user request
 # External embedding service URL (e.g., vLLM, TGI, or custom embedding server)
-EXTERNAL_EMBEDDING_URL = os.getenv("EXTERNAL_EMBEDDING_URL", "http://localhost:8889/embeddings")
+EXTERNAL_EMBEDDING_URL = os.getenv(
+    "EXTERNAL_EMBEDDING_URL", "http://localhost:8889/embeddings"
+)
 
 # Local LLM endpoints for fallback when Groq payload is too large
 LOCAL_LLM_ENDPOINTS = [
@@ -99,45 +107,51 @@ if EMBEDDING_PROVIDER == "external":
 import random
 from datetime import datetime, date
 
+
 class GroqKeyManager:
     """
     Simple API key manager with RPM-based rate limiting at 90% of allowed RPM.
     No cooldowns, no protection logic - just simple round-robin with RPM throttling.
     """
+
     RPM_USAGE_PERCENT = 0.90  # Use 90% of allowed RPM
-    
+
     def __init__(self, api_keys: list[str]):
         self._keys = api_keys
         self._current_index = 0
         self._lock = threading.Lock()
         self._key_count = len(api_keys)
         self._usage_count: dict[str, int] = {k: 0 for k in api_keys}
-        logger.info(f"Initialized GroqKeyManager with {self._key_count} keys (simple RPM-based at 90%)")
-    
+        logger.info(
+            f"Initialized GroqKeyManager with {self._key_count} keys (simple RPM-based at 90%)"
+        )
+
     def get_current_key(self) -> tuple[str, int]:
         """Get the current active API key. Returns (api_key, key_index) tuple."""
         with self._lock:
             current_key = self._keys[self._current_index]
             self._usage_count[current_key] += 1
             return current_key, self._current_index
-    
+
     def rotate_key(self):
         """Rotate to the next key in round-robin fashion."""
         with self._lock:
             old_index = self._current_index
             self._current_index = (self._current_index + 1) % self._key_count
-            logger.info(f"Rotated from key [{old_index + 1}] to key [{self._current_index + 1}]")
-    
+            logger.info(
+                f"Rotated from key [{old_index + 1}] to key [{self._current_index + 1}]"
+            )
+
     def get_key_count(self) -> int:
         return self._key_count
-    
+
     def get_available_key_count(self) -> int:
         return self._key_count
-    
+
     def get_all_keys(self) -> list[str]:
         """Return all managed keys."""
         return self._keys
-    
+
     def get_status(self) -> dict:
         """Get simple status of all keys."""
         with self._lock:
@@ -152,10 +166,8 @@ class GroqKeyManager:
                         "usage_count": self._usage_count.get(key, 0),
                     }
                     for idx, key in enumerate(self._keys)
-                ]
+                ],
             }
-
-
 
 
 class DailyUsageTracker:
@@ -163,6 +175,7 @@ class DailyUsageTracker:
     Tracks daily usage and enforces a request limit.
     Resets automatically on day change.
     """
+
     def __init__(self, limit: int, name: str = "Unknown"):
         self.limit = limit
         self.name = name
@@ -185,7 +198,9 @@ class DailyUsageTracker:
     def _check_reset(self):
         now = date.today()
         if now != self.today:
-            logger.info(f"📅 New day detected ({now}). Resetting {self.name} usage count from {self.count}")
+            logger.info(
+                f"📅 New day detected ({now}). Resetting {self.name} usage count from {self.count}"
+            )
             self.today = now
             self.count = 0
 
@@ -196,8 +211,9 @@ class DailyUsageTracker:
                 "name": self.name,
                 "count": self.count,
                 "limit": self.limit,
-                "remaining": max(0, self.limit - self.count)
+                "remaining": max(0, self.limit - self.count),
             }
+
 
 # Tracker for OpenRouter (800 calls per day)
 openrouter_usage_tracker = DailyUsageTracker(limit=800, name="OpenRouter")
@@ -207,27 +223,32 @@ class RoundRobinManager:
     """
     Manages a list of items (keys, models, etc.) in a round-robin fashion.
     """
+
     def __init__(self, items: list[str], name: str = "Items"):
         self.items = items
         self.name = name
         self._index = 0
         self._lock = threading.Lock()
-    
+
     def get_current(self) -> str:
         with self._lock:
             return self.items[self._index]
-    
+
     def rotate(self):
         with self._lock:
             old = self.items[self._index]
             self._index = (self._index + 1) % len(self.items)
-            logger.info(f"🔄 {self.name} rotated from {old} to {self.items[self._index]}")
+            logger.info(
+                f"🔄 {self.name} rotated from {old} to {self.items[self._index]}"
+            )
 
     def get_all(self) -> list[str]:
         return self.items
 
+
 github_model_manager = RoundRobinManager(GITHUB_MODELS, name="GitHub Models")
 # pollinations_model_manager removed to disable round-robin
+
 
 # Simple RPM-based rate limiter (no cooldowns, just timing)
 class SimpleRPMThrottler:
@@ -235,10 +256,13 @@ class SimpleRPMThrottler:
     Simple rate limiter that enforces RPM at 90% of allowed limit.
     No cooldowns, no complex logic - just wait if we're going too fast.
     """
+
     def __init__(self):
-        self._last_request_times: dict[str, list[float]] = {}  # model -> list of timestamps
+        self._last_request_times: dict[
+            str, list[float]
+        ] = {}  # model -> list of timestamps
         self._lock = threading.Lock()
-    
+
     def get_wait_time(self, model: str) -> float:
         """Calculate wait time to stay within 90% of RPM limit."""
         with self._lock:
@@ -246,30 +270,30 @@ class SimpleRPMThrottler:
             limits = GROQ_MODEL_LIMITS.get(model, DEFAULT_MODEL_LIMITS)
             rpm = limits["rpm"]
             effective_rpm = rpm * 0.90  # 90% of allowed RPM
-            
+
             if model not in self._last_request_times:
                 self._last_request_times[model] = []
-            
+
             # Clean old timestamps (older than 60 seconds)
             self._last_request_times[model] = [
                 t for t in self._last_request_times[model] if now - t < 60
             ]
-            
+
             # Count requests in last minute
             recent_count = len(self._last_request_times[model])
-            
+
             if recent_count < effective_rpm:
                 return 0.0  # Under limit, no wait needed
-            
+
             # Calculate wait time based on oldest request
             if self._last_request_times[model]:
                 oldest = min(self._last_request_times[model])
                 wait_until = oldest + 60  # Wait until oldest request expires
                 wait_time = max(0, wait_until - now)
                 return wait_time
-            
+
             return 0.0
-    
+
     def record_request(self, model: str):
         """Record a request timestamp for the model."""
         with self._lock:
@@ -277,7 +301,7 @@ class SimpleRPMThrottler:
             if model not in self._last_request_times:
                 self._last_request_times[model] = []
             self._last_request_times[model].append(now)
-    
+
     def get_status(self) -> dict:
         """Get current status."""
         with self._lock:
@@ -294,20 +318,17 @@ class SimpleRPMThrottler:
             return status
 
 
-
-
-
-
 # Dimension error cooldown management
 class DimensionErrorCooldown:
     """
     Manages cooldown period when dimension mismatch errors occur.
     """
+
     def __init__(self, cooldown_seconds: float = 3600.0):  # 1 hour default
         self._cooldown_until: float = 0.0
         self._lock = threading.Lock()
         self._cooldown_duration = cooldown_seconds
-    
+
     def is_in_cooldown(self) -> tuple[bool, float]:
         """Check if currently in cooldown. Returns (is_in_cooldown, remaining_seconds)."""
         with self._lock:
@@ -316,12 +337,43 @@ class DimensionErrorCooldown:
                 remaining = self._cooldown_until - current_time
                 return True, remaining
             return False, 0.0
-    
+
     def activate_cooldown(self):
-        """Activate the cooldown period."""
+        """Activate cooldown period."""
         with self._lock:
             self._cooldown_until = time.time() + self._cooldown_duration
-            logger.error(f"Dimension error detected! Embedding service entering {self._cooldown_duration/60:.0f} minute cooldown.")
+            logger.error(
+                f"Dimension error detected! Embedding service entering {self._cooldown_duration / 60:.0f} minute cooldown."
+            )
+
+
+class ProviderErrorCooldown:
+    """
+    Manages cooldown period when provider errors occur.
+    Used for 24-hour blocking on pollinations errors.
+    """
+
+    def __init__(self, cooldown_seconds: float = 86400.0):  # 24 hours default
+        self._cooldown_until: float = 0.0
+        self._lock = threading.Lock()
+        self._cooldown_duration = cooldown_seconds
+
+    def is_in_cooldown(self) -> tuple[bool, float]:
+        """Check if currently in cooldown. Returns (is_in_cooldown, remaining_seconds)."""
+        with self._lock:
+            current_time = time.time()
+            if current_time < self._cooldown_until:
+                remaining = self._cooldown_until - current_time
+                return True, remaining
+            return False, 0.0
+
+    def activate_cooldown(self):
+        """Activate cooldown period."""
+        with self._lock:
+            self._cooldown_until = time.time() + self._cooldown_duration
+            logger.error(
+                f"Provider error detected! Provider entering {self._cooldown_duration / 3600:.0f} hour cooldown."
+            )
 
 
 # OpenAI-compatible Chat Models
@@ -329,23 +381,32 @@ class ChatMessage(BaseModel):
     role: str
     content: str
 
+
 class ChatCompletionRequest(BaseModel):
     model: str
     messages: list[ChatMessage]
     stream: bool = False
     temperature: Optional[float] = 0.7
     max_tokens: Optional[int] = None
-    llm_provider: Optional[str] = None  # Optional: 'zai', etc. to force specific provider
+    llm_provider: Optional[str] = (
+        None  # Optional: 'zai', etc. to force specific provider
+    )
+
 
 # Initialize managers
 # Initialize managers
 groq_key_manager: GroqKeyManager | None = None
 dimension_error_cooldown = DimensionErrorCooldown(cooldown_seconds=3600.0)  # 1 hour
+pollinations_error_cooldown = ProviderErrorCooldown(
+    cooldown_seconds=86400.0
+)  # 24 hours
 
 # Initialize Groq Manager if keys are present
 if GROQ_API_KEYS:
     groq_key_manager = GroqKeyManager(GROQ_API_KEYS)
-    print(f"Groq API configured with {len(GROQ_API_KEYS)} keys (thread-safe round-robin)")
+    print(
+        f"Groq API configured with {len(GROQ_API_KEYS)} keys (thread-safe round-robin)"
+    )
 else:
     logger.warning("GROQ_API_KEY is not set. Groq features (chat) will not work.")
 
@@ -359,6 +420,7 @@ rerank_model = None
 if EMBEDDING_PROVIDER == "local":
     try:
         from sentence_transformers import SentenceTransformer
+
         embedding_model = SentenceTransformer(EMBEDDING_MODEL)
         logger.info(f"Loaded local embedding model: {EMBEDDING_MODEL}")
     except Exception as e:
@@ -370,6 +432,7 @@ if EMBEDDING_PROVIDER == "local":
 if RERANK_PROVIDER == "local":
     try:
         from sentence_transformers import CrossEncoder
+
         rerank_model = CrossEncoder(RERANK_MODEL)
         logger.info(f"Loaded local CrossEncoder rerank model: {RERANK_MODEL}")
     except Exception as e:
@@ -382,6 +445,7 @@ if RERANK_PROVIDER == "local":
 # 한글 최적화 함수들
 # ============================================================
 
+
 def preprocess_korean_query(query: str) -> str:
     """
     한글 쿼리 전처리 함수
@@ -389,23 +453,24 @@ def preprocess_korean_query(query: str) -> str:
     - 조사 처리 (간단한 정규화)
     """
     import re
-    
+
     # 중복 공백 제거
-    query = re.sub(r'\s+', ' ', query.strip())
-    
+    query = re.sub(r"\s+", " ", query.strip())
+
     # 한글 쿼리인 경우 특수 처리
     if is_korean_text(query):
         # 일반적인 조사들을 공백으로 변환하여 검색 품질 향상
         # (완전히 제거하지 않고 공백으로 대체)
         pass  # 조사 제거는 오히려 의미를 해칠 수 있으므로 현재는 비활성화
-    
+
     return query
 
 
 def is_korean_text(text: str) -> bool:
     """텍스트가 한글을 포함하는지 확인"""
     import re
-    korean_pattern = re.compile(r'[가-힣]')
+
+    korean_pattern = re.compile(r"[가-힣]")
     return bool(korean_pattern.search(text))
 
 
@@ -423,6 +488,7 @@ def get_task_type_for_korean(usage: str) -> str:
 # ============================================================
 # Embedding 함수들
 # ============================================================
+
 
 def normalize_embedding(embedding: list[float]) -> list[float]:
     """Pad or validate embedding to match TARGET_DIMENSION"""
@@ -445,17 +511,21 @@ async def get_ollama_embedding(text: str) -> list[float]:
         try:
             response = await client.post(
                 f"{OLLAMA_BASE_URL}/api/embeddings",
-                json={"model": EMBEDDING_MODEL, "prompt": text}
+                json={"model": EMBEDDING_MODEL, "prompt": text},
             )
             response.raise_for_status()
             data = response.json()
             return data["embedding"]
         except httpx.HTTPStatusError as e:
-            logger.error(f"Ollama API error: {e.response.status_code} - {e.response.text}")
+            logger.error(
+                f"Ollama API error: {e.response.status_code} - {e.response.text}"
+            )
             raise HTTPException(status_code=502, detail=f"Ollama API error: {str(e)}")
         except Exception as e:
             logger.error(f"Failed to get embedding from Ollama: {str(e)}")
-            raise HTTPException(status_code=500, detail=f"Ollama connection failed: {str(e)}")
+            raise HTTPException(
+                status_code=500, detail=f"Ollama connection failed: {str(e)}"
+            )
 
 
 async def get_external_embedding(text: str) -> list[float]:
@@ -468,15 +538,12 @@ async def get_external_embedding(text: str) -> list[float]:
             # Try OpenAI-compatible format first
             response = await client.post(
                 EXTERNAL_EMBEDDING_URL,
-                json={
-                    "model": EMBEDDING_MODEL,
-                    "input": text
-                },
-                headers={"Content-Type": "application/json"}
+                json={"model": EMBEDDING_MODEL, "input": text},
+                headers={"Content-Type": "application/json"},
             )
             response.raise_for_status()
             data = response.json()
-            
+
             # Handle different response formats
             if "data" in data and len(data["data"]) > 0:
                 # OpenAI-compatible format: {"data": [{"embedding": [...]}]}
@@ -486,23 +553,47 @@ async def get_external_embedding(text: str) -> list[float]:
                 embedding = data["embedding"]
             elif "embeddings" in data:
                 # Alternative format: {"embeddings": [[...]]}
-                embedding = data["embeddings"][0] if isinstance(data["embeddings"][0], list) else data["embeddings"]
+                embedding = (
+                    data["embeddings"][0]
+                    if isinstance(data["embeddings"][0], list)
+                    else data["embeddings"]
+                )
             else:
-                logger.error(f"Unexpected response format from external embedding service: {data.keys()}")
-                raise HTTPException(status_code=500, detail=f"Unexpected response format: {data.keys()}")
-            
-            logger.debug(f"Got embedding from external service, dimension: {len(embedding)}")
+                logger.error(
+                    f"Unexpected response format from external embedding service: {data.keys()}"
+                )
+                raise HTTPException(
+                    status_code=500, detail=f"Unexpected response format: {data.keys()}"
+                )
+
+            logger.debug(
+                f"Got embedding from external service, dimension: {len(embedding)}"
+            )
             return embedding
-            
+
         except httpx.HTTPStatusError as e:
-            logger.error(f"External embedding API error: {e.response.status_code} - {e.response.text}")
-            raise HTTPException(status_code=502, detail=f"External embedding API error: {str(e)}")
+            logger.error(
+                f"External embedding API error: {e.response.status_code} - {e.response.text}"
+            )
+            raise HTTPException(
+                status_code=502, detail=f"External embedding API error: {str(e)}"
+            )
         except Exception as e:
             logger.error(f"Failed to get embedding from external service: {str(e)}")
-            raise HTTPException(status_code=500, detail=f"External embedding connection failed: {str(e)}")
+            raise HTTPException(
+                status_code=500,
+                detail=f"External embedding connection failed: {str(e)}",
+            )
 
 
-def _gemini_call(text: str, api_key: str, model: str, task_type: str = "retrieval_document", key_index: int = 0, total_keys: int = 1) -> list[float]:
+def _gemini_call(
+    text: str,
+    api_key: str,
+    model: str,
+    task_type: str = "retrieval_document",
+    key_index: int = 0,
+    total_keys: int = 1,
+) -> list[float]:
     """
     Gemini 임베딩 API 호출
     한글 텍스트에 최적화된 task_type 사용
@@ -510,8 +601,8 @@ def _gemini_call(text: str, api_key: str, model: str, task_type: str = "retrieva
     """
     logger.debug(f"Using Gemini API key [{key_index + 1}/{total_keys}]")
     genai.configure(api_key=api_key)
-    
-    # output_dimensionality 지원 여부는 모델에 따라 다르지만, 
+
+    # output_dimensionality 지원 여부는 모델에 따라 다르지만,
     # 최신 모델들은 지원하며 지원하지 않는 경우 무시되거나 에러가 발생할 수 있음.
     # 안전하게 try-except 또는 파라미터 전달
     try:
@@ -519,23 +610,23 @@ def _gemini_call(text: str, api_key: str, model: str, task_type: str = "retrieva
             model=model,
             content=text,
             task_type=task_type,
-            output_dimensionality=TARGET_DIMENSION
+            output_dimensionality=TARGET_DIMENSION,
         )
     except TypeError:
         # output_dimensionality 파라미터를 지원하지 않는 경우 (구버전 라이브러리 등)
-        logger.warning(f"Model {model} does not support output_dimensionality parameter, falling back to default")
-        result = genai.embed_content(
-            model=model,
-            content=text,
-            task_type=task_type
+        logger.warning(
+            f"Model {model} does not support output_dimensionality parameter, falling back to default"
         )
-    
-    embedding = result['embedding']
-    
+        result = genai.embed_content(model=model, content=text, task_type=task_type)
+
+    embedding = result["embedding"]
+
     # Log dimension info for debugging (MRL truncation happens in normalize_embedding)
     if len(embedding) != TARGET_DIMENSION:
-        logger.debug(f"Gemini embedding dimension {len(embedding)} will be normalized to {TARGET_DIMENSION} via MRL truncation")
-        
+        logger.debug(
+            f"Gemini embedding dimension {len(embedding)} will be normalized to {TARGET_DIMENSION} via MRL truncation"
+        )
+
     return embedding
 
 
@@ -552,31 +643,31 @@ async def get_gemini_embedding(text: str, usage: str = "storage") -> list[float]
         error_msg = f"Embedding service in cooldown due to dimension error. Retry after {remaining_minutes:.1f} minutes."
         logger.warning(error_msg)
         raise HTTPException(status_code=503, detail=error_msg)
-    
+
     if not gemini_key_manager:
         raise HTTPException(status_code=503, detail="No Gemini API keys configured")
-    
+
     # 한글 최적화: 적절한 task_type 선택
     task_type = get_task_type_for_korean(usage)
-    
+
     # 한글 쿼리 전처리
     processed_text = preprocess_korean_query(text) if usage == "search" else text
-    
+
     max_retries = gemini_key_manager.get_key_count()
     last_error = None
-    
+
     for attempt in range(max_retries):
         current_key, key_index = gemini_key_manager.get_current_key()
-        
+
         try:
             return await run_in_threadpool(
-                _gemini_call, 
-                processed_text, 
-                current_key, 
-                EMBEDDING_MODEL, 
+                _gemini_call,
+                processed_text,
+                current_key,
+                EMBEDDING_MODEL,
                 task_type,
                 key_index,
-                gemini_key_manager.get_key_count()
+                gemini_key_manager.get_key_count(),
             )
         except ValueError as e:
             # Dimension mismatch error - activate 1 hour cooldown
@@ -584,37 +675,43 @@ async def get_gemini_embedding(text: str, usage: str = "storage") -> list[float]
             if "dimension" in error_str.lower() and "exceeds" in error_str.lower():
                 dimension_error_cooldown.activate_cooldown()
                 raise HTTPException(
-                    status_code=503, 
-                    detail=f"Dimension error detected. Service entering 1-hour cooldown. Error: {error_str}"
+                    status_code=503,
+                    detail=f"Dimension error detected. Service entering 1-hour cooldown. Error: {error_str}",
                 )
-            raise HTTPException(status_code=500, detail=f"Gemini API error: {error_str}")
+            raise HTTPException(
+                status_code=500, detail=f"Gemini API error: {error_str}"
+            )
         except Exception as e:
             error_str = str(e)
             last_error = e
-            
+
             # Check for rate limit (429) or quota exceeded errors
             is_rate_limit = (
-                "429" in error_str or 
-                "rate" in error_str.lower() or 
-                "quota" in error_str.lower() or
-                "resource_exhausted" in error_str.lower()
+                "429" in error_str
+                or "rate" in error_str.lower()
+                or "quota" in error_str.lower()
+                or "resource_exhausted" in error_str.lower()
             )
-            
+
             if is_rate_limit:
                 # Mark this key as rate-limited and try next key
                 gemini_key_manager.mark_rate_limited(current_key, cooldown_seconds=60.0)
-                logger.warning(f"Rate limit hit on key [{key_index + 1}/{gemini_key_manager.get_key_count()}], trying next key (attempt {attempt + 1}/{max_retries})")
+                logger.warning(
+                    f"Rate limit hit on key [{key_index + 1}/{gemini_key_manager.get_key_count()}], trying next key (attempt {attempt + 1}/{max_retries})"
+                )
                 continue
             else:
                 # Non-rate-limit error, don't retry
                 logger.error(f"Failed to get embedding from Gemini: {error_str}")
-                raise HTTPException(status_code=500, detail=f"Gemini API error: {error_str}")
-    
+                raise HTTPException(
+                    status_code=500, detail=f"Gemini API error: {error_str}"
+                )
+
     # All retries exhausted
     logger.error(f"All {max_retries} API keys exhausted due to rate limiting")
     raise HTTPException(
-        status_code=429, 
-        detail=f"All API keys rate-limited. Please try again later. Last error: {str(last_error)}"
+        status_code=429,
+        detail=f"All API keys rate-limited. Please try again later. Last error: {str(last_error)}",
     )
 
 
@@ -624,17 +721,23 @@ async def get_ollama_rerank_embedding(text: str) -> list[float]:
         try:
             response = await client.post(
                 f"{OLLAMA_BASE_URL}/api/embeddings",
-                json={"model": RERANK_MODEL, "prompt": text}
+                json={"model": RERANK_MODEL, "prompt": text},
             )
             response.raise_for_status()
             data = response.json()
             return data["embedding"]
         except httpx.HTTPStatusError as e:
-            logger.error(f"Ollama rerank API error: {e.response.status_code} - {e.response.text}")
-            raise HTTPException(status_code=502, detail=f"Ollama rerank API error: {str(e)}")
+            logger.error(
+                f"Ollama rerank API error: {e.response.status_code} - {e.response.text}"
+            )
+            raise HTTPException(
+                status_code=502, detail=f"Ollama rerank API error: {str(e)}"
+            )
         except Exception as e:
             logger.error(f"Failed to get rerank embedding from Ollama: {str(e)}")
-            raise HTTPException(status_code=500, detail=f"Ollama rerank connection failed: {str(e)}")
+            raise HTTPException(
+                status_code=500, detail=f"Ollama rerank connection failed: {str(e)}"
+            )
 
 
 def cosine_similarity(vec1: list[float], vec2: list[float]) -> float:
@@ -653,19 +756,22 @@ def cosine_similarity(vec1: list[float], vec2: list[float]) -> float:
 # Reranking 함수들
 # ============================================================
 
-async def rerank_with_ollama(query: str, documents: list[str]) -> list[tuple[int, float]]:
+
+async def rerank_with_ollama(
+    query: str, documents: list[str]
+) -> list[tuple[int, float]]:
     """
     Rerank documents using Ollama embedding model (fallback).
     Returns list of (index, score) tuples sorted by score descending.
     """
     # Get query embedding
     query_embedding = await get_ollama_rerank_embedding(query)
-    
+
     # Get document embeddings in parallel
     doc_embeddings = await asyncio.gather(
         *[get_ollama_rerank_embedding(doc) for doc in documents]
     )
-    
+
     # Compute cosine similarities
     scores = []
     for idx, doc_emb in enumerate(doc_embeddings):
@@ -673,42 +779,48 @@ async def rerank_with_ollama(query: str, documents: list[str]) -> list[tuple[int
         # Normalize to 0-1 range (cosine similarity is -1 to 1)
         normalized_score = (score + 1) / 2
         scores.append((idx, normalized_score))
-    
+
     # Sort by score descending
     scores.sort(key=lambda x: x[1], reverse=True)
     return scores
 
 
-def _rerank_with_crossencoder(query: str, documents: list[str]) -> list[tuple[int, float]]:
+def _rerank_with_crossencoder(
+    query: str, documents: list[str]
+) -> list[tuple[int, float]]:
     """
     CrossEncoder를 사용한 진정한 리랭킹 (bi-encoder 아님)
     한글 최적화 모델 사용 시 더 높은 성능 발휘
     """
     if rerank_model is None:
         raise ValueError("CrossEncoder rerank model not loaded")
-    
+
     # 한글 쿼리 전처리
     processed_query = preprocess_korean_query(query)
-    
+
     # CrossEncoder는 (query, document) 쌍을 직접 입력받아 relevance score 출력
     pairs = [[processed_query, doc] for doc in documents]
-    
+
     # CrossEncoder predict - 직접적인 relevance score 반환
     scores = rerank_model.predict(pairs)
-    
+
     # Sigmoid를 통해 0-1 범위로 정규화
     normalized_scores = 1 / (1 + np.exp(-np.array(scores)))
-    
+
     # (index, score) 튜플 리스트 생성
-    indexed_scores = [(idx, float(score)) for idx, score in enumerate(normalized_scores)]
-    
+    indexed_scores = [
+        (idx, float(score)) for idx, score in enumerate(normalized_scores)
+    ]
+
     # 점수 기준 내림차순 정렬
     indexed_scores.sort(key=lambda x: x[1], reverse=True)
-    
+
     return indexed_scores
 
 
-async def rerank_with_local_crossencoder(query: str, documents: list[str]) -> list[tuple[int, float]]:
+async def rerank_with_local_crossencoder(
+    query: str, documents: list[str]
+) -> list[tuple[int, float]]:
     """
     로컬 CrossEncoder를 사용한 비동기 리랭킹
     sentence-transformers의 CrossEncoder 사용
@@ -720,13 +832,15 @@ async def rerank_with_local_crossencoder(query: str, documents: list[str]) -> li
 # Pydantic 모델들
 # ============================================================
 
+
 class EmbedRequest(BaseModel):
     content: str = Field(..., description="Text content to embed")
     normalize: bool = Field(
         default=True, description="Whether to normalize to target dimension"
     )
     usage: str = Field(
-        default="storage", description="Usage type: 'storage' for documents, 'search' for queries"
+        default="storage",
+        description="Usage type: 'storage' for documents, 'search' for queries",
     )
 
 
@@ -764,11 +878,12 @@ class RerankResponse(BaseModel):
 # API Endpoints
 # ============================================================
 
+
 @app.get("/health")
 async def health_check():
     """Health check endpoint"""
     return {
-        "status": "healthy", 
+        "status": "healthy",
         "embedding_provider": EMBEDDING_PROVIDER,
         "rerank_provider": RERANK_PROVIDER,
         "rerank_model": RERANK_MODEL,
@@ -790,22 +905,34 @@ async def embed(request: EmbedRequest):
         EmbedResponse with the embedding vector and its dimension
     """
     try:
-        usage = request.usage if hasattr(request, 'usage') else "storage"
-        
+        usage = request.usage if hasattr(request, "usage") else "storage"
+
         if EMBEDDING_PROVIDER == "ollama":
             embedding = await get_ollama_embedding(request.content)
         elif EMBEDDING_PROVIDER == "external":
             # 한글 쿼리 전처리
-            processed_content = preprocess_korean_query(request.content) if usage == "search" else request.content
+            processed_content = (
+                preprocess_korean_query(request.content)
+                if usage == "search"
+                else request.content
+            )
             embedding = await get_external_embedding(processed_content)
         elif EMBEDDING_PROVIDER == "local":
             if embedding_model is None:
-                raise HTTPException(status_code=503, detail="Local embedding model not available")
+                raise HTTPException(
+                    status_code=503, detail="Local embedding model not available"
+                )
             # 한글 쿼리 전처리
-            processed_content = preprocess_korean_query(request.content) if usage == "search" else request.content
+            processed_content = (
+                preprocess_korean_query(request.content)
+                if usage == "search"
+                else request.content
+            )
             embedding = embedding_model.encode(processed_content).tolist()
         else:
-            raise HTTPException(status_code=501, detail=f"Provider {EMBEDDING_PROVIDER} not implemented")
+            raise HTTPException(
+                status_code=501, detail=f"Provider {EMBEDDING_PROVIDER} not implemented"
+            )
 
         if request.normalize:
             embedding = normalize_embedding(embedding)
@@ -833,19 +960,25 @@ async def rerank(request: RerankRequest):
         RerankResponse with reranked documents sorted by relevance score
     """
     start_time = time.perf_counter()
-    logger.debug(f"Rerank request received: query length={len(request.query)}, documents count={len(request.documents)}, top_k={request.top_k}")
-    
+    logger.debug(
+        f"Rerank request received: query length={len(request.query)}, documents count={len(request.documents)}, top_k={request.top_k}"
+    )
+
     try:
         check_start = time.perf_counter()
         if not request.documents:
-            logger.debug(f"Empty documents list, returning empty results (took {time.perf_counter() - check_start:.6f}s)")
+            logger.debug(
+                f"Empty documents list, returning empty results (took {time.perf_counter() - check_start:.6f}s)"
+            )
             return RerankResponse(results=[])
-        logger.debug(f"Documents check completed (took {time.perf_counter() - check_start:.6f}s)")
+        logger.debug(
+            f"Documents check completed (took {time.perf_counter() - check_start:.6f}s)"
+        )
 
         # CrossEncoder를 사용한 로컬 리랭킹 (권장)
         if RERANK_PROVIDER == "local" and rerank_model is not None:
             logger.debug(f"Using local CrossEncoder rerank with model: {RERANK_MODEL}")
-            
+
             def get_document_text(doc):
                 if isinstance(doc, str):
                     return doc
@@ -854,12 +987,14 @@ async def rerank(request: RerankRequest):
                         if field in doc:
                             return doc[field]
                 return str(doc)
-            
+
             doc_texts = [get_document_text(doc) for doc in request.documents]
             crossencoder_start = time.perf_counter()
             scores = await rerank_with_local_crossencoder(request.query, doc_texts)
-            logger.debug(f"CrossEncoder rerank completed (took {time.perf_counter() - crossencoder_start:.6f}s)")
-            
+            logger.debug(
+                f"CrossEncoder rerank completed (took {time.perf_counter() - crossencoder_start:.6f}s)"
+            )
+
             reranked = []
             for idx, score in scores:
                 reranked.append(
@@ -869,18 +1004,20 @@ async def rerank(request: RerankRequest):
                         relevance_score=float(f"{score:.6f}"),
                     )
                 )
-            
+
             if isinstance(request.top_k, int) and request.top_k > 0:
-                reranked = reranked[:request.top_k]
-            
+                reranked = reranked[: request.top_k]
+
             total_time = time.perf_counter() - start_time
-            logger.debug(f"Rerank completed successfully: returning {len(reranked)} results (total time: {total_time:.6f}s)")
+            logger.debug(
+                f"Rerank completed successfully: returning {len(reranked)} results (total time: {total_time:.6f}s)"
+            )
             return RerankResponse(results=reranked)
-        
+
         # Ollama 기반 리랭킹 (fallback)
         elif RERANK_PROVIDER == "ollama":
             logger.debug(f"Using Ollama rerank with model: {RERANK_MODEL}")
-            
+
             def get_document_text(doc):
                 if isinstance(doc, str):
                     return doc
@@ -889,12 +1026,14 @@ async def rerank(request: RerankRequest):
                         if field in doc:
                             return doc[field]
                 return str(doc)
-            
+
             doc_texts = [get_document_text(doc) for doc in request.documents]
             ollama_start = time.perf_counter()
             scores = await rerank_with_ollama(request.query, doc_texts)
-            logger.debug(f"Ollama rerank completed (took {time.perf_counter() - ollama_start:.6f}s)")
-            
+            logger.debug(
+                f"Ollama rerank completed (took {time.perf_counter() - ollama_start:.6f}s)"
+            )
+
             reranked = []
             for idx, score in scores:
                 reranked.append(
@@ -904,14 +1043,16 @@ async def rerank(request: RerankRequest):
                         relevance_score=float(f"{score:.6f}"),
                     )
                 )
-            
+
             if isinstance(request.top_k, int) and request.top_k > 0:
-                reranked = reranked[:request.top_k]
-            
+                reranked = reranked[: request.top_k]
+
             total_time = time.perf_counter() - start_time
-            logger.debug(f"Rerank completed successfully: returning {len(reranked)} results (total time: {total_time:.6f}s)")
+            logger.debug(
+                f"Rerank completed successfully: returning {len(reranked)} results (total time: {total_time:.6f}s)"
+            )
             return RerankResponse(results=reranked)
-        
+
         else:
             # Fallback: return documents in original order with decreasing scores
             logger.warning("Rerank model not available, using fallback scoring")
@@ -926,7 +1067,7 @@ async def rerank(request: RerankRequest):
                     )
                 )
             if isinstance(request.top_k, int) and request.top_k > 0:
-                reranked = reranked[:request.top_k]
+                reranked = reranked[: request.top_k]
             return RerankResponse(results=reranked)
 
     except Exception as e:
@@ -955,33 +1096,31 @@ async def validate_api_keys():
     """
     if not groq_key_manager:
         raise HTTPException(status_code=503, detail="Groq API keys not configured")
-        
+
     all_keys = groq_key_manager.get_all_keys()
     results = []
-    
+
     # Simple test payload
     messages = [{"role": "user", "content": "ping"}]
-    
+
     for key in all_keys:
         key_mask = f"{key[:4]}...{key[-4:]}" if len(key) > 8 else "***"
         result = KeyValidationResult(key_mask=key_mask, is_valid=False)
-        
+
         try:
             # Create a localized client for this key
             client = AsyncGroq(api_key=key, max_retries=0)
-            
+
             # Use a fast, cheap model for testing
             await client.chat.completions.create(
-                model="llama-3.1-8b-instant",
-                messages=messages,
-                max_completion_tokens=1
+                model="llama-3.1-8b-instant", messages=messages, max_completion_tokens=1
             )
             result.is_valid = True
             result.status_code = 200
         except Exception as e:
             error_str = str(e)
             result.error_message = error_str
-            
+
             # Extract status code if available in error object or string
             if hasattr(e, "status_code"):
                 result.status_code = e.status_code
@@ -993,15 +1132,16 @@ async def validate_api_keys():
                 result.status_code = 404
             else:
                 result.status_code = 500
-            
+
         results.append(result)
-        
+
     return {
         "total_keys": len(all_keys),
         "valid_keys_count": sum(1 for r in results if r.is_valid),
         "blocked_keys_count": sum(1 for r in results if not r.is_valid),
-        "details": results
+        "details": results,
     }
+
 
 @app.get("/info")
 async def get_info():
@@ -1011,7 +1151,8 @@ async def get_info():
         "version": "1.1.0",
         "features": {
             "korean_optimization": True,
-            "crossencoder_reranking": RERANK_PROVIDER == "local" and rerank_model is not None,
+            "crossencoder_reranking": RERANK_PROVIDER == "local"
+            and rerank_model is not None,
         },
         "configuration": {
             "embedding_provider": EMBEDDING_PROVIDER,
@@ -1022,9 +1163,11 @@ async def get_info():
             "query_language": QUERY_LANGUAGE,
         },
         "models_loaded": {
-            "embedding_model": embedding_model is not None if EMBEDDING_PROVIDER == "local" else "external",
+            "embedding_model": embedding_model is not None
+            if EMBEDDING_PROVIDER == "local"
+            else "external",
             "rerank_model": rerank_model is not None,
-        }
+        },
     }
 
 
@@ -1038,9 +1181,9 @@ async def get_api_keys_status():
         return {
             "provider": EMBEDDING_PROVIDER,
             "message": "Groq API key management not active",
-            "keys": None
+            "keys": None,
         }
-    
+
     return {
         "provider": EMBEDDING_PROVIDER,
         "strategy": "exhaustion-based round-robin",
@@ -1063,16 +1206,56 @@ GROQ_MODEL_LIMITS = {
     "groq/compound-mini": {"rpm": 30, "rpd": 250, "tpm": 70000, "tpd": None},
     "llama-3.1-8b-instant": {"rpm": 30, "rpd": 14400, "tpm": 6000, "tpd": 500000},
     "llama-3.3-70b-versatile": {"rpm": 30, "rpd": 1000, "tpm": 12000, "tpd": 100000},
-    "meta-llama/llama-4-maverick-17b-128e-instruct": {"rpm": 30, "rpd": 1000, "tpm": 6000, "tpd": 500000},
-    "meta-llama/llama-4-scout-17b-16e-instruct": {"rpm": 30, "rpd": 1000, "tpm": 30000, "tpd": 500000},
-    "meta-llama/llama-guard-4-12b": {"rpm": 30, "rpd": 14400, "tpm": 15000, "tpd": 500000},
-    "meta-llama/llama-prompt-guard-2-22m": {"rpm": 30, "rpd": 14400, "tpm": 15000, "tpd": 500000},
-    "meta-llama/llama-prompt-guard-2-86m": {"rpm": 30, "rpd": 14400, "tpm": 15000, "tpd": 500000},
-    "moonshotai/kimi-k2-instruct": {"rpm": 60, "rpd": 1000, "tpm": 10000, "tpd": 300000},
-    "moonshotai/kimi-k2-instruct-0905": {"rpm": 60, "rpd": 1000, "tpm": 10000, "tpd": 300000},
+    "meta-llama/llama-4-maverick-17b-128e-instruct": {
+        "rpm": 30,
+        "rpd": 1000,
+        "tpm": 6000,
+        "tpd": 500000,
+    },
+    "meta-llama/llama-4-scout-17b-16e-instruct": {
+        "rpm": 30,
+        "rpd": 1000,
+        "tpm": 30000,
+        "tpd": 500000,
+    },
+    "meta-llama/llama-guard-4-12b": {
+        "rpm": 30,
+        "rpd": 14400,
+        "tpm": 15000,
+        "tpd": 500000,
+    },
+    "meta-llama/llama-prompt-guard-2-22m": {
+        "rpm": 30,
+        "rpd": 14400,
+        "tpm": 15000,
+        "tpd": 500000,
+    },
+    "meta-llama/llama-prompt-guard-2-86m": {
+        "rpm": 30,
+        "rpd": 14400,
+        "tpm": 15000,
+        "tpd": 500000,
+    },
+    "moonshotai/kimi-k2-instruct": {
+        "rpm": 60,
+        "rpd": 1000,
+        "tpm": 10000,
+        "tpd": 300000,
+    },
+    "moonshotai/kimi-k2-instruct-0905": {
+        "rpm": 60,
+        "rpd": 1000,
+        "tpm": 10000,
+        "tpd": 300000,
+    },
     "openai/gpt-oss-120b": {"rpm": 30, "rpd": 1000, "tpm": 8000, "tpd": 200000},
     "openai/gpt-oss-20b": {"rpm": 30, "rpd": 1000, "tpm": 8000, "tpd": 200000},
-    "openai/gpt-oss-safeguard-20b": {"rpm": 30, "rpd": 1000, "tpm": 8000, "tpd": 200000},
+    "openai/gpt-oss-safeguard-20b": {
+        "rpm": 30,
+        "rpd": 1000,
+        "tpm": 8000,
+        "tpd": 200000,
+    },
     "qwen/qwen3-32b": {"rpm": 60, "rpd": 1000, "tpm": 6000, "tpd": 500000},
 }
 
@@ -1083,122 +1266,119 @@ DEFAULT_MODEL_LIMITS = {"rpm": 30, "rpd": 1000, "tpm": 6000, "tpd": 100000}
 rpm_throttler = SimpleRPMThrottler()
 
 
-
 # Model fallback chains (Primary -> [Fallbacks])
 GROQ_MODEL_FALLBACKS = {
     # High Intelligence / Chat Tier
     "llama-3.3-70b-versatile": [
-        "llama-3.3-70b-versatile", 
-        "qwen/qwen3-32b", 
-        "moonshotai/kimi-k2-instruct", # 60 RPM
-# Fallback to Fast Tier if High Tier is exhausted
-        "openai/gpt-oss-120b", 
+        "llama-3.3-70b-versatile",
+        "qwen/qwen3-32b",
+        "moonshotai/kimi-k2-instruct",  # 60 RPM
+        # Fallback to Fast Tier if High Tier is exhausted
+        "openai/gpt-oss-120b",
         "groq/compound",
-        "llama-3.1-8b-instant", 
+        "llama-3.1-8b-instant",
         "moonshotai/kimi-k2-instruct-0905",
         "meta-llama/llama-4-scout-17b-16e-instruct",
         "meta-llama/llama-4-maverick-17b-128e-instruct",
-        "openai/gpt-oss-20b", 
+        "openai/gpt-oss-20b",
         "openai/gpt-oss-safeguard-20b",
-        "allam-2-7b", 
+        "allam-2-7b",
         "groq/compound-mini",
     ],
-    
     # Fast / Classification Tier
     "llama-3.1-8b-instant": [
-        "openai/gpt-oss-120b", 
+        "openai/gpt-oss-120b",
         "groq/compound",
-        "llama-3.1-8b-instant", 
-        "moonshotai/kimi-k2-instruct-0905", # 60 RPM
-        "meta-llama/llama-4-scout-17b-16e-instruct", # 30 RPM, 30k TPM
-        "meta-llama/llama-4-maverick-17b-128e-instruct", # 30 RPM
-        "openai/gpt-oss-20b", 
+        "llama-3.1-8b-instant",
+        "moonshotai/kimi-k2-instruct-0905",  # 60 RPM
+        "meta-llama/llama-4-scout-17b-16e-instruct",  # 30 RPM, 30k TPM
+        "meta-llama/llama-4-maverick-17b-128e-instruct",  # 30 RPM
+        "openai/gpt-oss-20b",
         "openai/gpt-oss-safeguard-20b",
-        "allam-2-7b", 
+        "allam-2-7b",
         "groq/compound-mini",
         "meta-llama/llama-guard-4-12b",
-        "meta-llama/llama-prompt-guard-2-22m"
+        "meta-llama/llama-prompt-guard-2-22m",
     ],
 }
 
 
 async def _call_local_llm_fallback(
-    messages: list[dict], 
-    temperature: float | None = 0.7, 
-    max_tokens: int | None = 4096
+    messages: list[dict], temperature: float | None = 0.7, max_tokens: int | None = 4096
 ) -> dict | None:
     """
     Call local LLM endpoints when Groq returns 413 Payload Too Large.
     Randomly selects between available local LLM endpoints.
-    
+
     Includes 15-second cooldown to prevent excessive calls.
-    
+
     Supported endpoints:
     1. ollama-kanana (http://192.168.30.169:11434) - Ollama API
     """
     # No cooldown check here, as the main chat_completions function handles it
     # or it's called as a direct fallback.
-    
+
     if not LOCAL_LLM_ENDPOINTS:
         logger.warning("No local LLM endpoints configured")
         return None
-    
+
     # Randomly shuffle endpoints for load balancing
     endpoints = LOCAL_LLM_ENDPOINTS.copy()
     random.shuffle(endpoints)
-    
+
     last_error = None
-    
+
     for endpoint in endpoints:
         endpoint_name = endpoint["name"]
         endpoint_url = endpoint["url"]
         endpoint_type = endpoint["type"]
         endpoint_model = endpoint.get("model")
-        
+
         logger.info(f"Trying local LLM fallback: {endpoint_name} ({endpoint_type})")
-        
+
         try:
             async with httpx.AsyncClient(timeout=600.0) as client:
                 if endpoint_type == "ollama":
                     # Ollama API format
                     ollama_url = f"{endpoint_url}/api/chat"
-                    
+
                     # Convert messages to Ollama format
                     ollama_messages = [
-                        {"role": m["role"], "content": m["content"]}
-                        for m in messages
+                        {"role": m["role"], "content": m["content"]} for m in messages
                     ]
-                    
+
                     payload = {
                         "model": endpoint_model,
                         "messages": ollama_messages,
                         "stream": False,
-                        "options": {}
+                        "options": {},
                     }
                     if temperature is not None:
                         payload["options"]["temperature"] = temperature
                     if max_tokens is not None:
                         payload["options"]["num_predict"] = max_tokens
-                    
+
                     response = await client.post(
                         ollama_url,
                         json=payload,
-                        headers={"Content-Type": "application/json"}
+                        headers={"Content-Type": "application/json"},
                     )
                     response.raise_for_status()
                     data = response.json()
-                    
+
                     # Log raw output for debugging
                     logger.debug(f"Ollama response data: {str(data)[:200]}...")
-                    
+
                     content = ""
                     if "message" in data and "content" in data["message"]:
                         content = data["message"]["content"]
                     elif "response" in data:
                         content = data["response"]
                     else:
-                        logger.error(f"Unexpected Ollama response format: {data.keys()}")
-                    
+                        logger.error(
+                            f"Unexpected Ollama response format: {data.keys()}"
+                        )
+
                     logger.info(f"Local LLM fallback ({endpoint_name}) succeeded")
                     return {
                         "id": f"chatcmpl-local-{int(time.time())}",
@@ -1208,32 +1388,40 @@ async def _call_local_llm_fallback(
                         "choices": [
                             {
                                 "index": 0,
-                                "message": {
-                                    "role": "assistant",
-                                    "content": content
-                                },
-                                "finish_reason": "stop"
+                                "message": {"role": "assistant", "content": content},
+                                "finish_reason": "stop",
                             }
                         ],
                         "usage": {
-                            "prompt_tokens": data.get("prompt_eval_count", sum(len(m.get("content", "") or "") // 4 for m in messages)),
-                            "completion_tokens": data.get("eval_count", len(content) // 4),
-                            "total_tokens": data.get("prompt_eval_count", 0) + data.get("eval_count", 0)
-                        }
+                            "prompt_tokens": data.get(
+                                "prompt_eval_count",
+                                sum(
+                                    len(m.get("content", "") or "") // 4
+                                    for m in messages
+                                ),
+                            ),
+                            "completion_tokens": data.get(
+                                "eval_count", len(content) // 4
+                            ),
+                            "total_tokens": data.get("prompt_eval_count", 0)
+                            + data.get("eval_count", 0),
+                        },
                     }
                 else:
                     logger.warning(f"Unknown endpoint type: {endpoint_type}")
                     continue
-                    
+
         except httpx.HTTPStatusError as e:
             last_error = e
-            logger.warning(f"Local LLM fallback ({endpoint_name}) HTTP error: {e.response.status_code} - {e.response.text[:200]}")
+            logger.warning(
+                f"Local LLM fallback ({endpoint_name}) HTTP error: {e.response.status_code} - {e.response.text[:200]}"
+            )
             continue
         except Exception as e:
             last_error = e
             logger.warning(f"Local LLM fallback ({endpoint_name}) failed: {str(e)}")
             continue
-    
+
     # All endpoints failed
     if last_error:
         raise last_error
@@ -1251,11 +1439,11 @@ async def _stream_single_response(response_dict: dict):
         if "choices" in response_dict and len(response_dict["choices"]) > 0:
             message = response_dict["choices"][0].get("message", {})
             content = message.get("content", "")
-        
+
         model = response_dict.get("model", "local-fallback")
         created = response_dict.get("created", int(time.time()))
         completion_id = response_dict.get("id", f"chatcmpl-{created}")
-        
+
         # Create a single chunk with content
         chunk_data = {
             "id": completion_id,
@@ -1263,32 +1451,22 @@ async def _stream_single_response(response_dict: dict):
             "created": created,
             "model": model,
             "choices": [
-                {
-                    "index": 0,
-                    "delta": {"content": content},
-                    "finish_reason": None
-                }
-            ]
+                {"index": 0, "delta": {"content": content}, "finish_reason": None}
+            ],
         }
         yield f"data: {json.dumps(chunk_data)}\n\n"
-        
+
         # Send finish chunk
         finish_data = {
             "id": completion_id,
             "object": "chat.completion.chunk",
             "created": created,
             "model": model,
-            "choices": [
-                {
-                    "index": 0,
-                    "delta": {},
-                    "finish_reason": "stop"
-                }
-            ]
+            "choices": [{"index": 0, "delta": {}, "finish_reason": "stop"}],
         }
         yield f"data: {json.dumps(finish_data)}\n\n"
         yield "data: [DONE]\n\n"
-        
+
     except Exception as e:
         logger.error(f"Error streaming single response: {e}")
         error_data = {"error": str(e)}
@@ -1310,12 +1488,12 @@ async def _stream_groq_response(response_iterator, model_name: str):
                         {
                             "index": 0,
                             "delta": {"content": content},
-                            "finish_reason": None
+                            "finish_reason": None,
                         }
-                    ]
+                    ],
                 }
                 yield f"data: {json.dumps(data)}\n\n"
-        
+
         # End of stream
         yield "data: [DONE]\n\n"
     except Exception as e:
@@ -1330,6 +1508,7 @@ class MemoProcessingThrottler:
     - Run for 120 seconds
     - Wait for 3 minutes (180 seconds)
     """
+
     def __init__(self, run_duration: float = 30.0, cooldown_duration: float = 600.0):
         self.run_duration = run_duration
         self.cooldown_duration = cooldown_duration
@@ -1337,22 +1516,26 @@ class MemoProcessingThrottler:
         self.cycle_start_time = 0.0
         self.cooldown_start_time = 0.0
         self._lock = asyncio.Lock()
-        
-    async def check_throttling(self, model: str = "unknown", key_info: str = "unknown") -> tuple[bool, float, str]:
+
+    async def check_throttling(
+        self, model: str = "unknown", key_info: str = "unknown"
+    ) -> tuple[bool, float, str]:
         """
         Check if request is allowed.
         Returns: (is_allowed, wait_time, message)
         """
         async with self._lock:
             now = time.time()
-            
+
             if self.state == "IDLE":
                 # Start new cycle
                 self.state = "RUNNING"
                 self.cycle_start_time = now
-                logger.info(f"Memo Processing Throttler: Starting NEW cycle (Running for {self.run_duration}s)")
+                logger.info(
+                    f"Memo Processing Throttler: Starting NEW cycle (Running for {self.run_duration}s)"
+                )
                 return True, 0.0, ""
-                
+
             elif self.state == "RUNNING":
                 elapsed = now - self.cycle_start_time
                 if elapsed > self.run_duration:
@@ -1360,41 +1543,59 @@ class MemoProcessingThrottler:
                     self.state = "COOLDOWN"
                     self.cooldown_start_time = now
                     remaining = self.cooldown_duration
-                    logger.warning(f"Memo Processing Throttler: Run time exceeded ({elapsed:.1f}s). Entering COOLDOWN for {self.cooldown_duration}s. Model: {model}, Key: {key_info}")
-                    return False, remaining, f"Memo processing limit reached. Cooling down for {int(remaining)}s. Model: {model}, Key: {key_info}"
+                    logger.warning(
+                        f"Memo Processing Throttler: Run time exceeded ({elapsed:.1f}s). Entering COOLDOWN for {self.cooldown_duration}s. Model: {model}, Key: {key_info}"
+                    )
+                    return (
+                        False,
+                        remaining,
+                        f"Memo processing limit reached. Cooling down for {int(remaining)}s. Model: {model}, Key: {key_info}",
+                    )
                 else:
                     return True, 0.0, ""
-                    
+
             elif self.state == "COOLDOWN":
                 elapsed = now - self.cooldown_start_time
                 if elapsed > self.cooldown_duration:
                     # Cooldown finished, back to IDLE (or start running immediately)
                     self.state = "RUNNING"
                     self.cycle_start_time = now
-                    logger.info(f"Memo Processing Throttler: Cooldown finished. Starting NEW cycle.")
+                    logger.info(
+                        f"Memo Processing Throttler: Cooldown finished. Starting NEW cycle."
+                    )
                     return True, 0.0, ""
                 else:
                     remaining = self.cooldown_duration - elapsed
-                    return False, remaining, f"Memo processing in cooldown. Wait {int(remaining)}s. Model: {model}, Key: {key_info}"
-            
+                    return (
+                        False,
+                        remaining,
+                        f"Memo processing in cooldown. Wait {int(remaining)}s. Model: {model}, Key: {key_info}",
+                    )
+
             return True, 0.0, ""
+
 
 memo_throttler = MemoProcessingThrottler(run_duration=120.0, cooldown_duration=180.0)
 
 
-async def _call_siliconflow(messages: list[dict], temperature: float = 0.7, max_tokens: int = 4095, stream: bool = False):
+async def _call_siliconflow(
+    messages: list[dict],
+    temperature: float = 0.7,
+    max_tokens: int = 4095,
+    stream: bool = False,
+):
     if not SILICONFLOW_API_KEY:
         return None
-    
+
     url = "https://api.siliconflow.com/v1/chat/completions"
     headers = {
         "Authorization": f"Bearer {SILICONFLOW_API_KEY}",
-        "Content-Type": "application/json"
+        "Content-Type": "application/json",
     }
-    
+
     # Check if JSON format is requested
     is_json = any("json" in m.get("content", "").lower() for m in messages)
-    
+
     payload = {
         "model": SILICONFLOW_MODEL,
         "messages": messages,
@@ -1407,9 +1608,9 @@ async def _call_siliconflow(messages: list[dict], temperature: float = 0.7, max_
         "top_p": 0.7,
         "top_k": 50,
         "frequency_penalty": 0.5,
-        "n": 1
+        "n": 1,
     }
-    
+
     if is_json:
         payload["response_format"] = {"type": "json_object"}
 
@@ -1421,22 +1622,27 @@ async def _call_siliconflow(messages: list[dict], temperature: float = 0.7, max_
         return response.json()
 
 
-async def _call_movementlabs(messages: list[dict], temperature: float = 0.7, max_tokens: int = 4096, stream: bool = False):
+async def _call_movementlabs(
+    messages: list[dict],
+    temperature: float = 0.7,
+    max_tokens: int = 4096,
+    stream: bool = False,
+):
     if not MOVEMENTLABS_API_KEY:
         return None
-    
+
     url = "https://api.movementlabs.ai/v1/chat/completions"
     headers = {
         "Authorization": f"Bearer {MOVEMENTLABS_API_KEY}",
-        "Content-Type": "application/json"
+        "Content-Type": "application/json",
     }
-    
+
     payload = {
         "model": MOVEMENTLABS_MODEL,
         "messages": messages,
         "temperature": temperature,
         "max_tokens": max_tokens,
-        "stream": stream
+        "stream": stream,
     }
 
     if stream:
@@ -1460,7 +1666,7 @@ async def _stream_movementlabs_response(response, model_name):
                 if data_str == "[DONE]":
                     yield "data: [DONE]\n\n"
                     break
-                
+
                 yield f"data: {data_str}\n\n"
     except Exception as e:
         logger.error(f"Error during Movement Labs streaming: {e}")
@@ -1482,7 +1688,7 @@ async def _stream_siliconflow_response(response, model_name):
                 if data_str == "[DONE]":
                     yield "data: [DONE]\n\n"
                     break
-                
+
                 try:
                     # SiliconFlow typically returns OpenAI format
                     yield f"data: {data_str}\n\n"
@@ -1495,26 +1701,31 @@ async def _stream_siliconflow_response(response, model_name):
         await response.aclose()
 
 
-async def _call_zai(messages: list[dict], temperature: float = 0.7, max_tokens: int = 4096, stream: bool = False):
+async def _call_zai(
+    messages: list[dict],
+    temperature: float = 0.7,
+    max_tokens: int = 4096,
+    stream: bool = False,
+):
     """
     Call Z.ai API (ChatGLM).
     Z.ai API endpoint: https://api.z.ai/api/paas/v4/chat/completions
     """
     if not ZAI_API_KEY:
         return None
-    
+
     url = "https://api.z.ai/api/paas/v4/chat/completions"
     headers = {
         "Authorization": f"Bearer {ZAI_API_KEY}",
-        "Content-Type": "application/json"
+        "Content-Type": "application/json",
     }
-    
+
     payload = {
         "model": ZAI_MODEL,
         "messages": messages,
         "temperature": temperature,
         "max_tokens": max_tokens,
-        "stream": stream
+        "stream": stream,
     }
 
     if stream:
@@ -1538,7 +1749,7 @@ async def _stream_zai_response(response, model_name):
                 if data_str == "[DONE]":
                     yield "data: [DONE]\n\n"
                     break
-                
+
                 yield f"data: {data_str}\n\n"
     except Exception as e:
         logger.error(f"Error during Z.ai streaming: {e}")
@@ -1547,24 +1758,29 @@ async def _stream_zai_response(response, model_name):
         await response.aclose()
 
 
-async def _call_openrouter(messages: list[dict], temperature: float = 0.7, max_tokens: int = 4096, stream: bool = False):
+async def _call_openrouter(
+    messages: list[dict],
+    temperature: float = 0.7,
+    max_tokens: int = 4096,
+    stream: bool = False,
+):
     if not OPENROUTER_API_KEY:
         return None
-    
+
     url = "https://openrouter.ai/api/v1/chat/completions"
     headers = {
         "Authorization": f"Bearer {OPENROUTER_API_KEY}",
         "Content-Type": "application/json",
         "HTTP-Referer": "https://skald.sparrow.local",
-        "X-Title": "Skald AI"
+        "X-Title": "Skald AI",
     }
-    
+
     payload = {
         "model": OPENROUTER_MODEL,
         "messages": messages,
         "temperature": temperature,
         "max_tokens": max_tokens,
-        "stream": stream
+        "stream": stream,
     }
 
     if stream:
@@ -1588,7 +1804,7 @@ async def _stream_openrouter_response(response, model_name):
                 if data_str == "[DONE]":
                     yield "data: [DONE]\n\n"
                     break
-                
+
                 yield f"data: {data_str}\n\n"
     except Exception as e:
         logger.error(f"Error during OpenRouter streaming: {e}")
@@ -1597,22 +1813,27 @@ async def _stream_openrouter_response(response, model_name):
         await response.aclose()
 
 
-async def _call_mistral(messages: list[dict], temperature: float = 0.7, max_tokens: int = 4096, stream: bool = False):
+async def _call_mistral(
+    messages: list[dict],
+    temperature: float = 0.7,
+    max_tokens: int = 4096,
+    stream: bool = False,
+):
     if not MISTRAL_API_KEY:
         return None
-    
+
     url = "https://api.mistral.ai/v1/chat/completions"
     headers = {
         "Authorization": f"Bearer {MISTRAL_API_KEY}",
-        "Content-Type": "application/json"
+        "Content-Type": "application/json",
     }
-    
+
     payload = {
         "model": MISTRAL_MODEL,
         "messages": messages,
         "temperature": temperature,
         "max_tokens": max_tokens,
-        "stream": stream
+        "stream": stream,
     }
 
     if stream:
@@ -1636,7 +1857,7 @@ async def _stream_mistral_response(response, model_name):
                 if data_str == "[DONE]":
                     yield "data: [DONE]\n\n"
                     break
-                
+
                 yield f"data: {data_str}\n\n"
     except Exception as e:
         logger.error(f"Error during Mistral streaming: {e}")
@@ -1645,22 +1866,28 @@ async def _stream_mistral_response(response, model_name):
         await response.aclose()
 
 
-async def _call_github(messages: list[dict], model: str, temperature: float = 0.7, max_tokens: int = 4096, stream: bool = False):
+async def _call_github(
+    messages: list[dict],
+    model: str,
+    temperature: float = 0.7,
+    max_tokens: int = 4096,
+    stream: bool = False,
+):
     if not GITHUB_TOKEN:
         return None
-    
+
     url = "https://models.github.ai/inference/chat/completions?api-version=2024-05-01-preview"
     headers = {
         "Authorization": f"Bearer {GITHUB_TOKEN}",
-        "Content-Type": "application/json"
+        "Content-Type": "application/json",
     }
-    
+
     payload = {
         "model": model,
         "messages": messages,
         "temperature": temperature,
         "max_tokens": max_tokens,
-        "stream": stream
+        "stream": stream,
     }
 
     if stream:
@@ -1684,7 +1911,7 @@ async def _stream_github_response(response, model_name):
                 if data_str == "[DONE]":
                     yield "data: [DONE]\n\n"
                     break
-                
+
                 yield f"data: {data_str}\n\n"
     except Exception as e:
         logger.error(f"Error during GitHub streaming: {e}")
@@ -1693,23 +1920,29 @@ async def _stream_github_response(response, model_name):
         await response.aclose()
 
 
-async def _call_pollinations(messages: list[dict], model: str, temperature: float = 0.7, max_tokens: int = 2048, stream: bool = False):
+async def _call_pollinations(
+    messages: list[dict],
+    model: str,
+    temperature: float = 0.7,
+    max_tokens: int = 2048,
+    stream: bool = False,
+):
     if not POLLINATIONS_API_KEY:
         return None
-    
+
     url = "https://gen.pollinations.ai/v1/chat/completions"
     headers = {
         "Authorization": f"Bearer {POLLINATIONS_API_KEY}",
-        "Content-Type": "application/json"
+        "Content-Type": "application/json",
     }
-    
+
     payload = {
         "model": model,
         "messages": messages,
         "temperature": temperature,
         "max_tokens": max_tokens,
         "stream": stream,
-        "modalities": ["text"]
+        "modalities": ["text"],
     }
 
     if stream:
@@ -1733,7 +1966,7 @@ async def _stream_pollinations_response(response, model_name):
                 if data_str == "[DONE]":
                     yield "data: [DONE]\n\n"
                     break
-                
+
                 yield f"data: {data_str}\n\n"
     except Exception as e:
         logger.error(f"Error during Pollinations streaming: {e}")
@@ -1746,54 +1979,78 @@ async def _stream_pollinations_response(response, model_name):
 async def chat_completions(request: ChatCompletionRequest):
     """
     OpenAI-compatible chat completion endpoint.
-    Primary: SiliconFlow (DeepSeek-V3)
-    Fallback 1: MovementLabs (hawk-max)
-    Fallback 2: GitHub (DeepSeek-V3 Round-Robin)
-    Fallback 3: Pollinations.ai (Nova-Micro etc)
+    Primary: Pollinations.ai (openai-fast)
+    Fallback 1: SiliconFlow (DeepSeek-V3)
+    Fallback 2: MovementLabs (hawk-max)
+    Fallback 3: GitHub (DeepSeek-V3 Round-Robin)
     Fallback 4: Mistral (Mistral Medium)
     Fallback 5: OpenRouter (Xiaomi Mimo-V2-Flash)
     Fallback 6: Groq (llama-3.3-70b/70b-versatile etc)
     Fallback 7: Local LLM (ollama)
     """
-    
+
     requested_model = request.model
-    messages_payload = [{"role": m.role, "content": m.content} for m in request.messages]
-    
+    messages_payload = [
+        {"role": m.role, "content": m.content} for m in request.messages
+    ]
+
     # Log input size
     total_chars = sum(len(m.get("content", "") or "") for m in messages_payload)
     estimated_tokens = total_chars // 4
-    logger.info(f"Chat request: model={requested_model}, messages={len(messages_payload)}, chars={total_chars}, est_tokens≈{estimated_tokens}")
+    logger.info(
+        f"Chat request: model={requested_model}, messages={len(messages_payload)}, chars={total_chars}, est_tokens≈{estimated_tokens}"
+    )
 
     # ==========================================
     # 0. Check for explicit LLM provider (Z.ai)
     # ==========================================
     if request.llm_provider and request.llm_provider.lower() == "zai":
         if not ZAI_API_KEY:
-            raise HTTPException(status_code=503, detail="Z.ai provider requested but ZAI_API_KEY is not configured")
-        
+            raise HTTPException(
+                status_code=503,
+                detail="Z.ai provider requested but ZAI_API_KEY is not configured",
+            )
+
         try:
             logger.info(f"Attempting Z.ai (explicit provider): Model={ZAI_MODEL}")
             if request.stream:
-                zai_response = await _call_zai(messages_payload, request.temperature or 0.7, request.max_tokens or 4096, stream=True)
+                zai_response = await _call_zai(
+                    messages_payload,
+                    request.temperature or 0.7,
+                    request.max_tokens or 4096,
+                    stream=True,
+                )
                 if zai_response.status_code == 200:
                     logger.info("✅ Z.ai (stream) succeeded")
                     return StreamingResponse(
                         _stream_zai_response(zai_response, ZAI_MODEL),
-                        media_type="text/event-stream"
+                        media_type="text/event-stream",
                     )
                 else:
                     error_body = await zai_response.aread()
                     error_msg = error_body.decode()
-                    logger.error(f"Z.ai failed with status {zai_response.status_code}: {error_msg}")
+                    logger.error(
+                        f"Z.ai failed with status {zai_response.status_code}: {error_msg}"
+                    )
                     await zai_response.aclose()
-                    raise HTTPException(status_code=zai_response.status_code, detail=f"Z.ai error: {error_msg}")
+                    raise HTTPException(
+                        status_code=zai_response.status_code,
+                        detail=f"Z.ai error: {error_msg}",
+                    )
             else:
-                zai_data = await _call_zai(messages_payload, request.temperature or 0.7, request.max_tokens or 4096, stream=False)
+                zai_data = await _call_zai(
+                    messages_payload,
+                    request.temperature or 0.7,
+                    request.max_tokens or 4096,
+                    stream=False,
+                )
                 if zai_data:
                     logger.info("✅ Z.ai succeeded")
                     return zai_data
                 else:
-                    raise HTTPException(status_code=500, detail="Z.ai returned empty response")
+                    raise HTTPException(
+                        status_code=500, detail="Z.ai returned empty response"
+                    )
         except HTTPException:
             raise
         except Exception as e:
@@ -1801,25 +2058,90 @@ async def chat_completions(request: ChatCompletionRequest):
             raise HTTPException(status_code=500, detail=f"Z.ai error: {str(e)}")
 
     # ==========================================
-    # 1. Try SiliconFlow (Main)
+    # 1. Try Pollinations.ai (Primary)
+    # ==========================================
+    is_cooldown, remaining = pollinations_error_cooldown.is_in_cooldown()
+    if is_cooldown:
+        logger.warning(
+            f"Pollinations in cooldown for {remaining:.0f}s, skipping to SiliconFlow"
+        )
+    elif POLLINATIONS_API_KEY:
+        try:
+            logger.info(f"Attempting Pollinations: Model={POLLINATIONS_MODEL}")
+            if request.stream:
+                pl_response = await _call_pollinations(
+                    messages_payload,
+                    POLLINATIONS_MODEL,
+                    request.temperature or 0.7,
+                    request.max_tokens or 2048,
+                    stream=True,
+                )
+                if pl_response.status_code == 200:
+                    logger.info(f"✅ Pollinations (stream) succeeded")
+                    return StreamingResponse(
+                        _stream_pollinations_response(pl_response, POLLINATIONS_MODEL),
+                        media_type="text/event-stream",
+                    )
+                else:
+                    error_body = await pl_response.aread()
+                    error_msg = error_body.decode()
+                    logger.warning(
+                        f"Pollinations failed with status {pl_response.status_code}: {error_msg}"
+                    )
+                    # Activate 24-hour cooldown on error
+                    pollinations_error_cooldown.activate_cooldown()
+                    await pl_response.aclose()
+            else:
+                pl_data = await _call_pollinations(
+                    messages_payload,
+                    POLLINATIONS_MODEL,
+                    request.temperature or 0.7,
+                    request.max_tokens or 2048,
+                    stream=False,
+                )
+                if pl_data:
+                    logger.info("✅ Pollinations succeeded")
+                    return pl_data
+                else:
+                    # Activate 24-hour cooldown on empty response
+                    pollinations_error_cooldown.activate_cooldown()
+        except Exception as e:
+            logger.error(f"Pollinations AI error: {e}")
+            # Activate 24-hour cooldown on exception
+            pollinations_error_cooldown.activate_cooldown()
+
+    # ==========================================
+    # 2. Try SiliconFlow (Fallback 1)
     # ==========================================
     if SILICONFLOW_API_KEY:
         try:
             logger.info(f"Attempting SiliconFlow: Model={SILICONFLOW_MODEL}")
             if request.stream:
-                sf_response = await _call_siliconflow(messages_payload, request.temperature or 0.7, request.max_tokens or 4095, stream=True)
+                sf_response = await _call_siliconflow(
+                    messages_payload,
+                    request.temperature or 0.7,
+                    request.max_tokens or 4095,
+                    stream=True,
+                )
                 if sf_response.status_code == 200:
                     logger.info("✅ SiliconFlow (stream) succeeded")
                     return StreamingResponse(
                         _stream_siliconflow_response(sf_response, SILICONFLOW_MODEL),
-                        media_type="text/event-stream"
+                        media_type="text/event-stream",
                     )
                 else:
                     error_body = await sf_response.aread()
-                    logger.warning(f"SiliconFlow failed with status {sf_response.status_code}: {error_body.decode()}")
+                    logger.warning(
+                        f"SiliconFlow failed with status {sf_response.status_code}: {error_body.decode()}"
+                    )
                     await sf_response.aclose()
             else:
-                sf_data = await _call_siliconflow(messages_payload, request.temperature or 0.7, request.max_tokens or 4095, stream=False)
+                sf_data = await _call_siliconflow(
+                    messages_payload,
+                    request.temperature or 0.7,
+                    request.max_tokens or 4095,
+                    stream=False,
+                )
                 if sf_data:
                     logger.info("✅ SiliconFlow succeeded")
                     return sf_data
@@ -1828,25 +2150,37 @@ async def chat_completions(request: ChatCompletionRequest):
             # Continue to MovementLabs fallback
 
     # ==========================================
-    # 2. Try MovementLabs (Fallback 1)
+    # 3. Try MovementLabs (Fallback 2)
     # ==========================================
     if MOVEMENTLABS_API_KEY:
         try:
             logger.info(f"Attempting MovementLabs: Model={MOVEMENTLABS_MODEL}")
             if request.stream:
-                ml_response = await _call_movementlabs(messages_payload, request.temperature or 0.7, request.max_tokens or 4096, stream=True)
+                ml_response = await _call_movementlabs(
+                    messages_payload,
+                    request.temperature or 0.7,
+                    request.max_tokens or 4096,
+                    stream=True,
+                )
                 if ml_response.status_code == 200:
                     logger.info("✅ MovementLabs (stream) succeeded")
                     return StreamingResponse(
-                        _stream_movementlabs_response(ml_response, MOVEMENTLABS_MODEL), 
-                        media_type="text/event-stream"
+                        _stream_movementlabs_response(ml_response, MOVEMENTLABS_MODEL),
+                        media_type="text/event-stream",
                     )
                 else:
                     error_body = await ml_response.aread()
-                    logger.warning(f"MovementLabs failed with status {ml_response.status_code}: {error_body.decode()}")
+                    logger.warning(
+                        f"MovementLabs failed with status {ml_response.status_code}: {error_body.decode()}"
+                    )
                     await ml_response.aclose()
             else:
-                ml_data = await _call_movementlabs(messages_payload, request.temperature or 0.7, request.max_tokens or 4096, stream=False)
+                ml_data = await _call_movementlabs(
+                    messages_payload,
+                    request.temperature or 0.7,
+                    request.max_tokens or 4096,
+                    stream=False,
+                )
                 if ml_data:
                     logger.info("✅ MovementLabs succeeded")
                     return ml_data
@@ -1855,45 +2189,66 @@ async def chat_completions(request: ChatCompletionRequest):
             # Continue to GitHub fallback
 
     # ==========================================
-    # 3. Try GitHub (Fallback 2)
+    # 4. Try GitHub (Fallback 3)
     # ==========================================
     if GITHUB_TOKEN and GITHUB_MODELS:
         # Try models in GitHub list
         all_gh_models = github_model_manager.get_all()
         start_model = github_model_manager.get_current()
         start_idx = all_gh_models.index(start_model)
-        
+
         # We try all models starting from current index
         for i in range(len(all_gh_models)):
             current_idx = (start_idx + i) % len(all_gh_models)
             target_gh_model = all_gh_models[current_idx]
-            
+
             try:
-                logger.info(f"Attempting GitHub [{i+1}/{len(all_gh_models)}]: Model={target_gh_model}")
+                logger.info(
+                    f"Attempting GitHub [{i + 1}/{len(all_gh_models)}]: Model={target_gh_model}"
+                )
                 if request.stream:
-                    gh_response = await _call_github(messages_payload, target_gh_model, request.temperature or 0.7, request.max_tokens or 4096, stream=True)
+                    gh_response = await _call_github(
+                        messages_payload,
+                        target_gh_model,
+                        request.temperature or 0.7,
+                        request.max_tokens or 4096,
+                        stream=True,
+                    )
                     if gh_response.status_code == 200:
-                        logger.info(f"✅ GitHub (stream) succeeded with {target_gh_model}")
+                        logger.info(
+                            f"✅ GitHub (stream) succeeded with {target_gh_model}"
+                        )
                         return StreamingResponse(
                             _stream_github_response(gh_response, target_gh_model),
-                            media_type="text/event-stream"
+                            media_type="text/event-stream",
                         )
                     else:
                         error_body = await gh_response.aread()
                         error_msg = error_body.decode()
-                        logger.warning(f"GitHub model {target_gh_model} failed ({gh_response.status_code}): {error_msg}")
+                        logger.warning(
+                            f"GitHub model {target_gh_model} failed ({gh_response.status_code}): {error_msg}"
+                        )
                         await gh_response.aclose()
-                        
+
                         # If quota/rate limit, rotate and try next GitHub model
-                        if gh_response.status_code in [429, 403] or "quota" in error_msg.lower():
+                        if (
+                            gh_response.status_code in [429, 403]
+                            or "quota" in error_msg.lower()
+                        ):
                             github_model_manager.rotate()
                             continue
                         else:
-                            # Other error, move on to Mistral fallback entirely? 
+                            # Other error, move on to Mistral fallback entirely?
                             # Or try next model? Let's try next model for now.
                             continue
                 else:
-                    gh_data = await _call_github(messages_payload, target_gh_model, request.temperature or 0.7, request.max_tokens or 4096, stream=False)
+                    gh_data = await _call_github(
+                        messages_payload,
+                        target_gh_model,
+                        request.temperature or 0.7,
+                        request.max_tokens or 4096,
+                        stream=False,
+                    )
                     if gh_data:
                         logger.info(f"✅ GitHub succeeded with {target_gh_model}")
                         return gh_data
@@ -1901,58 +2256,42 @@ async def chat_completions(request: ChatCompletionRequest):
                 logger.error(f"GitHub Models error on {target_gh_model}: {e}")
                 github_model_manager.rotate()
                 continue
-        
+
         # If we exhausted all GitHub models
-        logger.warning("All GitHub models failed, moving to Pollinations fallback")
+        logger.warning("All GitHub models failed, moving to Mistral fallback")
 
     # ==========================================
-    # 4. Try Pollinations.ai (Fallback 3)
-    # ==========================================
-    if POLLINATIONS_API_KEY:
-        try:
-            logger.info(f"Attempting Pollinations: Model={POLLINATIONS_MODEL}")
-            if request.stream:
-                pl_response = await _call_pollinations(messages_payload, POLLINATIONS_MODEL, request.temperature or 0.7, request.max_tokens or 2048, stream=True)
-                if pl_response.status_code == 200:
-                    logger.info(f"✅ Pollinations (stream) succeeded")
-                    return StreamingResponse(
-                        _stream_pollinations_response(pl_response, POLLINATIONS_MODEL),
-                        media_type="text/event-stream"
-                    )
-                else:
-                    error_body = await pl_response.aread()
-                    logger.warning(f"Pollinations failed with status {pl_response.status_code}: {error_body.decode()}")
-                    await pl_response.aclose()
-            else:
-                pl_data = await _call_pollinations(messages_payload, POLLINATIONS_MODEL, request.temperature or 0.7, request.max_tokens or 2048, stream=False)
-                if pl_data:
-                    logger.info("✅ Pollinations succeeded")
-                    return pl_data
-        except Exception as e:
-            logger.error(f"Pollinations AI error: {e}")
-        
-        logger.warning("Pollinations failed, moving to Mistral fallback")
-
-    # ==========================================
-    # 5. Try Mistral (Fallback 4)
+    # 6. Try Mistral (Fallback 5)
     # ==========================================
     if MISTRAL_API_KEY:
         try:
             logger.info(f"Attempting Mistral: Model={MISTRAL_MODEL}")
             if request.stream:
-                m_response = await _call_mistral(messages_payload, request.temperature or 0.7, request.max_tokens or 4096, stream=True)
+                m_response = await _call_mistral(
+                    messages_payload,
+                    request.temperature or 0.7,
+                    request.max_tokens or 4096,
+                    stream=True,
+                )
                 if m_response.status_code == 200:
                     logger.info("✅ Mistral (stream) succeeded")
                     return StreamingResponse(
                         _stream_mistral_response(m_response, MISTRAL_MODEL),
-                        media_type="text/event-stream"
+                        media_type="text/event-stream",
                     )
                 else:
                     error_body = await m_response.aread()
-                    logger.warning(f"Mistral failed with status {m_response.status_code}: {error_body.decode()}")
+                    logger.warning(
+                        f"Mistral failed with status {m_response.status_code}: {error_body.decode()}"
+                    )
                     await m_response.aclose()
             else:
-                m_data = await _call_mistral(messages_payload, request.temperature or 0.7, request.max_tokens or 4096, stream=False)
+                m_data = await _call_mistral(
+                    messages_payload,
+                    request.temperature or 0.7,
+                    request.max_tokens or 4096,
+                    stream=False,
+                )
                 if m_data:
                     logger.info("✅ Mistral succeeded")
                     return m_data
@@ -1961,29 +2300,43 @@ async def chat_completions(request: ChatCompletionRequest):
             # Continue to OpenRouter fallback
 
     # ==========================================
-    # 6. Try OpenRouter (Fallback 5)
+    # 7. Try OpenRouter (Fallback 6)
     # ==========================================
     if OPENROUTER_API_KEY:
         if not openrouter_usage_tracker.can_make_request():
             logger.warning("OpenRouter daily limit reached, skipping to next fallback")
         else:
             try:
-                logger.info(f"Attempting OpenRouter: Model={OPENROUTER_MODEL} (Usage: {openrouter_usage_tracker.count + 1}/{openrouter_usage_tracker.limit})")
+                logger.info(
+                    f"Attempting OpenRouter: Model={OPENROUTER_MODEL} (Usage: {openrouter_usage_tracker.count + 1}/{openrouter_usage_tracker.limit})"
+                )
                 if request.stream:
-                    or_response = await _call_openrouter(messages_payload, request.temperature or 0.7, request.max_tokens or 4096, stream=True)
+                    or_response = await _call_openrouter(
+                        messages_payload,
+                        request.temperature or 0.7,
+                        request.max_tokens or 4096,
+                        stream=True,
+                    )
                     if or_response.status_code == 200:
                         logger.info("✅ OpenRouter (stream) succeeded")
                         openrouter_usage_tracker.record_request()
                         return StreamingResponse(
                             _stream_openrouter_response(or_response, OPENROUTER_MODEL),
-                            media_type="text/event-stream"
+                            media_type="text/event-stream",
                         )
                     else:
                         error_body = await or_response.aread()
-                        logger.warning(f"OpenRouter failed with status {or_response.status_code}: {error_body.decode()}")
+                        logger.warning(
+                            f"OpenRouter failed with status {or_response.status_code}: {error_body.decode()}"
+                        )
                         await or_response.aclose()
                 else:
-                    or_data = await _call_openrouter(messages_payload, request.temperature or 0.7, request.max_tokens or 4096, stream=False)
+                    or_data = await _call_openrouter(
+                        messages_payload,
+                        request.temperature or 0.7,
+                        request.max_tokens or 4096,
+                        stream=False,
+                    )
                     if or_data:
                         logger.info("✅ OpenRouter succeeded")
                         openrouter_usage_tracker.record_request()
@@ -1991,12 +2344,12 @@ async def chat_completions(request: ChatCompletionRequest):
             except Exception as e:
                 logger.error(f"OpenRouter error: {e}")
                 # Continue to Groq fallback
-    
+
     # ==========================================
-    # 7. Try Groq (Fallback 6)
+    # 8. Try Groq (Fallback 7)
     # ==========================================
     logger.info("Falling back to Groq...")
-    
+
     # Determine fallback chain based on requested model
     if requested_model in GROQ_MODEL_FALLBACKS:
         model_chain = GROQ_MODEL_FALLBACKS[requested_model]
@@ -2009,41 +2362,49 @@ async def chat_completions(request: ChatCompletionRequest):
                 model_chain.insert(0, requested_model)
                 found = True
                 break
-        
+
         if not found:
-            logger.info(f"Requested model {requested_model} unknown, defaulting to llama-3.3-70b-versatile chain")
+            logger.info(
+                f"Requested model {requested_model} unknown, defaulting to llama-3.3-70b-versatile chain"
+            )
             model_chain = GROQ_MODEL_FALLBACKS["llama-3.3-70b-versatile"]
 
     if not groq_key_manager:
         logger.warning("Groq API keys not configured, jumping to local LLM fallback")
     else:
         last_exception = None
-        
+
         # Try models in fallback chain
         for model_index, target_model in enumerate(model_chain):
-            logger.info(f"Trying Groq Model [{model_index+1}/{len(model_chain)}]: '{target_model}'")
-            
+            logger.info(
+                f"Trying Groq Model [{model_index + 1}/{len(model_chain)}]: '{target_model}'"
+            )
+
             # Simple RPM-based throttling at 90%
             wait_time = rpm_throttler.get_wait_time(target_model)
             if wait_time > 0:
-                logger.info(f"RPM throttle: waiting {wait_time:.2f}s for model {target_model}")
+                logger.info(
+                    f"RPM throttle: waiting {wait_time:.2f}s for model {target_model}"
+                )
                 await asyncio.sleep(wait_time)
-            
+
             # Get current key
             try:
                 current_key, key_index = groq_key_manager.get_current_key()
             except ValueError as e:
                 logger.error(f"No Groq API keys available: {e}")
                 break
-            
+
             try:
-                logger.info(f"  > Attempting Groq: Model={target_model} | KeyIndex={key_index + 1}/{groq_key_manager.get_key_count()} | KeyPrefix={current_key[:8]}...")
-                
+                logger.info(
+                    f"  > Attempting Groq: Model={target_model} | KeyIndex={key_index + 1}/{groq_key_manager.get_key_count()} | KeyPrefix={current_key[:8]}..."
+                )
+
                 # Record request before making it
                 rpm_throttler.record_request(target_model)
-                
+
                 client = AsyncGroq(api_key=current_key, max_retries=0)
-                
+
                 completion = await client.chat.completions.create(
                     model=target_model,
                     messages=messages_payload,
@@ -2052,12 +2413,12 @@ async def chat_completions(request: ChatCompletionRequest):
                     top_p=0.95,
                     stream=request.stream,
                 )
-                
+
                 if request.stream:
                     logger.info("✅ Groq (stream) succeeded")
                     return StreamingResponse(
-                        _stream_groq_response(completion, target_model), 
-                        media_type="text/event-stream"
+                        _stream_groq_response(completion, target_model),
+                        media_type="text/event-stream",
                     )
                 else:
                     logger.info("✅ Groq succeeded")
@@ -2071,45 +2432,51 @@ async def chat_completions(request: ChatCompletionRequest):
                                 "index": 0,
                                 "message": {
                                     "role": "assistant",
-                                    "content": completion.choices[0].message.content
+                                    "content": completion.choices[0].message.content,
                                 },
-                                "finish_reason": completion.choices[0].finish_reason
+                                "finish_reason": completion.choices[0].finish_reason,
                             }
                         ],
                         "usage": {
                             "prompt_tokens": completion.usage.prompt_tokens,
                             "completion_tokens": completion.usage.completion_tokens,
-                            "total_tokens": completion.usage.total_tokens
-                        }
+                            "total_tokens": completion.usage.total_tokens,
+                        },
                     }
-                    
+
             except Exception as e:
                 error_str = str(e)
                 last_exception = e
-                
+
                 # Check for 413 Payload Too Large - fallback immediately
                 is_payload_too_large = (
-                    "413" in error_str or 
-                    "payload too large" in error_str.lower() or
-                    "request entity too large" in error_str.lower()
+                    "413" in error_str
+                    or "payload too large" in error_str.lower()
+                    or "request entity too large" in error_str.lower()
                 )
-                
+
                 if is_payload_too_large:
-                    logger.warning(f"Payload Too Large (413) on Groq. Jumping to local LLM...")
-                    break # Go to local LLM
-                
+                    logger.warning(
+                        f"Payload Too Large (413) on Groq. Jumping to local LLM..."
+                    )
+                    break  # Go to local LLM
+
                 # Rate limit - rotate key and try next model
                 is_rate_limit = "429" in error_str or "rate" in error_str.lower()
                 if is_rate_limit:
-                    logger.warning(f"Rate Limit (429) on Groq Model [{target_model}]. Rotating key and trying next model...")
+                    logger.warning(
+                        f"Rate Limit (429) on Groq Model [{target_model}]. Rotating key and trying next model..."
+                    )
                     groq_key_manager.rotate_key()
                     continue
-                
+
                 # Model not found - try next model
                 if "not found" in error_str.lower():
-                    logger.warning(f"Groq Model {target_model} not found. Trying next model...")
+                    logger.warning(
+                        f"Groq Model {target_model} not found. Trying next model..."
+                    )
                     continue
-                
+
                 # Other error - log and try next model
                 logger.error(f"Error on Groq {target_model}: {error_str}")
                 continue
@@ -2119,13 +2486,15 @@ async def chat_completions(request: ChatCompletionRequest):
     # ==========================================
     logger.info("Attempting Local LLM fallback...")
     try:
-        local_response = await _call_local_llm_fallback(messages_payload, request.temperature, request.max_tokens)
+        local_response = await _call_local_llm_fallback(
+            messages_payload, request.temperature, request.max_tokens
+        )
         if local_response:
             logger.info(f"✅ Local LLM fallback succeeded")
             if request.stream:
                 return StreamingResponse(
-                    _stream_single_response(local_response), 
-                    media_type="text/event-stream"
+                    _stream_single_response(local_response),
+                    media_type="text/event-stream",
                 )
             return local_response
     except Exception as local_err:
@@ -2133,8 +2502,8 @@ async def chat_completions(request: ChatCompletionRequest):
 
     # If all else fails
     raise HTTPException(
-        status_code=503, 
-        detail="All providers (SiliconFlow, GitHub, Pollinations, Mistral, OpenRouter, Groq, Local LLM) failed or are unavailable."
+        status_code=503,
+        detail="All providers (SiliconFlow, GitHub, Pollinations, Mistral, OpenRouter, Groq, Local LLM) failed or are unavailable.",
     )
 
 
@@ -2148,30 +2517,42 @@ async def get_groq_status():
         "rpm_throttler": rpm_throttler.get_status(),
         "openrouter_usage": openrouter_usage_tracker.get_status(),
         "providers": {
-            "siliconflow": {"configured": bool(SILICONFLOW_API_KEY), "model": SILICONFLOW_MODEL},
+            "siliconflow": {
+                "configured": bool(SILICONFLOW_API_KEY),
+                "model": SILICONFLOW_MODEL,
+            },
             "github": {
-                "configured": bool(GITHUB_TOKEN), 
+                "configured": bool(GITHUB_TOKEN),
                 "current_model": github_model_manager.get_current(),
-                "all_models": github_model_manager.get_all()
+                "all_models": github_model_manager.get_all(),
             },
             "pollinations": {
                 "configured": bool(POLLINATIONS_API_KEY),
-                "model": POLLINATIONS_MODEL
+                "model": POLLINATIONS_MODEL,
             },
             "mistral": {"configured": bool(MISTRAL_API_KEY), "model": MISTRAL_MODEL},
-            "openrouter": {"configured": bool(OPENROUTER_API_KEY), "model": OPENROUTER_MODEL},
-            "movementlabs": {"configured": bool(MOVEMENTLABS_API_KEY), "model": MOVEMENTLABS_MODEL},
-            "groq": {"configured": bool(GROQ_API_KEYS), "keys_count": len(GROQ_API_KEYS)}
+            "openrouter": {
+                "configured": bool(OPENROUTER_API_KEY),
+                "model": OPENROUTER_MODEL,
+            },
+            "movementlabs": {
+                "configured": bool(MOVEMENTLABS_API_KEY),
+                "model": MOVEMENTLABS_MODEL,
+            },
+            "groq": {
+                "configured": bool(GROQ_API_KEYS),
+                "keys_count": len(GROQ_API_KEYS),
+            },
         },
         "groq_model_limits": {
             model: {
                 "rpm": limits["rpm"],
                 "rpd": limits["rpd"],
                 "tpm": limits["tpm"],
-                "tpd": limits["tpd"] or "unlimited"
+                "tpd": limits["tpd"] or "unlimited",
             }
             for model, limits in GROQ_MODEL_LIMITS.items()
-        }
+        },
     }
 
 
@@ -2180,8 +2561,10 @@ async def get_groq_health():
     """Get quick health summary of Groq API usage."""
     return {
         "status": "healthy",
-        "available_keys": groq_key_manager.get_available_key_count() if groq_key_manager else 0,
-        "rpm_status": rpm_throttler.get_status()
+        "available_keys": groq_key_manager.get_available_key_count()
+        if groq_key_manager
+        else 0,
+        "rpm_status": rpm_throttler.get_status(),
     }
 
 
@@ -2189,4 +2572,3 @@ if __name__ == "__main__":
     import uvicorn
 
     uvicorn.run(app, host="0.0.0.0", port=8000)
-
