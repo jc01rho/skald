@@ -15,12 +15,13 @@ import {
     GEMINI_API_KEY,
     ZAI_API_KEY,
     ZAI_MODEL,
+    POLLINATIONS_BASE_URL,
 } from '../settings'
 import { DEFAULT_LLM_MODELS } from '@/llmModels'
 
 interface GetLLMParams {
     temperature?: number
-    providerOverride?: 'openai' | 'anthropic' | 'local' | 'groq' | 'gemini' | 'zai'
+    providerOverride?: 'openai' | 'anthropic' | 'local' | 'groq' | 'gemini' | 'zai' | 'pollinations'
     purpose?: 'chat' | 'classification'
 }
 
@@ -74,10 +75,7 @@ export class LLMService {
             // Local LLM with OpenAI-compatible API
             // Works with: Ollama, LM Studio, vLLM, LocalAI, etc.
             return new ChatOpenAI({
-                model:
-                    purpose === 'chat'
-                        ? LOCAL_LLM_CHAT_MODEL
-                        : LOCAL_LLM_CLASSIFICATION_MODEL,
+                model: purpose === 'chat' ? LOCAL_LLM_CHAT_MODEL : LOCAL_LLM_CLASSIFICATION_MODEL,
                 configuration: {
                     baseURL: LOCAL_LLM_BASE_URL,
                 },
@@ -140,9 +138,20 @@ export class LLMService {
                 },
                 temperature,
             })
+        } else if (provider === 'pollinations') {
+            // Pollinations.ai with OpenAI-compatible API
+            // No API key required for Pollinations.ai (free tier)
+            return new ChatOpenAI({
+                model: POLLINATIONS_BASE_URL.includes('openai') ? 'openai' : 'pollinations',
+                apiKey: 'not-needed', // Pollinations.ai doesn't require API key
+                configuration: {
+                    baseURL: POLLINATIONS_BASE_URL,
+                },
+                temperature,
+            })
         } else {
             throw new Error(
-                `Unsupported LLM provider: ${provider}. Supported providers: openai, anthropic, local, groq, gemini, zai`
+                `Unsupported LLM provider: ${provider}. Supported providers: openai, anthropic, local, groq, gemini, zai, pollinations`
             )
         }
     }

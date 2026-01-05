@@ -8,11 +8,13 @@ import {
     GEMINI_API_KEY,
     ZAI_API_KEY,
     ZAI_MODEL,
+    POLLINATIONS_API_KEY,
+    POLLINATIONS_MODEL,
 } from '@/settings'
 import { DEFAULT_LLM_MODELS } from '@/llmModels'
 
 interface LLMProvider {
-    provider: 'openai' | 'anthropic' | 'groq' | 'local' | 'gemini' | 'zai'
+    provider: 'openai' | 'anthropic' | 'groq' | 'local' | 'gemini' | 'zai' | 'pollinations'
     label: string
     model: string
 }
@@ -54,6 +56,13 @@ if (ZAI_API_KEY) {
         provider: 'zai',
         label: 'Z.ai',
         model: ZAI_MODEL,
+    })
+}
+if (POLLINATIONS_API_KEY) {
+    AVAILABLE_LLM_PROVIDERS.push({
+        provider: 'pollinations',
+        label: 'Pollinations',
+        model: POLLINATIONS_MODEL,
     })
 }
 

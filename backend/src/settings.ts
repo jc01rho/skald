@@ -8,13 +8,13 @@ const logger = pino({
     transport:
         process.env.NODE_ENV === 'development'
             ? {
-                target: 'pino-pretty',
-                options: {
-                    colorize: true,
-                    translateTime: 'HH:MM:ss Z',
-                    ignore: 'pid,hostname',
-                },
-            }
+                  target: 'pino-pretty',
+                  options: {
+                      colorize: true,
+                      translateTime: 'HH:MM:ss Z',
+                      ignore: 'pid,hostname',
+                  },
+              }
             : undefined,
 })
 
@@ -99,6 +99,7 @@ export const LLM_PROVIDER = (process.env.LLM_PROVIDER || 'openai') as
     | 'groq'
     | 'gemini'
     | 'zai'
+    | 'pollinations'
 
 // OpenAI
 export const OPENAI_API_KEY = process.env.OPENAI_API_KEY
@@ -126,6 +127,11 @@ export const GEMINI_MODEL = process.env.GEMINI_MODEL || 'gemini-2.5-flash'
 // Z.ai (ChatGLM)
 export const ZAI_API_KEY = process.env.ZAI_API_KEY
 export const ZAI_MODEL = process.env.ZAI_MODEL || 'glm-4.7'
+
+// Pollinations
+export const POLLINATIONS_MODEL = process.env.POLLINATIONS_MODEL || 'openai'
+export const POLLINATIONS_BASE_URL =
+    process.env.POLLINATIONS_BASE_URL || 'https://gen.pollinations.ai/v1/chat/completions'
 
 // ---- Embedding Provider Configuration ----
 export const EMBEDDING_PROVIDER = process.env.EMBEDDING_PROVIDER || 'voyage'
