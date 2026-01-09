@@ -2,10 +2,12 @@ import { Project } from '@/entities/Project'
 import { getOptimizedChatHistory } from '@/lib/chatUtils'
 import { StateGraph, END } from '@langchain/langgraph'
 import { Annotation } from '@langchain/langgraph'
-import { rewrite } from './queryRewrite'
+import { rewrite, rewriteMultiQuery, generateHyDE, generateJiraHyDE } from './queryRewrite'
 import { MemoFilter } from '@/lib/filterUtils'
 import { EmbeddingService } from '@/services/embeddingService'
 import { memoChunkVectorSearch, MemoChunkWithDistance } from '@/embeddings/vectorSearch'
+import { HybridSearchService } from '@/embeddings/hybridSearch'
+import { QueryUnderstandingAgent, SearchStrategy } from '../queryUnderstandingAgent'
 import { getTitleAndSummaryAndContentForMemoList } from '@/queries/memo'
 import { RerankService } from '@/services/rerankService'
 import { CHAT_AGENT_INSTRUCTIONS, CHAT_AGENT_INSTRUCTIONS_WITH_SOURCES } from './prompts'
@@ -17,15 +19,18 @@ interface RerankResult {
     relevance_score: number
     memo_uuid?: string
     memo_title?: string
+    embedding?: number[] // Optional embedding for MMR diversity calculation
 }
 
 export interface RAGConfig {
-    llmProvider: 'openai' | 'anthropic' | 'local' | 'groq' | 'gemini' | 'zai'
+    llmProvider: 'cli-proxy-api'
     references: {
         enabled: boolean
     }
     queryRewrite: {
         enabled: boolean
+        multiQuery?: boolean
+        hydeEnabled?: boolean
     }
     vectorSearch: {
         topK: number
@@ -34,6 +39,11 @@ export interface RAGConfig {
     reranking: {
         enabled: boolean
         topK: number
+        mmrEnabled?: boolean
+        mmrLambda?: number
+    }
+    queryUnderstanding?: {
+        enabled: boolean
     }
 }
 
@@ -46,6 +56,7 @@ const RAGState = Annotation.Root({
     ragConfig: Annotation<RAGConfig>,
     chatId: Annotation<string | null>,
     conversationHistory: Annotation<Array<['human' | 'ai' | 'system', string]> | null>,
+    queryUnderstanding: Annotation<SearchStrategy | null>,
     rewrittenQuery: Annotation<string | null>,
     chunkResults: Annotation<MemoChunkWithDistance[] | null>,
     rerankedResults: Annotation<RerankResult[]>,
@@ -53,8 +64,6 @@ const RAGState = Annotation.Root({
     prompt: Annotation<ChatPromptTemplate>,
     contextStr: Annotation<string | null>,
 })
-
-export const CLOUD_LLM_PROVIDERS = ['openai', 'anthropic', 'groq', 'gemini']
 
 async function getChatHistoryNode(state: typeof RAGState.State) {
     const { chatId, project } = state
@@ -65,8 +74,22 @@ async function getChatHistoryNode(state: typeof RAGState.State) {
     return { conversationHistory }
 }
 
-async function queryRewriteNode(state: typeof RAGState.State) {
+async function queryUnderstandingNode(state: typeof RAGState.State) {
     const { query, conversationHistory, ragConfig } = state
+
+    if (!ragConfig.queryUnderstanding?.enabled) {
+        return { queryUnderstanding: null }
+    }
+
+    const context = (conversationHistory || []).map(([role, content]) => `${role}: ${content}`).join('\n')
+
+    const understanding = await QueryUnderstandingAgent.understandQuery(query, context)
+
+    return { queryUnderstanding: understanding }
+}
+
+async function queryRewriteNode(state: typeof RAGState.State) {
+    const { query, conversationHistory, queryUnderstanding, ragConfig } = state
 
     if (!ragConfig.queryRewrite.enabled) {
         return { rewrittenQuery: null }
@@ -89,20 +112,71 @@ async function queryRewriteNode(state: typeof RAGState.State) {
 }
 
 async function vectorSearchNode(state: typeof RAGState.State) {
-    const { rewrittenQuery, query, project, filters, ragConfig } = state
+    const { rewrittenQuery, query, project, filters, ragConfig, queryUnderstanding } = state
 
-    const searchQuery = rewrittenQuery || query
+    // Use dynamic search strategy from query understanding if available, otherwise use defaults
+    const strategy = queryUnderstanding || {
+        multiQuery: ragConfig.queryRewrite.multiQuery || false,
+        hyde: false,
+        jiraHyde: false,
+        topK: ragConfig.vectorSearch.topK,
+        rerank: ragConfig.reranking.enabled,
+        mmr: ragConfig.reranking.mmrEnabled || false,
+    }
 
-    const embeddingVector = await EmbeddingService.generateEmbedding(searchQuery, 'search')
-    const chunkResults = await memoChunkVectorSearch(
-        project,
-        embeddingVector,
-        ragConfig.vectorSearch.topK,
-        ragConfig.vectorSearch.similarityThreshold,
-        filters
+    const searchQueries: string[] = [rewrittenQuery || query]
+
+    // Add multi-query variations if enabled
+    if (strategy.multiQuery) {
+        const variants = await rewriteMultiQuery(query)
+        searchQueries.push(...variants)
+    }
+
+    // Add HyDE hypothetical document if enabled
+    if (strategy.hyde) {
+        const hypothetical = await generateHyDE(query)
+        if (hypothetical) {
+            searchQueries.push(hypothetical)
+        }
+    }
+
+    // Add Jira-specific HyDE if enabled
+    if (strategy.jiraHyde) {
+        const jiraHypothetical = await generateJiraHyDE(query)
+        if (jiraHypothetical) {
+            searchQueries.push(jiraHypothetical)
+        }
+    }
+
+    // Run vector searches in parallel for all queries
+    const allResults = await Promise.all(
+        searchQueries.map(async (searchQuery) => {
+            const embeddingVector = await EmbeddingService.generateEmbedding(searchQuery, 'search')
+            return memoChunkVectorSearch(
+                project,
+                embeddingVector,
+                strategy.topK,
+                ragConfig.vectorSearch.similarityThreshold,
+                filters,
+                true // Use enhanced ranking
+            )
+        })
     )
 
-    return { chunkResults }
+    // Deduplicate results by memo_uuid to avoid redundant chunks
+    const seenMemoUuids = new Set<string>()
+    const uniqueResults: MemoChunkWithDistance[] = []
+    for (const results of allResults) {
+        for (const result of results) {
+            const memoUuid = result.chunk.memo_uuid
+            if (!seenMemoUuids.has(memoUuid)) {
+                seenMemoUuids.add(memoUuid)
+                uniqueResults.push(result)
+            }
+        }
+    }
+
+    return { chunkResults: uniqueResults }
 }
 
 async function getMemoPropertiesNode(state: typeof RAGState.State) {
@@ -126,7 +200,7 @@ async function rerankNode(state: typeof RAGState.State) {
     }
 
     if (!ragConfig.reranking.enabled) {
-        // map chunks to rerank results
+        // map chunks to rerank results with embeddings for MMR
         const rerankedResults: RerankResult[] = []
         for (let i = 0; i < chunkResults.length; i++) {
             const chunk = chunkResults[i]
@@ -138,6 +212,7 @@ async function rerankNode(state: typeof RAGState.State) {
                 relevance_score: similarity,
                 memo_uuid: chunk.chunk.memo_uuid,
                 memo_title: memoPropertiesMap?.get(chunk.chunk.memo_uuid)?.title || '',
+                embedding: chunk.chunk.embedding as number[], // Pass embedding for MMR
             })
         }
         return { rerankedResults }
@@ -163,14 +238,23 @@ async function rerankNode(state: typeof RAGState.State) {
         })
     }
 
-    // split into batches of 25 to ensure we're under token limits for the reranker
-    // KLUDGE: this is hardcoded right now based on ~1k tokens per chunk and 32k token limit for the voyage reranker
+    // Dynamic batch size calculation based on reranker model
+    const VOYAGE_RERANK_MODEL = process.env.VOYAGE_RERANK_MODEL || 'rerank-2-lite'
+    const modelTokenLimits: Record<string, number> = {
+        'rerank-2-lite': 32000,
+        'rerank-2': 32000,
+        default: 16000,
+    }
+    const avgTokensPerChunk = 1000
+    const maxTokens = modelTokenLimits[VOYAGE_RERANK_MODEL] || modelTokenLimits['default']
+    const batchSize = Math.max(10, Math.min(50, Math.floor((maxTokens * 0.7) / avgTokensPerChunk)))
+
     const rerankDataBatches: string[][] = []
     const rerankMetadataBatches: Array<Array<{ memo_uuid: string; memo_title: string }>> = []
 
-    for (let i = 0; i < rerankData.length; i += 25) {
-        rerankDataBatches.push(rerankData.slice(i, i + 25))
-        rerankMetadataBatches.push(rerankMetadata.slice(i, i + 25))
+    for (let i = 0; i < rerankData.length; i += batchSize) {
+        rerankDataBatches.push(rerankData.slice(i, i + batchSize))
+        rerankMetadataBatches.push(rerankMetadata.slice(i, i + batchSize))
     }
 
     // rerank all batches concurrently using the processed query
@@ -180,9 +264,80 @@ async function rerankNode(state: typeof RAGState.State) {
         )
     ).flat()
 
-    // sort
+    // sort and add embeddings to results for MMR
     results.sort((a, b) => b.relevance_score - a.relevance_score)
-    return { rerankedResults: results.slice(0, ragConfig.reranking.topK) }
+    const resultsWithEmbeddings = results.map((result) => ({
+        ...result,
+        embedding: chunkResults[result.index]?.chunk.embedding as number[],
+    }))
+    return { rerankedResults: resultsWithEmbeddings.slice(0, ragConfig.reranking.topK) }
+}
+
+function cosineSimilarityEmbedding(vec1: number[], vec2: number[]): number {
+    // Calculate cosine similarity between two embedding vectors
+    const dot = vec1.reduce((sum, v, i) => sum + v * vec2[i], 0)
+    const norm1 = Math.sqrt(vec1.reduce((sum, v) => sum + v * v, 0))
+    const norm2 = Math.sqrt(vec2.reduce((sum, v) => sum + v * v, 0))
+    return norm1 && norm2 ? dot / (norm1 * norm2) : 0
+}
+
+function cosineSimilarity(doc1: string, doc2: string): number {
+    // Simple word overlap-based similarity for MMR (legacy fallback)
+    // In production, consider using TF-IDF or embeddings for better accuracy
+    const words1 = new Set(doc1.toLowerCase().split(/\s+/))
+    const words2 = new Set(doc2.toLowerCase().split(/\s+/))
+
+    const intersection = new Set([...words1].filter((x) => words2.has(x)))
+    const union = new Set([...words1, ...words2])
+
+    return union.size === 0 ? 0 : intersection.size / union.size
+}
+
+async function mmrNode(state: typeof RAGState.State) {
+    const { rerankedResults, ragConfig } = state
+
+    if (!ragConfig.reranking.mmrEnabled || rerankedResults.length < 2) {
+        return { rerankedResults }
+    }
+
+    const lambda = ragConfig.reranking.mmrLambda ?? 0.5
+    const selected: typeof rerankedResults = []
+    const remaining = [...rerankedResults]
+
+    // Greedy MMR algorithm with embedding-based diversity
+    while (selected.length < Math.min(rerankedResults.length, ragConfig.reranking.topK)) {
+        let bestIndex = 0
+        let bestScore = -Infinity
+
+        for (let i = 0; i < remaining.length; i++) {
+            const relevance = remaining[i].relevance_score
+
+            // Use embedding-based diversity if embeddings are available, otherwise fallback to word overlap
+            const diversity =
+                selected.length === 0
+                    ? 0
+                    : remaining[i].embedding && selected.every((s) => s.embedding)
+                      ? selected.reduce(
+                            (min, s) => Math.min(min, cosineSimilarityEmbedding(remaining[i].embedding!, s.embedding!)),
+                            Infinity
+                        )
+                      : selected.reduce(
+                            (min, s) => Math.min(min, cosineSimilarity(remaining[i].document, s.document)),
+                            Infinity
+                        )
+
+            const mmrScore = lambda * relevance - (1 - lambda) * diversity
+            if (mmrScore > bestScore) {
+                bestScore = mmrScore
+                bestIndex = i
+            }
+        }
+
+        selected.push(remaining[bestIndex])
+        remaining.splice(bestIndex, 1)
+    }
+
+    return { rerankedResults: selected }
 }
 
 function buildLLMInputsNode(state: typeof RAGState.State) {
@@ -199,7 +354,7 @@ function buildLLMInputsNode(state: typeof RAGState.State) {
         // escape curly braces in clientSystemPrompt so they're treated as literal text
         // langchain uses {{ and }} to escape braces
         const escapedPrompt = (clientSystemPrompt || '').replace(/{/g, '{{').replace(/}/g, '}}')
-        // append to main system prompt since multiple system messages are not allowed with gemini our claude
+        // append to main system prompt since multiple system messages are not allowed with cli-proxy-api
         systemPrompt += `\n\nAdditional instructions: ${escapedPrompt}`
     }
 
@@ -218,17 +373,21 @@ function buildLLMInputsNode(state: typeof RAGState.State) {
 // so we let the nodes themselves decide whether to run or not
 const ragGraphDefinition = new StateGraph(RAGState)
     .addNode('getChatHistory', getChatHistoryNode)
+    .addNode('queryUnderstanding', queryUnderstandingNode)
     .addNode('queryRewrite', queryRewriteNode)
     .addNode('vectorSearch', vectorSearchNode)
     .addNode('getMemoProperties', getMemoPropertiesNode)
     .addNode('rerank', rerankNode)
+    .addNode('mmr', mmrNode)
     .addNode('buildLLMInputs', buildLLMInputsNode)
     .addEdge('__start__', 'getChatHistory')
-    .addEdge('getChatHistory', 'queryRewrite')
+    .addEdge('getChatHistory', 'queryUnderstanding')
+    .addEdge('queryUnderstanding', 'queryRewrite')
     .addEdge('queryRewrite', 'vectorSearch')
     .addEdge('vectorSearch', 'getMemoProperties')
     .addEdge('getMemoProperties', 'rerank')
-    .addEdge('rerank', 'buildLLMInputs')
+    .addEdge('rerank', 'mmr')
+    .addEdge('mmr', 'buildLLMInputs')
     .addEdge('buildLLMInputs', END)
 
 export const ragGraph = ragGraphDefinition.compile()

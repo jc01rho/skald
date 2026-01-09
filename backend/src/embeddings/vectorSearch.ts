@@ -3,6 +3,8 @@ import { buildFilterConditions, MemoFilter } from '@/lib/filterUtils'
 import { DI } from '@/di'
 import { VECTOR_SEARCH_TOP_K } from '@/settings'
 import { Operator } from '@/lib/filterUtils'
+import { applyEnhancedRanking, RankedResult } from '@/lib/searchRanking'
+import { Memo } from '@/entities/Memo'
 
 export interface MemoChunkWithDistance {
     chunk: {
@@ -14,6 +16,16 @@ export interface MemoChunkWithDistance {
         project_uuid: string
     }
     distance: number
+}
+
+export interface MemoChunkWithDistanceAndScore extends MemoChunkWithDistance {
+    final_score: number
+    ranking_factors?: {
+        vector_similarity: number
+        recency_boost: number
+        metadata_boost: number
+        content_type_boost: number
+    }
 }
 
 interface FieldFilterDefinition {
@@ -54,14 +66,16 @@ export const filterByOperator: Record<Operator, FieldFilterDefinition> = {
 
 /**
  * Search for the most similar memo chunks using cosine distance with optional filtering
+ * Now includes enhanced ranking with metadata and temporal factors
  */
 export const memoChunkVectorSearch = async (
     project: Project,
     embeddingVector: number[],
     topK: number = VECTOR_SEARCH_TOP_K,
     similarityThreshold: number = 0.95,
-    filters?: MemoFilter[]
-): Promise<MemoChunkWithDistance[]> => {
+    filters?: MemoFilter[],
+    useEnhancedRanking: boolean = true
+): Promise<MemoChunkWithDistanceAndScore[]> => {
     const { whereConditions, params } = buildFilterConditions(filters)
     const allParams = [JSON.stringify(embeddingVector), JSON.stringify(embeddingVector), ...params]
 
@@ -77,19 +91,23 @@ export const memoChunkVectorSearch = async (
     const sql = `
         SELECT
             skald_memochunk.*,
-            (skald_memochunk.embedding <=> ?::vector) as distance
+            (skald_memochunk.embedding <=> ?::vector) as distance,
+            skald_memo.created_at,
+            skald_memo.updated_at,
+            skald_memo.title,
+            skald_memo.metadata
         FROM skald_memochunk
         JOIN skald_memo ON skald_memochunk.memo_id = skald_memo.uuid
         ${whereClause}
         ORDER BY distance
-        LIMIT ${topK}
+        LIMIT ${topK * 2}
     `
 
     try {
         const results = await DI.em.getConnection().execute<any[]>(sql, allParams)
 
         // Map results to MemoChunkWithDistance objects
-        return (
+        const basicResults =
             results?.map((row) => ({
                 chunk: {
                     uuid: row.uuid,
@@ -100,8 +118,62 @@ export const memoChunkVectorSearch = async (
                     project_uuid: row.project_id,
                 } as any,
                 distance: row.distance,
+                memo_info: {
+                    created_at: new Date(row.created_at),
+                    updated_at: new Date(row.updated_at),
+                    title: row.title,
+                    metadata: row.metadata,
+                },
             })) || []
-        )
+
+        // Apply enhanced ranking if enabled
+        if (useEnhancedRanking) {
+            const memosMap = new Map(
+                basicResults.map((r) => [
+                    r.chunk.memo_uuid,
+                    {
+                        uuid: r.chunk.memo_uuid,
+                        title: r.memo_info.title,
+                        created_at: r.memo_info.created_at,
+                        updated_at: r.memo_info.updated_at,
+                        metadata: r.memo_info.metadata,
+                    },
+                ])
+            )
+
+            const ranked = applyEnhancedRanking(
+                basicResults.map((r) => r.chunk),
+                basicResults.map((r) => r.distance),
+                memosMap
+            )
+
+            // Sort by final_score and return topK
+            return ranked
+                .sort((a, b) => b.final_score - a.final_score)
+                .slice(0, topK)
+                .map((r) => ({
+                    chunk: {
+                        uuid: r.uuid,
+                        chunk_content: r.chunk_content,
+                        chunk_index: 0, // Will be set from chunk
+                        embedding: [],
+                        memo_uuid: r.memo_uuid,
+                        project_uuid: '',
+                    } as any,
+                    distance: r.distance,
+                    final_score: r.final_score,
+                    ranking_factors: r.ranking_factors,
+                }))
+        }
+
+        // Fallback to basic results without enhanced ranking
+        return basicResults
+            .map((r) => ({
+                chunk: r.chunk,
+                distance: r.distance,
+                final_score: Math.max(0, Math.min(1, 1 - r.distance / 2)),
+            }))
+            .slice(0, topK)
     } catch (error) {
         throw new Error(`Vector search error: ${error}`)
     }

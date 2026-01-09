@@ -1,0 +1,30 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+    name: skald-worker-config
+    namespace: skald
+    labels:
+        app: skald-worker
+data:
+    # Skald API Configuration
+    SKALD_BASE_URL: 'http://skald-backend:3000'
+    SKALD_PROJECT_ID: ''
+
+    # Jira Configuration
+    JIRA_JQL_FILTER: 'updated >= -1d ORDER BY updated DESC'
+    JIRA_POLL_INTERVAL_MINUTES: '10'
+    JIRA_ENABLED: 'true'
+    JIRA_URL: ''
+
+    # Docs Configuration
+    DOCS_POLL_INTERVAL_MINUTES: '30'
+    DOCS_ENABLED: 'true'
+
+    # Worker Configuration
+    WORKER_CONCURRENCY: '4'
+    LOG_LEVEL: 'INFO'
+    LOG_FORMAT: 'json'
+
+    # Server Configuration
+    HOST: '0.0.0.0'
+    PORT: '8080'

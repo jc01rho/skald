@@ -37,49 +37,45 @@ The embedding service implements a multi-layer fallback system to ensure high av
                            │         └─────────┬───────────┘
                            │                   │ Fail
                            │                   ▼
-                           │         ┌─────────────────────┐
-                           │         │ 3. MovementLabs    │ ◄──── FALLBACK 2
-                           │         │ Model: hawk-max      │
-                           │         └─────────┬───────────┘
-                           │                   │ Fail
-                           │                   ▼
-                           │         ┌─────────────────────┐
-                           │         │4. GitHub Models    │ ◄──── FALLBACK 3
-                           │         │ Round-robin list:   │
-                           │         │ • DeepSeek-R1       │
-                           │         │ • grok-3-mini       │
-                           │         │ • grok-3           │
-                           │         │ • DeepSeek-V3-0324  │
-                           │         │ • gpt-4o-mini       │
-                           │         │ • o4-mini           │
-                           │         └─────────┬───────────┘
-                           │                   │ All models fail
-                           │                   ▼
-                           │         ┌─────────────────────┐
-                           │         │ 5. Mistral         │ ◄──── FALLBACK 4
+                            │                   │ Fail
+                            │                   ▼
+                            │         ┌─────────────────────┐
+                            │         │3. GitHub Models    │ ◄──── FALLBACK 2
+                            │         │ Round-robin list:   │
+                            │         │ • DeepSeek-R1       │
+                            │         │ • grok-3-mini       │
+                            │         │ • grok-3           │
+                            │         │ • DeepSeek-V3-0324  │
+                            │         │ • gpt-4o-mini       │
+                            │         │ • o4-mini           │
+                            │         └─────────┬───────────┘
+                            │                   │ All models fail
+                            │                   ▼
+                            │         ┌─────────────────────┐
+                            │         │ 4. Mistral         │ ◄──── FALLBACK 3
                            │         │ Model: mistral-medium │
-                           │         └─────────┬───────────┘
-                           │                   │ Fail
-                           │                   ▼
-                           │         ┌─────────────────────┐
-                           │         │6. OpenRouter       │ ◄──── FALLBACK 5
-                           │         │ Model: mimo-v2-flash │
-                           │         │ Limit: 800/day      │
-                           │         └─────────┬───────────┘
-                           │                   │ Fail/Over limit
-                           │                   ▼
-                           │         ┌─────────────────────┐
-                           │         │ 7. Groq            │ ◄──── FALLBACK 6
+│         └─────────┬───────────┘
+                            │                   │ Fail
+                            │                   ▼
+                            │         ┌─────────────────────┐
+                            │         │5. OpenRouter       │ ◄──── FALLBACK 4
+                            │         │ Model: mimo-v2-flash │
+                            │         │ Limit: 800/day      │
+                            │         └─────────┬───────────┘
+                            │                   │ Fail/Over limit
+                            │                   ▼
+                            │         ┌─────────────────────┐
+                            │         │ 6. Groq            │ ◄──── FALLBACK 5
                            │         │ Multi-model chain:  │
                            │         │ + RPM throttling     │
                            │         │ + Key rotation      │
                            │         └─────────┬───────────┘
-                           │                   │ All fail
-                           │                   ▼
-                           │         ┌─────────────────────┐
-                           │         │8. Local LLM        │ ◄──── FINAL FALLBACK
-                           │         │ Ollama endpoints    │
-                           │         └─────────┬───────────┘
+                            │                   │ All fail
+                            │                   ▼
+                            │         ┌─────────────────────┐
+                            │         │7. Local LLM        │ ◄──── FINAL FALLBACK
+                            │         │ Ollama endpoints    │
+                            │         └─────────┬───────────┘
                            │                   │ Fail
                            ▼                   ▼
                     ┌──────────────────────────────────────┐
@@ -124,7 +120,7 @@ Request → Pollinations (openai model)
 **Flow:**
 
 - If API key present → try request
-- On error → log and continue to MovementLabs (no retry)
+- On error → log and continue to GitHub Models (no retry)
 
 **Example Scenario:**
 
@@ -132,43 +128,31 @@ Request → Pollinations (openai model)
 Pollinations failed → SiliconFlow
   ├─ Success → Return response
   └─ Error (e.g., timeout)
-      └─ Try MovementLabs → [continues down chain]
-```
-
----
-
-### 3. MovementLabs (Fallback 2)
-
-**Model:** `hawk-max` (configurable)
-**Endpoint:** `https://api.movementlabs.ai/v1/chat/completions`
-
-**Flow:**
-
-- If API key present → try request
-- On error → log and continue to GitHub Models (no retry)
-
-**Example Scenario:**
-
-```
-SiliconFlow failed → MovementLabs
-  ├─ Success → Return response
-  └─ Error (e.g., 401 Unauthorized)
       └─ Try GitHub Models → [continues down chain]
 ```
 
+Pollinations failed → SiliconFlow
+├─ Success → Return response
+└─ Error (e.g., timeout)
+└─ Try GitHub Models → [continues down chain]
+
+```
+
 ---
 
-### 4. GitHub Models (Fallback 3)
+### 3. GitHub Models (Fallback 2)
 
 **Models (Round-robin):**
 
 ```
+
 deepseek/DeepSeek-R1
 xai/grok-3-mini
 xai/grok-3
 deepseek/DeepSeek-V3-0324
 openai/gpt-4o-mini
 openai/o4-mini
+
 ```
 
 **Endpoint:** `https://models.github.ai/inference/chat/completions`
@@ -186,14 +170,16 @@ openai/o4-mini
 **Example Scenario:**
 
 ```
-MovementLabs failed → GitHub Models
-  ├─ Try deepseek/DeepSeek-R1
-  │   ├─ 429 Rate Limit → Rotate to xai/grok-3-mini
-  │   ├─ Success → Return response (don't rotate)
-  │   └─ Error → Try xai/grok-3
-  └─ All 6 models tried and failed
-      └─ Try Mistral → [continues down chain]
-```
+
+SiliconFlow failed → GitHub Models
+├─ Try deepseek/DeepSeek-R1
+│ ├─ 429 Rate Limit → Rotate to xai/grok-3-mini
+│ ├─ Success → Return response (don't rotate)
+│ └─ Error → Try xai/grok-3
+└─ All 6 models tried and failed
+└─ Try Mistral → [continues down chain]
+
+````
 
 **Round-Robin State Management:**
 
@@ -208,11 +194,11 @@ github_model_manager.rotate()  # Moves to next: "xai/grok-3-mini"
 
 # On success:
 # Don't rotate, same model will be tried next time
-```
+````
 
 ---
 
-### 5. Mistral (Fallback 4)
+### 4. Mistral (Fallback 3)
 
 **Model:** `mistral-medium-latest` (configurable)
 **Endpoint:** `https://api.mistral.ai/v1/chat/completions`
@@ -233,7 +219,7 @@ GitHub Models all failed → Mistral
 
 ---
 
-### 6. OpenRouter (Fallback 5)
+### 5. OpenRouter (Fallback 4)
 
 **Model:** `xiaomi/mimo-v2-flash:free` (configurable)
 **Endpoint:** `https://openrouter.ai/api/v1/chat/completions`
@@ -261,7 +247,7 @@ Mistral failed → OpenRouter
 
 ---
 
-### 7. Groq (Fallback 6) - COMPLEX CHAIN
+### 6. Groq (Fallback 5) - COMPLEX CHAIN
 
 **Base Endpoint:** `https://api.groq.com/openai/v1/chat/completions`
 **Features:**
@@ -466,11 +452,7 @@ User Request: "Explain quantum computing"
    - Timeout after 30s
    - ↓
 
-3. MovementLabs (hawk-max)
-   - 401 Unauthorized
-   - ↓
-
-4. GitHub Models
+3. GitHub Models
    - Try deepseek/DeepSeek-R1 → 429 Rate Limit
    - Rotate → xai/grok-3-mini → 429 Rate Limit
    - Rotate → xai/grok-3 → 429 Rate Limit
@@ -480,16 +462,16 @@ User Request: "Explain quantum computing"
    - All models quota exhausted
    - ↓
 
-5. Mistral (mistral-medium)
+4. Mistral (mistral-medium)
    - 402 Payment Required (credits exhausted)
    - ↓
 
-6. OpenRouter (mimo-v2-flash:free)
+5. OpenRouter (mimo-v2-flash:free)
    - Check usage: 800/800
    - Daily limit reached
    - ↓
 
-7. Groq (llama-3.3-70b-versatile chain)
+6. Groq (llama-3.3-70b-versatile chain)
    - Try llama-3.3-70b-versatile with key #1 → 429
    - Rotate → key #2 → 429
    - Rotate → key #3 → 429
@@ -501,7 +483,7 @@ User Request: "Explain quantum computing"
    - All models exhausted
    - ↓
 
-8. Local LLM (ollama-kanana)
+7. Local LLM (ollama-kanana)
    - Try http://192.168.30.169:11434
    - Success!
    - Return response
@@ -524,11 +506,7 @@ POLLINATIONS_MODEL=openai
 SILICONFLOW_API_KEY=your_key
 SILICONFLOW_MODEL=nex-agi/DeepSeek-V3.1-Nex-N1
 
-# MovementLabs (Fallback 2)
-MOVEMENTLABS_API_KEY=your_key
-MOVEMENTLABS_MODEL=hawk-max
-
-# GitHub Models (Fallback 3)
+# GitHub Models (Fallback 2)
 GITHUB_TOKEN=ghp_xxxx
 GITHUB_MODELS=deepseek/DeepSeek-R1,xai/grok-3-mini,xai/grok-3,deepseek/DeepSeek-V3-0324,openai/gpt-4o-mini,openai/o4-mini
 
@@ -561,10 +539,10 @@ GROQ_API_KEYS=key1,key2,key3,key4,key5
 
 1. **Sequential Fallback**: Providers tried in fixed order, no skipping
 2. **Pollinations Cooldown**: 24-hour cooldown on any error prevents cascade
-3. **GitHub Round-Robin**: Rotates through 6 models on quota/rate-limit
-4. **OpenRouter Daily Limit**: 800 requests/day resets automatically
-5. **Groq Complexity**: Multi-level fallback (model → key → next model)
-6. **Final Fallback**: Local LLM is last resort
+3. **GitHub Round-Robin**: Rotates through 6 models on quota/rate-limit (Fallback 2)
+4. **OpenRouter Daily Limit**: 800 requests/day resets automatically (Fallback 4)
+5. **Groq Complexity**: Multi-level fallback (model → key → next model) (Fallback 5)
+6. **Final Fallback**: Local LLM is last resort (Fallback 6)
 7. **All Fail**: Returns 503 Service Unavailable
 
 This architecture ensures maximum availability while respecting rate limits and quotas across all providers.

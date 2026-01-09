@@ -71,12 +71,15 @@ if not GITHUB_MODELS:
 POLLINATIONS_API_KEY = os.getenv("POLLINATIONS_API_KEY", "")
 POLLINATIONS_MODEL = os.getenv("POLLINATIONS_MODEL", "openai")
 
-MOVEMENTLABS_API_KEY = os.getenv("MOVEMENTLABS_API_KEY", "")
-MOVEMENTLABS_MODEL = os.getenv("MOVEMENTLABS_MODEL", "hawk-max")
-
 # Z.ai LLM Provider
 ZAI_API_KEY = os.getenv("ZAI_API_KEY", "")
 ZAI_MODEL = os.getenv("ZAI_MODEL", "glm-4.7")
+
+# CLI Proxy API (OpenAI-compatible with multi-model support)
+CLI_PROXY_API_KEY = os.getenv("CLI_PROXY_API_KEY", "")
+CLI_PROXY_BASE_URL = os.getenv("CLI_PROXY_BASE_URL", "http://REDACTED_HOST:8317/v1")
+CLI_PROXY_MODELS_STR = os.getenv("CLI_PROXY_MODELS", "default")
+CLI_PROXY_MODELS = [m.strip() for m in CLI_PROXY_MODELS_STR.split(",") if m.strip()]
 
 # OPENROUTER_API_KEY removed as per user request
 # External embedding service URL (e.g., vLLM, TGI, or custom embedding server)
@@ -247,6 +250,7 @@ class RoundRobinManager:
 
 
 github_model_manager = RoundRobinManager(GITHUB_MODELS, name="GitHub Models")
+cli_proxy_model_manager = RoundRobinManager(CLI_PROXY_MODELS, name="CLI Proxy Models")
 # pollinations_model_manager removed to disable round-robin
 
 
@@ -1622,59 +1626,6 @@ async def _call_siliconflow(
         return response.json()
 
 
-async def _call_movementlabs(
-    messages: list[dict],
-    temperature: float = 0.7,
-    max_tokens: int = 4096,
-    stream: bool = False,
-):
-    if not MOVEMENTLABS_API_KEY:
-        return None
-
-    url = "https://api.movementlabs.ai/v1/chat/completions"
-    headers = {
-        "Authorization": f"Bearer {MOVEMENTLABS_API_KEY}",
-        "Content-Type": "application/json",
-    }
-
-    payload = {
-        "model": MOVEMENTLABS_MODEL,
-        "messages": messages,
-        "temperature": temperature,
-        "max_tokens": max_tokens,
-        "stream": stream,
-    }
-
-    if stream:
-        return await global_httpx_client.post(url, json=payload, headers=headers)
-    else:
-        response = await global_httpx_client.post(url, json=payload, headers=headers)
-        response.raise_for_status()
-        return response.json()
-
-
-async def _stream_movementlabs_response(response, model_name):
-    """
-    Stream Movement Labs API response in OpenAI format.
-    """
-    try:
-        async for line in response.aiter_lines():
-            if not line.strip():
-                continue
-            if line.startswith("data: "):
-                data_str = line[6:].strip()
-                if data_str == "[DONE]":
-                    yield "data: [DONE]\n\n"
-                    break
-
-                yield f"data: {data_str}\n\n"
-    except Exception as e:
-        logger.error(f"Error during Movement Labs streaming: {e}")
-        yield f"data: {json.dumps({'error': str(e)})}\n\n"
-    finally:
-        await response.aclose()
-
-
 async def _stream_siliconflow_response(response, model_name):
     """
     Stream SiliconFlow API response in OpenAI format.
@@ -1837,11 +1788,66 @@ async def _call_mistral(
     }
 
     if stream:
+return await global_httpx_client.post(url, json=payload, headers=headers)
+    else:
+        response = await global_httpx_client.post(url, json=payload, headers=headers)
+        response.raise_for_status()
+        return response.json()
+
+
+async def _call_cli_proxy(
+    messages: list[dict],
+    model: str,
+    temperature: float = 0.7,
+    max_tokens: int = 4096,
+    stream: bool = False,
+):
+    """Call CLI Proxy API (OpenAI-compatible)."""
+    if not CLI_PROXY_API_KEY:
+        return None
+
+    url = f"{CLI_PROXY_BASE_URL}/chat/completions"
+    headers = {
+        "Authorization": f"Bearer {CLI_PROXY_API_KEY}",
+        "Content-Type": "application/json",
+    }
+
+    payload = {
+        "model": model,
+        "messages": messages,
+        "temperature": temperature,
+        "max_tokens": max_tokens,
+        "stream": stream,
+    }
+
+    if stream:
         return await global_httpx_client.post(url, json=payload, headers=headers)
     else:
         response = await global_httpx_client.post(url, json=payload, headers=headers)
         response.raise_for_status()
         return response.json()
+
+
+async def _stream_cli_proxy_response(response, model_name):
+    """
+    Stream CLI Proxy API response in OpenAI format.
+    """
+    try:
+        async for line in response.aiter_lines():
+            if not line.strip():
+                continue
+            if line.startswith("data: "):
+                data_str = line[6:].strip()
+                if data_str == "[DONE]":
+                    yield "data: [DONE]\n\n"
+                    break
+
+                yield f"data: {data_str}\n\n"
+    except Exception as e:
+        logger.error(f"Error during CLI Proxy streaming: {e}")
+        yield f"data: {json.dumps({'error': str(e)})}\n\n"
+    finally:
+        await response.aclose()
 
 
 async def _stream_mistral_response(response, model_name):
@@ -1978,12 +1984,12 @@ async def _stream_pollinations_response(response, model_name):
 @app.post("/v1/chat/completions")
 async def chat_completions(request: ChatCompletionRequest):
     """
-    OpenAI-compatible chat completion endpoint.
+OpenAI-compatible chat completion endpoint.
     Primary: Pollinations.ai (openai-fast)
     Fallback 1: SiliconFlow (DeepSeek-V3)
-    Fallback 2: MovementLabs (hawk-max)
-    Fallback 3: GitHub (DeepSeek-V3 Round-Robin)
-    Fallback 4: Mistral (Mistral Medium)
+    Fallback 2: GitHub (DeepSeek-R1 Round-Robin)
+    Fallback 3: Mistral (Mistral Medium)
+    Fallback 4: CLI Proxy API (Multi-model Round-Robin)
     Fallback 5: OpenRouter (Xiaomi Mimo-V2-Flash)
     Fallback 6: Groq (llama-3.3-70b/70b-versatile etc)
     Fallback 7: Local LLM (ollama)
@@ -2144,52 +2150,13 @@ async def chat_completions(request: ChatCompletionRequest):
                 )
                 if sf_data:
                     logger.info("✅ SiliconFlow succeeded")
-                    return sf_data
+return sf_data
         except Exception as e:
             logger.error(f"SiliconFlow error: {e}")
-            # Continue to MovementLabs fallback
-
-    # ==========================================
-    # 3. Try MovementLabs (Fallback 2)
-    # ==========================================
-    if MOVEMENTLABS_API_KEY:
-        try:
-            logger.info(f"Attempting MovementLabs: Model={MOVEMENTLABS_MODEL}")
-            if request.stream:
-                ml_response = await _call_movementlabs(
-                    messages_payload,
-                    request.temperature or 0.7,
-                    request.max_tokens or 4096,
-                    stream=True,
-                )
-                if ml_response.status_code == 200:
-                    logger.info("✅ MovementLabs (stream) succeeded")
-                    return StreamingResponse(
-                        _stream_movementlabs_response(ml_response, MOVEMENTLABS_MODEL),
-                        media_type="text/event-stream",
-                    )
-                else:
-                    error_body = await ml_response.aread()
-                    logger.warning(
-                        f"MovementLabs failed with status {ml_response.status_code}: {error_body.decode()}"
-                    )
-                    await ml_response.aclose()
-            else:
-                ml_data = await _call_movementlabs(
-                    messages_payload,
-                    request.temperature or 0.7,
-                    request.max_tokens or 4096,
-                    stream=False,
-                )
-                if ml_data:
-                    logger.info("✅ MovementLabs succeeded")
-                    return ml_data
-        except Exception as e:
-            logger.error(f"MovementLabs error: {e}")
             # Continue to GitHub fallback
 
     # ==========================================
-    # 4. Try GitHub (Fallback 3)
+    # 3. Try GitHub (Fallback 2)
     # ==========================================
     if GITHUB_TOKEN and GITHUB_MODELS:
         # Try models in GitHub list
@@ -2296,11 +2263,76 @@ async def chat_completions(request: ChatCompletionRequest):
                     logger.info("✅ Mistral succeeded")
                     return m_data
         except Exception as e:
-            logger.error(f"Mistral error: {e}")
-            # Continue to OpenRouter fallback
+logger.error(f"Mistral error: {e}")
+            # Continue to CLI Proxy fallback
 
     # ==========================================
-    # 7. Try OpenRouter (Fallback 6)
+    # 5. Try CLI Proxy (Fallback 4)
+    # ==========================================
+    if CLI_PROXY_API_KEY and CLI_PROXY_MODELS:
+        # Try models in CLI Proxy list
+        all_cp_models = cli_proxy_model_manager.get_all()
+        start_model = cli_proxy_model_manager.get_current()
+        start_idx = all_cp_models.index(start_model)
+
+        # We try all models starting from current index
+        for i in range(len(all_cp_models)):
+            current_idx = (start_idx + i) % len(all_cp_models)
+            target_cp_model = all_cp_models[current_idx]
+
+            try:
+                logger.info(
+                    f"Attempting CLI Proxy [{i + 1}/{len(all_cp_models)}]: Model={target_cp_model}"
+                )
+                if request.stream:
+                    cp_response = await _call_cli_proxy(
+                        messages_payload,
+                        target_cp_model,
+                        request.temperature or 0.7,
+                        request.max_tokens or 4096,
+                        stream=True,
+                    )
+                    if cp_response.status_code == 200:
+                        logger.info(f"✅ CLI Proxy (stream) succeeded with {target_cp_model}")
+                        return StreamingResponse(
+                            _stream_cli_proxy_response(cp_response, target_cp_model),
+                            media_type="text/event-stream",
+                        )
+                    else:
+                        error_body = await cp_response.aread()
+                        logger.warning(
+                            f"CLI Proxy model {target_cp_model} failed ({cp_response.status_code}): {error_body.decode()}"
+                        )
+                        await cp_response.aclose()
+                        # If quota/rate limit, rotate and try next CLI Proxy model
+                        if cp_response.status_code in [429, 402]:
+                            cli_proxy_model_manager.rotate()
+                            logger.info(f"Rotated to next CLI Proxy model due to rate limit/quota")
+                            continue
+                        # Other error, move on to OpenRouter fallback entirely?
+                        break
+                else:
+                    cp_data = await _call_cli_proxy(
+                        messages_payload,
+                        target_cp_model,
+                        request.temperature or 0.7,
+                        request.max_tokens or 4096,
+                        stream=False,
+                    )
+                    if cp_data:
+                        logger.info(f"✅ CLI Proxy succeeded with {target_cp_model}")
+                        return cp_data
+                    # If empty response, rotate and try next model
+                    cli_proxy_model_manager.rotate()
+            except Exception as e:
+                logger.error(f"CLI Proxy error on {target_cp_model}: {e}")
+                # Continue to next model or OpenRouter fallback
+        
+        # If we exhausted all CLI Proxy models
+        logger.warning("All CLI Proxy models failed, moving to OpenRouter fallback")
+    
+    # ==========================================
+    # 6. Try OpenRouter (Fallback 5)
     # ==========================================
     if OPENROUTER_API_KEY:
         if not openrouter_usage_tracker.can_make_request():
@@ -2531,13 +2563,9 @@ async def get_groq_status():
                 "model": POLLINATIONS_MODEL,
             },
             "mistral": {"configured": bool(MISTRAL_API_KEY), "model": MISTRAL_MODEL},
-            "openrouter": {
+"openrouter": {
                 "configured": bool(OPENROUTER_API_KEY),
                 "model": OPENROUTER_MODEL,
-            },
-            "movementlabs": {
-                "configured": bool(MOVEMENTLABS_API_KEY),
-                "model": MOVEMENTLABS_MODEL,
             },
             "groq": {
                 "configured": bool(GROQ_API_KEYS),

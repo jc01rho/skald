@@ -1,8 +1,11 @@
-# KUBERNETES DEPLOYMENTS
+# KUBERNETES DEPLOYMENT
+
+**Generated:** 2026-01-10
+**Domain:** Infrastructure (Score 15)
 
 ## OVERVIEW
 
-Kubernetes manifests for all Skald services (API, UI, DB, Redis, RabbitMQ, embeddings).
+Kubernetes manifests for deploying Skald services (API, UI, DB, Redis, RabbitMQ, embeddings).
 
 ## WHERE TO LOOK
 

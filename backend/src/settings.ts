@@ -92,62 +92,42 @@ export const AWS_SECRET_ACCESS_KEY = process.env.AWS_SECRET_ACCESS_KEY
 export const S3_BUCKET_NAME = process.env.S3_BUCKET_NAME
 
 // ---- LLM Configuration ----
-export const LLM_PROVIDER = (process.env.LLM_PROVIDER || 'openai') as
-    | 'openai'
-    | 'anthropic'
-    | 'local'
-    | 'groq'
-    | 'gemini'
-    | 'zai'
-    | 'pollinations'
+export const LLM_PROVIDER = process.env.LLM_PROVIDER || 'cli-proxy-api'
 
-// OpenAI
-export const OPENAI_API_KEY = process.env.OPENAI_API_KEY
-export const OPENAI_MODEL = process.env.OPENAI_MODEL || 'gpt-4o-mini'
+// CLI Proxy API (only supported LLM provider)
+export const CLI_PROXY_API_KEY = process.env.CLI_PROXY_API_KEY
+export const CLI_PROXY_API_BASE_URL = process.env.CLI_PROXY_API_BASE_URL || 'http://REDACTED_HOST:8317/v1'
+export const CLI_PROXY_API_MODEL = process.env.CLI_PROXY_API_MODEL || 'deepseek-v3.2-reasoner'
 
-// Anthropic
-export const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY
-export const ANTHROPIC_MODEL = process.env.ANTHROPIC_MODEL || 'claude-sonnet-4-5-20250929'
+// Validation of LLM provider configuration on startup
+export const SUPPORTED_LLM_PROVIDERS = ['cli-proxy-api']
+if (!SUPPORTED_LLM_PROVIDERS.includes(LLM_PROVIDER)) {
+    throw new Error(`Invalid LLM_PROVIDER: ${LLM_PROVIDER}. Supported: ${SUPPORTED_LLM_PROVIDERS.join(', ')}`)
+}
 
-// Local LLM
-export const LOCAL_LLM_MODEL = process.env.LOCAL_LLM_MODEL || 'llama-3.1-8b-instruct'
-export const LOCAL_LLM_CHAT_MODEL = process.env.LOCAL_LLM_CHAT_MODEL || LOCAL_LLM_MODEL
-export const LOCAL_LLM_CLASSIFICATION_MODEL = process.env.LOCAL_LLM_CLASSIFICATION_MODEL || LOCAL_LLM_MODEL
-export const LOCAL_LLM_BASE_URL = process.env.LOCAL_LLM_BASE_URL
-export const LOCAL_LLM_API_KEY = process.env.LOCAL_LLM_API_KEY || 'not-needed'
-
-// Groq
-export const GROQ_API_KEY = process.env.GROQ_API_KEY
-export const GROQ_MODEL = process.env.GROQ_MODEL || 'llama-3.1-8b-instant'
-
-// Gemini
-export const GEMINI_API_KEY = process.env.GEMINI_API_KEY
-export const GEMINI_MODEL = process.env.GEMINI_MODEL || 'gemini-2.5-flash'
-
-// Z.ai (ChatGLM)
-export const ZAI_API_KEY = process.env.ZAI_API_KEY
-export const ZAI_MODEL = process.env.ZAI_MODEL || 'glm-4.7'
-
-// Pollinations
-export const POLLINATIONS_MODEL = process.env.POLLINATIONS_MODEL || 'openai'
-export const POLLINATIONS_BASE_URL =
-    process.env.POLLINATIONS_BASE_URL || 'https://gen.pollinations.ai/v1/chat/completions'
+// Warn if LLM provider API key is missing
+if (!IS_DEVELOPMENT && LLM_PROVIDER === 'cli-proxy-api' && !CLI_PROXY_API_KEY) {
+    logger.warn('CLI_PROXY_API_KEY not set in production')
+}
 
 // ---- Embedding Provider Configuration ----
-export const EMBEDDING_PROVIDER = process.env.EMBEDDING_PROVIDER || 'voyage'
+// NOTE: Embedding is now hardcoded to use internal endpoint (192.168.150.37:8889)
+// EMBEDDING_PROVIDER is kept for backward compatibility but no longer used
+export const EMBEDDING_PROVIDER = process.env.EMBEDDING_PROVIDER || 'internal'
 
 // ---- Reranking Configuration ----
-const DEFAULT_RERANKING_PROVIDER = EMBEDDING_PROVIDER === 'voyage' ? 'voyage' : 'local'
-export const RERANKING_PROVIDER = process.env.RERANKING_PROVIDER || DEFAULT_RERANKING_PROVIDER
+// NOTE: Reranking is now hardcoded to use internal endpoint (192.168.150.37)
+// RERANKING_PROVIDER is kept for backward compatibility but no longer used
+export const RERANKING_PROVIDER = process.env.RERANKING_PROVIDER || 'internal'
 
-// Voyage AI
+// Voyage AI (kept for backward compatibility, no longer used)
 export const VOYAGE_API_KEY = process.env.VOYAGE_API_KEY
 export const VOYAGE_EMBEDDING_MODEL = process.env.VOYAGE_EMBEDDING_MODEL || 'voyage-3-large'
 
-// OpenAI
+// OpenAI (kept for backward compatibility, no longer used for embedding)
 export const OPENAI_EMBEDDING_MODEL = process.env.OPENAI_EMBEDDING_MODEL || 'text-embedding-3-large'
 
-// Local
+// Local (kept for backward compatibility, no longer used)
 export const EMBEDDING_SERVICE_URL = process.env.EMBEDDING_SERVICE_URL || 'http://localhost:8001'
 
 // Constants
@@ -155,42 +135,7 @@ export const EMBEDDING_VECTOR_DIMENSION = 2048
 export const VECTOR_SEARCH_TOP_K = parseInt(process.env.VECTOR_SEARCH_TOP_K || '100')
 export const POST_RERANK_TOP_K = parseInt(process.env.POST_RERANK_TOP_K || '50')
 
-// Validation of LLM and embedding provider configuration on startup
-export const SUPPORTED_LLM_PROVIDERS = ['openai', 'anthropic', 'local', 'groq', 'gemini', 'zai']
-if (!SUPPORTED_LLM_PROVIDERS.includes(LLM_PROVIDER)) {
-    throw new Error(`Invalid LLM_PROVIDER: ${LLM_PROVIDER}. Supported: ${SUPPORTED_LLM_PROVIDERS.join(', ')}`)
-}
-
-const SUPPORTED_EMBEDDING_PROVIDERS = ['voyage', 'openai', 'local']
-if (!SUPPORTED_EMBEDDING_PROVIDERS.includes(EMBEDDING_PROVIDER)) {
-    throw new Error(
-        `Invalid EMBEDDING_PROVIDER: ${EMBEDDING_PROVIDER}. Supported: ${SUPPORTED_EMBEDDING_PROVIDERS.join(', ')}`
-    )
-}
-
-// Warn if LLM provider API keys are missing
-if (!IS_DEVELOPMENT && LLM_PROVIDER === 'openai' && !OPENAI_API_KEY) {
-    logger.warn('OPENAI_API_KEY not set in production')
-} else if (!IS_DEVELOPMENT && LLM_PROVIDER === 'anthropic' && !ANTHROPIC_API_KEY) {
-    logger.warn('ANTHROPIC_API_KEY not set in production')
-} else if (!IS_DEVELOPMENT && LLM_PROVIDER === 'local' && !LOCAL_LLM_BASE_URL) {
-    logger.warn('LOCAL_LLM_BASE_URL not set for local provider')
-} else if (!IS_DEVELOPMENT && LLM_PROVIDER === 'groq' && !GROQ_API_KEY) {
-    logger.warn('GROQ_API_KEY not set in production')
-} else if (!IS_DEVELOPMENT && LLM_PROVIDER === 'gemini' && !GEMINI_API_KEY) {
-    logger.warn('GEMINI_API_KEY not set in production')
-} else if (!IS_DEVELOPMENT && LLM_PROVIDER === 'zai' && !ZAI_API_KEY) {
-    logger.warn('ZAI_API_KEY not set in production')
-}
-
-// Warn if embedding provider API keys are missing
-if (!IS_DEVELOPMENT && EMBEDDING_PROVIDER === 'voyage' && !VOYAGE_API_KEY) {
-    logger.warn('VOYAGE_API_KEY not set in production')
-} else if (!IS_DEVELOPMENT && EMBEDDING_PROVIDER === 'openai' && !OPENAI_API_KEY) {
-    logger.warn('OPENAI_API_KEY not set for embedding provider in production')
-} else if (!IS_DEVELOPMENT && EMBEDDING_PROVIDER === 'local' && !EMBEDDING_SERVICE_URL) {
-    logger.warn('EMBEDDING_SERVICE_URL not set for local provider')
-}
+// NOTE: Embedding/Reranking provider validation removed - now using hardcoded internal endpoints
 
 export const SENTRY_DSN = process.env.SENTRY_DSN
 
