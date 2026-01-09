@@ -1,8 +1,11 @@
 # FRONTEND STATE MANAGEMENT
 
+**Generated:** 2026-01-10
+**Domain:** State Management (Score 15)
+
 ## OVERVIEW
 
-Zustand stores for all global application state.
+Zustand stores for frontend state management, organized by domain.
 
 ## WHERE TO LOOK
 
@@ -24,13 +27,14 @@ Zustand stores for all global application state.
 
 ```typescript
 import { create } from 'zustand'
+
 interface State {
-  state: Type
-  action: () => Promise<void>
+    state: Type
+    action: () => Promise<void>
 }
 export const useStore = create<State>((set) => ({
-  state: initial,
-  action: async () => { ... }
+    state: initial,
+    action: async () => { ... }
 }))
 ```
 
@@ -63,7 +67,7 @@ firstLoad: boolean // Track initial state
 
 ## ANTI-PATTERNS
 
-- NEVER use useState for shared state
+- NEVER use `useState` for shared state - use Zustand stores
+- NEVER put business logic in stores - keep them minimal
+- NEVER access store state directly from other stores - use selectors
 - NEVER make API calls directly in components (use store actions)
-- NEVER nest state objects deeply
-- NEVER skip PostHog tracking in auth store

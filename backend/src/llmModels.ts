@@ -1,64 +1,84 @@
 export const SUPPORTED_LLM_MODELS = {
-    openai: {
-        'gpt-4o-mini': { slug: 'gpt-4o-mini', name: 'GPT-4o Mini' },
-        'gpt-5-nano': { slug: 'gpt-5-nano', name: 'GPT-5 Nano' },
-    },
-    anthropic: {
-        'claude-haiku-4-5-20251001': { slug: 'claude-haiku-4-5-20251001', name: 'Claude Haiku 4.5' },
-        'claude-sonnet-4-5-20250929': { slug: 'claude-sonnet-4-5-20250929', name: 'Claude Sonnet 4.5' },
-    },
-    gemini: {
-        'gemini-2.5-flash': { slug: 'gemini-2.5-flash', name: 'Gemini 2.5 Flash' },
+    'cli-proxy-api': {
+        // ========================================
+        // Available Models (26 working models)
+        // Listed in priority order as specified
+        // ========================================
+        'glm-4.7': { slug: 'glm-4.7', name: 'GLM 4.7' },
+        'deepseek-v3.2-reasoner': { slug: 'deepseek-v3.2-reasoner', name: 'DeepSeek V3.2 Reasoner' },
         'gemini-2.5-pro': { slug: 'gemini-2.5-pro', name: 'Gemini 2.5 Pro' },
-    },
-    groq: {
-        'llama-3.1-8b-instant': { slug: 'llama-3.1-8b-instant', name: 'Llama 3.1 8B Instant' },
-        'llama-3.3-70b-versatile': { slug: 'llama-3.3-70b-versatile', name: 'Llama 3.3 70B Versatile' },
-        'qwen/qwen3-32b': { slug: 'qwen/qwen3-32b', name: 'Qwen 3 32B' },
-        'moonshotai/kimi-k2-instruct': { slug: 'moonshotai/kimi-k2-instruct', name: 'Kimi K2 Instruct' },
-        'openai/gpt-oss-120b': { slug: 'openai/gpt-oss-120b', name: 'GPT OSS 120B' },
-        'groq/compound': { slug: 'groq/compound', name: 'Groq Compound' },
-        'moonshotai/kimi-k2-instruct-0905': { slug: 'moonshotai/kimi-k2-instruct-0905', name: 'Kimi K2 Instruct 0905' },
-        'meta-llama/llama-4-scout-17b-16e-instruct': {
-            slug: 'meta-llama/llama-4-scout-17b-16e-instruct',
-            name: 'Llama 4 Scout 17B',
-        },
-        'meta-llama/llama-4-maverick-17b-128e-instruct': {
-            slug: 'meta-llama/llama-4-maverick-17b-128e-instruct',
-            name: 'Llama 4 Maverick 17B',
-        },
-        'openai/gpt-oss-20b': { slug: 'openai/gpt-oss-20b', name: 'GPT OSS 20B' },
-        'openai/gpt-oss-safeguard-20b': { slug: 'openai/gpt-oss-safeguard-20b', name: 'GPT OSS Safeguard 20B' },
-        'allam-2-7b': { slug: 'allam-2-7b', name: 'Allam 2 7B' },
-        'groq/compound-mini': { slug: 'groq/compound-mini', name: 'Groq Compound Mini' },
-    },
-    pollinations: {
-        openai: { slug: 'openai', name: 'OpenAI' },
-        'claude-3-5-sonnet': { slug: 'claude-3-5-sonnet', name: 'Claude 3.5 Sonnet' },
+        'qwen3-max': { slug: 'qwen3-max', name: 'Qwen 3 Max' },
+        'qwen3-235b': { slug: 'qwen3-235b', name: 'Qwen 3 235B' },
         'gemini-2.5-flash': { slug: 'gemini-2.5-flash', name: 'Gemini 2.5 Flash' },
-        'llama-3.3-70b': { slug: 'llama-3.3-70b', name: 'Llama 3.3 70B' },
+        free: { slug: 'free', name: 'Free' },
+        'gemini-2.5-flash-lite': { slug: 'gemini-2.5-flash-lite', name: 'Gemini 2.5 Flash Lite' },
+        'gemini-3-flash-preview': { slug: 'gemini-3-flash-preview', name: 'Gemini 3 Flash Preview' },
+        'gemini-2.5-computer-use-preview-10-2025': {
+            slug: 'gemini-2.5-computer-use-preview-10-2025',
+            name: 'Gemini 2.5 Computer Use Preview',
+        },
+        'kimi-k2-0905': { slug: 'kimi-k2-0905', name: 'Kimi K2 0905' },
+        'kimi-k2': { slug: 'kimi-k2', name: 'Kimi K2' },
+        'qwen3-max-preview': { slug: 'qwen3-max-preview', name: 'Qwen 3 Max Preview' },
+        'qwen3-coder-plus': { slug: 'qwen3-coder-plus', name: 'Qwen 3 Coder Plus' },
+        'qwen3-235b-a22b-thinking-2507': {
+            slug: 'qwen3-235b-a22b-thinking-2507',
+            name: 'Qwen 3 235B A22B Thinking 2507',
+        },
+        'qwen3-235b-a22b-instruct': { slug: 'qwen3-235b-a22b-instruct', name: 'Qwen 3 235B A22B Instruct' },
+        'qwen3-32b': { slug: 'qwen3-32b', name: 'Qwen 3 32B' },
+        'deepseek-v3.1': { slug: 'deepseek-v3.1', name: 'DeepSeek V3.1' },
+        'deepseek-v3': { slug: 'deepseek-v3', name: 'DeepSeek V3' },
+        'deepseek-r1': { slug: 'deepseek-r1', name: 'DeepSeek R1' },
+        'deepseek-v3.2': { slug: 'deepseek-v3.2', name: 'DeepSeek V3.2' },
+        'deepseek-v3.2-chat': { slug: 'deepseek-v3.2-chat', name: 'DeepSeek V3.2 Chat' },
+        'tstars2.0': { slug: 'tstars2.0', name: 'TStars 2.0' },
+        sonnet: { slug: 'sonnet', name: 'Sonnet' },
+        opus: { slug: 'opus', name: 'Opus' },
     },
 }
 
 export const DEFAULT_LLM_MODELS = {
-    openai: {
-        defaultChatModel: SUPPORTED_LLM_MODELS.openai['gpt-4o-mini'],
-        defaultClassificationModel: SUPPORTED_LLM_MODELS.openai['gpt-4o-mini'],
-    },
-    anthropic: {
-        defaultChatModel: SUPPORTED_LLM_MODELS.anthropic['claude-sonnet-4-5-20250929'],
-        defaultClassificationModel: SUPPORTED_LLM_MODELS.anthropic['claude-haiku-4-5-20251001'],
-    },
-    gemini: {
-        defaultChatModel: SUPPORTED_LLM_MODELS.gemini['gemini-2.5-pro'],
-        defaultClassificationModel: SUPPORTED_LLM_MODELS.gemini['gemini-2.5-flash'],
-    },
-    groq: {
-        defaultChatModel: SUPPORTED_LLM_MODELS.groq['llama-3.3-70b-versatile'],
-        defaultClassificationModel: SUPPORTED_LLM_MODELS.groq['llama-3.1-8b-instant'],
-    },
-    pollinations: {
-        defaultChatModel: SUPPORTED_LLM_MODELS.pollinations['openai'],
-        defaultClassificationModel: SUPPORTED_LLM_MODELS.pollinations['openai'],
+    'cli-proxy-api': {
+        defaultChatModel: SUPPORTED_LLM_MODELS['cli-proxy-api']['deepseek-v3.2-reasoner'],
+        defaultClassificationModel: SUPPORTED_LLM_MODELS['cli-proxy-api']['qwen3-32b'],
     },
 }
+
+export const MODEL_FALLBACK_CHAINS = {
+    'cli-proxy-api': [
+        // ========================================
+        // Available Models (26 working models)
+        // Listed in priority order as specified
+        // ========================================
+        'glm-4.7',
+        'deepseek-v3.2-reasoner',
+        'gemini-2.5-pro',
+        'qwen3-max',
+        'qwen3-235b',
+        'gemini-2.5-flash',
+        'free',
+        'gemini-2.5-flash-lite',
+        'gemini-3-flash-preview',
+        'gemini-2.5-computer-use-preview-10-2025',
+        'kimi-k2-0905',
+        'kimi-k2',
+        'qwen3-max-preview',
+        'qwen3-coder-plus',
+        'qwen3-235b-a22b-thinking-2507',
+        'qwen3-235b-a22b-instruct',
+        'qwen3-32b',
+        'deepseek-v3.1',
+        'deepseek-v3',
+        'deepseek-r1',
+        'deepseek-v3.2',
+        'deepseek-v3.2-chat',
+        'tstars2.0',
+        'free',
+        'sonnet',
+        'opus',
+    ],
+}
+
+// Provider-level fallback chain: cli-proxy-api is the only provider
+export const PROVIDER_FALLBACK_CHAIN = ['cli-proxy-api']

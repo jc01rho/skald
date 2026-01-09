@@ -362,7 +362,7 @@ const run = async (req: Request, res: Response) => {
             score: null,
         }
 
-        if (['openai', 'anthropic', 'gemini'].includes(LLM_PROVIDER)) {
+        if (LLM_PROVIDER === 'cli-proxy-api') {
             llmJudgeResult = await llmJudgeAgent.judge(question.question, fullResponse, question.answer)
         }
 

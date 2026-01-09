@@ -62,6 +62,8 @@ const _createMemoChunk = async (
         uuid: randomUUID(),
         memo: memoUuid,
         project: projectId,
+        memo_uuid: memoUuid,
+        project_uuid: projectId,
         chunk_content: chunkContent,
         chunk_index: chunkIndex,
         embedding: JSON.stringify(vectorEmbedding) as any,

@@ -160,3 +160,16 @@ skald_prod2.dump
 
 # Kubernetes secrets (contains sensitive API keys)
 k8s/secret.yaml
+k8s/secret-string.yaml
+
+# Environment files with real secrets
+.env
+.env.*
+!.env.example
+!.env.prod.example
+
+# Sisyphus internal state (should never be committed)
+.sisyphus/
+
+# API configuration files (may contain credentials)
+CLI_PROXY_API_CONFIG.txt

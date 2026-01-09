@@ -16,6 +16,12 @@ export class MemoChunk {
     @Property({ columnType: 'vector(2048)', ignoreSchemaChanges: ['type'] })
     embedding!: unknown
 
+    @Property({ type: 'uuid' })
+    memo_uuid!: string
+
+    @Property({ type: 'uuid' })
+    project_uuid!: string
+
     @ManyToOne({
         entity: () => Memo,
         fieldName: 'memo_id',

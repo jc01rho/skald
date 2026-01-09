@@ -1,5 +1,8 @@
 # DATABASE ENTITIES
 
+**Generated:** 2026-01-10
+**Domain:** Data Layer (Score 15)
+
 ## OVERVIEW
 
 MikroORM entity definitions for PostgreSQL with pgvector support.
@@ -55,6 +58,7 @@ export class Entity {
 - `@Property({ type: 'json' })` for metadata
 
 **Processing Status Enum**
+
 `type ProcessingStatus = 'received' | 'processing' | 'processed' | 'error'`
 
 ## ANTI-PATTERNS

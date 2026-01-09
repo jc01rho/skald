@@ -1,68 +1,19 @@
 import express, { Request, Response } from 'express'
-import {
-    OPENAI_API_KEY,
-    ANTHROPIC_API_KEY,
-    GROQ_API_KEY,
-    LOCAL_LLM_BASE_URL,
-    LOCAL_LLM_MODEL,
-    GEMINI_API_KEY,
-    ZAI_API_KEY,
-    ZAI_MODEL,
-    POLLINATIONS_API_KEY,
-    POLLINATIONS_MODEL,
-} from '@/settings'
+import { CLI_PROXY_API_KEY } from '@/settings'
 import { DEFAULT_LLM_MODELS } from '@/llmModels'
 
 interface LLMProvider {
-    provider: 'openai' | 'anthropic' | 'groq' | 'local' | 'gemini' | 'zai' | 'pollinations'
+    provider: 'cli-proxy-api'
     label: string
     model: string
 }
 
 export const AVAILABLE_LLM_PROVIDERS: LLMProvider[] = []
-if (OPENAI_API_KEY) {
+if (CLI_PROXY_API_KEY) {
     AVAILABLE_LLM_PROVIDERS.push({
-        provider: 'openai',
-        label: 'OpenAI',
-        model: DEFAULT_LLM_MODELS.openai.defaultChatModel.name,
-    })
-}
-if (ANTHROPIC_API_KEY) {
-    AVAILABLE_LLM_PROVIDERS.push({
-        provider: 'anthropic',
-        label: 'Anthropic',
-        model: DEFAULT_LLM_MODELS.anthropic.defaultChatModel.name,
-    })
-}
-if (GROQ_API_KEY || LOCAL_LLM_BASE_URL) {
-    AVAILABLE_LLM_PROVIDERS.push({
-        provider: 'groq',
-        label: 'Groq',
-        model: DEFAULT_LLM_MODELS.groq.defaultChatModel.name,
-    })
-}
-if (LOCAL_LLM_BASE_URL) {
-    AVAILABLE_LLM_PROVIDERS.push({ provider: 'local', label: 'Local', model: LOCAL_LLM_MODEL })
-}
-if (GEMINI_API_KEY) {
-    AVAILABLE_LLM_PROVIDERS.push({
-        provider: 'gemini',
-        label: 'Gemini',
-        model: DEFAULT_LLM_MODELS.gemini.defaultChatModel.name,
-    })
-}
-if (ZAI_API_KEY) {
-    AVAILABLE_LLM_PROVIDERS.push({
-        provider: 'zai',
-        label: 'Z.ai',
-        model: ZAI_MODEL,
-    })
-}
-if (POLLINATIONS_API_KEY) {
-    AVAILABLE_LLM_PROVIDERS.push({
-        provider: 'pollinations',
-        label: 'Pollinations',
-        model: POLLINATIONS_MODEL,
+        provider: 'cli-proxy-api',
+        label: 'CLI Proxy API',
+        model: DEFAULT_LLM_MODELS['cli-proxy-api'].defaultChatModel.name,
     })
 }
 

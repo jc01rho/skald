@@ -7,11 +7,15 @@ export function parseRagConfig(ragConfig: Record<string, any>): {
     error: string | null
 } {
     const defaults = {
-        queryRewriteEnabled: false,
+        queryRewriteEnabled: true,
+        queryRewriteMultiQuery: false,
+        queryRewriteHydeEnabled: false,
         rerankingEnabled: true,
         vectorSearchTopK: 50,
-        similarityThreshold: 0.8,
+        similarityThreshold: 0.72,
         rerankingTopK: 25,
+        rerankingMmrEnabled: false,
+        rerankingMmrLambda: 0.5,
         referencesEnabled: false,
     }
 
@@ -34,12 +38,48 @@ export function parseRagConfig(ragConfig: Record<string, any>): {
         }
     }
 
+    // queryRewriteMultiQuery must be a boolean (snake_case only)
+    const queryRewriteMultiQuery = ragConfig.query_rewrite?.multi_query ?? defaults.queryRewriteMultiQuery
+    if (typeof queryRewriteMultiQuery !== 'boolean') {
+        return {
+            parsedRagConfig: null,
+            error: `Invalid query rewrite multi query: ${queryRewriteMultiQuery}. Must be a boolean.`,
+        }
+    }
+
+    // queryRewriteHydeEnabled must be a boolean (snake_case only)
+    const queryRewriteHydeEnabled = ragConfig.query_rewrite?.hyde_enabled ?? defaults.queryRewriteHydeEnabled
+    if (typeof queryRewriteHydeEnabled !== 'boolean') {
+        return {
+            parsedRagConfig: null,
+            error: `Invalid query rewrite hyde enabled: ${queryRewriteHydeEnabled}. Must be a boolean.`,
+        }
+    }
+
     // rerankingEnabled must be a boolean (snake_case only)
     const rerankingEnabled = ragConfig.reranking?.enabled ?? defaults.rerankingEnabled
     if (typeof rerankingEnabled !== 'boolean') {
         return {
             parsedRagConfig: null,
             error: `Invalid reranking enabled: ${rerankingEnabled}. Must be a boolean.`,
+        }
+    }
+
+    // rerankingMmrEnabled must be a boolean (snake_case only)
+    const rerankingMmrEnabled = ragConfig.reranking?.mmr_enabled ?? defaults.rerankingMmrEnabled
+    if (typeof rerankingMmrEnabled !== 'boolean') {
+        return {
+            parsedRagConfig: null,
+            error: `Invalid reranking mmr enabled: ${rerankingMmrEnabled}. Must be a boolean.`,
+        }
+    }
+
+    // rerankingMmrLambda must be a number between 0 and 1 (snake_case only)
+    const rerankingMmrLambda = ragConfig.reranking?.mmr_lambda ?? defaults.rerankingMmrLambda
+    if (typeof rerankingMmrLambda !== 'number' || rerankingMmrLambda < 0 || rerankingMmrLambda > 1) {
+        return {
+            parsedRagConfig: null,
+            error: `Invalid reranking mmr lambda: ${rerankingMmrLambda}. Must be a number between 0 and 1.`,
         }
     }
 
@@ -87,12 +127,14 @@ export function parseRagConfig(ragConfig: Record<string, any>): {
 
     const result = {
         parsedRagConfig: {
-            llmProvider: llmProvider as 'openai' | 'anthropic' | 'local' | 'groq' | 'gemini' | 'zai',
+            llmProvider: llmProvider as 'cli-proxy-api',
             references: {
                 enabled: referencesEnabled,
             },
             queryRewrite: {
                 enabled: queryRewriteEnabled,
+                multiQuery: queryRewriteMultiQuery,
+                hydeEnabled: queryRewriteHydeEnabled,
             },
             vectorSearch: {
                 topK: vectorSearchTopK,
@@ -101,6 +143,8 @@ export function parseRagConfig(ragConfig: Record<string, any>): {
             reranking: {
                 enabled: rerankingEnabled,
                 topK: rerankingTopK,
+                mmrEnabled: rerankingMmrEnabled,
+                mmrLambda: rerankingMmrLambda,
             },
         },
         error: null,

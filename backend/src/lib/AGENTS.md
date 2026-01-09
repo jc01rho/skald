@@ -1,5 +1,8 @@
 # SHARED UTILITIES
 
+**Generated:** 2026-01-10
+**Domain:** Core Utilities (Score 15)
+
 ## OVERVIEW
 
 Cross-cutting backend utilities: logging, database/Redis connections, DI, parsing.

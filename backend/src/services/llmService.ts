@@ -1,28 +1,49 @@
 import { BaseChatModel } from '@langchain/core/language_models/chat_models'
 import { ChatOpenAI } from '@langchain/openai'
-import { ChatAnthropic } from '@langchain/anthropic'
-import { ChatGoogleGenerativeAI } from '@langchain/google-genai'
-import {
-    LLM_PROVIDER,
-    OPENAI_API_KEY,
-    ANTHROPIC_API_KEY,
-    LOCAL_LLM_MODEL,
-    LOCAL_LLM_CHAT_MODEL,
-    LOCAL_LLM_CLASSIFICATION_MODEL,
-    LOCAL_LLM_BASE_URL,
-    LOCAL_LLM_API_KEY,
-    GROQ_API_KEY,
-    GEMINI_API_KEY,
-    ZAI_API_KEY,
-    ZAI_MODEL,
-    POLLINATIONS_BASE_URL,
-} from '../settings'
-import { DEFAULT_LLM_MODELS } from '@/llmModels'
+import { LLM_PROVIDER, CLI_PROXY_API_KEY, CLI_PROXY_API_BASE_URL, CLI_PROXY_API_MODEL } from '../settings'
+import { DEFAULT_LLM_MODELS, MODEL_FALLBACK_CHAINS, PROVIDER_FALLBACK_CHAIN } from '@/llmModels'
 
 interface GetLLMParams {
     temperature?: number
-    providerOverride?: 'openai' | 'anthropic' | 'local' | 'groq' | 'gemini' | 'zai' | 'pollinations'
+    providerOverride?: 'cli-proxy-api'
     purpose?: 'chat' | 'classification'
+    modelOverride?: string
+}
+
+interface RetryConfig {
+    maxRetries?: number
+    retryDelayMs?: number
+    useFallbackChain?: boolean
+}
+
+interface InvokeWithRetryParams {
+    messages: any[]
+    temperature?: number
+    maxRetries?: number
+    retryDelayMs?: number
+    useFallbackChain?: boolean
+}
+
+/**
+ * Retry wrapper for LLM operations
+ * Retries up to 3 times with exponential backoff
+ */
+async function withRetry<T>(fn: () => Promise<T>, maxRetries = 3, retryDelayMs = 1000): Promise<T> {
+    let lastError: Error | null = null
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+        try {
+            return await fn()
+        } catch (error) {
+            lastError = error as Error
+            console.warn(`Attempt ${attempt}/${maxRetries} failed:`, lastError.message)
+            if (attempt < maxRetries) {
+                const delay = retryDelayMs * attempt
+                console.log(`Retrying in ${delay}ms...`)
+                await new Promise((resolve) => setTimeout(resolve, delay))
+            }
+        }
+    }
+    throw lastError
 }
 
 /**
@@ -31,128 +52,115 @@ interface GetLLMParams {
 export class LLMService {
     private static provider: string = LLM_PROVIDER
 
-    // TODO: we should not only allow configuring the model here but we should  also have
-    // model "types" that can be used e.g. "fast", "default", "high-quality", etc. for each provider.
     /**
      * Get an LLM instance based on environment configuration
      * @param temperature - Temperature for the LLM (default: 0 for deterministic output)
      * @returns Configured LLM instance
      */
-    static getLLM({ temperature = 0, providerOverride, purpose = 'chat' }: GetLLMParams): BaseChatModel {
+    static getLLM({ temperature = 0, providerOverride, purpose = 'chat', modelOverride }: GetLLMParams): BaseChatModel {
         let provider = this.provider
         if (providerOverride) {
             provider = providerOverride
         }
 
-        if (provider === 'openai') {
-            if (!OPENAI_API_KEY) {
-                throw new Error('OpenAI provider is not configured. Please set OPENAI_API_KEY.')
+        if (provider === 'cli-proxy-api') {
+            // CLI Proxy API with OpenAI-compatible API
+            if (!CLI_PROXY_API_KEY) {
+                throw new Error('CLI Proxy API provider is not configured. Please set CLI_PROXY_API_KEY.')
             }
+            const modelSlug =
+                modelOverride ||
+                (purpose === 'chat'
+                    ? DEFAULT_LLM_MODELS['cli-proxy-api'].defaultChatModel.slug
+                    : DEFAULT_LLM_MODELS['cli-proxy-api'].defaultClassificationModel.slug)
             return new ChatOpenAI({
-                model:
-                    purpose === 'chat'
-                        ? DEFAULT_LLM_MODELS.openai.defaultChatModel.slug
-                        : DEFAULT_LLM_MODELS.openai.defaultClassificationModel.slug,
-                apiKey: OPENAI_API_KEY,
-                temperature,
-            })
-        } else if (provider === 'anthropic') {
-            if (!ANTHROPIC_API_KEY) {
-                throw new Error('Anthropic provider is not configured. Please set ANTHROPIC_API_KEY.')
-            }
-            return new ChatAnthropic({
-                model:
-                    purpose === 'chat'
-                        ? DEFAULT_LLM_MODELS.anthropic.defaultChatModel.slug
-                        : DEFAULT_LLM_MODELS.anthropic.defaultClassificationModel.slug,
-                apiKey: ANTHROPIC_API_KEY,
-                temperature,
-            })
-        } else if (provider === 'local') {
-            if (!LOCAL_LLM_BASE_URL) {
-                throw new Error('Local LLM provider is not configured. Please set LOCAL_LLM_BASE_URL.')
-            }
-            // Local LLM with OpenAI-compatible API
-            // Works with: Ollama, LM Studio, vLLM, LocalAI, etc.
-            return new ChatOpenAI({
-                model: purpose === 'chat' ? LOCAL_LLM_CHAT_MODEL : LOCAL_LLM_CLASSIFICATION_MODEL,
+                model: modelSlug,
+                apiKey: CLI_PROXY_API_KEY,
                 configuration: {
-                    baseURL: LOCAL_LLM_BASE_URL,
-                },
-                apiKey: LOCAL_LLM_API_KEY,
-                temperature,
-            })
-        } else if (provider === 'groq') {
-            let apiKey = GROQ_API_KEY
-            let baseURL = 'https://api.groq.com/openai/v1'
-
-            if (LOCAL_LLM_BASE_URL) {
-                // Use local proxy (embedding-service) if available
-                // Ensure /v1 suffix for OpenAI compatibility
-                baseURL = LOCAL_LLM_BASE_URL.endsWith('/v1')
-                    ? LOCAL_LLM_BASE_URL
-                    : `${LOCAL_LLM_BASE_URL.replace(/\/$/, '')}/v1`
-
-                // If using proxy, we can use a dummy key if actual key is missing
-                // (Proxy handles the actual rotation)
-                if (!apiKey) {
-                    apiKey = 'managed'
-                }
-            } else if (!apiKey) {
-                throw new Error('Groq provider is not configured. Please set GROQ_API_KEY.')
-            }
-
-            return new ChatOpenAI({
-                model:
-                    purpose === 'chat'
-                        ? DEFAULT_LLM_MODELS.groq.defaultChatModel.slug
-                        : DEFAULT_LLM_MODELS.groq.defaultClassificationModel.slug,
-                apiKey: apiKey,
-                configuration: {
-                    baseURL,
-                },
-                temperature,
-            })
-        } else if (provider === 'gemini') {
-            if (!GEMINI_API_KEY) {
-                throw new Error('Gemini provider is not configured. Please set GEMINI_API_KEY.')
-            }
-            return new ChatGoogleGenerativeAI({
-                model:
-                    purpose === 'chat'
-                        ? DEFAULT_LLM_MODELS.gemini.defaultChatModel.slug
-                        : DEFAULT_LLM_MODELS.gemini.defaultClassificationModel.slug,
-                apiKey: GEMINI_API_KEY,
-                temperature,
-            })
-        } else if (provider === 'zai') {
-            if (!ZAI_API_KEY) {
-                throw new Error('Z.ai provider is not configured. Please set ZAI_API_KEY.')
-            }
-            // Z.ai (ChatGLM) with OpenAI-compatible API
-            return new ChatOpenAI({
-                model: ZAI_MODEL,
-                apiKey: ZAI_API_KEY,
-                configuration: {
-                    baseURL: 'https://api.z.ai/api/paas/v4',
-                },
-                temperature,
-            })
-        } else if (provider === 'pollinations') {
-            // Pollinations.ai with OpenAI-compatible API
-            // No API key required for Pollinations.ai (free tier)
-            return new ChatOpenAI({
-                model: POLLINATIONS_BASE_URL.includes('openai') ? 'openai' : 'pollinations',
-                apiKey: 'not-needed', // Pollinations.ai doesn't require API key
-                configuration: {
-                    baseURL: POLLINATIONS_BASE_URL,
+                    baseURL: CLI_PROXY_API_BASE_URL,
                 },
                 temperature,
             })
         } else {
-            throw new Error(
-                `Unsupported LLM provider: ${provider}. Supported providers: openai, anthropic, local, groq, gemini, zai, pollinations`
+            throw new Error(`Unsupported LLM provider: ${provider}. Supported providers: cli-proxy-api`)
+        }
+    }
+
+    /**
+     * Invoke LLM with retry logic and fallback chain
+     * 1. Try current model with 3 retries
+     * 2. If all retries fail, try next model in fallback chain
+     * 3. If all models fail, throw error (no provider-level fallback as cli-proxy-api is the only provider)
+     */
+    static async invokeWithRetry({
+        messages,
+        temperature = 0,
+        maxRetries = 3,
+        retryDelayMs = 1000,
+        useFallbackChain = true,
+    }: InvokeWithRetryParams): Promise<any> {
+        const currentProvider = this.provider
+        const purpose = 'chat' // Default to chat for now
+
+        // Step 1: Try current model with retries
+        try {
+            console.log(`Attempting to invoke LLM with provider: ${currentProvider}`)
+            return await withRetry(
+                async () => {
+                    const llm = this.getLLM({ temperature, providerOverride: currentProvider as any, purpose })
+                    return await llm.invoke(messages)
+                },
+                maxRetries,
+                retryDelayMs
             )
+        } catch (error) {
+            if (!useFallbackChain) {
+                throw error
+            }
+
+            console.warn('Current model failed after retries, trying model-level fallback chain...')
+            const errorMessage = (error as Error).message
+            console.warn(`Error: ${errorMessage}`)
+
+            // Step 2: Try model-level fallback (only for cli-proxy-api)
+            if (currentProvider === 'cli-proxy-api' && MODEL_FALLBACK_CHAINS['cli-proxy-api']) {
+                const models = MODEL_FALLBACK_CHAINS['cli-proxy-api']
+                const defaultModelSlug =
+                    purpose === 'chat'
+                        ? DEFAULT_LLM_MODELS['cli-proxy-api'].defaultChatModel.slug
+                        : DEFAULT_LLM_MODELS['cli-proxy-api'].defaultClassificationModel.slug
+
+                // Skip the current model and try the rest
+                const modelFallbackIndex = models.indexOf(defaultModelSlug)
+                const fallbackModels = modelFallbackIndex >= 0 ? models.slice(modelFallbackIndex + 1) : models
+
+                for (const fallbackModel of fallbackModels) {
+                    try {
+                        console.log(`Trying fallback model: ${fallbackModel}`)
+                        const result = await withRetry(
+                            async () => {
+                                const llm = this.getLLM({
+                                    temperature,
+                                    providerOverride: currentProvider as any,
+                                    purpose,
+                                    modelOverride: fallbackModel,
+                                })
+                                return await llm.invoke(messages)
+                            },
+                            maxRetries,
+                            retryDelayMs
+                        )
+                        console.log(`Successfully invoked with fallback model: ${fallbackModel}`)
+                        return result
+                    } catch (modelError) {
+                        console.warn(`Fallback model ${fallbackModel} failed:`, (modelError as Error).message)
+                        continue
+                    }
+                }
+            }
+
+            // All fallbacks exhausted
+            throw new Error(`All LLM models failed. Last error: ${errorMessage}`)
         }
     }
 }
