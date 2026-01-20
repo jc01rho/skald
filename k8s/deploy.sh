@@ -32,7 +32,7 @@ log_error() {
 # 설정 변수
 NAMESPACE="skald"
 IMAGE_TAG="${IMAGE_TAG:-latest}"
-DOCKER_REGISTRY="${DOCKER_REGISTRY:-ghcr.io/skaldlabs}"
+DOCKER_REGISTRY="${DOCKER_REGISTRY:-ghcr.io/jc01rho}"
 echo "DOCKER_REGISTRY : $DOCKER_REGISTRY"
 SKIP_INGRESS="${SKIP_INGRESS:-false}"
 
@@ -300,12 +300,23 @@ deploy_traefik() {
 create_configs() {
     log_info "Step 2: ConfigMap 및 Secret 생성"
     
-    # ConfigMap 생성
+# ConfigMap 생성
     if kubectl apply -f configmap.yaml -n "$NAMESPACE"; then
         log_success "ConfigMap 생성 완료"
     else
         log_error "ConfigMap 생성 실패"
         exit 1
+    fi
+
+    if [ -f "configmap.local.yaml" ]; then
+        if kubectl apply -f configmap.local.yaml -n "$NAMESPACE"; then
+            log_success "Local ConfigMap 생성 완료"
+        else
+            log_error "Local ConfigMap 생성 실패"
+            exit 1
+        fi
+    else
+        log_info "configmap.local.yaml 파일이 없습니다. 건너뜁니다."
     fi
     
     # 초기화 스크립트 ConfigMap 생성
@@ -414,7 +425,7 @@ deploy_backend() {
     # Backend-specific registry override (as per user request)
     local BACKEND_REGISTRY="ghcr.io/jc01rho"
     
-    sed "s|\${DOCKER_REGISTRY:-skaldlabs}|$BACKEND_REGISTRY|g" api-deployment.yaml | \
+    sed "s|\${DOCKER_REGISTRY:-jc01rho}|$BACKEND_REGISTRY|g" api-deployment.yaml | \
     sed "s|\${IMAGE_TAG:-latest}|$IMAGE_TAG|g" > /tmp/api-deployment.yaml
     echo "API Deployment 임시 파일 생성 완료: /tmp/api-deployment.yaml"
     echo "DOCKER_REGISTRY in temp file: $(grep 'image:' /tmp/api-deployment.yaml)"

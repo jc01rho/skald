@@ -22,14 +22,25 @@ const MEMO_TAGS_AGENT_INSTRUCTIONS = `
 
 /**
  * Creates a memo tags agent that extracts relevant tags from a memo
+ * Uses lazy initialization to avoid startup crashes when CLI_PROXY_API_KEY is not set
  * @returns An agent that can extract tags from memo content
  */
 export function createMemoTagsAgent() {
-    const llm = LLMService.getLLM({ purpose: 'classification' })
+    // Lazy initialization - LLM is only created when extractTags is called
+    let structuredLlm: ReturnType<ReturnType<typeof LLMService.getLLM>['withStructuredOutput']> | null = null
 
-    const structuredLlm = llm.withStructuredOutput(MemoTagsOutputSchema, {
-        name: 'MemoTagsAgent',
-    })
+    const getStructuredLlm = () => {
+        if (!structuredLlm) {
+            if (!process.env.CLI_PROXY_API_KEY) {
+                throw new Error('CLI_PROXY_API_KEY is required for memoTagsAgent')
+            }
+            const llm = LLMService.getLLM({ purpose: 'classification' })
+            structuredLlm = llm.withStructuredOutput(MemoTagsOutputSchema, {
+                name: 'MemoTagsAgent',
+            })
+        }
+        return structuredLlm
+    }
 
     return {
         name: 'Memo Tags Agent',
@@ -48,7 +59,7 @@ export function createMemoTagsAgent() {
 
             prompt += `Memo content:\n${memoContent}`
 
-            const result = await structuredLlm.invoke(
+            const result = await getStructuredLlm().invoke(
                 [
                     {
                         role: 'user',
@@ -60,9 +71,10 @@ export function createMemoTagsAgent() {
                 }
             )
 
-            return result as MemoTagsOutput
+            return result as unknown as MemoTagsOutput
         },
     }
 }
 
+// Lazy singleton - createMemoTagsAgent() no longer calls LLMService at module load time
 export const memoTagsAgent = createMemoTagsAgent()

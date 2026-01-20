@@ -1,0 +1,21 @@
+# Skald 로컬 환경 설정 (민감 정보)
+# 이 파일을 k8s/configmap.local.yaml로 복사하여 실제 값을 입력하세요.
+# configmap.local.yaml은 gitignore되어 있습니다.
+#
+# 사용법:
+#   cp k8s/configmap.local.yaml.example k8s/configmap.local.yaml
+#   # 실제 값으로 수정 후
+#   kubectl apply -f k8s/configmap.local.yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+    name: skald-config-local
+    namespace: skald
+    labels:
+        app: skald
+        component: config-local
+        environment: production
+data:
+    INTERNAL_EMBEDDING_URL: 'http://your-embedding-server:8889/v1/embeddings'
+    INTERNAL_RERANK_URL: 'http://your-rerank-server:8889/v1/rerank'
+    CLI_PROXY_BASE_URL: 'http://your-cli-proxy-server:8317/v1'

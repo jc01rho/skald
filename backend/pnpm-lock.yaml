@@ -17,9 +17,6 @@ importers:
       '@aws-sdk/s3-request-presigner':
         specifier: ^3.925.0
         version: 3.925.0
-      '@chonkiejs/core':
-        specifier: ^0.0.5
-        version: 0.0.5
       '@langchain/anthropic':
         specifier: ^0.3.0
         version: 0.3.33(@langchain/core@0.3.79(@opentelemetry/api@1.9.0)(@opentelemetry/sdk-trace-base@2.2.0(@opentelemetry/api@1.9.0))(openai@6.7.0(zod@3.25.76)))(zod@3.25.76)
@@ -35,6 +32,9 @@ importers:
       '@langchain/openai':
         specifier: ^0.6.14
         version: 0.6.16(@langchain/core@0.3.79(@opentelemetry/api@1.9.0)(@opentelemetry/sdk-trace-base@2.2.0(@opentelemetry/api@1.9.0))(openai@6.7.0(zod@3.25.76)))
+      '@langchain/textsplitters':
+        specifier: ^0.1.0
+        version: 0.1.0(@langchain/core@0.3.79(@opentelemetry/api@1.9.0)(@opentelemetry/sdk-trace-base@2.2.0(@opentelemetry/api@1.9.0))(openai@6.7.0(zod@3.25.76)))
       '@mikro-orm/cli':
         specifier: ^6.5.9
         version: 6.5.9(pg@8.16.3)
@@ -165,9 +165,6 @@ importers:
       babel-jest:
         specifier: ^30.2.0
         version: 30.2.0(@babel/core@7.28.5)
-      core:
-        specifier: link:@types/@langchain/core
-        version: link:@types/@langchain/core
       esbuild:
         specifier: ^0.25.11
         version: 0.25.11
@@ -1057,9 +1054,6 @@ packages:
   '@cfworker/json-schema@4.1.1':
     resolution: {integrity: sha512-gAmrUZSGtKc3AiBL71iNWxDsyUC5uMaKKGdvzYsBoTW/xi42JQHl7eKV2OYzCUqvc+D2RCcf7EXY2iCyFIk6og==}
 
-  '@chonkiejs/core@0.0.5':
-    resolution: {integrity: sha512-Y6geZY+/9AyDy5i+h+aRY1g873d8fe/Xz6vndSo+FrP1hzDDBmAgJXhaZhZqZFQ7RraiNP8ImTiOddNmiiP/hw==}
-
   '@cspotcode/source-map-support@0.8.1':
     resolution: {integrity: sha512-IchNf6dN4tHoMFIn/7OE8LWZ19Y6q/67Bmf6vnGREv8RSbBVb9LPJxEcnwrcwX6ixSvaiGoomAUvu4YSxXrVgw==}
     engines: {node: '>=12'}
@@ -1539,6 +1533,12 @@ packages:
     engines: {node: '>=18'}
     peerDependencies:
       '@langchain/core': '>=0.3.68 <0.4.0'
+
+  '@langchain/textsplitters@0.1.0':
+    resolution: {integrity: sha512-djI4uw9rlkAb5iMhtLED+xJebDdAG935AdP4eRTB02R7OB/act55Bj9wsskhZsvuyQRpO4O1wQOp85s6T6GWmw==}
+    engines: {node: '>=18'}
+    peerDependencies:
+      '@langchain/core': '>=0.2.21 <0.4.0'
 
   '@mikro-orm/cli@6.5.9':
     resolution: {integrity: sha512-Jihukq7STU5ZfRdjOBSR7mzOClqkhkic7t8GF/OAoMBeHgpUc93Ug2GvSMrJaNWGg4AKtgch/cP/KGv/3QtSsQ==}
@@ -6243,8 +6243,6 @@ snapshots:
 
   '@cfworker/json-schema@4.1.1': {}
 
-  '@chonkiejs/core@0.0.5': {}
-
   '@cspotcode/source-map-support@0.8.1':
     dependencies:
       '@jridgewell/trace-mapping': 0.3.9
@@ -6778,6 +6776,11 @@ snapshots:
       zod: 3.25.76
     transitivePeerDependencies:
       - ws
+
+  '@langchain/textsplitters@0.1.0(@langchain/core@0.3.79(@opentelemetry/api@1.9.0)(@opentelemetry/sdk-trace-base@2.2.0(@opentelemetry/api@1.9.0))(openai@6.7.0(zod@3.25.76)))':
+    dependencies:
+      '@langchain/core': 0.3.79(@opentelemetry/api@1.9.0)(@opentelemetry/sdk-trace-base@2.2.0(@opentelemetry/api@1.9.0))(openai@6.7.0(zod@3.25.76))
+      js-tiktoken: 1.0.21
 
   '@mikro-orm/cli@6.5.9(pg@8.16.3)':
     dependencies:

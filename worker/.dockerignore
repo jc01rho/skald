@@ -31,9 +31,8 @@ Thumbs.db
 .github/
 
 # Documentation
-README.md
 LICENSE
-*.md
+# Note: README.md is NOT excluded because pyproject.toml references it for package metadata
 
 # Tests
 tests/

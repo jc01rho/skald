@@ -1,5 +1,5 @@
 import { RAGConfig } from '@/agents/chatAgent/ragGraph'
-import { LLM_PROVIDER } from '@/settings'
+import { LLM_PROVIDER, SUPPORTED_LLM_PROVIDERS } from '@/settings'
 import { AVAILABLE_LLM_PROVIDERS } from '@/api/config'
 
 export function parseRagConfig(ragConfig: Record<string, any>): {
@@ -12,20 +12,25 @@ export function parseRagConfig(ragConfig: Record<string, any>): {
         queryRewriteHydeEnabled: false,
         rerankingEnabled: true,
         vectorSearchTopK: 50,
-        similarityThreshold: 0.72,
+        similarityThreshold: 0.65,
         rerankingTopK: 25,
-        rerankingMmrEnabled: false,
+        rerankingMmrEnabled: true,
         rerankingMmrLambda: 0.5,
         referencesEnabled: false,
+        hybridSearchEnabled: true,
+        hybridSearchVectorWeight: 0.7,
+        hybridSearchBm25Weight: 0.3,
     }
 
-    // Parse and validate llmProvider (snake_case only)
     const llmProvider = ragConfig.llm_provider || ragConfig.llmProvider || LLM_PROVIDER
 
-    if (!AVAILABLE_LLM_PROVIDERS.map((provider) => provider.provider).includes(llmProvider)) {
+    const validProviders =
+        AVAILABLE_LLM_PROVIDERS.length > 0 ? AVAILABLE_LLM_PROVIDERS.map((p) => p.provider) : SUPPORTED_LLM_PROVIDERS
+
+    if (!validProviders.includes(llmProvider)) {
         return {
             parsedRagConfig: null,
-            error: `Invalid LLM provider: ${llmProvider}. Supported providers: ${AVAILABLE_LLM_PROVIDERS.map((provider) => provider.provider).join(', ')}`,
+            error: `Invalid LLM provider: ${llmProvider}. Supported providers: ${validProviders.join(', ')}`,
         }
     }
 
@@ -125,6 +130,33 @@ export function parseRagConfig(ragConfig: Record<string, any>): {
         }
     }
 
+    // hybridSearchEnabled must be a boolean (snake_case only)
+    const hybridSearchEnabled = ragConfig.hybrid_search?.enabled ?? defaults.hybridSearchEnabled
+    if (typeof hybridSearchEnabled !== 'boolean') {
+        return {
+            parsedRagConfig: null,
+            error: `Invalid hybrid search enabled: ${hybridSearchEnabled}. Must be a boolean.`,
+        }
+    }
+
+    // hybridSearchVectorWeight must be a number between 0 and 1 (snake_case only)
+    const hybridSearchVectorWeight = ragConfig.hybrid_search?.vector_weight ?? defaults.hybridSearchVectorWeight
+    if (typeof hybridSearchVectorWeight !== 'number' || hybridSearchVectorWeight < 0 || hybridSearchVectorWeight > 1) {
+        return {
+            parsedRagConfig: null,
+            error: `Invalid hybrid search vector weight: ${hybridSearchVectorWeight}. Must be a number between 0 and 1.`,
+        }
+    }
+
+    // hybridSearchBm25Weight must be a number between 0 and 1 (snake_case only)
+    const hybridSearchBm25Weight = ragConfig.hybrid_search?.bm25_weight ?? defaults.hybridSearchBm25Weight
+    if (typeof hybridSearchBm25Weight !== 'number' || hybridSearchBm25Weight < 0 || hybridSearchBm25Weight > 1) {
+        return {
+            parsedRagConfig: null,
+            error: `Invalid hybrid search BM25 weight: ${hybridSearchBm25Weight}. Must be a number between 0 and 1.`,
+        }
+    }
+
     const result = {
         parsedRagConfig: {
             llmProvider: llmProvider as 'cli-proxy-api',
@@ -145,6 +177,11 @@ export function parseRagConfig(ragConfig: Record<string, any>): {
                 topK: rerankingTopK,
                 mmrEnabled: rerankingMmrEnabled,
                 mmrLambda: rerankingMmrLambda,
+            },
+            hybridSearch: {
+                enabled: hybridSearchEnabled,
+                vectorWeight: hybridSearchVectorWeight,
+                bm25Weight: hybridSearchBm25Weight,
             },
         },
         error: null,

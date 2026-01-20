@@ -59,7 +59,7 @@ export const useChatStore = create<ChatState>()(
             isStreaming: false,
             currentStreamingMessageId: null,
             systemPrompt: '',
-            llmProvider: '',
+            llmProvider: 'cli-proxy-api',
             ragConfig: {
                 queryRewriteEnabled: false,
                 rerankingEnabled: true,

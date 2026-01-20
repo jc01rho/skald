@@ -1,6 +1,6 @@
 # DATABASE ENTITIES
 
-**Generated:** 2026-01-10
+**Generated:** 2026-01-12
 **Domain:** Data Layer (Score 15)
 
 ## OVERVIEW

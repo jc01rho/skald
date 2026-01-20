@@ -96,7 +96,7 @@ export const LLM_PROVIDER = process.env.LLM_PROVIDER || 'cli-proxy-api'
 
 // CLI Proxy API (only supported LLM provider)
 export const CLI_PROXY_API_KEY = process.env.CLI_PROXY_API_KEY
-export const CLI_PROXY_API_BASE_URL = process.env.CLI_PROXY_API_BASE_URL || 'http://REDACTED_HOST:8317/v1'
+export const CLI_PROXY_API_BASE_URL = process.env.CLI_PROXY_API_BASE_URL || 'http://cli-proxy-service:8317/v1'
 export const CLI_PROXY_API_MODEL = process.env.CLI_PROXY_API_MODEL || 'deepseek-v3.2-reasoner'
 
 // Validation of LLM provider configuration on startup

@@ -1,7 +1,6 @@
 import { EMBEDDING_VECTOR_DIMENSION } from '../settings'
 
-// Hardcoded internal embedding endpoint
-const INTERNAL_EMBEDDING_URL = 'http://192.168.150.37:8889/v1/embeddings'
+const INTERNAL_EMBEDDING_URL = process.env.INTERNAL_EMBEDDING_URL || 'http://embedding-service:8889/v1/embeddings'
 
 const TARGET_DIMENSION = EMBEDDING_VECTOR_DIMENSION
 
@@ -20,7 +19,7 @@ class EmbeddingService {
     }
 
     /**
-     * Generate embedding using internal endpoint (192.168.150.37:8889)
+     * Generate embedding using internal endpoint
      * OpenAI-compatible API format
      */
     private static async generateInternalEmbedding(content: string): Promise<number[]> {
@@ -54,7 +53,7 @@ class EmbeddingService {
     }
 
     /**
-     * Generate embedding - always uses internal endpoint (192.168.150.37:8889)
+     * Generate embedding - uses INTERNAL_EMBEDDING_URL environment variable
      */
     static async generateEmbedding(content: string, usage: 'storage' | 'search'): Promise<number[]> {
         const embedding = await this.generateInternalEmbedding(content)

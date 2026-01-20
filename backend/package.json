@@ -20,7 +20,8 @@
         "migration:down": "mikro-orm migration:down",
         "migration:pending": "mikro-orm migration:pending",
         "fixtures:load": "tsx fixtures/load-fixtures.ts",
-        "swagger": "node ./src/swagger.js"
+        "swagger": "node ./src/swagger.js",
+        "reindex": "tsx src/scripts/reindexAllMemos.ts"
     },
     "keywords": [],
     "author": "",
@@ -29,8 +30,8 @@
         "@aws-sdk/client-s3": "^3.922.0",
         "@aws-sdk/client-sqs": "^3.921.0",
         "@aws-sdk/s3-request-presigner": "^3.925.0",
-        "@chonkiejs/core": "^0.0.5",
         "@langchain/anthropic": "^0.3.0",
+        "@langchain/textsplitters": "^0.1.0",
         "@langchain/core": "^0.3.78",
         "@langchain/google-genai": "^1.0.3",
         "@langchain/langgraph": "^0.4.9",

@@ -7,6 +7,7 @@ module.exports = {
     collectCoverageFrom: ['src/**/*.ts', '!src/**/*.test.ts', '!src/**/__tests__/**'],
     moduleNameMapper: {
         '^@/(.*)$': '<rootDir>/src/$1',
+        '^@sentry/node$': '<rootDir>/src/__mocks__/@sentry/node.ts',
     },
     // Ignore dist folder to prevent old compiled files from interfering
     modulePathIgnorePatterns: ['<rootDir>/dist/'],
