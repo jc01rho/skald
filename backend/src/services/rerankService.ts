@@ -1,7 +1,6 @@
 import { z } from 'zod'
 
-// Hardcoded internal rerank endpoint
-const INTERNAL_RERANK_URL = 'http://192.168.150.37/v1/rerank'
+const INTERNAL_RERANK_URL = process.env.INTERNAL_RERANK_URL || 'http://rerank-service:8889/v1/rerank'
 
 const POST_RERANK_TOP_K = parseInt(process.env.POST_RERANK_TOP_K || '10')
 
@@ -19,17 +18,10 @@ interface RerankMetadata {
 }
 
 export class RerankService {
-    /**
-     * Service for reranking results using internal endpoint (192.168.150.37)
-     */
-
     static async rerank(query: string, results: any[], metadata?: RerankMetadata[]): Promise<RerankResult[]> {
         return this.rerankInternal(query, results, metadata)
     }
 
-    /**
-     * Rerank using internal endpoint (192.168.150.37/v1/rerank)
-     */
     private static async rerankInternal(
         query: string,
         results: any[],

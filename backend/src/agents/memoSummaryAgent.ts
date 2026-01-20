@@ -1,5 +1,6 @@
 import { z } from 'zod'
 import { LLMService } from '@/services/llmService'
+import { CLI_PROXY_API_KEY } from '@/settings'
 
 // Output schema for the memo summary agent
 const MemoSummaryOutputSchema = z.object({
@@ -26,6 +27,16 @@ const MEMO_SUMMARY_AGENT_INSTRUCTIONS = `
  * @returns An agent that can summarize memo content
  */
 export function createMemoSummaryAgent() {
+    // Check if CLI_PROXY_API_KEY is configured
+    if (!CLI_PROXY_API_KEY) {
+        return {
+            name: 'Memo Summary Agent (disabled)',
+            async summarize(_memoContent: string): Promise<MemoSummaryOutput> {
+                throw new Error('Memo Summary Agent is not available: CLI_PROXY_API_KEY is not configured')
+            },
+        }
+    }
+
     const llm = LLMService.getLLM({ purpose: 'classification' })
 
     const structuredLlm = llm.withStructuredOutput(MemoSummaryOutputSchema, {
@@ -66,4 +77,22 @@ export function createMemoSummaryAgent() {
     }
 }
 
-export const memoSummaryAgent = createMemoSummaryAgent()
+// Lazy initialization - only create when first accessed
+let _memoSummaryAgent: ReturnType<typeof createMemoSummaryAgent> | null = null
+
+export function getMemoSummaryAgent() {
+    if (!_memoSummaryAgent) {
+        _memoSummaryAgent = createMemoSummaryAgent()
+    }
+    return _memoSummaryAgent
+}
+
+// For backward compatibility - but now lazy
+export const memoSummaryAgent = {
+    get name() {
+        return getMemoSummaryAgent().name
+    },
+    summarize: (memoContent: string) => {
+        return getMemoSummaryAgent().summarize(memoContent)
+    },
+}

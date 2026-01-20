@@ -6,12 +6,15 @@ import { rewrite, rewriteMultiQuery, generateHyDE, generateJiraHyDE } from './qu
 import { MemoFilter } from '@/lib/filterUtils'
 import { EmbeddingService } from '@/services/embeddingService'
 import { memoChunkVectorSearch, MemoChunkWithDistance } from '@/embeddings/vectorSearch'
-import { HybridSearchService } from '@/embeddings/hybridSearch'
+import { HybridSearchService, HybridSearchResult } from '@/embeddings/hybridSearch'
 import { QueryUnderstandingAgent, SearchStrategy } from '../queryUnderstandingAgent'
 import { getTitleAndSummaryAndContentForMemoList } from '@/queries/memo'
 import { RerankService } from '@/services/rerankService'
 import { CHAT_AGENT_INSTRUCTIONS, CHAT_AGENT_INSTRUCTIONS_WITH_SOURCES } from './prompts'
 import { ChatPromptTemplate } from '@langchain/core/prompts'
+import { logger } from '@/lib/logger'
+import { DI } from '@/di'
+import { MemoParentChunk } from '@/entities/MemoParentChunk'
 
 interface RerankResult {
     index: number
@@ -45,6 +48,11 @@ export interface RAGConfig {
     queryUnderstanding?: {
         enabled: boolean
     }
+    hybridSearch?: {
+        enabled: boolean
+        vectorWeight?: number
+        bm25Weight?: number
+    }
 }
 
 // Define your state schema
@@ -61,6 +69,7 @@ const RAGState = Annotation.Root({
     chunkResults: Annotation<MemoChunkWithDistance[] | null>,
     rerankedResults: Annotation<RerankResult[]>,
     memoPropertiesMap: Annotation<Map<string, { title: string; summary: string; content: string }> | null>,
+    parentChunkMap: Annotation<Map<string, string> | null>, // child_chunk_uuid -> parent_chunk_content
     prompt: Annotation<ChatPromptTemplate>,
     contextStr: Annotation<string | null>,
 })
@@ -111,6 +120,25 @@ async function queryRewriteNode(state: typeof RAGState.State) {
     return { rewrittenQuery: null }
 }
 
+/**
+ * Adapter function to convert HybridSearchResult to MemoChunkWithDistance.
+ * This allows hybrid search results to flow through the existing RAG pipeline.
+ */
+function hybridResultToMemoChunk(result: HybridSearchResult): MemoChunkWithDistance {
+    return {
+        chunk: {
+            uuid: result.uuid,
+            chunk_content: result.chunk_content,
+            chunk_index: 0, // Not available from hybrid search
+            embedding: [], // Not available from hybrid search (will be fetched if needed for MMR)
+            memo_uuid: result.memo_uuid,
+            project_uuid: '', // Not available from hybrid search
+        },
+        // Convert hybrid_score (0-1, higher is better) to distance (0-2, lower is better)
+        distance: 2 * (1 - result.hybrid_score),
+    }
+}
+
 async function vectorSearchNode(state: typeof RAGState.State) {
     const { rewrittenQuery, query, project, filters, ragConfig, queryUnderstanding } = state
 
@@ -148,7 +176,36 @@ async function vectorSearchNode(state: typeof RAGState.State) {
         }
     }
 
-    // Run vector searches in parallel for all queries
+    // Check if hybrid search is enabled (default: true for Korean optimization)
+    const useHybridSearch = ragConfig.hybridSearch?.enabled ?? true
+
+    if (useHybridSearch) {
+        // Use hybrid search combining vector + BM25
+        const primaryQuery = searchQueries[0]
+        const embeddingVector = await EmbeddingService.generateEmbedding(primaryQuery, 'search')
+
+        try {
+            const hybridResults = await HybridSearchService.hybridSearch(project, embeddingVector, primaryQuery, {
+                vectorWeight: ragConfig.hybridSearch?.vectorWeight ?? 0.7,
+                bm25Weight: ragConfig.hybridSearch?.bm25Weight ?? 0.3,
+                topK: strategy.topK,
+                similarityThreshold: ragConfig.vectorSearch.similarityThreshold,
+                filters: filters?.[0], // Use first filter if available
+            })
+
+            logger.debug({ hybridResultsCount: hybridResults.length, query: primaryQuery }, 'Hybrid search completed')
+
+            // Convert hybrid results to MemoChunkWithDistance format
+            const uniqueResults = hybridResults.map(hybridResultToMemoChunk)
+
+            return { chunkResults: uniqueResults }
+        } catch (error) {
+            logger.warn({ err: error }, 'Hybrid search failed, falling back to vector-only search')
+            // Fall through to vector-only search
+        }
+    }
+
+    // Fallback: Run vector searches in parallel for all queries
     const allResults = await Promise.all(
         searchQueries.map(async (searchQuery) => {
             const embeddingVector = await EmbeddingService.generateEmbedding(searchQuery, 'search')
@@ -340,12 +397,90 @@ async function mmrNode(state: typeof RAGState.State) {
     return { rerankedResults: selected }
 }
 
-function buildLLMInputsNode(state: typeof RAGState.State) {
-    const { conversationHistory, ragConfig, rerankedResults, clientSystemPrompt } = state
+/**
+ * Fetch parent chunks for reranked child chunks.
+ *
+ * Parent-child chunking strategy:
+ * - Child chunks (small, 512 chars) are used for semantic search
+ * - Parent chunks (large, 2048 chars) are used for LLM context
+ *
+ * This node fetches the parent chunk content for each child chunk
+ * to provide richer context to the LLM.
+ */
+async function fetchParentChunksNode(state: typeof RAGState.State) {
+    const { chunkResults } = state
 
+    if (!chunkResults || chunkResults.length === 0) {
+        return { parentChunkMap: null }
+    }
+
+    // Get unique child chunk UUIDs that have parent chunks
+    const childChunkUuids = chunkResults.map((c) => c.chunk.uuid).filter((uuid) => uuid) // Filter out empty uuids
+
+    if (childChunkUuids.length === 0) {
+        return { parentChunkMap: null }
+    }
+
+    try {
+        // Query to get parent chunk content for each child chunk
+        const sql = `
+            SELECT 
+                c.uuid as child_uuid,
+                p.chunk_content as parent_content
+            FROM skald_memochunk c
+            LEFT JOIN skald_memoparentchunk p ON c.parent_chunk_id = p.uuid
+            WHERE c.uuid = ANY(?)
+            AND p.uuid IS NOT NULL
+        `
+
+        const results = await DI.em.getConnection().execute<
+            Array<{
+                child_uuid: string
+                parent_content: string
+            }>
+        >(sql, [childChunkUuids])
+
+        // Build map: child_chunk_uuid -> parent_chunk_content
+        const parentChunkMap = new Map<string, string>()
+        for (const row of results || []) {
+            parentChunkMap.set(row.child_uuid, row.parent_content)
+        }
+
+        logger.debug(
+            { childChunksWithParent: parentChunkMap.size, totalChildChunks: childChunkUuids.length },
+            'Fetched parent chunks for child chunks'
+        )
+
+        return { parentChunkMap }
+    } catch (error) {
+        logger.warn({ err: error }, 'Failed to fetch parent chunks, falling back to child content')
+        return { parentChunkMap: null }
+    }
+}
+
+function buildLLMInputsNode(state: typeof RAGState.State) {
+    const { conversationHistory, ragConfig, rerankedResults, clientSystemPrompt, parentChunkMap, chunkResults } = state
+
+    // Build context string using parent chunk content when available (better for LLM)
+    // Falls back to child chunk content if no parent is available
     let contextStr = ''
     for (let i = 0; i < rerankedResults.length; i++) {
-        contextStr += `Result ${i + 1}: ${rerankedResults[i].document}\n\n`
+        const result = rerankedResults[i]
+
+        // Try to get parent chunk content for richer context
+        let documentContent = result.document
+
+        // Find the corresponding chunk UUID to look up parent content
+        if (parentChunkMap && chunkResults) {
+            // Match by index since rerankedResults preserves chunk order
+            const chunkUuid = chunkResults[result.index]?.chunk.uuid
+            if (chunkUuid && parentChunkMap.has(chunkUuid)) {
+                // Use parent chunk content (larger, more context)
+                documentContent = parentChunkMap.get(chunkUuid)!
+            }
+        }
+
+        contextStr += `Result ${i + 1}: ${documentContent}\n\n`
     }
 
     let systemPrompt = ragConfig.references.enabled ? CHAT_AGENT_INSTRUCTIONS_WITH_SOURCES : CHAT_AGENT_INSTRUCTIONS
@@ -373,21 +508,23 @@ function buildLLMInputsNode(state: typeof RAGState.State) {
 // so we let the nodes themselves decide whether to run or not
 const ragGraphDefinition = new StateGraph(RAGState)
     .addNode('getChatHistory', getChatHistoryNode)
-    .addNode('queryUnderstanding', queryUnderstandingNode)
+    .addNode('analyzeQuery', queryUnderstandingNode)
     .addNode('queryRewrite', queryRewriteNode)
     .addNode('vectorSearch', vectorSearchNode)
     .addNode('getMemoProperties', getMemoPropertiesNode)
     .addNode('rerank', rerankNode)
     .addNode('mmr', mmrNode)
+    .addNode('fetchParentChunks', fetchParentChunksNode)
     .addNode('buildLLMInputs', buildLLMInputsNode)
     .addEdge('__start__', 'getChatHistory')
-    .addEdge('getChatHistory', 'queryUnderstanding')
-    .addEdge('queryUnderstanding', 'queryRewrite')
+    .addEdge('getChatHistory', 'analyzeQuery')
+    .addEdge('analyzeQuery', 'queryRewrite')
     .addEdge('queryRewrite', 'vectorSearch')
     .addEdge('vectorSearch', 'getMemoProperties')
     .addEdge('getMemoProperties', 'rerank')
     .addEdge('rerank', 'mmr')
-    .addEdge('mmr', 'buildLLMInputs')
+    .addEdge('mmr', 'fetchParentChunks')
+    .addEdge('fetchParentChunks', 'buildLLMInputs')
     .addEdge('buildLLMInputs', END)
 
 export const ragGraph = ragGraphDefinition.compile()

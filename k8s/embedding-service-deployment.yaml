@@ -6,242 +6,255 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: embedding-service
-  namespace: skald
-  labels:
-    app: skald
-    component: embedding-service
-    environment: production
-  annotations:
-    description: "Skald 임베딩 서비스 Deployment (Python FastAPI 기반)"
-spec:
-  replicas: 1
-  strategy:
-    type: Recreate
-  selector:
-    matchLabels:
-      app: skald
-      component: embedding-service
-  template:
-    metadata:
-      labels:
+    name: embedding-service
+    namespace: skald
+    labels:
         app: skald
         component: embedding-service
         environment: production
-    spec:
-      securityContext:
-        runAsNonRoot: true
-        runAsUser: 1000
-        runAsGroup: 1000
-        fsGroup: 1000
-      containers:
-      - name: embedding-service
-        # embedding-service 디렉토리의 Dockerfile로 빌드된 이미지 사용
-        # GitHub Container Registry에서 이미지를 가져옵니다
-        image: ghcr.io/jc01rho/skald/embedding-service:latest
-        imagePullPolicy: Always
-        ports:
-        - containerPort: 8000
-          name: http
-          protocol: TCP
-        env:
-        # 애플리케이션 관련 환경변수
-        - name: PORT
-          value: "8000"
-        - name: HOST
-          value: "0.0.0.0"
-        # AI 서비스 관련 환경변수
-        - name: OPENAI_API_KEY
-          valueFrom:
-            secretKeyRef:
-              name: skald-secrets
-              key: OPENAI_API_KEY
-        - name: VOYAGE_API_KEY
-          valueFrom:
-            secretKeyRef:
-              name: skald-secrets
-              key: VOYAGE_API_KEY
-        - name: GROQ_API_KEYS
-          valueFrom:
-            secretKeyRef:
-              name: skald-secrets
-              key: GROQ_API_KEYS
+    annotations:
+        description: 'Skald 임베딩 서비스 Deployment (Python FastAPI 기반)'
+spec:
+    replicas: 1
+    strategy:
+        type: Recreate
+    selector:
+        matchLabels:
+            app: skald
+            component: embedding-service
+    template:
+        metadata:
+            labels:
+                app: skald
+                component: embedding-service
+                environment: production
+        spec:
+            securityContext:
+                runAsNonRoot: true
+                runAsUser: 1000
+                runAsGroup: 1000
+                fsGroup: 1000
+            containers:
+                - name: embedding-service
+                  # embedding-service 디렉토리의 Dockerfile로 빌드된 이미지 사용
+                  # GitHub Container Registry에서 이미지를 가져옵니다
+                  image: ghcr.io/jc01rho/skald/embedding-service:latest
+                  imagePullPolicy: Always
+                  ports:
+                      - containerPort: 8000
+                        name: http
+                        protocol: TCP
+                  env:
+                      # 애플리케이션 관련 환경변수
+                      - name: PORT
+                        value: '8000'
+                      - name: HOST
+                        value: '0.0.0.0'
+                      # AI 서비스 관련 환경변수
+                      - name: OPENAI_API_KEY
+                        valueFrom:
+                            secretKeyRef:
+                                name: skald-secrets
+                                key: OPENAI_API_KEY
+                      - name: VOYAGE_API_KEY
+                        valueFrom:
+                            secretKeyRef:
+                                name: skald-secrets
+                                key: VOYAGE_API_KEY
+                      - name: GROQ_API_KEYS
+                        valueFrom:
+                            secretKeyRef:
+                                name: skald-secrets
+                                key: GROQ_API_KEYS
 
-        # 임베딩 프로바이더 설정
-        - name: EMBEDDING_PROVIDER
-          valueFrom:
-            configMapKeyRef:
-              name: skald-config
-              key: EMBEDDING_SERVICE_PROVIDER
-        - name: EMBEDDING_MODEL
-          valueFrom:
-            configMapKeyRef:
-              name: skald-config
-              key: LOCAL_EMBEDDING_MODEL
-        - name: RERANK_MODEL
-          valueFrom:
-            configMapKeyRef:
-              name: skald-config
-              key: LOCAL_RERANK_MODEL
-        - name: RERANK_PROVIDER
-          valueFrom:
-            configMapKeyRef:
-              name: skald-config
-              key: RERANK_PROVIDER
-        # 외부 임베딩 서비스 URL (vLLM, TGI 등)
-        - name: EXTERNAL_EMBEDDING_URL
-          valueFrom:
-            configMapKeyRef:
-              name: skald-config
-              key: EXTERNAL_EMBEDDING_URL
-              optional: true
-        # Ollama/Local LLM connection URL
-        - name: LOCAL_LLM_BASE_URL
-          valueFrom:
-            configMapKeyRef:
-              name: skald-config
-              key: LOCAL_LLM_BASE_URL
-        # Gemini embedding-001 supports: 768, 1536, 3072 (default is 768 for efficiency)
-        - name: TARGET_DIMENSION
-          value: "2048"
-        # 한글 최적화 설정
-        - name: QUERY_LANGUAGE
-          valueFrom:
-            configMapKeyRef:
-              name: skald-config
-              key: QUERY_LANGUAGE
-              optional: true
-        # 로깅 설정
-        - name: LOG_LEVEL
-          valueFrom:
-            configMapKeyRef:
-              name: skald-config
-              key: LOG_LEVEL
-        
-        # New LLM Providers
-        - name: SILICONFLOW_API_KEY
-          valueFrom:
-            secretKeyRef:
-              name: skald-secrets
-              key: SILICONFLOW_API_KEY
-        - name: SILICONFLOW_MODEL
-          valueFrom:
-            configMapKeyRef:
-              name: skald-config
-              key: SILICONFLOW_MODEL
-        - name: MISTRAL_API_KEY
-          valueFrom:
-            secretKeyRef:
-              name: skald-secrets
-              key: MISTRAL_API_KEY
-        - name: MISTRAL_MODEL
-          valueFrom:
-            configMapKeyRef:
-              name: skald-config
-              key: MISTRAL_MODEL
-        - name: OPENROUTER_API_KEY
-          valueFrom:
-            secretKeyRef:
-              name: skald-secrets
-              key: OPENROUTER_API_KEY
-        - name: OPENROUTER_MODEL
-          valueFrom:
-            configMapKeyRef:
-              name: skald-config
-              key: OPENROUTER_MODEL
-        - name: GITHUB_TOKEN
-          valueFrom:
-            secretKeyRef:
-              name: skald-secrets
-              key: GITHUB_TOKEN
-        - name: GITHUB_MODELS
-          valueFrom:
-            configMapKeyRef:
-              name: skald-config
-              key: GITHUB_MODELS
-        - name: POLLINATIONS_API_KEY
-          valueFrom:
-            secretKeyRef:
-              name: skald-secrets
-              key: POLLINATIONS_API_KEY
-- name: POLLINATIONS_MODEL
-          valueFrom:
-            configMapKeyRef:
-              name: skald-config
-              key: POLLINATIONS_MODEL
-        # Z.ai LLM Provider
-        - name: ZAI_API_KEY
-          valueFrom:
-            secretKeyRef:
-              name: skald-secrets
-              key: ZAI_API_KEY
-              optional: true
-        - name: ZAI_MODEL
-          valueFrom:
-            configMapKeyRef:
-              name: skald-config
-              key: ZAI_MODEL
-              optional: true
-        # 헬스체크 설정
-        readinessProbe:
-          httpGet:
-            path: /health
-            port: 8000
-          initialDelaySeconds: 30
-          periodSeconds: 10
-          timeoutSeconds: 5
-          failureThreshold: 3
-        livenessProbe:
-          httpGet:
-            path: /health
-            port: 8000
-          initialDelaySeconds: 60
-          periodSeconds: 30
-          timeoutSeconds: 5
-          failureThreshold: 3
-        # 보안 설정
-        securityContext:
-          allowPrivilegeEscalation: false
-          readOnlyRootFilesystem: true
-          capabilities:
-            drop:
-            - ALL
-        # 리소스 설정 (CrossEncoder 모델을 위해 메모리 증가)
-        # 참고: 가벼운 환경에서는 RERANK_PROVIDER=ollama로 변경 권장
-        resources:
-          requests:
-            memory: "4Gi"
-            cpu: "1000m"
-          limits:
-            memory: "8Gi"
-            cpu: "4000m"
-            nvidia.com/gpu: "1"
-        # 임시 볼륨 마운트 (readOnlyRootFilesystem을 위함)
-        volumeMounts:
-        - name: source-code
-          mountPath: /app/main.py
-          subPath: main.py
-        - name: tmp
-          mountPath: /tmp
-        - name: cache
-          mountPath: /app/cache
-        - name: huggingface-cache
-          mountPath: /.cache
-        - name: home-cache
-          mountPath: /home/appuser/.cache
-      # 임시 볼륨
-      volumes:
-      - name: source-code
-        configMap:
-          name: embedding-service-source
-      - name: tmp
-        emptyDir: {}
-      - name: cache
-        emptyDir: {}
-      - name: huggingface-cache
-        emptyDir: {}
-      - name: home-cache
-        emptyDir: {}
-      # ML 노드에 배포 (GPU 사용)
-      nodeSelector:
-        kubernetes.io/hostname: ml.node.k8s.sparrow.local
+                      # 임베딩 프로바이더 설정
+                      - name: EMBEDDING_PROVIDER
+                        valueFrom:
+                            configMapKeyRef:
+                                name: skald-config
+                                key: EMBEDDING_SERVICE_PROVIDER
+                      - name: EMBEDDING_MODEL
+                        valueFrom:
+                            configMapKeyRef:
+                                name: skald-config
+                                key: LOCAL_EMBEDDING_MODEL
+                      - name: RERANK_MODEL
+                        valueFrom:
+                            configMapKeyRef:
+                                name: skald-config
+                                key: LOCAL_RERANK_MODEL
+                      - name: RERANK_PROVIDER
+                        valueFrom:
+                            configMapKeyRef:
+                                name: skald-config
+                                key: RERANK_PROVIDER
+                      # 외부 임베딩 서비스 URL (vLLM, TGI 등)
+                      - name: EXTERNAL_EMBEDDING_URL
+                        valueFrom:
+                            configMapKeyRef:
+                                name: skald-config
+                                key: EXTERNAL_EMBEDDING_URL
+                                optional: true
+                      # Ollama/Local LLM connection URL
+                      - name: LOCAL_LLM_BASE_URL
+                        valueFrom:
+                            configMapKeyRef:
+                                name: skald-config
+                                key: LOCAL_LLM_BASE_URL
+                      # Gemini embedding-001 supports: 768, 1536, 3072 (default is 768 for efficiency)
+                      - name: TARGET_DIMENSION
+                        value: '2048'
+                      # 한글 최적화 설정
+                      - name: QUERY_LANGUAGE
+                        valueFrom:
+                            configMapKeyRef:
+                                name: skald-config
+                                key: QUERY_LANGUAGE
+                                optional: true
+                      # 로깅 설정
+                      - name: LOG_LEVEL
+                        valueFrom:
+                            configMapKeyRef:
+                                name: skald-config
+                                key: LOG_LEVEL
+
+                      # New LLM Providers
+                      - name: SILICONFLOW_API_KEY
+                        valueFrom:
+                            secretKeyRef:
+                                name: skald-secrets
+                                key: SILICONFLOW_API_KEY
+                      - name: SILICONFLOW_MODEL
+                        valueFrom:
+                            configMapKeyRef:
+                                name: skald-config
+                                key: SILICONFLOW_MODEL
+                      - name: MISTRAL_API_KEY
+                        valueFrom:
+                            secretKeyRef:
+                                name: skald-secrets
+                                key: MISTRAL_API_KEY
+                      - name: MISTRAL_MODEL
+                        valueFrom:
+                            configMapKeyRef:
+                                name: skald-config
+                                key: MISTRAL_MODEL
+                      - name: OPENROUTER_API_KEY
+                        valueFrom:
+                            secretKeyRef:
+                                name: skald-secrets
+                                key: OPENROUTER_API_KEY
+                      - name: OPENROUTER_MODEL
+                        valueFrom:
+                            configMapKeyRef:
+                                name: skald-config
+                                key: OPENROUTER_MODEL
+                      - name: GITHUB_TOKEN
+                        valueFrom:
+                            secretKeyRef:
+                                name: skald-secrets
+                                key: GITHUB_TOKEN
+                      - name: GITHUB_MODELS
+                        valueFrom:
+                            configMapKeyRef:
+                                name: skald-config
+                                key: GITHUB_MODELS
+                      - name: POLLINATIONS_API_KEY
+                        valueFrom:
+                            secretKeyRef:
+                                name: skald-secrets
+                                key: POLLINATIONS_API_KEY
+                      - name: POLLINATIONS_MODEL
+                        valueFrom:
+                            configMapKeyRef:
+                                name: skald-config
+                                key: POLLINATIONS_MODEL
+                      # Z.ai LLM Provider
+                      - name: ZAI_API_KEY
+                        valueFrom:
+                            secretKeyRef:
+                                name: skald-secrets
+                                key: ZAI_API_KEY
+                                optional: true
+                      - name: ZAI_MODEL
+                        valueFrom:
+                            configMapKeyRef:
+                                name: skald-config
+                                key: ZAI_MODEL
+                                optional: true
+                      # CLI Proxy API (OpenAI-compatible multi-model)
+                      - name: CLI_PROXY_API_KEY
+                        valueFrom:
+                            secretKeyRef:
+                                name: skald-secrets
+                                key: CLI_PROXY_API_KEY
+                                optional: true
+                      - name: CLI_PROXY_BASE_URL
+                        valueFrom:
+                            configMapKeyRef:
+                                name: skald-config
+                                key: CLI_PROXY_BASE_URL
+                                optional: true
+                      - name: CLI_PROXY_MODELS
+                        valueFrom:
+                            configMapKeyRef:
+                                name: skald-config
+                                key: CLI_PROXY_MODELS
+                                optional: true
+                  # 헬스체크 설정
+                  readinessProbe:
+                      httpGet:
+                          path: /health
+                          port: 8000
+                      initialDelaySeconds: 30
+                      periodSeconds: 10
+                      timeoutSeconds: 5
+                      failureThreshold: 3
+                  livenessProbe:
+                      httpGet:
+                          path: /health
+                          port: 8000
+                      initialDelaySeconds: 60
+                      periodSeconds: 30
+                      timeoutSeconds: 5
+                      failureThreshold: 3
+                  # 보안 설정
+                  securityContext:
+                      allowPrivilegeEscalation: false
+                      readOnlyRootFilesystem: true
+                      capabilities:
+                          drop:
+                              - ALL
+                  # 리소스 설정 (CrossEncoder 모델을 위해 메모리 증가)
+                  # 참고: 가벼운 환경에서는 RERANK_PROVIDER=ollama로 변경 권장
+                  resources:
+                      requests:
+                          memory: '4Gi'
+                          cpu: '1000m'
+                      limits:
+                          memory: '8Gi'
+                          cpu: '4000m'
+                          nvidia.com/gpu: '1'
+                  # 임시 볼륨 마운트 (readOnlyRootFilesystem을 위함)
+                  volumeMounts:
+                      - name: tmp
+                        mountPath: /tmp
+                      - name: cache
+                        mountPath: /app/cache
+                      - name: huggingface-cache
+                        mountPath: /.cache
+                      - name: home-cache
+                        mountPath: /home/appuser/.cache
+            # 임시 볼륨
+            volumes:
+                - name: tmp
+                  emptyDir: {}
+                - name: cache
+                  emptyDir: {}
+                - name: huggingface-cache
+                  emptyDir: {}
+                - name: home-cache
+                  emptyDir: {}
+            # ML 노드에 배포 (GPU 사용)
+            nodeSelector:
+                kubernetes.io/hostname: ml.node.k8s.sparrow.local

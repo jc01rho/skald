@@ -2,7 +2,7 @@ import { create } from 'zustand'
 import { api } from '@/lib/api'
 
 export interface LLMProvider {
-    provider: 'openai' | 'anthropic' | 'groq' | 'local'
+    provider: 'cli-proxy-api'
     label: string
     model: string
 }

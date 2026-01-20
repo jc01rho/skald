@@ -41,6 +41,7 @@ Skald는 AI 기반의 지식 관리 및 문서 처리 플랫폼입니다. 다음
 - **Frontend UI**: React 기반의 웹 인터페이스
 - **Backend API**: Node.js/Express 기반의 API 서버
 - **Memo Processing Server**: 백그라운드 메모 처리 서비스
+- **Skald Worker**: Python FastAPI 기반의 Jira/Docs 데이터 수집 서비스
 - **Embedding Service**: Python FastAPI 기반의 임베딩 서비스
 - **Docling Service**: 문서 처리 서비스
 - **PostgreSQL**: pgvector 확장이 포함된 데이터베이스
@@ -53,33 +54,39 @@ Skald는 AI 기반의 지식 관리 및 문서 처리 플랫폼입니다. 다음
 │                    External Traffic                         │
 │                        (HTTPS)                             │
 └─────────────────────┬───────────────────────────────────────┘
-                      │
-              ┌───────▼───────┐
-              │   Ingress     │
-              │   (NGINX)     │
-              └───────┬───────┘
-                      │
-        ┌─────────────┼─────────────┐
-        │             │             │
-   ┌────▼────┐   ┌────▼────┐   ┌────▼────┐
-   │   UI    │   │   API   │   │ RabbitMQ│
-   │ Service │   │ Service │   │ Service │
-   └────┬────┘   └────┬────┘   └─────────┘
-        │             │
-        │             ├─────────────┐
-        │             │             │
-   ┌────▼────┐   ┌────▼────┐   ┌────▼────┐
-   │   UI    │   │   API   │   │ Memo    │
-   │   Pod   │   │   Pod   │   │Processing│
-   └─────────┘   └─────────┘   │   Pod   │
-                              └─────────┘
-                                     │
-                      ┌──────────────┼──────────────┐
-                      │              │              │
-                 ┌────▼────┐   ┌─────▼─────┐   ┌─────▼─────┐
-                 │PostgreSQL│   │Embedding  │   │ Docling   │
-                 │ Service  │   │ Service   │   │ Service   │
-                 └──────────┘   └───────────┘   └───────────┘
+                       │
+               ┌───────▼───────┐
+               │   Ingress     │
+               │   (NGINX)     │
+               └───────┬───────┘
+                       │
+         ┌─────────────┼─────────────┐
+         │             │             │
+    ┌────▼────┐   ┌────▼────┐   ┌────▼────┐
+    │   UI    │   │   API   │   │ RabbitMQ│
+    │ Service │   │ Service │   │ Service │
+    └────┬────┘   └────┬────┘   └─────────┘
+         │             │
+         │             ├─────────────┐
+         │             │             │
+    ┌────▼────┐   ┌────▼────┐   ┌────▼────┐
+    │   UI    │   │   API   │   │ Memo    │
+    │   Pod   │   │   Pod   │   │Processing│
+    └─────────┘   └─────────┘   │   Pod   │
+                               └─────────┘
+                                      │
+                       ┌──────────────┼──────────────┐
+                       │              │              │
+                  ┌────▼────┐   ┌─────▼─────┐   ┌─────▼─────┐
+                  │PostgreSQL│   │Embedding  │   │ Docling   │
+                  │ Service  │   │ Service   │   │ Service   │
+                  └──────────┘   └───────────┘   └───────────┘
+                                      │
+                               ┌──────▼──────┐
+                               │  Skald      │
+                               │  Worker     │
+                               │  Service    │
+                               └─────────────┘
 ```
 
 ### 필요한 리소스 요구사항
@@ -947,6 +954,11 @@ kubectl exec -it deployment/api-server -n skald -- \
 | `api-deployment.yaml` | API 서버 Deployment | 백엔드 API |
 | `api-service.yaml` | API 서비스 | API 접속 |
 | `memo-processing-deployment.yaml` | 메모 처리 서버 | 백그라운드 처리 |
+| `worker-deployment.yaml` | Skald Worker Deployment | Jira/Docs 수집 |
+| `worker-service.yaml` | Skald Worker 서비스 | Worker 접속 |
+| `worker-configmap.yaml` | Worker ConfigMap | Worker 설정 |
+| `worker-secret.yaml` | Worker Secret (예제) | Worker 자격증명 |
+| `worker-serviceaccount.yaml` | Worker ServiceAccount | Worker 권한 |
 | `embedding-service-deployment.yaml` | 임베딩 서비스 | AI 임베딩 |
 | `embedding-service-service.yaml` | 임베딩 서비스 | 임베딩 접속 |
 | `docling-deployment.yaml` | 문서 처리 서비스 | 문서 처리 |

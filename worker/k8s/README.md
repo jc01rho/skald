@@ -2,6 +2,13 @@
 
 This directory contains Kubernetes manifests for deploying the Skald Worker service.
 
+## CI/CD
+
+The worker service has automated CI/CD via GitHub Actions:
+
+- **Test**: `.github/workflows/test-worker.yml` - Runs Ruff linting and pytest tests on every push/PR
+- **Build**: `.github/workflows/build-worker.yml` - Builds and pushes Docker image to GHCR
+
 ## Files
 
 - `configmap.yaml` - Non-sensitive configuration

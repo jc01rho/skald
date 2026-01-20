@@ -77,7 +77,7 @@ ZAI_MODEL = os.getenv("ZAI_MODEL", "glm-4.7")
 
 # CLI Proxy API (OpenAI-compatible with multi-model support)
 CLI_PROXY_API_KEY = os.getenv("CLI_PROXY_API_KEY", "")
-CLI_PROXY_BASE_URL = os.getenv("CLI_PROXY_BASE_URL", "http://REDACTED_HOST:8317/v1")
+CLI_PROXY_BASE_URL = os.getenv("CLI_PROXY_BASE_URL", "")
 CLI_PROXY_MODELS_STR = os.getenv("CLI_PROXY_MODELS", "default")
 CLI_PROXY_MODELS = [m.strip() for m in CLI_PROXY_MODELS_STR.split(",") if m.strip()]
 
@@ -88,14 +88,14 @@ EXTERNAL_EMBEDDING_URL = os.getenv(
 )
 
 # Local LLM endpoints for fallback when Groq payload is too large
-LOCAL_LLM_ENDPOINTS = [
-    {
-        "name": "ollama-kanana",
-        "url": "http://192.168.30.169:11434",
-        "type": "ollama",
-        "model": "cookieshake/kanana-1.5-8b-instruct-2505:Q4_K_M",
-    },
-]
+# Configure via LOCAL_LLM_ENDPOINTS_JSON env var (JSON array)
+# Example: '[{"name": "ollama-1", "url": "http://localhost:11434", "type": "ollama", "model": "llama3"}]'
+LOCAL_LLM_ENDPOINTS_JSON = os.getenv("LOCAL_LLM_ENDPOINTS_JSON", "[]")
+try:
+    LOCAL_LLM_ENDPOINTS = json.loads(LOCAL_LLM_ENDPOINTS_JSON)
+except json.JSONDecodeError:
+    logger.warning("Invalid LOCAL_LLM_ENDPOINTS_JSON format, using empty list")
+    LOCAL_LLM_ENDPOINTS = []
 
 print(f"Using embedding provider: {EMBEDDING_PROVIDER}")
 print(f"Using rerank provider: {RERANK_PROVIDER}")
@@ -1788,7 +1788,7 @@ async def _call_mistral(
     }
 
     if stream:
-return await global_httpx_client.post(url, json=payload, headers=headers)
+        return await global_httpx_client.post(url, json=payload, headers=headers)
     else:
         response = await global_httpx_client.post(url, json=payload, headers=headers)
         response.raise_for_status()
@@ -1984,15 +1984,15 @@ async def _stream_pollinations_response(response, model_name):
 @app.post("/v1/chat/completions")
 async def chat_completions(request: ChatCompletionRequest):
     """
-OpenAI-compatible chat completion endpoint.
+    OpenAI-compatible chat completion endpoint.
     Primary: Pollinations.ai (openai-fast)
-    Fallback 1: SiliconFlow (DeepSeek-V3)
-    Fallback 2: GitHub (DeepSeek-R1 Round-Robin)
-    Fallback 3: Mistral (Mistral Medium)
-    Fallback 4: CLI Proxy API (Multi-model Round-Robin)
-    Fallback 5: OpenRouter (Xiaomi Mimo-V2-Flash)
-    Fallback 6: Groq (llama-3.3-70b/70b-versatile etc)
-    Fallback 7: Local LLM (ollama)
+        Fallback 1: SiliconFlow (DeepSeek-V3)
+        Fallback 2: GitHub (DeepSeek-R1 Round-Robin)
+        Fallback 3: Mistral (Mistral Medium)
+        Fallback 4: CLI Proxy API (Multi-model Round-Robin)
+        Fallback 5: OpenRouter (Xiaomi Mimo-V2-Flash)
+        Fallback 6: Groq (llama-3.3-70b/70b-versatile etc)
+        Fallback 7: Local LLM (ollama)
     """
 
     requested_model = request.model
@@ -2150,7 +2150,7 @@ OpenAI-compatible chat completion endpoint.
                 )
                 if sf_data:
                     logger.info("✅ SiliconFlow succeeded")
-return sf_data
+                    return sf_data
         except Exception as e:
             logger.error(f"SiliconFlow error: {e}")
             # Continue to GitHub fallback
@@ -2263,7 +2263,7 @@ return sf_data
                     logger.info("✅ Mistral succeeded")
                     return m_data
         except Exception as e:
-logger.error(f"Mistral error: {e}")
+            logger.error(f"Mistral error: {e}")
             # Continue to CLI Proxy fallback
 
     # ==========================================
@@ -2293,7 +2293,9 @@ logger.error(f"Mistral error: {e}")
                         stream=True,
                     )
                     if cp_response.status_code == 200:
-                        logger.info(f"✅ CLI Proxy (stream) succeeded with {target_cp_model}")
+                        logger.info(
+                            f"✅ CLI Proxy (stream) succeeded with {target_cp_model}"
+                        )
                         return StreamingResponse(
                             _stream_cli_proxy_response(cp_response, target_cp_model),
                             media_type="text/event-stream",
@@ -2307,7 +2309,9 @@ logger.error(f"Mistral error: {e}")
                         # If quota/rate limit, rotate and try next CLI Proxy model
                         if cp_response.status_code in [429, 402]:
                             cli_proxy_model_manager.rotate()
-                            logger.info(f"Rotated to next CLI Proxy model due to rate limit/quota")
+                            logger.info(
+                                f"Rotated to next CLI Proxy model due to rate limit/quota"
+                            )
                             continue
                         # Other error, move on to OpenRouter fallback entirely?
                         break
@@ -2327,10 +2331,10 @@ logger.error(f"Mistral error: {e}")
             except Exception as e:
                 logger.error(f"CLI Proxy error on {target_cp_model}: {e}")
                 # Continue to next model or OpenRouter fallback
-        
+
         # If we exhausted all CLI Proxy models
         logger.warning("All CLI Proxy models failed, moving to OpenRouter fallback")
-    
+
     # ==========================================
     # 6. Try OpenRouter (Fallback 5)
     # ==========================================
@@ -2563,7 +2567,7 @@ async def get_groq_status():
                 "model": POLLINATIONS_MODEL,
             },
             "mistral": {"configured": bool(MISTRAL_API_KEY), "model": MISTRAL_MODEL},
-"openrouter": {
+            "openrouter": {
                 "configured": bool(OPENROUTER_API_KEY),
                 "model": OPENROUTER_MODEL,
             },

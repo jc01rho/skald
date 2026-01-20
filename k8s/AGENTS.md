@@ -1,6 +1,6 @@
 # KUBERNETES DEPLOYMENT
 
-**Generated:** 2026-01-10
+**Generated:** 2026-01-12
 **Domain:** Infrastructure (Score 15)
 
 ## OVERVIEW

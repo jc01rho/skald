@@ -1,5 +1,6 @@
 import { z } from 'zod'
 import { LLMService } from '@/services/llmService'
+import { CLI_PROXY_API_KEY } from '@/settings'
 
 // Output schema for the memo summary agent
 const LLMJudgeOutputSchema = z.object({
@@ -63,6 +64,16 @@ const LLM_JUDGE_AGENT_INSTRUCTIONS = `
  * @returns An agent that can summarize memo content
  */
 export function createLLMJudgeAgent() {
+    // Check if CLI_PROXY_API_KEY is configured
+    if (!CLI_PROXY_API_KEY) {
+        return {
+            name: 'LLM-as-a-Judge Agent (disabled)',
+            async judge(_question: string, _actualAnswer: string, _expectedAnswer: string): Promise<LLMJudgeOutput> {
+                throw new Error('LLM Judge Agent is not available: CLI_PROXY_API_KEY is not configured')
+            },
+        }
+    }
+
     const llm = LLMService.getLLM({ purpose: 'classification' })
 
     const structuredLlm = llm.withStructuredOutput(LLMJudgeOutputSchema, {
@@ -102,4 +113,22 @@ export function createLLMJudgeAgent() {
     }
 }
 
-export const llmJudgeAgent = createLLMJudgeAgent()
+// Lazy initialization - only create when first accessed
+let _llmJudgeAgent: ReturnType<typeof createLLMJudgeAgent> | null = null
+
+export function getLLMJudgeAgent() {
+    if (!_llmJudgeAgent) {
+        _llmJudgeAgent = createLLMJudgeAgent()
+    }
+    return _llmJudgeAgent
+}
+
+// For backward compatibility - but now lazy
+export const llmJudgeAgent = {
+    get name() {
+        return getLLMJudgeAgent().name
+    },
+    judge: (question: string, actualAnswer: string, expectedAnswer: string) => {
+        return getLLMJudgeAgent().judge(question, actualAnswer, expectedAnswer)
+    },
+}

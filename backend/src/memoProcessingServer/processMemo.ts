@@ -17,6 +17,7 @@ const runMemoProcessingAgents = async (em: EntityManager, memoUuid: string) => {
             m.uuid as memo_uuid,
             m.project_id,
             m.type,
+            m.title,
             mc.content
         FROM skald_memo m
         LEFT JOIN skald_memocontent mc ON mc.memo_id = m.uuid
@@ -27,6 +28,7 @@ const runMemoProcessingAgents = async (em: EntityManager, memoUuid: string) => {
         memo_uuid: string
         project_id: string
         type: string | null
+        title: string | null
         content: string | null
     }> = await em.getConnection().execute(sql, [memoUuid])
 
@@ -70,7 +72,7 @@ const runMemoProcessingAgents = async (em: EntityManager, memoUuid: string) => {
         return
     }
 
-    const promises = [createMemoChunks(em, row.memo_uuid, row.project_id, row.content)]
+    const promises = [createMemoChunks(em, row.memo_uuid, row.project_id, row.content, row.title)]
 
     if (['openai', 'anthropic', 'gemini', 'local', 'groq'].includes(LLM_PROVIDER)) {
         // promises.push(extractTagsFromMemo(em, row.memo_uuid, row.content, row.project_id))

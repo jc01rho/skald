@@ -24,6 +24,7 @@ import { EvaluationDataset } from '@/entities/EvaluationDataset'
 import { EvaluationDatasetQuestion } from '@/entities/EvaluationDatasetQuestion'
 import { Experiment } from '@/entities/Experiment'
 import { ExperimentResult } from '@/entities/ExperimentResult'
+import { MemoParentChunk } from '@/entities/MemoParentChunk'
 
 export const DI = {} as {
     server: http.Server
@@ -38,6 +39,7 @@ export const DI = {} as {
     projectAPIKeys: EntityRepository<ProjectAPIKey>
     memoSummaries: EntityRepository<MemoSummary>
     memoChunks: EntityRepository<MemoChunk>
+    memoParentChunks: EntityRepository<MemoParentChunk>
     memoTags: EntityRepository<MemoTag>
     memoContents: EntityRepository<MemoContent>
     emailVerificationCodes: EntityRepository<EmailVerificationCode>
@@ -66,6 +68,7 @@ export const initDI = async (): Promise<typeof DI> => {
     DI.projectAPIKeys = DI.orm.em.getRepository(ProjectAPIKey)
     DI.memoSummaries = DI.orm.em.getRepository(MemoSummary)
     DI.memoChunks = DI.orm.em.getRepository(MemoChunk)
+    DI.memoParentChunks = DI.orm.em.getRepository(MemoParentChunk)
     DI.memoTags = DI.orm.em.getRepository(MemoTag)
     DI.memoContents = DI.orm.em.getRepository(MemoContent)
     DI.emailVerificationCodes = DI.orm.em.getRepository(EmailVerificationCode)
