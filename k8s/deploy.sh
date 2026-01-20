@@ -98,7 +98,7 @@ data:
   LLM_PROVIDER: "${LLM_PROVIDER:-openai}"
   EMBEDDING_PROVIDER: "${EMBEDDING_PROVIDER:-openai}"
   DOCUMENT_EXTRACTION_PROVIDER: "${DOCUMENT_EXTRACTION_PROVIDER:-docling}"
-  EMBEDDING_SERVICE_URL: "http://embedding-service-service:8000"
+  EMBEDDING_SERVICE_URL: "${EMBEDDING_SERVICE_URL:-http://embedding-service-service:8000}"
   DOCLING_SERVICE_URL: "http://docling-service:5001"
   SECURE_SSL_REDIRECT: "false"
   EXPRESS_SERVER_PORT: "8000"
@@ -309,11 +309,39 @@ create_configs() {
     fi
 
     if [ -f "configmap.local.yaml" ]; then
-        if kubectl apply -f configmap.local.yaml -n "$NAMESPACE"; then
-            log_success "Local ConfigMap 생성 완료"
-        else
-            log_error "Local ConfigMap 생성 실패"
-            exit 1
+        log_info "configmap.local.yaml에서 환경변수를 skald-config에 병합합니다..."
+        
+        # configmap.local.yaml에서 data 섹션의 값들을 추출하여 skald-config에 패치
+        # EMBEDDING_SERVICE_URL, INTERNAL_RERANK_URL, CLI_PROXY_BASE_URL 등
+        local local_embedding_url=$(grep -E "^\s*EMBEDDING_SERVICE_URL:" configmap.local.yaml | sed "s/.*EMBEDDING_SERVICE_URL:\s*['\"]*//" | sed "s/['\"].*//")
+        local local_rerank_url=$(grep -E "^\s*INTERNAL_RERANK_URL:" configmap.local.yaml | sed "s/.*INTERNAL_RERANK_URL:\s*['\"]*//" | sed "s/['\"].*//")
+        local local_cli_proxy_url=$(grep -E "^\s*CLI_PROXY_BASE_URL:" configmap.local.yaml | sed "s/.*CLI_PROXY_BASE_URL:\s*['\"]*//" | sed "s/['\"].*//")
+        
+        # 패치할 데이터 구성
+        local patch_data=""
+        if [ -n "$local_embedding_url" ]; then
+            patch_data="${patch_data}\"EMBEDDING_SERVICE_URL\": \"$local_embedding_url\","
+            log_info "  EMBEDDING_SERVICE_URL: $local_embedding_url"
+        fi
+        if [ -n "$local_rerank_url" ]; then
+            patch_data="${patch_data}\"INTERNAL_RERANK_URL\": \"$local_rerank_url\","
+            log_info "  INTERNAL_RERANK_URL: $local_rerank_url"
+        fi
+        if [ -n "$local_cli_proxy_url" ]; then
+            patch_data="${patch_data}\"CLI_PROXY_BASE_URL\": \"$local_cli_proxy_url\","
+            log_info "  CLI_PROXY_BASE_URL: $local_cli_proxy_url"
+        fi
+        
+        # 마지막 쉼표 제거
+        patch_data=$(echo "$patch_data" | sed 's/,$//')
+        
+        if [ -n "$patch_data" ]; then
+            if kubectl patch configmap skald-config -n "$NAMESPACE" --type merge -p "{\"data\": {$patch_data}}"; then
+                log_success "Local ConfigMap 값들이 skald-config에 병합되었습니다"
+            else
+                log_error "Local ConfigMap 병합 실패"
+                exit 1
+            fi
         fi
     else
         log_info "configmap.local.yaml 파일이 없습니다. 건너뜁니다."
