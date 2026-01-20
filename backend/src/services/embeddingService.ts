@@ -1,7 +1,11 @@
 import { EMBEDDING_VECTOR_DIMENSION } from '../settings'
 import { logger } from '../lib/logger'
 
-const INTERNAL_EMBEDDING_URL = process.env.INTERNAL_EMBEDDING_URL || 'http://embedding-service:8889/v1/embeddings'
+const EMBEDDING_URL =
+    process.env.EMBEDDING_SERVICE_URL || process.env.INTERNAL_EMBEDDING_URL || 'http://embedding-service:8889'
+const INTERNAL_EMBEDDING_URL = EMBEDDING_URL.endsWith('/v1/embeddings')
+    ? EMBEDDING_URL
+    : `${EMBEDDING_URL}/v1/embeddings`
 
 const TARGET_DIMENSION = EMBEDDING_VECTOR_DIMENSION
 
