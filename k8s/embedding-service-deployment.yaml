@@ -38,7 +38,7 @@ spec:
                 - name: embedding-service
                   # embedding-service 디렉토리의 Dockerfile로 빌드된 이미지 사용
                   # GitHub Container Registry에서 이미지를 가져옵니다
-                  image: ghcr.io/jc01rho/skald/embedding-service:latest
+                  image: ghcr.io/jc01rho/skald/embedding-service:${IMAGE_TAG:-latest}
                   imagePullPolicy: Always
                   ports:
                       - containerPort: 8000
