@@ -450,13 +450,11 @@ deploy_backend() {
     log_info "Step 5: Backend 서비스 배포"
     
     # 환경변수 치환을 위한 임시 파일 생성
-    # Backend-specific registry override (as per user request)
-    local BACKEND_REGISTRY="ghcr.io/jc01rho"
-    
-    sed "s|\${DOCKER_REGISTRY:-jc01rho}|$BACKEND_REGISTRY|g" api-deployment.yaml | \
-    sed "s|\${IMAGE_TAG:-latest}|$IMAGE_TAG|g" > /tmp/api-deployment.yaml
+    # 이미지 태그 치환 (IMAGE_TAG 변수 사용)
+    sed "s|\${IMAGE_TAG:-latest}|$IMAGE_TAG|g" api-deployment.yaml > /tmp/api-deployment.yaml
     echo "API Deployment 임시 파일 생성 완료: /tmp/api-deployment.yaml"
-    echo "DOCKER_REGISTRY in temp file: $(grep 'image:' /tmp/api-deployment.yaml)"
+    echo "IMAGE tag used: $IMAGE_TAG"
+    echo "Image in temp file: $(grep 'ghcr.io/jc01rho/skald/backend:' /tmp/api-deployment.yaml)"
     
     # API 서비스 배포
     if kubectl apply -f /tmp/api-deployment.yaml -n "$NAMESPACE"; then
@@ -476,7 +474,11 @@ deploy_backend() {
     # Memo Processing 서비스 배포
     sed "s|\${DOCKER_REGISTRY:-skaldlabs}|$BACKEND_REGISTRY|g" memo-processing-deployment.yaml | \
     sed "s|\${IMAGE_TAG:-latest}|$IMAGE_TAG|g" > /tmp/memo-processing-deployment.yaml
-    
+        # 이미지 태그 치환
+    sed "s|\${IMAGE_TAG:-latest}|$IMAGE_TAG|g" memo-processing-deployment.yaml > /tmp/memo-processing-deployment.yaml
+    echo "Memo Processing Deployment 임시 파일 생성 완료: /tmp/memo-processing-deployment.yaml"
+    echo "Image in temp file: $(grep 'ghcr.io/jc01rho/skald/backend:' /tmp/memo-processing-deployment.yaml)"
+
     if kubectl apply -f /tmp/memo-processing-deployment.yaml -n "$NAMESPACE"; then
         log_success "Memo Processing Deployment 생성 완료"
     else
@@ -506,10 +508,10 @@ deploy_backend() {
 # Step 6: AI 서비스 배포
 deploy_ai_services() {
     log_info "Step 6: AI 서비스 배포"
-    
-    # Embedding Service 배포
-    sed "s|\${DOCKER_REGISTRY:-skaldlabs}|$DOCKER_REGISTRY|g" embedding-service-deployment.yaml | \
-    sed "s|\${IMAGE_TAG:-latest}|$IMAGE_TAG|g" > /tmp/embedding-service-deployment.yaml
+
+    # 이미지 태그 치환
+    sed "s|\${IMAGE_TAG:-latest}|$IMAGE_TAG|g" embedding-service-deployment.yaml > /tmp/embedding-service-deployment.yaml
+    echo "Embedding Service Deployment 임시 파일 생성 완료: /tmp/embedding-service-deployment.yaml"
     
     if kubectl apply -f /tmp/embedding-service-deployment.yaml -n "$NAMESPACE"; then
         log_success "Embedding Service Deployment 생성 완료"
@@ -560,9 +562,10 @@ deploy_frontend() {
         exit 1
     fi
     
-    # 환경변수 치환을 위한 임시 파일 생성
-    sed "s|\${DOCKER_REGISTRY:-skaldlabs}|$DOCKER_REGISTRY|g" ui-deployment.yaml | \
-    sed "s|\${IMAGE_TAG:-latest}|$IMAGE_TAG|g" > /tmp/ui-deployment.yaml
+    # 이미지 태그 치환
+    sed "s|\${IMAGE_TAG:-latest}|$IMAGE_TAG|g" ui-deployment.yaml > /tmp/ui-deployment.yaml
+    echo "UI Deployment 임시 파일 생성 완료: /tmp/ui-deployment.yaml"
+    echo "Image in temp file: $(grep 'ghcr.io/jc01rho/skald/ui:' /tmp/ui-deployment.yaml)"
     
     if kubectl apply -f /tmp/ui-deployment.yaml -n "$NAMESPACE"; then
         log_success "UI Deployment 생성 완료"
@@ -583,6 +586,48 @@ deploy_frontend() {
     
     # 임시 파일 정리
     rm -f /tmp/ui-deployment.yaml
+}
+
+# Step 7.5: Worker 배포
+deploy_worker() {
+    log_info "Step 7.5: Skald Worker 배포"
+
+    # Worker ConfigMap 생성
+    if kubectl apply -f worker-configmap.yaml -n "$NAMESPACE"; then
+        log_success "Worker ConfigMap 생성 완료"
+    else
+        log_error "Worker ConfigMap 생성 실패"
+        exit 1
+    fi
+
+    # 이미지 태그 치환
+    sed "s|\${IMAGE_TAG:-latest}|$IMAGE_TAG|g" worker-deployment.yaml > /tmp/worker-deployment.yaml
+    echo "Worker Deployment 임시 파일 생성 완료: /tmp/worker-deployment.yaml"
+    echo "Image in temp file: $(grep 'ghcr.io/jc01rho/skald-worker:' /tmp/worker-deployment.yaml)"
+
+    if kubectl apply -f /tmp/worker-deployment.yaml -n "$NAMESPACE"; then
+        log_success "Worker Deployment 생성 완료"
+    else
+        log_error "Worker Deployment 생성 실패"
+        exit 1
+    fi
+
+    if kubectl apply -f worker-service.yaml -n "$NAMESPACE"; then
+        log_success "Worker Service 생성 완료"
+    else
+        log_error "Worker Service 생성 실패"
+        exit 1
+    fi
+
+    if kubectl apply -f worker-serviceaccount.yaml -n "$NAMESPACE"; then
+        log_success "Worker ServiceAccount 생성 완료"
+    else
+        log_error "Worker ServiceAccount 생성 실패"
+        exit 1
+    fi
+
+    # 임시 파일 정리
+    rm -f /tmp/worker-deployment.yaml
 }
 
 # Step 8: Ingress 설정
@@ -802,6 +847,35 @@ undeploy_ui() {
         log_success "UI Deployment 삭제 완료"
     else
         log_error "UI Deployment 삭제 실패"
+        return 1
+    fi
+}
+
+# 언디플로이: Worker 리소스 삭제
+undeploy_worker() {
+    log_info "Step 2.5: Worker Deployment/Service 삭제 중..."
+
+    # Worker Service 삭제
+    if kubectl delete service worker-service -n "$NAMESPACE" --ignore-not-found=true; then
+        log_success "Worker Service 삭제 완료"
+    else
+        log_error "Worker Service 삭제 실패"
+        return 1
+    fi
+
+    # Worker Deployment 삭제
+    if kubectl delete deployment skald-worker -n "$NAMESPACE" --ignore-not-found=true; then
+        log_success "Worker Deployment 삭제 완료"
+    else
+        log_error "Worker Deployment 삭제 실패"
+        return 1
+    fi
+
+    # Worker ServiceAccount 삭제
+    if kubectl delete serviceaccount skald-worker -n "$NAMESPACE" --ignore-not-found=true; then
+        log_success "Worker ServiceAccount 삭제 완료"
+    else
+        log_error "Worker ServiceAccount 삭제 실패"
         return 1
     fi
 }
@@ -1062,11 +1136,12 @@ undeploy() {
     
     show_undeploy_confirmation
     
-    # 삭제 순서: Traefik -> Ingress -> UI -> AI 서비스 -> Backend -> RabbitMQ -> Redis -> PostgreSQL -> ReplicaSets -> PVC -> Configs -> Namespace
+    # 삭제 순서: Traefik -> Ingress -> UI -> AI 서비스 -> Worker -> Backend -> RabbitMQ -> Redis -> PostgreSQL -> ReplicaSets -> PVC -> Configs -> Namespace
     undeploy_traefik || log_warning "Traefik 삭제 중 오류 발생"
     undeploy_ingress || log_warning "Ingress 삭제 중 오류 발생"
     undeploy_ui || log_warning "UI 리소스 삭제 중 오류 발생"
     undeploy_ai_services || log_warning "AI 서비스 삭제 중 오류 발생"
+    undeploy_worker || log_warning "Worker 리소스 삭제 중 오류 발생"
     undeploy_backend || log_warning "Backend 리소스 삭제 중 오류 발생"
     undeploy_rabbitmq || log_warning "RabbitMQ 리소스 삭제 중 오류 발생"
     undeploy_redis || log_warning "Redis 리소스 삭제 중 오류 발생"
@@ -1256,6 +1331,7 @@ main() {
         deploy_infrastructure
         deploy_backend
         deploy_ai_services
+        deploy_worker
         deploy_frontend
         deploy_ingress
         verify_deployment
