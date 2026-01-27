@@ -256,6 +256,24 @@ spec:
                                 name: skald-secrets
                                 key: GEMINI_API_KEY
                                 optional: true
+                      - name: CLI_PROXY_API_KEY
+                        valueFrom:
+                            secretKeyRef:
+                                name: skald-secrets
+                                key: CLI_PROXY_API_KEY
+                                optional: true
+                      - name: CLI_PROXY_API_BASE_URL
+                        valueFrom:
+                            configMapKeyRef:
+                                name: skald-config
+                                key: CLI_PROXY_BASE_URL
+                                optional: true
+                      - name: CLI_PROXY_API_MODEL
+                        valueFrom:
+                            configMapKeyRef:
+                                name: skald-config
+                                key: CLI_PROXY_API_MODEL
+                                optional: true
                       # 마이크로서비스 URL 설정
                       - name: EMBEDDING_SERVICE_URL
                         valueFrom:
