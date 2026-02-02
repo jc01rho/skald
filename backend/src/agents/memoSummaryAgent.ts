@@ -39,10 +39,6 @@ export function createMemoSummaryAgent() {
 
     const llm = LLMService.getLLM({ purpose: 'classification' })
 
-    const structuredLlm = llm.withStructuredOutput(MemoSummaryOutputSchema, {
-        name: 'MemoSummaryAgent',
-    })
-
     return {
         name: 'Memo Summary Agent',
         /**
@@ -55,7 +51,7 @@ export function createMemoSummaryAgent() {
 
             console.log(`[MemoSummaryAgent] Starting summary generation (length: ${memoContent.length})`)
             try {
-                const result = await structuredLlm.invoke(
+                const response = await llm.invoke(
                     [
                         {
                             role: 'user',
@@ -66,6 +62,15 @@ export function createMemoSummaryAgent() {
                         callbacks: [], // Disable LangSmith tracing
                     }
                 )
+
+                const responseText = response.content?.toString().trim() || ''
+                const cleanedJson = responseText
+                    .replace(/^```json?\n?/i, '')
+                    .replace(/\n?```$/i, '')
+                    .trim()
+                const parsed = JSON.parse(cleanedJson)
+                const result = MemoSummaryOutputSchema.parse(parsed)
+
                 console.log(`[MemoSummaryAgent] Summary generation successful`)
                 return result as MemoSummaryOutput
             } catch (error) {
