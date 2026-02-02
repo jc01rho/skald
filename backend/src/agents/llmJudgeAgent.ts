@@ -76,10 +76,6 @@ export function createLLMJudgeAgent() {
 
     const llm = LLMService.getLLM({ purpose: 'classification' })
 
-    const structuredLlm = llm.withStructuredOutput(LLMJudgeOutputSchema, {
-        name: 'LLMJudgeAgent',
-    })
-
     return {
         name: 'LLM-as-a-Judge Agent',
         /**
@@ -92,7 +88,7 @@ export function createLLMJudgeAgent() {
         async judge(question: string, actualAnswer: string, expectedAnswer: string): Promise<LLMJudgeOutput> {
             const prompt = `Question: ${question}\nActual answer: ${actualAnswer}\nExpected answer: ${expectedAnswer}`
 
-            const result = await structuredLlm.invoke(
+            const response = await llm.invoke(
                 [
                     {
                         role: 'system',
@@ -108,7 +104,20 @@ export function createLLMJudgeAgent() {
                 }
             )
 
-            return result as LLMJudgeOutput
+            const responseText = response.content?.toString().trim() || ''
+            const cleanedJson = responseText
+                .replace(/^```json?\n?/i, '')
+                .replace(/\n?```$/i, '')
+                .trim()
+
+            try {
+                const parsed = JSON.parse(cleanedJson)
+                return LLMJudgeOutputSchema.parse(parsed)
+            } catch (error) {
+                throw new Error(
+                    `Failed to parse LLM judge response: ${error instanceof Error ? error.message : String(error)}. Raw output: ${responseText}`
+                )
+            }
         },
     }
 }

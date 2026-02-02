@@ -27,19 +27,16 @@ const MEMO_TAGS_AGENT_INSTRUCTIONS = `
  */
 export function createMemoTagsAgent() {
     // Lazy initialization - LLM is only created when extractTags is called
-    let structuredLlm: ReturnType<ReturnType<typeof LLMService.getLLM>['withStructuredOutput']> | null = null
+    let llmInstance: ReturnType<typeof LLMService.getLLM> | null = null
 
-    const getStructuredLlm = () => {
-        if (!structuredLlm) {
+    const getLlm = () => {
+        if (!llmInstance) {
             if (!process.env.CLI_PROXY_API_KEY) {
                 throw new Error('CLI_PROXY_API_KEY is required for memoTagsAgent')
             }
-            const llm = LLMService.getLLM({ purpose: 'classification' })
-            structuredLlm = llm.withStructuredOutput(MemoTagsOutputSchema, {
-                name: 'MemoTagsAgent',
-            })
+            llmInstance = LLMService.getLLM({ purpose: 'classification' })
         }
-        return structuredLlm
+        return llmInstance
     }
 
     return {
@@ -59,7 +56,7 @@ export function createMemoTagsAgent() {
 
             prompt += `Memo content:\n${memoContent}`
 
-            const result = await getStructuredLlm().invoke(
+            const result = await getLlm().invoke(
                 [
                     {
                         role: 'user',
@@ -71,7 +68,20 @@ export function createMemoTagsAgent() {
                 }
             )
 
-            return result as unknown as MemoTagsOutput
+            const responseText = result.content?.toString().trim() || ''
+            const cleanedJson = responseText
+                .replace(/^```json?\n?/i, '')
+                .replace(/\n?```$/i, '')
+                .trim()
+
+            try {
+                const parsed = JSON.parse(cleanedJson)
+                return MemoTagsOutputSchema.parse(parsed)
+            } catch (error) {
+                throw new Error(
+                    `Failed to parse memo tags response: ${error instanceof Error ? error.message : String(error)}`
+                )
+            }
         },
     }
 }
