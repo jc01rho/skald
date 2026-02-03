@@ -25,13 +25,14 @@ export class HNSWOptimizationService {
             logger.info({ config: finalConfig }, 'Creating optimized HNSW index')
 
             await em.getConnection().execute(`
-                DROP INDEX IF EXISTS idx_memochunk_embedding_hnsw_optimized
+                DROP INDEX IF EXISTS idx_memochunk_embedding_hnsw_optimized;
+                DROP INDEX IF EXISTS idx_memochunk_embedding_halfvec_hnsw;
             `)
 
             await em.getConnection().execute(`
-                CREATE INDEX idx_memochunk_embedding_hnsw_optimized 
+                CREATE INDEX idx_memochunk_embedding_halfvec_hnsw 
                 ON skald_memochunk 
-                USING hnsw (embedding vector_cosine_ops)
+                USING hnsw ((embedding::halfvec(2048)) halfvec_cosine_ops)
                 WITH (m = ${finalConfig.m}, ef_construction = ${finalConfig.efConstruction})
             `)
 

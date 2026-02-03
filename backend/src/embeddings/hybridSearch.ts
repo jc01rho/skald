@@ -72,7 +72,7 @@ export class HybridSearchService {
         const allParams = [JSON.stringify(embeddingVector), JSON.stringify(embeddingVector), ...params]
 
         let whereClause = `
-            WHERE (skald_memochunk.embedding <=> ?::vector) <= ${similarityThreshold}
+            WHERE (skald_memochunk.embedding::halfvec(2048) <=> ?::halfvec(2048)) <= ${similarityThreshold}
             AND skald_memochunk.project_id = '${project.uuid}'
         `
 
@@ -85,7 +85,7 @@ export class HybridSearchService {
                 skald_memochunk.uuid,
                 skald_memochunk.chunk_content,
                 skald_memochunk.memo_uuid,
-                (1 - (skald_memochunk.embedding <=> ?::vector)) as vector_score
+                (1 - (skald_memochunk.embedding::halfvec(2048) <=> ?::halfvec(2048))) as vector_score
             FROM skald_memochunk
             JOIN skald_memo ON skald_memochunk.memo_id = skald_memo.uuid
             ${whereClause}
