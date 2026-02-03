@@ -83,6 +83,46 @@ spec:
                             configMapKeyRef:
                                 name: skald-config
                                 key: RABBITMQ_PORT
+                - name: run-migrations
+                  image: ghcr.io/jc01rho/skald/backend:${IMAGE_TAG:-latest}
+                  command:
+                      - sh
+                      - -c
+                      - |
+                          echo "Running database migrations..."
+                          pnpm migrate:up
+                          echo "Migrations completed successfully"
+                  env:
+                      - name: DATABASE_URL
+                        valueFrom:
+                            secretKeyRef:
+                                name: skald-secrets
+                                key: DATABASE_URL
+                      - name: DB_HOST
+                        valueFrom:
+                            configMapKeyRef:
+                                name: skald-config
+                                key: DB_HOST
+                      - name: DB_PORT
+                        valueFrom:
+                            configMapKeyRef:
+                                name: skald-config
+                                key: DB_PORT
+                      - name: DB_NAME
+                        valueFrom:
+                            configMapKeyRef:
+                                name: skald-config
+                                key: DB_NAME
+                      - name: DB_USER
+                        valueFrom:
+                            configMapKeyRef:
+                                name: skald-config
+                                key: DB_USER
+                      - name: DB_PASSWORD
+                        valueFrom:
+                            secretKeyRef:
+                                name: skald-secrets
+                                key: DB_PASSWORD
             securityContext:
                 runAsNonRoot: true
                 runAsUser: 1000
