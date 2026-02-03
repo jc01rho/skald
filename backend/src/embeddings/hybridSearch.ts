@@ -2,6 +2,7 @@ import { Project } from '@/entities/Project'
 import { buildFilterConditions, MemoFilter } from '@/lib/filterUtils'
 import { DI } from '@/di'
 import { logger } from '@/lib/logger'
+import { detectLanguage, Language } from '@/lib/languageDetector'
 
 export interface HybridSearchResult {
     uuid: string
@@ -108,9 +109,31 @@ export class HybridSearchService {
     }
 
     /**
-     * BM25 search using PostgreSQL full-text search
+     * BM25 search using PostgreSQL full-text search or pg_trgm for CJK languages
      */
     private static async bm25Search(
+        project: Project,
+        queryText: string,
+        topK: number,
+        filters?: MemoFilter[]
+    ): Promise<Array<{ uuid: string; chunk_content: string; memo_uuid: string; bm25_score: number }>> {
+        const detectedLanguage = detectLanguage(queryText)
+        const isCJK =
+            detectedLanguage === Language.KOREAN ||
+            detectedLanguage === Language.JAPANESE ||
+            detectedLanguage === Language.CHINESE
+
+        if (isCJK) {
+            return this.trgmSearch(project, queryText, topK, filters)
+        }
+
+        return this.fullTextSearch(project, queryText, topK, filters)
+    }
+
+    /**
+     * Full-text search for English and other languages using PostgreSQL tsvector
+     */
+    private static async fullTextSearch(
         project: Project,
         queryText: string,
         topK: number,
@@ -151,7 +174,55 @@ export class HybridSearchService {
                 bm25_score: Math.max(0, Math.min(1, row.bm25_score)),
             }))
         } catch (error) {
-            logger.error({ err: error }, 'BM25 search error in hybrid search')
+            logger.error({ err: error }, 'Full-text search error in hybrid search')
+            return []
+        }
+    }
+
+    /**
+     * Trigram similarity search for CJK languages (Korean, Japanese, Chinese)
+     */
+    private static async trgmSearch(
+        project: Project,
+        queryText: string,
+        topK: number,
+        filters?: MemoFilter[]
+    ): Promise<Array<{ uuid: string; chunk_content: string; memo_uuid: string; bm25_score: number }>> {
+        const { whereConditions, params } = buildFilterConditions(filters || [])
+
+        let whereClause = `
+            WHERE skald_memochunk.project_id = '${project.uuid}'
+            AND skald_memochunk.chunk_content % ?
+        `
+
+        if (whereConditions.length > 0) {
+            whereClause += ' AND ' + whereConditions.join(' AND ')
+        }
+
+        const sql = `
+            SELECT
+                skald_memochunk.uuid,
+                skald_memochunk.chunk_content,
+                skald_memochunk.memo_uuid,
+                similarity(skald_memochunk.chunk_content, ?) as bm25_score
+            FROM skald_memochunk
+            JOIN skald_memo ON skald_memochunk.memo_id = skald_memo.uuid
+            ${whereClause}
+            ORDER BY bm25_score DESC
+            LIMIT ${topK}
+        `
+
+        try {
+            const results = await DI.em.getConnection().execute<any[]>(sql, [queryText, queryText, ...params])
+
+            return (results || []).map((row) => ({
+                uuid: row.uuid,
+                chunk_content: row.chunk_content,
+                memo_uuid: row.memo_id,
+                bm25_score: Math.max(0, Math.min(1, row.bm25_score)),
+            }))
+        } catch (error) {
+            logger.error({ err: error, language: detectLanguage(queryText) }, 'Trigram search error in hybrid search')
             return []
         }
     }

@@ -15,6 +15,8 @@ import { ChatPromptTemplate } from '@langchain/core/prompts'
 import { logger } from '@/lib/logger'
 import { DI } from '@/di'
 import { MemoParentChunk } from '@/entities/MemoParentChunk'
+import { reorderForLongContext, selectOptimalStrategy, ReorderStrategy } from '@/lib/contextReorder'
+import { validateRetrieval, getRetryStrategy, RetrievalValidation } from '@/lib/retrievalValidator'
 
 interface RerankResult {
     index: number
@@ -53,6 +55,16 @@ export interface RAGConfig {
         vectorWeight?: number
         bm25Weight?: number
     }
+    contextReorder?: {
+        enabled: boolean
+        strategy?: ReorderStrategy
+        autoSelect?: boolean
+    }
+    crag?: {
+        enabled: boolean
+        scoreThreshold?: number
+        filterLowRelevance?: boolean
+    }
 }
 
 // Define your state schema
@@ -69,7 +81,8 @@ const RAGState = Annotation.Root({
     chunkResults: Annotation<MemoChunkWithDistance[] | null>,
     rerankedResults: Annotation<RerankResult[]>,
     memoPropertiesMap: Annotation<Map<string, { title: string; summary: string; content: string }> | null>,
-    parentChunkMap: Annotation<Map<string, string> | null>, // child_chunk_uuid -> parent_chunk_content
+    parentChunkMap: Annotation<Map<string, string> | null>,
+    cragValidation: Annotation<RetrievalValidation | null>,
     prompt: Annotation<ChatPromptTemplate>,
     contextStr: Annotation<string | null>,
 })
@@ -330,6 +343,55 @@ async function rerankNode(state: typeof RAGState.State) {
     return { rerankedResults: resultsWithEmbeddings.slice(0, ragConfig.reranking.topK) }
 }
 
+async function cragValidationNode(state: typeof RAGState.State) {
+    const { rerankedResults, query, ragConfig } = state
+
+    if (!ragConfig.crag?.enabled || rerankedResults.length === 0) {
+        return { cragValidation: null }
+    }
+
+    const scoreThreshold = ragConfig.crag.scoreThreshold ?? 0.5
+    const avgScore = rerankedResults.reduce((sum, r) => sum + r.relevance_score, 0) / rerankedResults.length
+
+    if (avgScore >= scoreThreshold) {
+        logger.debug({ avgScore, threshold: scoreThreshold }, 'CRAG skipped: scores above threshold')
+        return { cragValidation: null }
+    }
+
+    logger.debug({ avgScore, threshold: scoreThreshold }, 'CRAG validation triggered')
+
+    const validation = await validateRetrieval(query, rerankedResults, scoreThreshold)
+
+    if (validation.needsRetry) {
+        const retryInfo = getRetryStrategy(validation)
+        logger.warn(
+            {
+                avgRelevance: validation.averageRelevance,
+                suggestedStrategy: retryInfo.strategy,
+                reason: retryInfo.reason,
+            },
+            'CRAG detected low quality retrieval'
+        )
+    }
+
+    if (ragConfig.crag.filterLowRelevance && validation.scores.length > 0) {
+        const filteredResults = rerankedResults.filter((_, idx) => {
+            const score = validation.scores.find((s) => s.index === idx)
+            return score?.relevance !== '무관'
+        })
+
+        if (filteredResults.length > 0 && filteredResults.length < rerankedResults.length) {
+            logger.debug(
+                { original: rerankedResults.length, filtered: filteredResults.length },
+                'CRAG filtered low relevance results'
+            )
+            return { rerankedResults: filteredResults, cragValidation: validation }
+        }
+    }
+
+    return { cragValidation: validation }
+}
+
 function cosineSimilarityEmbedding(vec1: number[], vec2: number[]): number {
     // Calculate cosine similarity between two embedding vectors
     const dot = vec1.reduce((sum, v, i) => sum + v * vec2[i], 0)
@@ -395,6 +457,27 @@ async function mmrNode(state: typeof RAGState.State) {
     }
 
     return { rerankedResults: selected }
+}
+
+function contextReorderNode(state: typeof RAGState.State) {
+    const { rerankedResults, ragConfig } = state
+
+    if (!ragConfig.contextReorder?.enabled || rerankedResults.length < 4) {
+        return { rerankedResults }
+    }
+
+    const strategy = ragConfig.contextReorder.autoSelect
+        ? selectOptimalStrategy(rerankedResults)
+        : ragConfig.contextReorder.strategy || 'sandwich'
+
+    const reorderedResults = reorderForLongContext(rerankedResults, { strategy })
+
+    logger.debug(
+        { strategy, originalCount: rerankedResults.length, reorderedCount: reorderedResults.length },
+        'Context reorder applied'
+    )
+
+    return { rerankedResults: reorderedResults }
 }
 
 /**
@@ -513,7 +596,9 @@ const ragGraphDefinition = new StateGraph(RAGState)
     .addNode('vectorSearch', vectorSearchNode)
     .addNode('getMemoProperties', getMemoPropertiesNode)
     .addNode('rerank', rerankNode)
+    .addNode('cragValidation', cragValidationNode)
     .addNode('mmr', mmrNode)
+    .addNode('contextReorder', contextReorderNode)
     .addNode('fetchParentChunks', fetchParentChunksNode)
     .addNode('buildLLMInputs', buildLLMInputsNode)
     .addEdge('__start__', 'getChatHistory')
@@ -522,8 +607,10 @@ const ragGraphDefinition = new StateGraph(RAGState)
     .addEdge('queryRewrite', 'vectorSearch')
     .addEdge('vectorSearch', 'getMemoProperties')
     .addEdge('getMemoProperties', 'rerank')
-    .addEdge('rerank', 'mmr')
-    .addEdge('mmr', 'fetchParentChunks')
+    .addEdge('rerank', 'cragValidation')
+    .addEdge('cragValidation', 'mmr')
+    .addEdge('mmr', 'contextReorder')
+    .addEdge('contextReorder', 'fetchParentChunks')
     .addEdge('fetchParentChunks', 'buildLLMInputs')
     .addEdge('buildLLMInputs', END)
 
