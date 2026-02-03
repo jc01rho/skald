@@ -80,7 +80,7 @@ export const memoChunkVectorSearch = async (
     const allParams = [JSON.stringify(embeddingVector), JSON.stringify(embeddingVector), ...params]
 
     let whereClause = `
-        WHERE (skald_memochunk.embedding <=> ?::vector) <= ${similarityThreshold}
+        WHERE (skald_memochunk.embedding::halfvec(2048) <=> ?::halfvec(2048)) <= ${similarityThreshold}
         AND skald_memochunk.project_id = '${project.uuid}'
     `
 
@@ -91,7 +91,7 @@ export const memoChunkVectorSearch = async (
     const sql = `
         SELECT
             skald_memochunk.*,
-            (skald_memochunk.embedding <=> ?::vector) as distance,
+            (skald_memochunk.embedding::halfvec(2048) <=> ?::halfvec(2048)) as distance,
             skald_memo.created_at,
             skald_memo.updated_at,
             skald_memo.title,
