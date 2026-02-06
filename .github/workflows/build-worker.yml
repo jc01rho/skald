@@ -57,7 +57,8 @@ jobs:
                       org.opencontainers.image.description=Skald Worker Service - Jira Issues & Technical Docs Collector
                       org.opencontainers.image.title=Skald Worker
                       org.opencontainers.image.version=${{ github.ref_name }}
-                  cache-from: type=registry,ref=${{ env.IMAGE_NAME }}:buildcache
-                  cache-to: type=registry,ref=${{ env.IMAGE_NAME }}:buildcache,mode=max
+                  # TEMPORARILY DISABLED - cache was serving stale code
+                  # cache-from: type=registry,ref=${{ env.IMAGE_NAME }}:buildcache
+                  # cache-to: type=registry,ref=${{ env.IMAGE_NAME }}:buildcache,mode=max
                   provenance: true
                   sbom: true
