@@ -67,6 +67,9 @@ jobs:
                   context: ./worker
                   push: true
                   no-cache: true
+                  pull: true
+                  build-args: |
+                      CACHE_BUST=${{ github.sha }}
                   tags: ${{ steps.meta.outputs.tags }}
                   labels: |
                       org.opencontainers.image.description=Skald Worker Service - Jira Issues & Technical Docs Collector

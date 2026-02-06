@@ -1,5 +1,8 @@
 FROM python:3.11-slim
 
+ARG CACHE_BUST=1
+RUN echo "Cache bust: $CACHE_BUST"
+
 WORKDIR /app
 
 # Install system dependencies
