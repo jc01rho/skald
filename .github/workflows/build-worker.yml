@@ -25,6 +25,13 @@ jobs:
             - name: Checkout repository
               uses: actions/checkout@v4
 
+            - name: Debug - Check source field in docs_collector.py
+              run: |
+                  echo "=== Git SHA ===" 
+                  git rev-parse HEAD
+                  echo "=== Source field in docs_collector.py ===" 
+                  grep -n "source=" worker/src/skald_worker/collectors/docs_collector.py | head -10
+
             - name: Set up Docker Buildx
               uses: docker/setup-buildx-action@v3
 
