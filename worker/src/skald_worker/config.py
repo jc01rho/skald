@@ -69,7 +69,19 @@ class Settings(BaseSettings):
     )
     docs_poll_interval_minutes: int = Field(
         default=30,
-        description="Polling interval for technical docs in minutes",
+        description="Polling interval for technical docs in minutes (ignored if docs_sync_cron is set)",
+    )
+    docs_sync_cron_hour: int = Field(
+        default=3,
+        description="Hour to run daily docs sync (0-23, default 3 AM)",
+    )
+    docs_sync_cron_minute: int = Field(
+        default=0,
+        description="Minute to run daily docs sync (0-59, default 0)",
+    )
+    docs_sync_days: int = Field(
+        default=7,
+        description="Number of days to look back for updated documents",
     )
     docs_enabled: bool = Field(
         default=True,

@@ -1,11 +1,12 @@
 """Background scheduler for periodic data collection."""
 
 import asyncio
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 from typing import Any
 
 import structlog
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
+from apscheduler.triggers.cron import CronTrigger
 from apscheduler.triggers.interval import IntervalTrigger
 
 from skald_worker.collectors.docs_collector import get_docs_collector
@@ -36,16 +37,31 @@ async def jira_sync_job() -> None:
 
 
 async def docs_sync_job() -> None:
-    """Scheduled job to sync technical docs."""
+    """Scheduled job to sync technical docs (incremental, last N days)."""
     logger.info("Starting scheduled docs sync")
     try:
         collector = get_docs_collector()
-        result = await collector.sync_all()
+        
+        # Calculate updated_since based on configured days
+        updated_since = (
+            datetime.now(timezone.utc) - timedelta(days=settings.docs_sync_days)
+        ).strftime("%Y-%m-%dT%H:%M:%SZ")
+        
+        logger.info(
+            "Syncing docs updated since",
+            updated_since=updated_since,
+            days=settings.docs_sync_days,
+        )
+        
+        result = await collector.sync_all(updated_since=updated_since)
         _last_runs["docs"] = datetime.now()
+        
+        # Handle nested result structure
+        total = result.get("total", result)
         logger.info(
             "Scheduled docs sync completed",
-            processed=result["processed"],
-            failed=result["failed"],
+            processed=total.get("processed", 0),
+            failed=total.get("failed", 0),
         )
     except Exception as e:
         logger.error("Scheduled docs sync failed", error=str(e))
@@ -74,18 +90,23 @@ def start_scheduler() -> AsyncIOScheduler:
             interval_minutes=settings.jira_poll_interval_minutes,
         )
 
-    # Add docs sync job if enabled
+    # Add docs sync job if enabled (daily at configured hour)
     if settings.docs_enabled and settings.spms_base_url:
         _scheduler.add_job(
             docs_sync_job,
-            trigger=IntervalTrigger(minutes=settings.docs_poll_interval_minutes),
+            trigger=CronTrigger(
+                hour=settings.docs_sync_cron_hour,
+                minute=settings.docs_sync_cron_minute,
+            ),
             id="docs_sync",
             name="Docs Sync",
             replace_existing=True,
         )
         logger.info(
             "Scheduled docs sync job",
-            interval_minutes=settings.docs_poll_interval_minutes,
+            cron_hour=settings.docs_sync_cron_hour,
+            cron_minute=settings.docs_sync_cron_minute,
+            sync_days=settings.docs_sync_days,
         )
 
     _scheduler.start()
