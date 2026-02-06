@@ -12,7 +12,7 @@ on:
 
 env:
     REGISTRY: ghcr.io
-    IMAGE_NAME: ghcr.io/jc01rho/skald-worker
+    IMAGE_NAME: ghcr.io/jc01rho/skald-worker-v2
 
 jobs:
     build-and-push:
