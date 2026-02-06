@@ -475,3 +475,4 @@ def get_docs_collector() -> DocsCollector:
     if _docs_collector is None:
         _docs_collector = DocsCollector()
     return _docs_collector
+# Fresh rebuild 20260207081045
