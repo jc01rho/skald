@@ -174,3 +174,9 @@ k8s/configmap.local.yaml
 
 # API configuration files (may contain credentials)
 CLI_PROXY_API_CONFIG.txtnul
+
+# Kubernetes sensitive configs (keep local only)
+k8s/configmap.yaml
+k8s/worker-secret.yaml
+k8s/ui-configmap.yaml
+k8s/worker-configmap.yaml
