@@ -364,6 +364,7 @@ class DocsCollector:
 
         processed = 0
         failed = 0
+        skipped = 0
         page = 1
         page_size = 50
 
@@ -377,7 +378,7 @@ class DocsCollector:
         fetch_method = fetch_methods.get(endpoint_type)
         if not fetch_method:
             logger.error(f"Unknown endpoint type: {endpoint_type}")
-            return {"processed": 0, "failed": 0}
+            return {"processed": 0, "failed": 0, "skipped": 0}
 
         while processed + failed < max_items:
             items = await fetch_method(
@@ -392,6 +393,11 @@ class DocsCollector:
             for item in items:
                 if processed + failed >= max_items:
                     break
+
+                item_date_updated = item.get("date_updated", "")
+                if updated_since and item_date_updated and item_date_updated < updated_since:
+                    skipped += 1
+                    continue
 
                 try:
                     await self.sync_item(item, endpoint_type)
@@ -410,11 +416,13 @@ class DocsCollector:
             f"{endpoint_type} sync completed",
             processed=processed,
             failed=failed,
+            skipped=skipped,
         )
 
         return {
             "processed": processed,
             "failed": failed,
+            "skipped": skipped,
         }
 
     async def sync_all(
@@ -427,7 +435,6 @@ class DocsCollector:
 
         results = {}
 
-        # Sync SPMS endpoints (excluding screens)
         for endpoint_type in ["functions", "techs", "information"]:
             endpoint_results = await self.sync_endpoint(
                 endpoint_type=endpoint_type,
@@ -438,11 +445,13 @@ class DocsCollector:
 
         total_processed = sum(r["processed"] for r in results.values())
         total_failed = sum(r["failed"] for r in results.values())
+        total_skipped = sum(r.get("skipped", 0) for r in results.values())
 
         logger.info(
             "SPMS docs sync completed",
             total_processed=total_processed,
             total_failed=total_failed,
+            total_skipped=total_skipped,
             results=results,
         )
 
@@ -450,6 +459,7 @@ class DocsCollector:
             "total": {
                 "processed": total_processed,
                 "failed": total_failed,
+                "skipped": total_skipped,
             },
             "by_type": results,
         }
