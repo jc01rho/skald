@@ -12,7 +12,7 @@ on:
 
 env:
     REGISTRY: ghcr.io
-    IMAGE_NAME: ghcr.io/jc01rho/skald-worker-fresh
+    IMAGE_NAME: ghcr.io/jc01rho/skald-worker
 
 jobs:
     build-and-push:
@@ -32,51 +32,17 @@ jobs:
                   echo "=== Source field in docs_collector.py ===" 
                   grep -n "source=" worker/src/skald_worker/collectors/docs_collector.py | head -10
 
-            - name: Set up Docker Buildx
-              uses: docker/setup-buildx-action@v3
-              with:
-                  driver-opts: |
-                      image=moby/buildkit:master
-                      network=host
-
-            - name: Clear Buildx cache
-              run: docker buildx prune -af
-
             - name: Log in to GitHub Container Registry
-              uses: docker/login-action@v3
-              with:
-                  registry: ${{ env.REGISTRY }}
-                  username: ${{ github.actor }}
-                  password: ${{ secrets.GITHUB_TOKEN }}
+              run: echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
 
-            - name: Extract metadata
-              id: meta
-              uses: docker/metadata-action@v5
-              with:
-                  images: ${{ env.IMAGE_NAME }}
-                  tags: |
-                      type=ref,event=branch
-                      type=ref,event=pr
-                      type=semver,pattern={{version}}
-                      type=semver,pattern={{major}}.{{minor}}
-                      type=raw,value=latest,enable={{is_default_branch}}
+            - name: Build Docker image (no buildx, no cache)
+              run: |
+                  cd worker
+                  docker build --no-cache --pull -t ${{ env.IMAGE_NAME }}:latest -t ${{ env.IMAGE_NAME }}:${{ github.sha }} .
+                  echo "=== Verify built image has correct code ==="
+                  docker run --rm ${{ env.IMAGE_NAME }}:latest grep -n "source=" /app/src/skald_worker/collectors/docs_collector.py | head -10
 
-            - name: Build and push Docker image
-              uses: docker/build-push-action@v6
-              with:
-                  context: ./worker
-                  push: true
-                  no-cache: true
-                  pull: true
-                  build-args: |
-                      CACHE_BUST=${{ github.sha }}
-                  tags: ${{ steps.meta.outputs.tags }}
-                  labels: |
-                      org.opencontainers.image.description=Skald Worker Service - Jira Issues & Technical Docs Collector
-                      org.opencontainers.image.title=Skald Worker
-                      org.opencontainers.image.version=${{ github.ref_name }}
-                  # TEMPORARILY DISABLED - cache was serving stale code
-                  # cache-from: type=registry,ref=${{ env.IMAGE_NAME }}:buildcache
-                  # cache-to: type=registry,ref=${{ env.IMAGE_NAME }}:buildcache,mode=max
-                  provenance: true
-                  sbom: true
+            - name: Push Docker image
+              run: |
+                  docker push ${{ env.IMAGE_NAME }}:latest
+                  docker push ${{ env.IMAGE_NAME }}:${{ github.sha }}
