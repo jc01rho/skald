@@ -15,6 +15,8 @@ COPY pyproject.toml ./
 COPY README.md ./
 COPY src/ ./src/
 
+RUN echo "=== DEBUG: source field in docs_collector.py ===" && grep -n "source=" /app/src/skald_worker/collectors/docs_collector.py | head -10
+
 # Install Python dependencies
 RUN pip install --no-cache-dir -e .
 
