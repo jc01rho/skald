@@ -10,6 +10,7 @@ from tenacity import (
     RetryError,
     before_sleep_log,
     retry,
+    retry_any,
     retry_if_exception_type,
     stop_after_attempt,
     wait_exponential,
@@ -76,7 +77,10 @@ def async_http_retry(
         Decorated function with retry logic
     """
     return retry(
-        retry=retry_if_exception_type(RETRYABLE_EXCEPTIONS) | retry_if_retryable_httpx_error,
+        retry=retry_any(
+            retry_if_exception_type(RETRYABLE_EXCEPTIONS),
+            retry_if_retryable_httpx_error,
+        ),
         stop=stop_after_attempt(max_attempts),
         wait=wait_exponential(multiplier=multiplier, min=min_wait, max=max_wait),
         before_sleep=before_sleep_log(logger, log_level=20),  # 20 = INFO
@@ -112,7 +116,10 @@ async def with_retry(
         Exception: The original exception if non-retryable
     """
     retrying = AsyncRetrying(
-        retry=retry_if_exception_type(RETRYABLE_EXCEPTIONS) | retry_if_retryable_httpx_error,
+        retry=retry_any(
+            retry_if_exception_type(RETRYABLE_EXCEPTIONS),
+            retry_if_retryable_httpx_error,
+        ),
         stop=stop_after_attempt(max_attempts),
         wait=wait_exponential(multiplier=multiplier, min=min_wait, max=max_wait),
         before_sleep=before_sleep_log(logger, log_level=20),

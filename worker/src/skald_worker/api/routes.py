@@ -290,26 +290,30 @@ async def trigger_sync(
                 max_documents=max_documents,
             )
 
+            # Extract totals from nested result structure
+            total_processed = result["total"]["processed"]
+            total_failed = result["total"]["failed"]
+
             # Record metrics
             sync_jobs_total.labels(source="docs", status="success").inc()
             sync_job_duration_seconds.labels(source="docs").observe(time.perf_counter() - start_time)
-            sync_items_processed_total.labels(source="docs", status="success").inc(result["processed"])
-            sync_items_processed_total.labels(source="docs", status="failed").inc(result["failed"])
+            sync_items_processed_total.labels(source="docs", status="success").inc(total_processed)
+            sync_items_processed_total.labels(source="docs", status="failed").inc(total_failed)
 
             # Record sync state
             sync_state_manager.record_sync_success(
                 "docs",
-                items_processed=result["processed"],
-                items_failed=result["failed"],
-                metadata={"max_documents": max_documents},
+                items_processed=total_processed,
+                items_failed=total_failed,
+                metadata={"max_documents": max_documents, "by_type": result.get("by_type", {})},
             )
 
             return SyncResponse(
                 source="docs",
                 status="completed",
-                processed=result["processed"],
-                failed=result["failed"],
-                message=f"Synced {result['processed']} documents",
+                processed=total_processed,
+                failed=total_failed,
+                message=f"Synced {total_processed} documents",
             )
 
         else:
