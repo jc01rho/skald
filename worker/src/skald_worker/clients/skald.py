@@ -169,7 +169,7 @@ class SkaldClient:
         payload = {
             "title": title,
             "content": content,
-            "referenceId": reference_id,
+            "reference_id": reference_id,
             "projectId": self.project_id,
             "source": source,
             "contentHash": self.compute_content_hash(content, title, metadata, tags),

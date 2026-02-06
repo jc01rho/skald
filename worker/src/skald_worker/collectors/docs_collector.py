@@ -349,7 +349,7 @@ class DocsCollector:
             title=title,
             content=content,
             reference_id=reference_id,
-            source="spms",
+            source=item_type,  # Use specific type: functions, techs, information
             metadata=metadata,
         )
 

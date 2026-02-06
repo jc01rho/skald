@@ -231,6 +231,7 @@ export const getMemo = async (req: Request, res: Response) => {
         summary: memoSummary?.summary || null,
         metadata: memo.metadata,
         client_reference_id: memo.client_reference_id,
+        contentHash: memo.content_hash,
         source: memo.source,
         type: memo.type,
         expiration_date: memo.expiration_date,
