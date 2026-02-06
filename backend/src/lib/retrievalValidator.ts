@@ -1,4 +1,4 @@
-import { RerankResult } from '../agents/chatAgent/ragGraph'
+import { RerankResult } from './contextReorder'
 import { LLMService } from '../services/llmService'
 import { logger } from '../lib/logger'
 
