@@ -136,8 +136,8 @@ EOF
 # 대기 함수
 wait_for_pods() {
     local label=$1
-    local timeout=${2:-300}
-    log_info "Waiting for pods with label '$label' to be ready..."
+    local timeout=${2:-600}
+    log_info "Waiting for pods with label '$label' to be ready (timeout: ${timeout}s)..."
     
     if kubectl wait --for=condition=ready pod -l "$label" -n "$NAMESPACE" --timeout="${timeout}s"; then
         log_success "Pods with label '$label' are ready"
@@ -152,9 +152,9 @@ wait_for_pods() {
 check_service_health() {
     local service_name=$1
     local namespace=${2:-$NAMESPACE}
-    local timeout=${3:-60}
+    local timeout=${3:-120}
     
-    log_info "Checking service health for $service_name..."
+    log_info "Checking service health for $service_name (timeout: ${timeout}s)..."
     
     # 서비스 존재 확인
     if ! kubectl get svc "$service_name" -n "$namespace" &>/dev/null; then
@@ -179,9 +179,9 @@ check_service_health() {
 rolling_update() {
     local deployment_name=$1
     local new_image=$2
-    local timeout=${3:-300}
+    local timeout=${3:-600}
     
-    log_info "Starting rolling update for $deployment_name to $new_image..."
+    log_info "Starting rolling update for $deployment_name to $new_image (timeout: ${timeout}s)..."
     
     # 이미지 업데이트
     if kubectl set image deployment/"$deployment_name" "$deployment_name"="$new_image" -n "$NAMESPACE"; then
@@ -592,12 +592,48 @@ deploy_frontend() {
 deploy_worker() {
     log_info "Step 7.5: Skald Worker 배포"
 
-    # Worker ConfigMap 생성
-    if kubectl apply -f worker-configmap.yaml -n "$NAMESPACE"; then
-        log_success "Worker ConfigMap 생성 완료"
+    # Worker ConfigMap 생성 (로컬 파일 우선)
+    if [ -f "worker-configmap.local.yaml" ]; then
+        log_info "worker-configmap.local.yaml 사용"
+        if kubectl apply -f worker-configmap.local.yaml -n "$NAMESPACE"; then
+            log_success "Worker ConfigMap 생성 완료 (local)"
+        else
+            log_error "Worker ConfigMap 생성 실패"
+            exit 1
+        fi
+    elif [ -f "worker-configmap.yaml" ]; then
+        log_info "worker-configmap.yaml 사용"
+        if kubectl apply -f worker-configmap.yaml -n "$NAMESPACE"; then
+            log_success "Worker ConfigMap 생성 완료"
+        else
+            log_error "Worker ConfigMap 생성 실패"
+            exit 1
+        fi
     else
-        log_error "Worker ConfigMap 생성 실패"
+        log_error "Worker ConfigMap 파일이 없습니다 (worker-configmap.local.yaml 또는 worker-configmap.yaml)"
         exit 1
+    fi
+
+    # Worker Secret 생성 (로컬 파일 우선)
+    if [ -f "worker-secret.local.yaml" ]; then
+        log_info "worker-secret.local.yaml 사용"
+        if kubectl apply -f worker-secret.local.yaml -n "$NAMESPACE"; then
+            log_success "Worker Secret 생성 완료 (local)"
+        else
+            log_error "Worker Secret 생성 실패"
+            exit 1
+        fi
+    elif [ -f "worker-secret.yaml" ]; then
+        log_info "worker-secret.yaml 사용"
+        if kubectl apply -f worker-secret.yaml -n "$NAMESPACE"; then
+            log_success "Worker Secret 생성 완료"
+        else
+            log_error "Worker Secret 생성 실패"
+            exit 1
+        fi
+    else
+        log_warning "Worker Secret 파일이 없습니다 (worker-secret.local.yaml 또는 worker-secret.yaml)"
+        log_warning "Worker가 제대로 작동하지 않을 수 있습니다."
     fi
 
     # 이미지 태그 치환
@@ -694,7 +730,7 @@ verify_deployment() {
 verify_service_health() {
     log_info "서비스 상세 상태 확인 중..."
     
-    local services=("postgres-service" "rabbitmq-service" "redis-service" "api-service" "ui-service" "embedding-service-service" "docling-service")
+    local services=("postgres-service" "rabbitmq-service" "redis-service" "api-service" "ui-service" "embedding-service-service" "docling-service" "worker-service")
     
     for service in "${services[@]}"; do
         if kubectl get svc "$service" -n "$NAMESPACE" &>/dev/null; then

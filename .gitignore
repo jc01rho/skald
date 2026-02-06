@@ -180,3 +180,5 @@ k8s/configmap.yaml
 k8s/worker-secret.yaml
 k8s/ui-configmap.yaml
 k8s/worker-configmap.yaml
+k8s/worker-secret.local.yaml
+k8s/worker-configmap.local.yaml

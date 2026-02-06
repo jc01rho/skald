@@ -1,4 +1,4 @@
-"""Technical documentation collector service."""
+"""Technical documentation collector service for SPMS."""
 
 from typing import Any
 
@@ -16,6 +16,14 @@ logger = structlog.get_logger(__name__)
 DEFAULT_MAX_RETRIES = 3
 DEFAULT_RETRY_MIN_WAIT = 1.0
 DEFAULT_RETRY_MAX_WAIT = 30.0
+
+# SPMS API endpoints
+SPMS_ENDPOINTS = {
+    "functions": "/api/functions",
+    "techs": "/api/techs",
+    "information": "/api/information",
+    "screens": "/api/screens",
+}
 
 
 def html_to_markdown(html: str) -> str:
@@ -108,92 +116,186 @@ class DocsCollector:
             max_wait=self.retry_max_wait,
         )
 
-    async def fetch_document_list(
+    async def fetch_functions(
         self,
         page: int = 1,
         page_size: int = 50,
         updated_since: str | None = None,
     ) -> list[dict[str, Any]]:
-        """Fetch list of documents from SPMS.
-
-        Args:
-            page: Page number (1-indexed)
-            page_size: Number of documents per page
-            updated_since: ISO date string to filter by update date
-
-        Returns:
-            List of document metadata
-        """
+        """Fetch functions from SPMS."""
         params: dict[str, Any] = {
+            "status": "completed",
+            "product": "enterprise",
             "page": page,
-            "pageSize": page_size,
+            "size": page_size,
         }
         if updated_since:
             params["updatedSince"] = updated_since
 
         try:
-            response = await self._request_with_retry("GET", "/api/documents", params=params)
-            data = response.json()
-            return data.get("documents", [])
+            response = await self._request_with_retry("GET", "/api/functions", params=params)
+            return response.json()
         except httpx.HTTPError as e:
-            logger.error("Failed to fetch document list", error=str(e))
+            logger.error("Failed to fetch functions", error=str(e))
             return []
 
-    async def fetch_document_content(self, doc_id: str) -> dict[str, Any] | None:
-        """Fetch full document content.
+    async def fetch_techs(
+        self,
+        page: int = 1,
+        page_size: int = 50,
+        updated_since: str | None = None,
+    ) -> list[dict[str, Any]]:
+        """Fetch tech documents from SPMS."""
+        params: dict[str, Any] = {
+            "page": page,
+            "size": page_size,
+        }
+        if updated_since:
+            params["updatedSince"] = updated_since
 
-        Args:
-            doc_id: Document ID
-
-        Returns:
-            Document data with content
-        """
         try:
-            response = await self._request_with_retry("GET", f"/api/documents/{doc_id}")
+            response = await self._request_with_retry("GET", "/api/techs", params=params)
             return response.json()
-        except httpx.HTTPStatusError as e:
-            if e.response.status_code == 404:
-                logger.warning("Document not found", doc_id=doc_id)
-                return None
-            raise
         except httpx.HTTPError as e:
-            logger.error("Failed to fetch document", doc_id=doc_id, error=str(e))
+            logger.error("Failed to fetch techs", error=str(e))
+            return []
+
+    async def fetch_information(
+        self,
+        page: int = 1,
+        page_size: int = 50,
+        updated_since: str | None = None,
+    ) -> list[dict[str, Any]]:
+        """Fetch information from SPMS."""
+        params: dict[str, Any] = {
+            "status": "completed",
+            "product": "enterprise",
+            "page": page,
+            "size": page_size,
+        }
+        if updated_since:
+            params["updatedSince"] = updated_since
+
+        try:
+            response = await self._request_with_retry("GET", "/api/information", params=params)
+            return response.json()
+        except httpx.HTTPError as e:
+            logger.error("Failed to fetch information", error=str(e))
+            return []
+
+    async def fetch_screens(
+        self,
+        page: int = 1,
+        page_size: int = 50,
+        updated_since: str | None = None,
+    ) -> list[dict[str, Any]]:
+        """Fetch screens from SPMS."""
+        params: dict[str, Any] = {
+            "product": "enterprise",
+            "page": page,
+            "size": page_size,
+        }
+        if updated_since:
+            params["updatedSince"] = updated_since
+
+        try:
+            response = await self._request_with_retry("GET", "/api/screens", params=params)
+            return response.json()
+        except httpx.HTTPError as e:
+            logger.error("Failed to fetch screens", error=str(e))
+            return []
+
+    async def fetch_function_detail(self, function_id: int) -> dict[str, Any] | None:
+        """Fetch function detail from SPMS."""
+        try:
+            response = await self._request_with_retry("GET", f"/api/functions/{function_id}")
+            return response.json()
+        except httpx.HTTPError as e:
+            logger.error("Failed to fetch function detail", function_id=function_id, error=str(e))
             return None
 
-    def document_to_markdown(self, doc: dict[str, Any]) -> tuple[str, str, dict[str, Any]]:
-        """Convert a document to markdown format for Skald memo.
+    async def fetch_tech_detail(self, tech_id: int) -> dict[str, Any] | None:
+        """Fetch tech document detail from SPMS."""
+        try:
+            response = await self._request_with_retry("GET", f"/api/techs/{tech_id}")
+            return response.json()
+        except httpx.HTTPError as e:
+            logger.error("Failed to fetch tech detail", tech_id=tech_id, error=str(e))
+            return None
 
-        Args:
-            doc: Document data
+    async def fetch_information_detail(self, info_id: int) -> dict[str, Any] | None:
+        """Fetch information detail from SPMS."""
+        try:
+            response = await self._request_with_retry("GET", f"/api/information/{info_id}")
+            return response.json()
+        except httpx.HTTPError as e:
+            logger.error("Failed to fetch information detail", info_id=info_id, error=str(e))
+            return None
 
-        Returns:
-            Tuple of (title, content, metadata)
-        """
-        title = doc.get("title", "Untitled Document")
-        doc_id = doc.get("id", "")
-        doc_type = doc.get("type", "document")
-        category = doc.get("category", "")
-        tags = doc.get("tags", [])
-        author = doc.get("author", "")
-        created = doc.get("createdAt", "")
-        updated = doc.get("updatedAt", "")
+    async def fetch_screen_detail(self, screen_id: int) -> dict[str, Any] | None:
+        """Fetch screen detail from SPMS."""
+        try:
+            response = await self._request_with_retry("GET", f"/api/screens/{screen_id}")
+            return response.json()
+        except httpx.HTTPError as e:
+            logger.error("Failed to fetch screen detail", screen_id=screen_id, error=str(e))
+            return None
+
+    def item_to_markdown(self, item: dict[str, Any], item_type: str) -> tuple[str, str, dict[str, Any]]:
+        """Convert SPMS item to markdown format for Skald memo."""
+
+        # Extract title based on item type
+        if item_type == "function":
+            title = item.get("name", "Untitled Function")
+            doc_id = f"func-{item.get('id', '')}"
+            category = item.get("category", "")
+            component = item.get("component", "")
+            description = item.get("description", "")
+            author = item.get("author", "")
+            created = item.get("date_created", "")
+            updated = item.get("date_updated", "")
+            url_path = f"/enterprise/functions/{item.get('id', '')}"
+        elif item_type == "tech":
+            title = item.get("title", "Untitled Tech Doc")
+            doc_id = f"tech-{item.get('id', '')}"
+            category = item.get("product_id", "")
+            component = ""
+            description = item.get("content", "")
+            author = item.get("author", "")
+            created = item.get("date_created", "")
+            updated = item.get("date_updated", "")
+            url_path = f"/enterprise/techs/{item.get('id', '')}"
+        elif item_type == "information":
+            title = item.get("Name", "Untitled Information")
+            doc_id = f"info-{item.get('id', '')}"
+            category = item.get("Type", "")
+            component = ""
+            description = item.get("Content", "") or item.get("description", "")
+            author = ""
+            created = item.get("date_created", "")
+            updated = item.get("date_updated", "")
+            url_path = f"/enterprise/information/{item.get('id', '')}"
+        else:
+            title = "Untitled"
+            doc_id = f"doc-{item.get('id', '')}"
+            category = component = description = author = created = updated = ""
+            url_path = ""
 
         # Build metadata
         metadata = {
             "doc_id": doc_id,
-            "doc_type": doc_type,
+            "doc_type": item_type,
             "category": category,
-            "tags": tags,
+            "component": component,
             "author": author,
             "created": created,
             "updated": updated,
-            "source_url": doc.get("url", ""),
+            "source_url": f"{self.base_url}{url_path}" if url_path else "",
+            "spms_id": item.get("id", ""),
         }
 
         # Build markdown content
         sections = []
-
-        # Header
         sections.append(f"# {title}\n")
 
         # Metadata table
@@ -201,54 +303,46 @@ class DocsCollector:
         sections.append("| Field | Value |")
         sections.append("|-------|-------|")
         sections.append(f"| **ID** | {doc_id} |")
-        sections.append(f"| **Type** | {doc_type} |")
+        sections.append(f"| **Type** | {item_type} |")
         if category:
             sections.append(f"| **Category** | {category} |")
+        if component:
+            sections.append(f"| **Component** | {component} |")
         if author:
             sections.append(f"| **Author** | {author} |")
         if created:
             sections.append(f"| **Created** | {created} |")
         if updated:
             sections.append(f"| **Updated** | {updated} |")
-        if tags:
-            sections.append(f"| **Tags** | {', '.join(tags)} |")
-
         sections.append("")
 
         # Content
-        raw_content = doc.get("content", "")
-        content_format = doc.get("format", "text")
-
-        if content_format == "html":
-            content_text = html_to_markdown(raw_content)
-        else:
-            content_text = raw_content
-
-        sections.append("## Content\n")
-        sections.append(content_text)
+        if description:
+            sections.append("## Content\n")
+            sections.append(description)
 
         content = "\n".join(sections)
         return title, content, metadata
 
-    async def sync_document(self, doc: dict[str, Any]) -> dict[str, Any]:
-        """Sync a single document to Skald.
+    async def sync_item(self, item: dict[str, Any], item_type: str) -> dict[str, Any]:
+        """Sync a single SPMS item to Skald."""
+        # Fetch full content if needed
+        item_id = item.get("id")
+        if item_id and item_type == "function" and "description" not in item:
+            full_item = await self.fetch_function_detail(item_id)
+            if full_item:
+                item = full_item
+        elif item_id and item_type == "tech" and "content" not in item:
+            full_item = await self.fetch_tech_detail(item_id)
+            if full_item:
+                item = full_item
+        elif item_id and item_type == "information" and "Content" not in item:
+            full_item = await self.fetch_information_detail(item_id)
+            if full_item:
+                item = full_item
 
-        Args:
-            doc: Document data
-
-        Returns:
-            Skald memo data
-        """
-        # Fetch full content if not present
-        if "content" not in doc:
-            doc_id = doc.get("id")
-            if doc_id:
-                full_doc = await self.fetch_document_content(doc_id)
-                if full_doc:
-                    doc = full_doc
-
-        title, content, metadata = self.document_to_markdown(doc)
-        reference_id = f"doc:{doc.get('id', '')}"
+        title, content, metadata = self.item_to_markdown(item, item_type)
+        reference_id = f"spms:{item_type}:{item.get('id', '')}"
 
         skald = get_skald_client()
         return await skald.upsert_memo(
@@ -259,48 +353,53 @@ class DocsCollector:
             metadata=metadata,
         )
 
-    async def sync_all(
+    async def sync_endpoint(
         self,
+        endpoint_type: str,
         updated_since: str | None = None,
-        max_documents: int = 500,
+        max_items: int = 500,
     ) -> dict[str, int]:
-        """Sync all documents to Skald.
-
-        Args:
-            updated_since: ISO date string to filter by update date
-            max_documents: Maximum number of documents to sync
-
-        Returns:
-            Summary with processed/failed counts
-        """
-        logger.info("Starting docs sync", updated_since=updated_since, max_documents=max_documents)
+        """Sync all items from a specific SPMS endpoint."""
+        logger.info(f"Starting {endpoint_type} sync", updated_since=updated_since, max_items=max_items)
 
         processed = 0
         failed = 0
         page = 1
         page_size = 50
 
-        while processed + failed < max_documents:
-            docs = await self.fetch_document_list(
+        fetch_methods = {
+            "functions": self.fetch_functions,
+            "techs": self.fetch_techs,
+            "information": self.fetch_information,
+            "screens": self.fetch_screens,
+        }
+
+        fetch_method = fetch_methods.get(endpoint_type)
+        if not fetch_method:
+            logger.error(f"Unknown endpoint type: {endpoint_type}")
+            return {"processed": 0, "failed": 0}
+
+        while processed + failed < max_items:
+            items = await fetch_method(
                 page=page,
                 page_size=page_size,
                 updated_since=updated_since,
             )
 
-            if not docs:
+            if not items:
                 break
 
-            for doc in docs:
-                if processed + failed >= max_documents:
+            for item in items:
+                if processed + failed >= max_items:
                     break
 
                 try:
-                    await self.sync_document(doc)
+                    await self.sync_item(item, endpoint_type)
                     processed += 1
                 except Exception as e:
                     logger.error(
-                        "Failed to sync document",
-                        doc_id=doc.get("id"),
+                        f"Failed to sync {endpoint_type} item",
+                        item_id=item.get("id"),
                         error=str(e),
                     )
                     failed += 1
@@ -308,7 +407,7 @@ class DocsCollector:
             page += 1
 
         logger.info(
-            "Docs sync completed",
+            f"{endpoint_type} sync completed",
             processed=processed,
             failed=failed,
         )
@@ -316,6 +415,43 @@ class DocsCollector:
         return {
             "processed": processed,
             "failed": failed,
+        }
+
+    async def sync_all(
+        self,
+        updated_since: str | None = None,
+        max_documents: int = 500,
+    ) -> dict[str, dict[str, int]]:
+        """Sync all SPMS document types to Skald."""
+        logger.info("Starting SPMS docs sync", updated_since=updated_since, max_documents=max_documents)
+
+        results = {}
+
+        # Sync SPMS endpoints (excluding screens)
+        for endpoint_type in ["functions", "techs", "information"]:
+            endpoint_results = await self.sync_endpoint(
+                endpoint_type=endpoint_type,
+                updated_since=updated_since,
+                max_items=max_documents,
+            )
+            results[endpoint_type] = endpoint_results
+
+        total_processed = sum(r["processed"] for r in results.values())
+        total_failed = sum(r["failed"] for r in results.values())
+
+        logger.info(
+            "SPMS docs sync completed",
+            total_processed=total_processed,
+            total_failed=total_failed,
+            results=results,
+        )
+
+        return {
+            "total": {
+                "processed": total_processed,
+                "failed": total_failed,
+            },
+            "by_type": results,
         }
 
 
