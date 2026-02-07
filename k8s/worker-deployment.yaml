@@ -75,4 +75,13 @@ spec:
             volumes:
                 - name: tmp
                   emptyDir: {}
+            affinity:
+                nodeAffinity:
+                    requiredDuringSchedulingIgnoredDuringExecution:
+                        nodeSelectorTerms:
+                            - matchExpressions:
+                                  - key: kubernetes.io/hostname
+                                    operator: NotIn
+                                    values:
+                                        - ml.node.k8s.sparrow.local
             restartPolicy: Always
