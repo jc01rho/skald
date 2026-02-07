@@ -51,6 +51,15 @@ spec:
                         value: '5001'
                       - name: HOST
                         value: '0.0.0.0'
+                      # PyTorch cache fix for UID without passwd entry
+                      - name: HOME
+                        value: '/tmp'
+                      - name: TORCHINDUCTOR_CACHE_DIR
+                        value: '/tmp/torch_cache'
+                      - name: TRANSFORMERS_CACHE
+                        value: '/tmp/transformers_cache'
+                      - name: HF_HOME
+                        value: '/tmp/huggingface'
                       # 로깅 설정
                       - name: LOG_LEVEL
                         valueFrom:
