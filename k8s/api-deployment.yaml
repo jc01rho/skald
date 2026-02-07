@@ -84,7 +84,7 @@ spec:
                                 name: skald-config
                                 key: RABBITMQ_PORT
                 - name: run-migrations
-                  image: ghcr.io/jc01rho/skald/backend:${IMAGE_TAG:-latest}
+                  image: ghcr.io/jc01rho/skald/backend:latest
                   command:
                       - sh
                       - -c
@@ -131,7 +131,7 @@ spec:
             containers:
                 - name: api-server
                   # Use forked backend image from GHCR with LLM provider fixes
-                  image: ghcr.io/jc01rho/skald/backend:${IMAGE_TAG:-latest}
+                  image: ghcr.io/jc01rho/skald/backend:latest
                   imagePullPolicy: Always
                   # Use startup command from docker-compose
                   command:

@@ -38,7 +38,7 @@ spec:
                 - name: embedding-service
                   # embedding-service 디렉토리의 Dockerfile로 빌드된 이미지 사용
                   # GitHub Container Registry에서 이미지를 가져옵니다
-                  image: ghcr.io/jc01rho/skald/embedding-service:${IMAGE_TAG:-latest}
+                  image: ghcr.io/jc01rho/skald/embedding-service:latest
                   imagePullPolicy: Always
                   ports:
                       - containerPort: 8000
@@ -255,13 +255,7 @@ spec:
                   emptyDir: {}
                 - name: home-cache
                   emptyDir: {}
-            # ml.node 피하기 (네트워크 이슈)
-            affinity:
-                nodeAffinity:
-                    requiredDuringSchedulingIgnoredDuringExecution:
-                        nodeSelectorTerms:
-                            - matchExpressions:
-                                  - key: kubernetes.io/hostname
-                                    operator: NotIn
-                                    values:
-                                        - ml.node.k8s.sparrow.local
+            # embedding-service는 GPU가 필요하므로 ml.node에서 실행
+            # 참고: ml.node 네트워크 이슈로 다른 노드의 서비스와 통신 문제 가능
+            nodeSelector:
+                kubernetes.io/hostname: ml.node.k8s.sparrow.local

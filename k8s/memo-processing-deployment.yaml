@@ -112,7 +112,7 @@ spec:
             containers:
                 - name: memo-processing-server
                   # Use forked backend image from GHCR with LLM provider fixes
-                  image: ghcr.io/jc01rho/skald/backend:${IMAGE_TAG:-latest}
+                  image: ghcr.io/jc01rho/skald/backend:latest
                   imagePullPolicy: Always
                   # 메모 처리 서버 모드로 실행
                   command:
