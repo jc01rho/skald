@@ -255,6 +255,13 @@ spec:
                   emptyDir: {}
                 - name: home-cache
                   emptyDir: {}
-            # ML 노드에 배포 (GPU 사용)
-            nodeSelector:
-                kubernetes.io/hostname: ml.node.k8s.sparrow.local
+            # ml.node 피하기 (네트워크 이슈)
+            affinity:
+                nodeAffinity:
+                    requiredDuringSchedulingIgnoredDuringExecution:
+                        nodeSelectorTerms:
+                            - matchExpressions:
+                                  - key: kubernetes.io/hostname
+                                    operator: NotIn
+                                    values:
+                                        - ml.node.k8s.sparrow.local

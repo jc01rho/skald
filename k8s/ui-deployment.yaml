@@ -138,3 +138,12 @@ spec:
                       items:
                           - key: nginx.conf
                             path: nginx.conf
+            affinity:
+                nodeAffinity:
+                    requiredDuringSchedulingIgnoredDuringExecution:
+                        nodeSelectorTerms:
+                            - matchExpressions:
+                                  - key: kubernetes.io/hostname
+                                    operator: NotIn
+                                    values:
+                                        - ml.node.k8s.sparrow.local
