@@ -245,7 +245,7 @@ class DocsCollector:
         """Convert SPMS item to markdown format for Skald memo."""
 
         # Extract title based on item type
-        if item_type == "function":
+        if item_type in ("function", "functions"):
             title = item.get("name", "Untitled Function")
             doc_id = f"func-{item.get('id', '')}"
             category = item.get("category", "")
@@ -255,7 +255,7 @@ class DocsCollector:
             created = item.get("date_created", "")
             updated = item.get("date_updated", "")
             url_path = f"/enterprise/functions/{item.get('id', '')}"
-        elif item_type == "tech":
+        elif item_type in ("tech", "techs"):
             title = item.get("title", "Untitled Tech Doc")
             doc_id = f"tech-{item.get('id', '')}"
             category = item.get("product_id", "")
