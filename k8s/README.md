@@ -8,6 +8,7 @@
 📋 **상세 검증 보고서**: [VALIDATION_REPORT.md](VALIDATION_REPORT.md) 참조
 
 ### 주요 검증 결과
+
 - ✅ YAML 문법 검증 통과 (수정된 파일: ingress.yaml, ingress-nginx-values.yaml)
 - ✅ Docker Compose ↔ Kubernetes 매핑 검증 완료
 - ⚠️ GitHub Actions 워크플로우 일부 문제 발견 (네임스페이스 불일치)
@@ -92,12 +93,14 @@ Skald는 AI 기반의 지식 관리 및 문서 처리 플랫폼입니다. 다음
 ### 필요한 리소스 요구사항
 
 #### 최소 사양
+
 - **CPU**: 8 코어
 - **메모리**: 16GB RAM
 - **스토리지**: 50GB (PostgreSQL 20GB, RabbitMQ 10GB, 여유 20GB)
 - **네트워크**: LoadBalancer 또는 NodePort 지원
 
 #### 권장 사양
+
 - **CPU**: 12 코어 이상
 - **메모리**: 32GB RAM 이상
 - **스토리지**: 100GB 이상 (SSD 권장)
@@ -142,11 +145,13 @@ helm repo update
 #### 온프레미스 환경 권장 옵션
 
 1. **Local Path Provisioner** (권장):
+
 ```bash
 kubectl apply -f https://raw.githubusercontent.com/rancher/local-path-provisioner/v0.0.26/deploy/local-path-storage.yaml
 ```
 
 2. **NFS Provisioner** (공유 스토리지 필요):
+
 ```bash
 # NFS 서버 설정 후
 helm repo add nfs-subdir-external-provisioner https://kubernetes-sigs.github.io/nfs-subdir-external-provisioner/
@@ -158,6 +163,7 @@ helm install nfs-subdir-external-provisioner nfs-subdir-external-provisioner/nfs
 ### 도커 이미지 레지스트리 (선택적)
 
 프라이빗 레지스트리 사용 시:
+
 ```bash
 # 레지스트리 접속 정보 설정
 kubectl create secret docker-registry registry-secret \
@@ -349,7 +355,7 @@ kubectl get pods -n skald -l component=api
 kubectl get pods -n skald -l component=memo-processing
 
 # 준비될 때까지 대기
-kubectl wait --for=condition=ready pod -l component=api -n skald --timeout=300s
+kubectl wait --for=condition=ready pod -l component=api -n skald --timeout=1800s
 kubectl wait --for=condition=ready pod -l component=memo-processing -n skald --timeout=300s
 ```
 
@@ -423,34 +429,34 @@ echo "bXktc2VjdXJlLXBhc3N3b3Jk" | base64 -d
 ```yaml
 # secret.yaml의 주요 항목들
 data:
-  # 애플리케이션 보안
-  SECRET_KEY: "your-base64-encoded-secret-key"
-  JWT_SECRET: "your-base64-encoded-jwt-secret"
-  
-  # 데이터베이스
-  DATABASE_URL: "postgresql://user:pass@host:port/dbname"
-  DB_PASSWORD: "your-base64-encoded-db-password"
-  POSTGRES_PASSWORD: "your-base64-encoded-postgres-password"
-  
-  # RabbitMQ
-  RABBITMQ_PASSWORD: "your-base64-encoded-rabbitmq-password"
-  RABBITMQ_DEFAULT_PASS: "your-base64-encoded-rabbitmq-default-pass"
-  
-  # AI 서비스 API 키
-  OPENAI_API_KEY: "your-base64-encoded-openai-key"
-  VOYAGE_API_KEY: "your-base64-encoded-voyage-key"
-  ANTHROPIC_API_KEY: "your-base64-encoded-anthropic-key"
-  
-  # OAuth
-  GOOGLE_CLIENT_ID: "your-base64-encoded-google-client-id"
-  GOOGLE_CLIENT_SECRET: "your-base64-encoded-google-client-secret"
-  
-  # 결제
-  STRIPE_SECRET_KEY: "your-base64-encoded-stripe-key"
-  STRIPE_WEBHOOK_SECRET: "your-base64-encoded-stripe-webhook-secret"
-  
-  # 이메일
-  RESEND_API_KEY: "your-base64-encoded-resend-key"
+    # 애플리케이션 보안
+    SECRET_KEY: 'your-base64-encoded-secret-key'
+    JWT_SECRET: 'your-base64-encoded-jwt-secret'
+
+    # 데이터베이스
+    DATABASE_URL: 'postgresql://user:pass@host:port/dbname'
+    DB_PASSWORD: 'your-base64-encoded-db-password'
+    POSTGRES_PASSWORD: 'your-base64-encoded-postgres-password'
+
+    # RabbitMQ
+    RABBITMQ_PASSWORD: 'your-base64-encoded-rabbitmq-password'
+    RABBITMQ_DEFAULT_PASS: 'your-base64-encoded-rabbitmq-default-pass'
+
+    # AI 서비스 API 키
+    OPENAI_API_KEY: 'your-base64-encoded-openai-key'
+    VOYAGE_API_KEY: 'your-base64-encoded-voyage-key'
+    ANTHROPIC_API_KEY: 'your-base64-encoded-anthropic-key'
+
+    # OAuth
+    GOOGLE_CLIENT_ID: 'your-base64-encoded-google-client-id'
+    GOOGLE_CLIENT_SECRET: 'your-base64-encoded-google-client-secret'
+
+    # 결제
+    STRIPE_SECRET_KEY: 'your-base64-encoded-stripe-key'
+    STRIPE_WEBHOOK_SECRET: 'your-base64-encoded-stripe-webhook-secret'
+
+    # 이메일
+    RESEND_API_KEY: 'your-base64-encoded-resend-key'
 ```
 
 ### ConfigMap 커스터마이징
@@ -458,41 +464,41 @@ data:
 ```yaml
 # configmap.yaml의 주요 설정
 data:
-  # 프론트엔드 URL (실제 도메인으로 변경)
-  FRONTEND_URL: "https://your-domain.com"
-  
-  # CORS 설정
-  CORS_ORIGIN: "https://your-domain.com"
-  
-  # 데이터베이스 연결 정보
-  DB_HOST: "postgres-service"
-  DB_PORT: "5432"
-  DB_NAME: "skald"
-  DB_USER: "skald_user"
-  
-  # RabbitMQ 연결 정보
-  RABBITMQ_HOST: "rabbitmq-service"
-  RABBITMQ_PORT: "5672"
-  RABBITMQ_USER: "skald_user"
-  RABBITMQ_VHOST: "/skald"
-  
-  # 마이크로서비스 URL
-  EMBEDDING_SERVICE_URL: "http://embedding-service:8000"
-  DOCLING_SERVICE_URL: "http://docling-service:5001"
+    # 프론트엔드 URL (실제 도메인으로 변경)
+    FRONTEND_URL: 'https://your-domain.com'
+
+    # CORS 설정
+    CORS_ORIGIN: 'https://your-domain.com'
+
+    # 데이터베이스 연결 정보
+    DB_HOST: 'postgres-service'
+    DB_PORT: '5432'
+    DB_NAME: 'skald'
+    DB_USER: 'skald_user'
+
+    # RabbitMQ 연결 정보
+    RABBITMQ_HOST: 'rabbitmq-service'
+    RABBITMQ_PORT: '5672'
+    RABBITMQ_USER: 'skald_user'
+    RABBITMQ_VHOST: '/skald'
+
+    # 마이크로서비스 URL
+    EMBEDDING_SERVICE_URL: 'http://embedding-service:8000'
+    DOCLING_SERVICE_URL: 'http://docling-service:5001'
 ```
 
 ### 필수 환경변수 목록
 
-| 카테고리 | 변수명 | 설명 | 필수여부 |
-|---------|--------|------|---------|
-| 애플리케이션 | `SECRET_KEY` | 애플리케이션 보안 키 | 필수 |
-| 애플리케이션 | `JWT_SECRET` | JWT 토큰 서명 키 | 필수 |
-| 데이터베이스 | `DATABASE_URL` | PostgreSQL 연결 URL | 필수 |
-| 데이터베이스 | `DB_PASSWORD` | PostgreSQL 비밀번호 | 필수 |
-| 메시지큐 | `RABBITMQ_PASSWORD` | RabbitMQ 비밀번호 | 필수 |
-| AI 서비스 | `OPENAI_API_KEY` | OpenAI API 키 | 필수 |
-| OAuth | `GOOGLE_CLIENT_ID` | Google OAuth 클라이언트 ID | 선택 |
-| OAuth | `GOOGLE_CLIENT_SECRET` | Google OAuth 클라이언트 시크릿 | 선택 |
+| 카테고리     | 변수명                 | 설명                           | 필수여부 |
+| ------------ | ---------------------- | ------------------------------ | -------- |
+| 애플리케이션 | `SECRET_KEY`           | 애플리케이션 보안 키           | 필수     |
+| 애플리케이션 | `JWT_SECRET`           | JWT 토큰 서명 키               | 필수     |
+| 데이터베이스 | `DATABASE_URL`         | PostgreSQL 연결 URL            | 필수     |
+| 데이터베이스 | `DB_PASSWORD`          | PostgreSQL 비밀번호            | 필수     |
+| 메시지큐     | `RABBITMQ_PASSWORD`    | RabbitMQ 비밀번호              | 필수     |
+| AI 서비스    | `OPENAI_API_KEY`       | OpenAI API 키                  | 필수     |
+| OAuth        | `GOOGLE_CLIENT_ID`     | Google OAuth 클라이언트 ID     | 선택     |
+| OAuth        | `GOOGLE_CLIENT_SECRET` | Google OAuth 클라이언트 시크릿 | 선택     |
 
 ---
 
@@ -523,17 +529,17 @@ kubectl get svc -n ingress-nginx
 ```yaml
 # 주요 설정 항목
 controller:
-  replicaCount: 2  # 고가용성을 위해 2개 이상 권장
-  service:
-    type: LoadBalancer  # MetalLB 설치 시 사용
-    # type: NodePort     # LoadBalancer unavailable 시
-  resources:
-    requests:
-      cpu: 500m
-      memory: 512Mi
-    limits:
-      cpu: 1000m
-      memory: 1Gi
+    replicaCount: 2 # 고가용성을 위해 2개 이상 권장
+    service:
+        type: LoadBalancer # MetalLB 설치 시 사용
+        # type: NodePort     # LoadBalancer unavailable 시
+    resources:
+        requests:
+            cpu: 500m
+            memory: 512Mi
+        limits:
+            cpu: 1000m
+            memory: 1Gi
 ```
 
 ### TLS/SSL 인증서 설정
@@ -940,39 +946,38 @@ kubectl exec -it deployment/api-server -n skald -- \
 
 ### 파일 목록 및 설명
 
-| 파일명 | 설명 | 용도 |
-|--------|------|------|
-| `namespace.yaml` | Skald 네임스페이스 정의 | 리소스 격리 |
-| `configmap.yaml` | 비민감 환경변수 설정 | 애플리케이션 설정 |
-| `secret.yaml.example` | Secret 설정 예제 | 보안 정보 설정 |
-| `postgres-deployment.yaml` | PostgreSQL StatefulSet | 데이터베이스 |
-| `postgres-service.yaml` | PostgreSQL 서비스 | 데이터베이스 접속 |
-| `postgres-pvc.yaml` | PostgreSQL 영구 볼륨 | 데이터 영속성 |
-| `rabbitmq-deployment.yaml` | RabbitMQ StatefulSet | 메시지 큐 |
-| `rabbitmq-service.yaml` | RabbitMQ 서비스 | 메시지 큐 접속 |
-| `rabbitmq-pvc.yaml` | RabbitMQ 영구 볼륨 | 큐 데이터 영속성 |
-| `api-deployment.yaml` | API 서버 Deployment | 백엔드 API |
-| `api-service.yaml` | API 서비스 | API 접속 |
-| `memo-processing-deployment.yaml` | 메모 처리 서버 | 백그라운드 처리 |
-| `worker-deployment.yaml` | Skald Worker Deployment | Jira/Docs 수집 |
-| `worker-service.yaml` | Skald Worker 서비스 | Worker 접속 |
-| `worker-configmap.yaml` | Worker ConfigMap | Worker 설정 |
-| `worker-secret.yaml` | Worker Secret (예제) | Worker 자격증명 |
-| `worker-serviceaccount.yaml` | Worker ServiceAccount | Worker 권한 |
-| `embedding-service-deployment.yaml` | 임베딩 서비스 | AI 임베딩 |
-| `embedding-service-service.yaml` | 임베딩 서비스 | 임베딩 접속 |
-| `docling-deployment.yaml` | 문서 처리 서비스 | 문서 처리 |
-| `docling-service.yaml` | 문서 처리 서비스 | 문서 처리 접속 |
-| `ui-deployment.yaml` | 프론트엔드 UI Deployment | 웹 인터페이스 |
-| `ui-service.yaml` | 프론트엔드 UI 서비스 | 웹 접속 |
-| `ui-nginx-configmap.yaml` | UI Nginx 설정 ConfigMap | API 프록시 설정 |
-| `ui-configmap.yaml` | UI 런타임 환경 변수 ConfigMap | 런타임 설정 (선택적) |
-| `ingress.yaml` | Ingress 리소스 | 외부 트래픽 라우팅 |
-| `ingress-nginx-values.yaml` | NGINX Ingress Controller 설정 | Ingress Controller |
-| `init-scripts-configmap.yaml` | PostgreSQL 초기화 스크립트 | 데이터베이스 초기화 |
-| `api-url-architecture-design.md` | API URL 아키텍처 설계 문서 | 기술 문서 |
-| `UI-API-FIX-SUMMARY.md` | UI API 호출 문제 해결 요약 | 변경 사항 문서 |
-
+| 파일명                              | 설명                          | 용도                 |
+| ----------------------------------- | ----------------------------- | -------------------- |
+| `namespace.yaml`                    | Skald 네임스페이스 정의       | 리소스 격리          |
+| `configmap.yaml`                    | 비민감 환경변수 설정          | 애플리케이션 설정    |
+| `secret.yaml.example`               | Secret 설정 예제              | 보안 정보 설정       |
+| `postgres-deployment.yaml`          | PostgreSQL StatefulSet        | 데이터베이스         |
+| `postgres-service.yaml`             | PostgreSQL 서비스             | 데이터베이스 접속    |
+| `postgres-pvc.yaml`                 | PostgreSQL 영구 볼륨          | 데이터 영속성        |
+| `rabbitmq-deployment.yaml`          | RabbitMQ StatefulSet          | 메시지 큐            |
+| `rabbitmq-service.yaml`             | RabbitMQ 서비스               | 메시지 큐 접속       |
+| `rabbitmq-pvc.yaml`                 | RabbitMQ 영구 볼륨            | 큐 데이터 영속성     |
+| `api-deployment.yaml`               | API 서버 Deployment           | 백엔드 API           |
+| `api-service.yaml`                  | API 서비스                    | API 접속             |
+| `memo-processing-deployment.yaml`   | 메모 처리 서버                | 백그라운드 처리      |
+| `worker-deployment.yaml`            | Skald Worker Deployment       | Jira/Docs 수집       |
+| `worker-service.yaml`               | Skald Worker 서비스           | Worker 접속          |
+| `worker-configmap.yaml`             | Worker ConfigMap              | Worker 설정          |
+| `worker-secret.yaml`                | Worker Secret (예제)          | Worker 자격증명      |
+| `worker-serviceaccount.yaml`        | Worker ServiceAccount         | Worker 권한          |
+| `embedding-service-deployment.yaml` | 임베딩 서비스                 | AI 임베딩            |
+| `embedding-service-service.yaml`    | 임베딩 서비스                 | 임베딩 접속          |
+| `docling-deployment.yaml`           | 문서 처리 서비스              | 문서 처리            |
+| `docling-service.yaml`              | 문서 처리 서비스              | 문서 처리 접속       |
+| `ui-deployment.yaml`                | 프론트엔드 UI Deployment      | 웹 인터페이스        |
+| `ui-service.yaml`                   | 프론트엔드 UI 서비스          | 웹 접속              |
+| `ui-nginx-configmap.yaml`           | UI Nginx 설정 ConfigMap       | API 프록시 설정      |
+| `ui-configmap.yaml`                 | UI 런타임 환경 변수 ConfigMap | 런타임 설정 (선택적) |
+| `ingress.yaml`                      | Ingress 리소스                | 외부 트래픽 라우팅   |
+| `ingress-nginx-values.yaml`         | NGINX Ingress Controller 설정 | Ingress Controller   |
+| `init-scripts-configmap.yaml`       | PostgreSQL 초기화 스크립트    | 데이터베이스 초기화  |
+| `api-url-architecture-design.md`    | API URL 아키텍처 설계 문서    | 기술 문서            |
+| `UI-API-FIX-SUMMARY.md`             | UI API 호출 문제 해결 요약    | 변경 사항 문서       |
 
 ### Kubernetes 공식 문서 링크
 
@@ -984,6 +989,7 @@ kubectl exec -it deployment/api-server -n skald -- \
 - [ConfigMap 가이드](https://kubernetes.io/docs/concepts/configuration/configmap/)
 - [Secret 가이드](https://kubernetes.io/docs/concepts/configuration/secret/)
 - [PersistentVolume 가이드](https://kubernetes.io/docs/concepts/storage/persistent-volumes/)
+
 ## 12. 검증 보고서
 
 ### 검증 개요
@@ -993,38 +999,40 @@ kubectl exec -it deployment/api-server -n skald -- \
 ### 검증 항목
 
 1. **YAML 문법 검증** ✅
-   - 모든 K8s 매니페스트 파일의 문법 검증 완료
-   - 수정된 파일: ingress.yaml, ingress-nginx-values.yaml
+    - 모든 K8s 매니페스트 파일의 문법 검증 완료
+    - 수정된 파일: ingress.yaml, ingress-nginx-values.yaml
 
 2. **Docker Compose ↔ Kubernetes 매핑** ✅
-   - 모든 서비스의 매핑 상태 확인 완료
-   - 환경변수, 포트, 네트워크 설정 검증 완료
+    - 모든 서비스의 매핑 상태 확인 완료
+    - 환경변수, 포트, 네트워크 설정 검증 완료
 
 3. **GitHub Actions 워크플로우** ⚠️
-   - 일부 워크플로우에서 네임스페이스 불일치 문제 발견
-   - 이미지 태그 업데이트 로직 개선 필요
+    - 일부 워크플로우에서 네임스페이스 불일치 문제 발견
+    - 이미지 태그 업데이트 로직 개선 필요
 
 4. **배포 스크립트** ✅
-   - 쉘 문법 검증 통과
-   - 실행 권한 확인 완료 (0755)
+    - 쉘 문법 검증 통과
+    - 실행 권한 확인 완료 (0755)
 
 5. **설정 일관성** ⚠️
-   - 이미지 태그 패턴 일부 불일치
-   - 환경변수 참조 방식 통일 필요
+    - 이미지 태그 패턴 일부 불일치
+    - 환경변수 참조 방식 통일 필요
 
 6. **보안 검증** ✅
-   - Secret/ConfigMap 적절히 사용됨
-   - RBAC 기본 설정 확인됨
-   - NetworkPolicy 추가 권장
+    - Secret/ConfigMap 적절히 사용됨
+    - RBAC 기본 설정 확인됨
+    - NetworkPolicy 추가 권장
 
 ### 권장 조치사항
 
 #### 즉시 적용 필요
+
 1. GitHub Actions 워크플로우 네임스페이스 일치
 2. 이미지 태그 패턴 통일
 3. Ingress 설정 최적화
 
 #### 단기 개선사항
+
 1. RBAC 강화 (서비스별 ServiceAccount 추가)
 2. NetworkPolicy 도입
 3. 모니터링 강화
