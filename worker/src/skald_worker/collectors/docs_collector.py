@@ -23,6 +23,7 @@ SPMS_ENDPOINTS = {
     "techs": "/api/techs",
     "information": "/api/information",
     "screens": "/api/screens",
+    "troubleshoots": "/api/troubleshoots",
 }
 
 
@@ -205,6 +206,27 @@ class DocsCollector:
             logger.error("Failed to fetch screens", error=str(e))
             return []
 
+    async def fetch_troubleshoots(
+        self,
+        page: int = 1,
+        page_size: int = 50,
+        updated_since: str | None = None,
+    ) -> list[dict[str, Any]]:
+        """Fetch troubleshoots from SPMS."""
+        params: dict[str, Any] = {
+            "page": page,
+            "size": page_size,
+        }
+        if updated_since:
+            params["updatedSince"] = updated_since
+
+        try:
+            response = await self._request_with_retry("GET", "/api/troubleshoots", params=params)
+            return response.json()
+        except httpx.HTTPError as e:
+            logger.error("Failed to fetch troubleshoots", error=str(e))
+            return []
+
     async def fetch_function_detail(self, function_id: str) -> dict[str, Any] | None:
         """Fetch function detail from SPMS using function_id (e.g., SVR-MY-RISKY-RULE-R)."""
         try:
@@ -242,6 +264,15 @@ class DocsCollector:
             logger.error("Failed to fetch screen detail", screen_id=screen_id, error=str(e))
             return None
 
+    async def fetch_troubleshoot_detail(self, troubleshoot_id: int) -> dict[str, Any] | None:
+        """Fetch troubleshoot detail from SPMS."""
+        try:
+            response = await self._request_with_retry("GET", f"/api/troubleshoots/{troubleshoot_id}")
+            return response.json()
+        except httpx.HTTPError as e:
+            logger.error("Failed to fetch troubleshoot detail", troubleshoot_id=troubleshoot_id, error=str(e))
+            return None
+
     def item_to_markdown(self, item: dict[str, Any], item_type: str) -> tuple[str, str, dict[str, Any]]:
         """Convert SPMS item to markdown format for Skald memo."""
 
@@ -276,6 +307,23 @@ class DocsCollector:
             created = item.get("date_created", "")
             updated = item.get("date_updated", "")
             url_path = f"/enterprise/information/{item.get('id', '')}"
+        elif item_type in ("troubleshoot", "troubleshoots"):
+            title = item.get("title", "Untitled Troubleshoot")
+            doc_id = f"ts-{item.get('id', '')}"
+            category = item.get("category", "")
+            component = item.get("component", "") or ""
+            issue_sum = item.get("issue_sum", "")
+            ts_solution = item.get("ts_solution", "")
+            description = ""
+            if issue_sum:
+                description += f"## 문제 요약\n\n{issue_sum}\n\n"
+            if ts_solution:
+                description += f"## 해결 방법\n\n{ts_solution}"
+            description = description.strip()
+            author = ""
+            created = item.get("date_created", "")
+            updated = item.get("date_updated", "")
+            url_path = f"/enterprise/troubleshoots/{item.get('id', '')}"
         else:
             title = "Untitled"
             doc_id = f"doc-{item.get('id', '')}"
@@ -342,6 +390,10 @@ class DocsCollector:
             full_item = await self.fetch_information_detail(item_id)
             if full_item:
                 item = full_item
+        elif item_id and item_type in ("troubleshoot", "troubleshoots") and "issue_sum" not in item:
+            full_item = await self.fetch_troubleshoot_detail(item_id)
+            if full_item:
+                item = full_item
 
         title, content, metadata = self.item_to_markdown(item, item_type)
         # Use function_id for functions, otherwise use id
@@ -379,6 +431,7 @@ class DocsCollector:
             "techs": self.fetch_techs,
             "information": self.fetch_information,
             "screens": self.fetch_screens,
+            "troubleshoots": self.fetch_troubleshoots,
         }
 
         fetch_method = fetch_methods.get(endpoint_type)
@@ -441,7 +494,7 @@ class DocsCollector:
 
         results = {}
 
-        for endpoint_type in ["functions", "techs", "information"]:
+        for endpoint_type in ["functions", "techs", "information", "troubleshoots"]:
             endpoint_results = await self.sync_endpoint(
                 endpoint_type=endpoint_type,
                 updated_since=updated_since,
