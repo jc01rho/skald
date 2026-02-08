@@ -205,13 +205,14 @@ class DocsCollector:
             logger.error("Failed to fetch screens", error=str(e))
             return []
 
-    async def fetch_function_detail(self, function_id: int) -> dict[str, Any] | None:
-        """Fetch function detail from SPMS."""
+    async def fetch_function_detail(self, function_id: str) -> dict[str, Any] | None:
+        """Fetch function detail from SPMS using function_id (e.g., SVR-MY-RISKY-RULE-R)."""
         try:
             response = await self._request_with_retry("GET", f"/api/functions/{function_id}")
             return response.json()
         except httpx.HTTPError as e:
             logger.error("Failed to fetch function detail", function_id=function_id, error=str(e))
+            return None
             return None
 
     async def fetch_tech_detail(self, tech_id: int) -> dict[str, Any] | None:
@@ -250,11 +251,11 @@ class DocsCollector:
             doc_id = f"func-{item.get('id', '')}"
             category = item.get("category", "")
             component = item.get("component", "")
-            description = item.get("description", "")
+            description = item.get("detail", "") or item.get("description", "")
             author = item.get("author", "")
             created = item.get("date_created", "")
             updated = item.get("date_updated", "")
-            url_path = f"/enterprise/functions/{item.get('id', '')}"
+            url_path = f"/enterprise/functions/{item.get('function_id', item.get('id', ''))}"
         elif item_type in ("tech", "techs"):
             title = item.get("title", "Untitled Tech Doc")
             doc_id = f"tech-{item.get('id', '')}"
@@ -328,8 +329,9 @@ class DocsCollector:
         """Sync a single SPMS item to Skald."""
         # Fetch full content if needed
         item_id = item.get("id")
-        if item_id and item_type in ("function", "functions") and "description" not in item:
-            full_item = await self.fetch_function_detail(item_id)
+        function_id = item.get("function_id")
+        if function_id and item_type in ("function", "functions") and "detail" not in item:
+            full_item = await self.fetch_function_detail(function_id)
             if full_item:
                 item = full_item
         elif item_id and item_type in ("tech", "techs") and "content" not in item:
@@ -342,7 +344,11 @@ class DocsCollector:
                 item = full_item
 
         title, content, metadata = self.item_to_markdown(item, item_type)
-        reference_id = f"{item_type}-{item.get('id', '')}"
+        # Use function_id for functions, otherwise use id
+        if item_type in ("function", "functions"):
+            reference_id = f"{item_type}-{item.get('function_id', item.get('id', ''))}"
+        else:
+            reference_id = f"{item_type}-{item.get('id', '')}"
 
         skald = get_skald_client()
         return await skald.upsert_memo(
