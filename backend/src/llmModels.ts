@@ -40,21 +40,20 @@ export const SUPPORTED_LLM_MODELS = {
 
 export const DEFAULT_LLM_MODELS = {
     'cli-proxy-api': {
+        // Both chat and classification now use deepseek-v3.2-reasoner as default
         defaultChatModel: SUPPORTED_LLM_MODELS['cli-proxy-api']['deepseek-v3.2-reasoner'],
-        defaultClassificationModel: SUPPORTED_LLM_MODELS['cli-proxy-api']['qwen3-32b'],
+        defaultClassificationModel: SUPPORTED_LLM_MODELS['cli-proxy-api']['deepseek-v3.2-reasoner'],
     },
 }
 
 export const MODEL_FALLBACK_CHAINS = {
     'cli-proxy-api': [
-        // ========================================
-        // Available Models (26 working models)
-        // Listed in priority order as specified
-        // ========================================
-        'glm-4.7',
+        // Priority order: deepseek-v3.2-reasoner -> glm-4.7 -> kimi-k2 -> qwen3-max -> rest
         'deepseek-v3.2-reasoner',
-        'gemini-2.5-pro',
+        'glm-4.7',
+        'kimi-k2',
         'qwen3-max',
+        'gemini-2.5-pro',
         'qwen3-235b',
         'gemini-2.5-flash',
         'free',
@@ -62,7 +61,6 @@ export const MODEL_FALLBACK_CHAINS = {
         'gemini-3-flash-preview',
         'gemini-2.5-computer-use-preview-10-2025',
         'kimi-k2-0905',
-        'kimi-k2',
         'qwen3-max-preview',
         'qwen3-coder-plus',
         'qwen3-235b-a22b-thinking-2507',
@@ -74,7 +72,6 @@ export const MODEL_FALLBACK_CHAINS = {
         'deepseek-v3.2',
         'deepseek-v3.2-chat',
         'tstars2.0',
-        'free',
         'sonnet',
         'opus',
     ],
