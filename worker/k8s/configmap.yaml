@@ -11,7 +11,7 @@ data:
     SKALD_PROJECT_ID: ''
 
     # Jira Configuration
-    JIRA_JQL_FILTER: 'updated >= -1d ORDER BY updated DESC'
+    JIRA_JQL_FILTER: 'TYPE IN (인시던트, 장애) AND updated >= -1d ORDER BY updated DESC'
     JIRA_POLL_INTERVAL_MINUTES: '10'
     JIRA_ENABLED: 'true'
     JIRA_URL: ''

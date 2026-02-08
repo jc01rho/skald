@@ -46,7 +46,7 @@ class Settings(BaseSettings):
         description="Jira password/token for authentication",
     )
     jira_jql_filter: str = Field(
-        default="updated >= -1d ORDER BY updated DESC",
+        default="TYPE IN (인시던트, 장애) AND updated >= -1d ORDER BY updated DESC",
         description="JQL query to filter Jira issues",
     )
     jira_poll_interval_minutes: int = Field(
