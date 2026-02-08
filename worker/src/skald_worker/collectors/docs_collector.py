@@ -261,7 +261,7 @@ class DocsCollector:
             doc_id = f"tech-{item.get('id', '')}"
             category = item.get("product_id", "")
             component = ""
-            description = item.get("content", "")
+            description = item.get("description", "")
             author = item.get("author", "")
             created = item.get("date_created", "")
             updated = item.get("date_updated", "")
@@ -334,7 +334,7 @@ class DocsCollector:
             full_item = await self.fetch_function_detail(function_id)
             if full_item:
                 item = full_item
-        elif item_id and item_type in ("tech", "techs") and "content" not in item:
+        elif item_id and item_type in ("tech", "techs") and "description" not in item:
             full_item = await self.fetch_tech_detail(item_id)
             if full_item:
                 item = full_item
