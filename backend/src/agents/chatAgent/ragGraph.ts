@@ -578,7 +578,13 @@ function buildLLMInputsNode(state: typeof RAGState.State) {
 
     const prompts: [string, string][] = [['system', systemPrompt]]
 
-    prompts.push(...(conversationHistory || []))
+    // Escape curly braces in conversation history to prevent LangChain template variable interpretation
+    // This is necessary because chat history may contain code snippets or variable references like ${projectId}
+    const escapedHistory = (conversationHistory || []).map(([role, content]) => {
+        const escapedContent = content.replace(/{/g, '{{').replace(/}/g, '}}')
+        return [role, escapedContent] as ['human' | 'ai' | 'system', string]
+    })
+    prompts.push(...escapedHistory)
     prompts.push(['human', '{input}'])
 
     const prompt = ChatPromptTemplate.fromMessages(prompts)
