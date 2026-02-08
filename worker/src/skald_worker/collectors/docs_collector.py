@@ -328,11 +328,11 @@ class DocsCollector:
         """Sync a single SPMS item to Skald."""
         # Fetch full content if needed
         item_id = item.get("id")
-        if item_id and item_type == "function" and "description" not in item:
+        if item_id and item_type in ("function", "functions") and "description" not in item:
             full_item = await self.fetch_function_detail(item_id)
             if full_item:
                 item = full_item
-        elif item_id and item_type == "tech" and "content" not in item:
+        elif item_id and item_type in ("tech", "techs") and "content" not in item:
             full_item = await self.fetch_tech_detail(item_id)
             if full_item:
                 item = full_item
