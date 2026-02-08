@@ -342,7 +342,7 @@ class DocsCollector:
                 item = full_item
 
         title, content, metadata = self.item_to_markdown(item, item_type)
-        reference_id = f"spms:{item_type}:{item.get('id', '')}"
+        reference_id = f"{item_type}-{item.get('id', '')}"
 
         skald = get_skald_client()
         return await skald.upsert_memo(

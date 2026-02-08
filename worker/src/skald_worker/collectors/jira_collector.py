@@ -545,7 +545,7 @@ class JiraCollector:
             custom_field_dict=self._custom_field_dict,
             user_id_name_dict=self._user_id_name_dict,
         )
-        reference_id = f"jira:{issue.key}"
+        reference_id = issue.key
 
         skald = get_skald_client()
         return await skald.upsert_memo(
