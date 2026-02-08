@@ -498,7 +498,7 @@ deploy_backend() {
     kubectl rollout status deployment/memo-processing-server -n "$NAMESPACE"
     
     # Backend Pod 준비 대기
-    wait_for_pods "component=api" 300
+    wait_for_pods "component=api" 1800
     wait_for_pods "component=memo-processing" 300
     
     # 임시 파일 정리
