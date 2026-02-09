@@ -32,7 +32,10 @@ export async function handleMention(message: Message, client: Client) {
         let fullResponse = ''
         let references: Record<string, { memo_uuid: string; memo_title: string }> = {}
 
-        for await (const event of skaldClient.chatStream(query, { history })) {
+        for await (const event of skaldClient.chatStream(query, {
+            history,
+            rag_config: { llm_provider: 'cli-proxy-api' },
+        })) {
             switch (event.type) {
                 case 'token':
                     fullResponse += event.content
