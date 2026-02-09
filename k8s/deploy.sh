@@ -139,13 +139,59 @@ wait_for_pods() {
     local timeout=${2:-600}
     log_info "Waiting for pods with label '$label' to be ready (timeout: ${timeout}s)..."
     
-    if kubectl wait --for=condition=ready pod -l "$label" -n "$NAMESPACE" --timeout="${timeout}s"; then
-        log_success "Pods with label '$label' are ready"
-        return 0
-    else
-        log_error "Timeout waiting for pods with label '$label'"
-        return 1
-    fi
+    # 현재 파드 상태 표시
+    log_info "Current pod status for label '$label':"
+    kubectl get pods -l "$label" -n "$NAMESPACE" --no-headers 2>/dev/null || echo "  No pods found yet"
+    
+    # 모든 파드가 ready 상태가 될 때까지 대기
+    local start_time=$(date +%s)
+    while true; do
+        local current_time=$(date +%s)
+        local elapsed=$((current_time - start_time))
+        
+        if [ $elapsed -ge $timeout ]; then
+            log_error "Timeout waiting for pods with label '$label' (${elapsed}s elapsed)"
+            kubectl get pods -l "$label" -n "$NAMESPACE" -o wide
+            return 1
+        fi
+        
+        # 파드 상태 확인 - 모든 파드가 Running이고 Ready 상태인지 체크
+        local pod_status
+        pod_status=$(kubectl get pods -l "$label" -n "$NAMESPACE" -o jsonpath='{range .items[*]}{.status.phase}{" "}{.status.containerStatuses[0].ready}{"\n"}{end}' 2>/dev/null)
+        
+        if [ -z "$pod_status" ]; then
+            log_info "No pods found with label '$label', waiting..."
+            sleep 2
+            continue
+        fi
+        
+        # 모든 파드가 Running 상태이고 Ready=true인지 확인
+        local all_ready=true
+        local total_pods=0
+        local ready_pods=0
+        
+        while IFS= read -r line; do
+            if [ -n "$line" ]; then
+                total_pods=$((total_pods + 1))
+                local phase=$(echo "$line" | awk '{print $1}')
+                local ready=$(echo "$line" | awk '{print $2}')
+                
+                if [ "$phase" = "Running" ] && [ "$ready" = "true" ]; then
+                    ready_pods=$((ready_pods + 1))
+                else
+                    all_ready=false
+                fi
+            fi
+        done <<< "$pod_status"
+        
+        if [ $all_ready = true ] && [ $total_pods -gt 0 ]; then
+            log_success "All $total_pods pods with label '$label' are ready (${elapsed}s elapsed)"
+            return 0
+        fi
+        
+        log_info "Waiting for pods... ($ready_pods/$total_pods ready, ${elapsed}s elapsed)"
+        sleep 5
+    done
 }
 
 # 서비스 상태 확인 함수
@@ -496,6 +542,10 @@ deploy_backend() {
     log_info "롤아웃 완료 대기 중..."
     kubectl rollout status deployment/api-server -n "$NAMESPACE"
     kubectl rollout status deployment/memo-processing-server -n "$NAMESPACE"
+    
+    # 파드가 안정화될 때까지 잠시 대기
+    log_info "파드 안정화 대기 중..."
+    sleep 5
     
     # Backend Pod 준비 대기
     wait_for_pods "component=api" 1800
