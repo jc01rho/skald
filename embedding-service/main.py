@@ -5,7 +5,7 @@ import time
 import threading
 import random
 from datetime import date
-from typing import Literal, Optional
+from typing import Literal, Optional, Union, Any
 import httpx
 from groq import Groq, AsyncGroq
 
@@ -853,6 +853,30 @@ class EmbedResponse(BaseModel):
     dimension: int = Field(..., description="Dimension of the embedding vector")
 
 
+class OpenAIEmbedRequest(BaseModel):
+    input: Union[str, list[str]] = Field(..., description="The input text to embed")
+    model: str = Field(..., description="The model ID to use")
+    user: Optional[str] = None
+
+
+class OpenAIEmbedData(BaseModel):
+    object: str = "embedding"
+    embedding: list[float]
+    index: int
+
+
+class OpenAIEmbedUsage(BaseModel):
+    prompt_tokens: int = 0
+    total_tokens: int = 0
+
+
+class OpenAIEmbedResponse(BaseModel):
+    object: str = "list"
+    data: list[OpenAIEmbedData]
+    model: str
+    usage: OpenAIEmbedUsage
+
+
 class RerankDocument(BaseModel):
     text: str = Field(..., description="Document text to rerank")
     index: int = Field(
@@ -946,6 +970,61 @@ async def embed(request: EmbedRequest):
         raise
     except Exception as e:
         logger.error(f"Embedding generation failed: {str(e)}")
+        raise HTTPException(
+            status_code=500, detail=f"Embedding generation failed: {str(e)}"
+        )
+
+
+@app.post("/v1/embeddings", response_model=OpenAIEmbedResponse)
+async def v1_embeddings(request: OpenAIEmbedRequest):
+    try:
+        inputs = [request.input] if isinstance(request.input, str) else request.input
+        usage = "storage"
+
+        results = []
+        total_tokens = 0
+
+        for i, content in enumerate(inputs):
+            if EMBEDDING_PROVIDER == "ollama":
+                embedding = await get_ollama_embedding(content)
+            elif EMBEDDING_PROVIDER == "external":
+                processed_content = (
+                    preprocess_korean_query(content) if usage == "search" else content
+                )
+                embedding = await get_external_embedding(processed_content)
+            elif EMBEDDING_PROVIDER == "local":
+                if embedding_model is None:
+                    raise HTTPException(
+                        status_code=503, detail="Local embedding model not available"
+                    )
+                processed_content = (
+                    preprocess_korean_query(content) if usage == "search" else content
+                )
+                embedding = embedding_model.encode(processed_content).tolist()
+            elif EMBEDDING_PROVIDER == "gemini":
+                embedding = await get_gemini_embedding(content, usage=usage)
+            else:
+                raise HTTPException(
+                    status_code=501,
+                    detail=f"Provider {EMBEDDING_PROVIDER} not implemented",
+                )
+
+            embedding = normalize_embedding(embedding)
+
+            results.append(OpenAIEmbedData(embedding=embedding, index=i))
+            total_tokens += len(content) // 4
+
+        return OpenAIEmbedResponse(
+            data=results,
+            model=request.model,
+            usage=OpenAIEmbedUsage(
+                prompt_tokens=total_tokens, total_tokens=total_tokens
+            ),
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"V1 Embedding generation failed: {str(e)}")
         raise HTTPException(
             status_code=500, detail=f"Embedding generation failed: {str(e)}"
         )
