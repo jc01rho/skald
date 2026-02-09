@@ -33,9 +33,17 @@ export class DiscordStreamEditor {
         const timeSinceLastEdit = now - this.lastEditTime
         const timeToWait = Math.max(0, this.THROTTLE_MS - timeSinceLastEdit)
 
-        this.timer = setTimeout(() => {
+        this.timer = setTimeout(async () => {
             this.timer = null
-            this.performEdit()
+            try {
+                await this.performEdit()
+            } catch (error) {
+                console.error('Failed to edit message:', error)
+                // Retry after a short delay if not finalized
+                if (!this.isFinalized) {
+                    this.scheduleEdit()
+                }
+            }
         }, timeToWait)
     }
 
@@ -47,6 +55,7 @@ export class DiscordStreamEditor {
             this.lastEditTime = Date.now()
         } catch (error) {
             console.error('Failed to edit message:', error)
+            throw error // Re-throw so scheduleEdit can catch it
         }
     }
 
@@ -71,9 +80,17 @@ export class DiscordStreamEditor {
 
         this.isFinalized = true
 
+        // Wait for any pending edit to complete
         if (this.timer !== null) {
             clearTimeout(this.timer)
             this.timer = null
+            // Perform one final edit
+            try {
+                await this.performEdit()
+            } catch (error) {
+                console.error('Failed to finalize message:', error)
+            }
+            return
         }
 
         await this.performEdit()
