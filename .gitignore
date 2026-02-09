@@ -188,3 +188,6 @@ k8s/worker-configmap.local.yaml
 /discord-bot/.env.*
 !/discord-bot/.env.example
 k8s/discord-bot-secret.local.yaml
+
+# tldr cache
+.tldr/
