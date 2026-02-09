@@ -1,6 +1,17 @@
+import 'dotenv/config'
+
+function requireEnv(name: string): string {
+    const value = process.env[name]
+    if (!value) {
+        throw new Error(`Missing required environment variable: ${name}`)
+    }
+    return value
+}
+
 export const config = {
-    skaldApiUrl: process.env.SKALD_API_URL || 'http://localhost:8000',
-    skaldProjectId: process.env.SKALD_PROJECT_ID || '',
+    discordBotToken: requireEnv('DISCORD_BOT_TOKEN'),
+    skaldApiUrl: requireEnv('SKALD_API_URL'),
+    skaldApiKey: requireEnv('SKALD_API_KEY'),
+    skaldProjectId: requireEnv('SKALD_PROJECT_ID'),
     logLevel: process.env.LOG_LEVEL || 'info',
-    discordToken: process.env.DISCORD_TOKEN || '',
 }
