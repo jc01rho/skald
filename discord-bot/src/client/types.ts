@@ -6,6 +6,7 @@ export type SSEEvent =
 
 export interface ChatOptions {
     chat_id?: string
+    history?: Array<{ role: string; content: string }>
     filters?: unknown[]
     system_prompt?: string
     rag_config?: Record<string, unknown>
