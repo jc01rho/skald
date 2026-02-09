@@ -1,0 +1,56 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+    name: discord-bot
+    namespace: skald
+    labels:
+        app: skald
+        component: discord-bot
+spec:
+    replicas: 1
+    selector:
+        matchLabels:
+            component: discord-bot
+    template:
+        metadata:
+            labels:
+                app: skald
+                component: discord-bot
+        spec:
+            containers:
+                - name: discord-bot
+                  image: ghcr.io/skaldlabs/discord-bot:latest
+                  imagePullPolicy: Always
+                  ports:
+                      - name: http
+                        containerPort: 3000
+                        protocol: TCP
+                  envFrom:
+                      - configMapRef:
+                            name: discord-bot-config
+                      - secretRef:
+                            name: discord-bot-secrets
+                  resources:
+                      requests:
+                          cpu: '100m'
+                          memory: '128Mi'
+                      limits:
+                          cpu: '200m'
+                          memory: '256Mi'
+                  livenessProbe:
+                      httpGet:
+                          path: /health
+                          port: 3000
+                      initialDelaySeconds: 10
+                      periodSeconds: 30
+                      timeoutSeconds: 10
+                      failureThreshold: 3
+                  readinessProbe:
+                      httpGet:
+                          path: /health
+                          port: 3000
+                      initialDelaySeconds: 5
+                      periodSeconds: 10
+                      timeoutSeconds: 5
+                      failureThreshold: 3
+            restartPolicy: Always

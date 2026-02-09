@@ -1,0 +1,11 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+    name: discord-bot-config
+    namespace: skald
+    labels:
+        app: skald
+        component: discord-bot
+data:
+    SKALD_API_URL: 'http://api-service:8000'
+    LOG_LEVEL: 'info'
