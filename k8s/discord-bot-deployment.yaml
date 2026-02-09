@@ -19,7 +19,7 @@ spec:
         spec:
             containers:
                 - name: discord-bot
-                  image: ghcr.io/skaldlabs/discord-bot:latest
+                  image: ghcr.io/jc01rho/discord-bot:latest
                   imagePullPolicy: Always
                   ports:
                       - name: http
