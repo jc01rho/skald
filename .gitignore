@@ -182,3 +182,9 @@ k8s/ui-configmap.yaml
 k8s/worker-configmap.yaml
 k8s/worker-secret.local.yaml
 k8s/worker-configmap.local.yaml
+
+# Discord Bot
+/discord-bot/.env
+/discord-bot/.env.*
+!/discord-bot/.env.example
+k8s/discord-bot-secret.local.yaml
