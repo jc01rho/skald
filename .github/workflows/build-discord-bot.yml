@@ -1,0 +1,50 @@
+name: Build and Push Discord Bot Docker Image
+
+on:
+    push:
+        branches:
+            - main
+        tags:
+            - 'v*'
+        paths:
+            - 'discord-bot/**'
+    workflow_dispatch:
+        inputs:
+            image_tag:
+                description: 'Docker image tag'
+                required: true
+                default: 'latest'
+
+env:
+    REGISTRY: ghcr.io
+    IMAGE_NAME: ghcr.io/jc01rho/discord-bot
+
+jobs:
+    build-and-push:
+        runs-on: ubuntu-latest
+        permissions:
+            contents: read
+            packages: write
+
+        steps:
+            - name: Checkout repository
+              uses: actions/checkout@v4
+
+            - name: Log in to GitHub Container Registry
+              run: echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
+
+            - name: Build Docker image
+              run: |
+                  cd discord-bot
+                  docker build --pull -t ${{ env.IMAGE_NAME }}:latest -t ${{ env.IMAGE_NAME }}:${{ github.sha }} .
+
+            - name: Push Docker image
+              run: |
+                  docker push ${{ env.IMAGE_NAME }}:latest
+                  docker push ${{ env.IMAGE_NAME }}:${{ github.sha }}
+
+            - name: Print image info
+              run: |
+                  echo "Built and pushed image:"
+                  echo "  ${{ env.IMAGE_NAME }}:latest"
+                  echo "  ${{ env.IMAGE_NAME }}:${{ github.sha }}"
