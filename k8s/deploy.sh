@@ -666,6 +666,67 @@ deploy_worker() {
     rm -f /tmp/worker-deployment.yaml
 }
 
+# Step 7.6: Discord Bot 배포
+deploy_discord_bot() {
+    log_info "Step 7.6: Discord Bot 배포"
+
+    # Discord Bot ConfigMap 생성
+    if [ -f "discord-bot-configmap.yaml" ]; then
+        if kubectl apply -f discord-bot-configmap.yaml -n "$NAMESPACE"; then
+            log_success "Discord Bot ConfigMap 생성 완료"
+        else
+            log_error "Discord Bot ConfigMap 생성 실패"
+            exit 1
+        fi
+    fi
+
+    # Discord Bot Secret 생성 (로컬 파일 우선)
+    if [ -f "discord-bot-secret.local.yaml" ]; then
+        log_info "discord-bot-secret.local.yaml 사용"
+        if kubectl apply -f discord-bot-secret.local.yaml -n "$NAMESPACE"; then
+            log_success "Discord Bot Secret 생성 완료 (local)"
+        else
+            log_error "Discord Bot Secret 생성 실패"
+            exit 1
+        fi
+    elif [ -f "discord-bot-secret.yaml" ]; then
+        log_info "discord-bot-secret.yaml 사용"
+        if kubectl apply -f discord-bot-secret.yaml -n "$NAMESPACE"; then
+            log_success "Discord Bot Secret 생성 완료"
+        else
+            log_error "Discord Bot Secret 생성 실패"
+            exit 1
+        fi
+    else
+        log_warning "Discord Bot Secret 파일이 없습니다 (discord-bot-secret.local.yaml 또는 discord-bot-secret.yaml)"
+        log_warning "Discord Bot이 제대로 작동하지 않을 수 있습니다."
+    fi
+
+    # 이미지 태그 치환
+    sed "s|\${IMAGE_TAG:-latest}|$IMAGE_TAG|g" discord-bot-deployment.yaml > /tmp/discord-bot-deployment.yaml
+    echo "Discord Bot Deployment 임시 파일 생성 완료: /tmp/discord-bot-deployment.yaml"
+
+    if kubectl apply -f /tmp/discord-bot-deployment.yaml -n "$NAMESPACE"; then
+        log_success "Discord Bot Deployment 생성 완료"
+    else
+        log_error "Discord Bot Deployment 생성 실패"
+        exit 1
+    fi
+
+    if kubectl apply -f discord-bot-service.yaml -n "$NAMESPACE"; then
+        log_success "Discord Bot Service 생성 완료"
+    else
+        log_error "Discord Bot Service 생성 실패"
+        exit 1
+    fi
+
+    # Discord Bot Pod 준비 대기
+    wait_for_pods "component=discord-bot" 300
+
+    # 임시 파일 정리
+    rm -f /tmp/discord-bot-deployment.yaml
+}
+
 # Step 8: Ingress 설정
 deploy_ingress() {
     if [ "$SKIP_INGRESS" = "true" ]; then
@@ -828,6 +889,7 @@ show_undeploy_confirmation() {
     echo -e "  - Ingress"
     echo -e "  - UI Deployment/Service"
     echo -e "  - AI 서비스 Deployment/Service"
+    echo -e "  - Discord Bot Deployment/Service"
     echo -e "  - Backend 서비스 Deployment/Service"
     echo -e "  - RabbitMQ Deployment/Service"
     echo -e "  - PostgreSQL Deployment/Service"
@@ -912,6 +974,43 @@ undeploy_worker() {
         log_success "Worker ServiceAccount 삭제 완료"
     else
         log_error "Worker ServiceAccount 삭제 실패"
+        return 1
+    fi
+}
+
+# 언디플로이: Discord Bot 리소스 삭제
+undeploy_discord_bot() {
+    log_info "Step 2.6: Discord Bot Deployment/Service 삭제 중..."
+
+    # Discord Bot Service 삭제
+    if kubectl delete service discord-bot-service -n "$NAMESPACE" --ignore-not-found=true; then
+        log_success "Discord Bot Service 삭제 완료"
+    else
+        log_error "Discord Bot Service 삭제 실패"
+        return 1
+    fi
+
+    # Discord Bot Deployment 삭제
+    if kubectl delete deployment discord-bot -n "$NAMESPACE" --ignore-not-found=true; then
+        log_success "Discord Bot Deployment 삭제 완료"
+    else
+        log_error "Discord Bot Deployment 삭제 실패"
+        return 1
+    fi
+
+    # Discord Bot ConfigMap 삭제
+    if kubectl delete configmap discord-bot-config -n "$NAMESPACE" --ignore-not-found=true; then
+        log_success "Discord Bot ConfigMap 삭제 완료"
+    else
+        log_error "Discord Bot ConfigMap 삭제 실패"
+        return 1
+    fi
+
+    # Discord Bot Secret 삭제
+    if kubectl delete secret discord-bot-secrets -n "$NAMESPACE" --ignore-not-found=true; then
+        log_success "Discord Bot Secret 삭제 완료"
+    else
+        log_error "Discord Bot Secret 삭제 실패"
         return 1
     fi
 }
@@ -1172,12 +1271,13 @@ undeploy() {
     
     show_undeploy_confirmation
     
-    # 삭제 순서: Traefik -> Ingress -> UI -> AI 서비스 -> Worker -> Backend -> RabbitMQ -> Redis -> PostgreSQL -> ReplicaSets -> PVC -> Configs -> Namespace
+    # 삭제 순서: Traefik -> Ingress -> UI -> AI 서비스 -> Worker -> Discord Bot -> Backend -> RabbitMQ -> Redis -> PostgreSQL -> ReplicaSets -> PVC -> Configs -> Namespace
     undeploy_traefik || log_warning "Traefik 삭제 중 오류 발생"
     undeploy_ingress || log_warning "Ingress 삭제 중 오류 발생"
     undeploy_ui || log_warning "UI 리소스 삭제 중 오류 발생"
     undeploy_ai_services || log_warning "AI 서비스 삭제 중 오류 발생"
     undeploy_worker || log_warning "Worker 리소스 삭제 중 오류 발생"
+    undeploy_discord_bot || log_warning "Discord Bot 리소스 삭제 중 오류 발생"
     undeploy_backend || log_warning "Backend 리소스 삭제 중 오류 발생"
     undeploy_rabbitmq || log_warning "RabbitMQ 리소스 삭제 중 오류 발생"
     undeploy_redis || log_warning "Redis 리소스 삭제 중 오류 발생"
@@ -1368,6 +1468,7 @@ main() {
         deploy_backend
         deploy_ai_services
         deploy_worker
+        deploy_discord_bot
         deploy_frontend
         deploy_ingress
         verify_deployment
