@@ -34,7 +34,14 @@ export async function handleMention(message: Message, client: Client) {
 
         for await (const event of skaldClient.chatStream(query, {
             history,
-            rag_config: { llm_provider: 'cli-proxy-api' },
+            system_prompt: '제공된 프롬프트와 문맥 안에서만 답하고 그 외 없는 내용으로는 답변하지 말것.',
+            rag_config: {
+                llm_provider: 'cli-proxy-api',
+                query_rewrite: { enabled: true },
+                reranking: { enabled: true, top_k: 40 },
+                vector_search: { top_k: 80, similarity_threshold: 0.54 },
+                references: { enabled: false },
+            },
         })) {
             switch (event.type) {
                 case 'token':
