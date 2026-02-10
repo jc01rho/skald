@@ -1,9 +1,10 @@
 export const SUPPORTED_LLM_MODELS = {
     'cli-proxy-api': {
         // ========================================
-        // Available Models (26 working models)
+        // Available Models (27 working models)
         // Listed in priority order as specified
         // ========================================
+        'gemini-3-pro': { slug: 'gemini-3-pro', name: 'Gemini 3 Pro' },
         'glm-4.7': { slug: 'glm-4.7', name: 'GLM 4.7' },
         'deepseek-v3.2-reasoner': { slug: 'deepseek-v3.2-reasoner', name: 'DeepSeek V3.2 Reasoner' },
         'gemini-2.5-pro': { slug: 'gemini-2.5-pro', name: 'Gemini 2.5 Pro' },
@@ -40,15 +41,16 @@ export const SUPPORTED_LLM_MODELS = {
 
 export const DEFAULT_LLM_MODELS = {
     'cli-proxy-api': {
-        // Both chat and classification now use deepseek-v3.2 as default
-        defaultChatModel: SUPPORTED_LLM_MODELS['cli-proxy-api']['deepseek-v3.2'],
-        defaultClassificationModel: SUPPORTED_LLM_MODELS['cli-proxy-api']['deepseek-v3.2'],
+        // Both chat and classification now use gemini-3-pro as default
+        defaultChatModel: SUPPORTED_LLM_MODELS['cli-proxy-api']['gemini-3-pro'],
+        defaultClassificationModel: SUPPORTED_LLM_MODELS['cli-proxy-api']['gemini-3-pro'],
     },
 }
 
 export const MODEL_FALLBACK_CHAINS = {
     'cli-proxy-api': [
-        // Priority order: deepseek-v3.2 -> glm-4.7 -> kimi-k2 -> qwen3-max -> rest
+        // Priority order: gemini-3-pro -> deepseek-v3.2 -> glm-4.7 -> kimi-k2 -> qwen3-max -> rest
+        'gemini-3-pro',
         'deepseek-v3.2',
         'glm-4.7',
         'kimi-k2',
