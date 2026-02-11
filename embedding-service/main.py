@@ -445,6 +445,37 @@ if RERANK_PROVIDER == "local":
         RERANK_PROVIDER = "ollama"
 
 
+# Korean morphological analyzer for BM25 tokenization
+kiwi_instance = None
+try:
+    from kiwipiepy import Kiwi
+    kiwi_instance = Kiwi()
+    logger.info("Kiwi Korean morphological analyzer loaded successfully")
+except ImportError:
+    logger.warning("kiwipiepy not installed. Korean tokenization will not be available.")
+except Exception as e:
+    logger.error(f"Failed to initialize Kiwi: {e}")
+
+# Meaningful POS tags for BM25 search (from OneRAG reference)
+# NNG: 일반 명사, NNP: 고유 명사, NNB: 의존 명사
+# VV: 동사, VA: 형용사, MAG: 일반 부사
+# SL: 외국어, SN: 숫자, SH: 한자
+_MEANINGFUL_POS_TAGS = frozenset({"NNG", "NNP", "VV", "VA", "MAG", "SL", "SN", "SH"})
+
+# Korean stopwords (from OneRAG reference)
+KOREAN_STOPWORDS = frozenset({
+    # 조사
+    "은", "는", "이", "가", "을", "를", "의", "에", "에서", "로", "으로",
+    "와", "과", "도", "만", "부터", "까지", "라", "이라",
+    # 접속부사
+    "그리고", "그러나", "하지만", "그래서", "따라서",
+    # 대명사
+    "이것", "그것", "저것", "이거", "그거", "저거",
+    # 기타 고빈도 저정보 단어
+    "것", "수", "등", "때", "중",
+})
+
+
 # ============================================================
 # 한글 최적화 함수들
 # ============================================================
@@ -454,7 +485,8 @@ def preprocess_korean_query(query: str) -> str:
     """
     한글 쿼리 전처리 함수
     - 불필요한 공백 제거
-    - 조사 처리 (간단한 정규화)
+    - 조사 뒤 공백 삽입으로 검색 품질 향상
+    - 특수문자 정리
     """
     import re
 
@@ -463,9 +495,16 @@ def preprocess_korean_query(query: str) -> str:
 
     # 한글 쿼리인 경우 특수 처리
     if is_korean_text(query):
-        # 일반적인 조사들을 공백으로 변환하여 검색 품질 향상
-        # (완전히 제거하지 않고 공백으로 대체)
-        pass  # 조사 제거는 오히려 의미를 해칠 수 있으므로 현재는 비활성화
+        # 조사 뒤에 붙은 한글 단어 사이에 공백 삽입
+        # 예: "삼성전자의주가" → "삼성전자의 주가"
+        query = re.sub(
+            r"([가-힣])(은|는|이|가|을|를|의|에서|에|로|으로|와|과|도)([가-힣])",
+            r"\1\2 \3",
+            query,
+        )
+        # 특수문자 정리 (한글, 영문, 숫자, 공백만 유지)
+        query = re.sub(r"[^\w\s가-힣a-zA-Z0-9]", " ", query)
+        query = re.sub(r"\s+", " ", query.strip())
 
     return query
 
@@ -902,6 +941,17 @@ class RerankResponse(BaseModel):
     )
 
 
+class TokenizeRequest(BaseModel):
+    text: str = Field(..., description="Text to tokenize")
+    filter_pos: bool = Field(default=True, description="Filter to meaningful POS tags only")
+    filter_stopwords: bool = Field(default=True, description="Remove Korean stopwords")
+
+
+class TokenizeResponse(BaseModel):
+    tokens: list[str] = Field(..., description="Tokenized result")
+    original_length: int = Field(..., description="Original text length")
+
+
 # ============================================================
 # API Endpoints
 # ============================================================
@@ -917,6 +967,7 @@ async def health_check():
         "rerank_model": RERANK_MODEL,
         "embedding_model": EMBEDDING_MODEL,
         "query_language": QUERY_LANGUAGE,
+        "kiwi_tokenizer": kiwi_instance is not None,
     }
 
 
@@ -1157,6 +1208,46 @@ async def rerank(request: RerankRequest):
         total_time = time.perf_counter() - start_time
         logger.error(f"Rerank failed after {total_time:.6f}s: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Reranking failed: {str(e)}")
+
+
+@app.post("/tokenize", response_model=TokenizeResponse)
+async def tokenize_text(request: TokenizeRequest):
+    """
+    한국어 형태소 분석 기반 토큰화
+    Kiwi 형태소 분석기를 사용하여 의미 있는 토큰만 추출합니다.
+    BM25 검색의 한국어 품질 향상을 위해 사용됩니다.
+    """
+    if kiwi_instance is None:
+        raise HTTPException(
+            status_code=503,
+            detail="Kiwi morphological analyzer not available. Install kiwipiepy.",
+        )
+
+    try:
+        text = request.text.strip()
+        if not text:
+            return TokenizeResponse(tokens=[], original_length=0)
+
+        tokens: list[str] = []
+        for token in kiwi_instance.tokenize(text):
+            # Filter by meaningful POS tags
+            if request.filter_pos and token.tag not in _MEANINGFUL_POS_TAGS:
+                continue
+            form = token.form.strip()
+            if not form:
+                continue
+            # Filter stopwords
+            if request.filter_stopwords and form in KOREAN_STOPWORDS:
+                continue
+            tokens.append(form)
+
+        logger.debug(
+            f"Tokenized '{text[:50]}...' -> {len(tokens)} tokens"
+        )
+        return TokenizeResponse(tokens=tokens, original_length=len(text))
+    except Exception as e:
+        logger.error(f"Tokenization failed: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Tokenization failed: {str(e)}")
 
 
 # ============================================================

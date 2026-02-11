@@ -9,11 +9,14 @@ import { CachedQueries } from '@/queries/cachedQueries'
 import { DI } from '@/di'
 import { ragGraph } from '@/agents/chatAgent/ragGraph'
 import { parseRagConfig } from '@/lib/ragUtils'
+import { routeQuery } from '@/lib/queryRouter'
 import { ChatPromptTemplate } from '@langchain/core/prompts'
 import { Project } from '@/entities/Project'
 import { chatRateLimiter } from '@/middleware/rateLimitMiddleware'
 import { trackChatUsage } from '@/middleware/trackChatUsageMiddleware'
 import { posthogCapture } from '@/lib/posthogUtils'
+import { SelfRagEvaluator } from '@/lib/selfRagEvaluator'
+import { ComplexityCalculator } from '@/lib/complexityCalculator'
 
 export const chat = async (req: Request, res: Response) => {
     const query = req.body.query
@@ -66,6 +69,28 @@ export const chat = async (req: Request, res: Response) => {
         } else {
             return res.status(400).json({ error: `Invalid filter: ${error}` })
         }
+    }
+
+    const routeResult = routeQuery(query)
+    if (routeResult.route !== 'rag' && routeResult.response) {
+        const directResponse = routeResult.response
+        const finalChatId = await createChatMessagePair(project, query, directResponse, chatId, clientSystemPrompt)
+
+        if (stream) {
+            _setStreamingResponseHeaders(res)
+            res.write(': ping\n\n')
+            res.write(`data: ${JSON.stringify({ type: 'token', content: directResponse })}\n\n`)
+            res.write(`data: ${JSON.stringify({ type: 'done', chat_id: finalChatId })}\n\n`)
+            res.end()
+            return
+        }
+
+        return res.status(200).json({
+            ok: true,
+            chat_id: finalChatId,
+            response: directResponse,
+            intermediate_steps: [],
+        })
     }
 
     // For streaming, we want to start the response immediately to avoid 504 timeouts
@@ -132,12 +157,109 @@ export const chat = async (req: Request, res: Response) => {
             }
         }
 
-        const finalChatId = await createChatMessagePair(project, query, fullResponse, chatId, clientSystemPrompt)
+        let finalResponse = fullResponse
+
+        if (parsedRagConfig.selfRag?.enabled) {
+            const complexity = ComplexityCalculator.calculate(query)
+            if (complexity.requiresSelfRag) {
+                const contextChunks = (rerankedResults || []).map((r: any) => r.document || r.chunk_content || '')
+                const initialEval = await SelfRagEvaluator.evaluate(query, fullResponse, contextChunks)
+                const qualityThreshold = parsedRagConfig.selfRag.qualityThreshold
+
+                if (SelfRagEvaluator.requiresRegeneration(initialEval, qualityThreshold)) {
+                    logger.info(
+                        {
+                            initialScore: initialEval.overall,
+                            threshold: qualityThreshold,
+                        },
+                        'Self-RAG: quality insufficient, attempting regeneration'
+                    )
+
+                    const retryRagConfig = {
+                        ...parsedRagConfig,
+                        vectorSearch: {
+                            ...parsedRagConfig.vectorSearch,
+                            topK: Math.min(parsedRagConfig.vectorSearch.topK * 3, 200),
+                        },
+                        reranking: {
+                            ...parsedRagConfig.reranking,
+                            topK: Math.min(parsedRagConfig.reranking.topK * 2, 100),
+                        },
+                    }
+
+                    try {
+                        const retryState = await ragGraph.invoke({
+                            query,
+                            project,
+                            chatId,
+                            filters,
+                            clientSystemPrompt,
+                            ragConfig: retryRagConfig,
+                        })
+
+                        let retryResponse = ''
+                        let retryReferences: Record<number, { memo_uuid: string; memo_title: string }> | undefined
+
+                        for await (const chunk of streamChatAgent({
+                            query: retryState.query,
+                            prompt: retryState.prompt,
+                            contextStr: retryState.contextStr || '',
+                            rerankResults: retryState.rerankedResults || [],
+                            enableReferences: retryRagConfig.references.enabled,
+                            llmProvider: retryRagConfig.llmProvider,
+                        })) {
+                            if (chunk.type === 'token') retryResponse += chunk.content || ''
+                            if (chunk.type === 'references' && chunk.content) {
+                                retryReferences = JSON.parse(chunk.content)
+                            }
+                        }
+
+                        const retryContextChunks = (retryState.rerankedResults || []).map(
+                            (r: any) => r.document || r.chunk_content || ''
+                        )
+                        const retryEval = await SelfRagEvaluator.evaluate(query, retryResponse, retryContextChunks)
+
+                        if (
+                            SelfRagEvaluator.shouldRollback(
+                                initialEval,
+                                retryEval,
+                                parsedRagConfig.selfRag.rollbackThreshold
+                            )
+                        ) {
+                            logger.warn(
+                                {
+                                    initialScore: initialEval.overall,
+                                    retryScore: retryEval.overall,
+                                },
+                                'Self-RAG: regeneration worse, rolling back to original'
+                            )
+                        } else {
+                            finalResponse = retryResponse
+                            if (retryReferences) {
+                                references = retryReferences
+                            }
+                            logger.info(
+                                {
+                                    initialScore: initialEval.overall,
+                                    retryScore: retryEval.overall,
+                                    improvement: retryEval.overall - initialEval.overall,
+                                },
+                                'Self-RAG: regeneration improved response'
+                            )
+                        }
+                    } catch (retryError) {
+                        logger.error({ err: retryError }, 'Self-RAG: regeneration failed, using original response')
+                    }
+                }
+            }
+        }
+
+        const finalChatId = await createChatMessagePair(project, query, finalResponse, chatId, clientSystemPrompt)
 
         const response: any = {
             ok: true,
             chat_id: finalChatId,
-            response: fullResponse,
+            response: finalResponse,
             intermediate_steps: [],
         }
 
@@ -187,8 +309,7 @@ export const _generateStreamingResponse = async ({
     // establish connection immediately to prevent 504
     res.write(': ping\n\n')
 
-    // Log providing details
-    console.log(`Starting RAG process for stream (Provider: ${parsedRagConfig.llmProvider})`)
+    logger.info({ provider: parsedRagConfig.llmProvider }, 'Starting RAG process for stream')
 
     let fullResponse = ''
     try {
@@ -204,7 +325,7 @@ export const _generateStreamingResponse = async ({
 
         const { query: finalQuery, contextStr, prompt, rerankedResults } = ragResultState
 
-        console.log('RAG process completed, starting generation')
+        logger.info('RAG process completed, starting generation')
 
         for await (const chunk of streamChatAgent({
             query: finalQuery,

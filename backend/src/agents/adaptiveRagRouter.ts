@@ -42,6 +42,7 @@ function extractComplexityIndicators(query: string, understanding: QueryUndersta
     const questionCount = (query.match(/\?/g) || []).length
 
     const complexKeywords = [
+        // English
         'compare',
         'difference',
         'vs',
@@ -53,6 +54,19 @@ function extractComplexityIndicators(query: string, understanding: QueryUndersta
         'disadvantages',
         'trade-off',
         'tradeoff',
+        // Korean (한국어 복잡도 지표)
+        '비교',
+        '차이',
+        '분석',
+        '평가',
+        '장단점',
+        '트레이드오프',
+        '어떻게',
+        '왜',
+        '단계',
+        '방법',
+        '원리',
+        '이유',
     ]
 
     const hasComplexKeywords = complexKeywords.some((kw) => query.toLowerCase().includes(kw))

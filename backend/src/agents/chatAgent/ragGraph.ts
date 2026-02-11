@@ -65,6 +65,11 @@ export interface RAGConfig {
         scoreThreshold?: number
         filterLowRelevance?: boolean
     }
+    selfRag?: {
+        enabled: boolean
+        qualityThreshold?: number
+        rollbackThreshold?: number
+    }
 }
 
 // Define your state schema
@@ -401,7 +406,7 @@ function cosineSimilarityEmbedding(vec1: number[], vec2: number[]): number {
 }
 
 function cosineSimilarity(doc1: string, doc2: string): number {
-    // Simple word overlap-based similarity for MMR (legacy fallback)
+    // Simple word overlap-based similarity (DEPRECATED - not used in MMR, kept for reference)
     // In production, consider using TF-IDF or embeddings for better accuracy
     const words1 = new Set(doc1.toLowerCase().split(/\s+/))
     const words2 = new Set(doc2.toLowerCase().split(/\s+/))
@@ -431,7 +436,7 @@ async function mmrNode(state: typeof RAGState.State) {
         for (let i = 0; i < remaining.length; i++) {
             const relevance = remaining[i].relevance_score
 
-            // Use embedding-based diversity if embeddings are available, otherwise fallback to word overlap
+            // Use embedding-based diversity only; skip diversity when embeddings unavailable (Korean-safe)
             const diversity =
                 selected.length === 0
                     ? 0
@@ -440,10 +445,7 @@ async function mmrNode(state: typeof RAGState.State) {
                             (min, s) => Math.min(min, cosineSimilarityEmbedding(remaining[i].embedding!, s.embedding!)),
                             Infinity
                         )
-                      : selected.reduce(
-                            (min, s) => Math.min(min, cosineSimilarity(remaining[i].document, s.document)),
-                            Infinity
-                        )
+                      : 0 // No embedding available: skip diversity (word overlap unreliable for Korean/CJK)
 
             const mmrScore = lambda * relevance - (1 - lambda) * diversity
             if (mmrScore > bestScore) {

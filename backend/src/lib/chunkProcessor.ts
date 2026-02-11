@@ -25,13 +25,14 @@ export async function generateChunkContext(
     documentTitle: string
 ): Promise<string> {
     try {
-        const llm = LLMService.getLLM({ purpose: 'classification', temperature: 0.3 })
-
         const prompt = CONTEXT_GENERATION_PROMPT.replace('{documentTitle}', documentTitle)
             .replace('{fullDocument}', fullDocument.slice(0, 4000))
             .replace('{chunk}', chunk)
 
-        const response = await llm.invoke([{ role: 'user', content: prompt }])
+        const response = await LLMService.invokeWithRetry({
+            messages: [{ role: 'user', content: prompt }],
+            temperature: 0.3,
+        })
         const context = response.content?.toString().trim()
 
         if (!context) {

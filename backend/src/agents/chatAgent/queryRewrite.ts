@@ -20,12 +20,13 @@ export const rewrite = async (query: string, conversationHistory: ConversationMe
 
         const userPrompt = `${contextStr}\nQuery to enhance: "${query}"`
 
-        const llm = LLMService.getLLM({ purpose: 'classification', temperature: 0.3 })
-
-        const response = await llm.invoke([
-            { role: 'system', content: QUERY_REWRITE_PROMPT },
-            { role: 'user', content: userPrompt },
-        ])
+        const response = await LLMService.invokeWithRetry({
+            messages: [
+                { role: 'system', content: QUERY_REWRITE_PROMPT },
+                { role: 'user', content: userPrompt },
+            ],
+            temperature: 0.3,
+        })
 
         const rewrittenQuery = response.content?.toString().trim()
 
@@ -47,12 +48,13 @@ export const rewrite = async (query: string, conversationHistory: ConversationMe
 
 export const rewriteMultiQuery = async (query: string): Promise<string[]> => {
     try {
-        const llm = LLMService.getLLM({ purpose: 'classification', temperature: 0.3 })
-
-        const response = await llm.invoke([
-            { role: 'system', content: MULTI_QUERY_PROMPT },
-            { role: 'user', content: `Query: "${query}"` },
-        ])
+        const response = await LLMService.invokeWithRetry({
+            messages: [
+                { role: 'system', content: MULTI_QUERY_PROMPT },
+                { role: 'user', content: `Query: "${query}"` },
+            ],
+            temperature: 0.3,
+        })
 
         const rewritten = response.content?.toString().trim()
 
@@ -64,8 +66,8 @@ export const rewriteMultiQuery = async (query: string): Promise<string[]> => {
         // Parse 2-3 query variations, filter empty lines, limit to 3
         const queries = rewritten
             .split('\n')
-            .map((q) => q.trim())
-            .filter((q) => q.length > 0)
+            .map((q: string) => q.trim())
+            .filter((q: string) => q.length > 0)
             .slice(0, 3)
 
         return queries.length > 0 ? queries : [query]
@@ -81,12 +83,13 @@ export const rewriteMultiQuery = async (query: string): Promise<string[]> => {
 
 export const generateHyDE = async (query: string): Promise<string> => {
     try {
-        const llm = LLMService.getLLM({ purpose: 'classification', temperature: 0.3 })
-
-        const response = await llm.invoke([
-            { role: 'system', content: HYDE_PROMPT },
-            { role: 'user', content: query },
-        ])
+        const response = await LLMService.invokeWithRetry({
+            messages: [
+                { role: 'system', content: HYDE_PROMPT },
+                { role: 'user', content: query },
+            ],
+            temperature: 0.3,
+        })
 
         const hypothetical = response.content?.toString().trim()
 
@@ -108,12 +111,13 @@ export const generateHyDE = async (query: string): Promise<string> => {
 
 export const generateJiraHyDE = async (query: string): Promise<string> => {
     try {
-        const llm = LLMService.getLLM({ purpose: 'classification', temperature: 0.3 })
-
-        const response = await llm.invoke([
-            { role: 'system', content: JIRA_HYDE_PROMPT },
-            { role: 'user', content: query },
-        ])
+        const response = await LLMService.invokeWithRetry({
+            messages: [
+                { role: 'system', content: JIRA_HYDE_PROMPT },
+                { role: 'user', content: query },
+            ],
+            temperature: 0.3,
+        })
 
         const hypothetical = response.content?.toString().trim()
 

@@ -88,38 +88,39 @@ Faithfulness (충실성) 원칙:
 {context}
 `
 
-export const QUERY_REWRITE_PROMPT = `You are a precise query enhancement assistant for a RAG (Retrieval-Augmented Generation) system.
+export const QUERY_REWRITE_PROMPT = `당신은 RAG(검색 증강 생성) 시스템을 위한 정밀한 쿼리 개선 전문가입니다.
 
-Task:
-Transform user's query to improve retrieval quality while maintaining original intent. The improved query should be clearer and more specific for semantic search.
+작업:
+사용자의 쿼리를 검색 품질을 향상시키도록 변환하되, 원래 의도를 유지하십시오.
+개선된 쿼리는 시맨틱 검색에 더 명확하고 구체적이어야 합니다.
 
-Rules:
-1. Correct grammar and spelling errors
-2. Add specificity for ambiguous queries (e.g., "how does it work?" → "[context subject] how does it work?")
-3. Keep technical terms and proper nouns verbatim
-4. Maintain query conciseness
-5. Reflect relevant context when referring to previous conversations (e.g., "tell me more", "what about that?")
-6. Do not change the fundamental question or intent
-7. Do not add information not implied in the query or conversation history
-8. Return only the improved query without explanation or metadata
+규칙:
+1. 문법 및 맞춤법 오류를 수정
+2. 모호한 쿼리에 구체성 추가 (예: "그건 어떻게 작동해?" → "[맥락 주제]는 어떻게 작동하나요?")
+3. 기술 용어와 고유 명사는 그대로 유지
+4. 쿼리의 간결함 유지
+5. 이전 대화 참조 시 관련 맥락을 반영 (예: "더 알려줘", "그건 뭐야?")
+6. 근본적인 질문이나 의도를 변경하지 않음
+7. 쿼리나 대화 이력에 암시되지 않은 정보를 추가하지 않음
+8. 개선된 쿼리만 반환 (설명이나 메타데이터 없이)
 
-Improve the following query:`
+다음 쿼리를 개선하십시오:`
 
-export const MULTI_QUERY_PROMPT = `Generate 2-3 alternative search queries that capture different aspects of user's request.
-Each query should:
-- Preserve the original intent
-- Use different phrasing/keywords
-- Be optimized for semantic vector search
-- Be on separate lines
+export const MULTI_QUERY_PROMPT = `사용자 요청의 다양한 측면을 포착하는 2-3개의 대안 검색 쿼리를 생성하십시오.
+각 쿼리는:
+- 원래 의도를 보존
+- 다른 표현/키워드 사용
+- 시맨틱 벡터 검색에 최적화
+- 각각 별도의 줄에 작성
 
-Example:
-Input: "How does authentication work?"
-Output:
-How does user authentication function?
-What are the authentication mechanisms?
-Authentication process and security
+예시:
+입력: "인증은 어떻게 작동하나요?"
+출력:
+사용자 인증 기능의 작동 방식
+인증 메커니즘과 구현 방법
+인증 프로세스 및 보안 설정
 
-Generate alternative queries for:`
+다음에 대한 대안 쿼리를 생성하십시오:`
 
 export const HYDE_PROMPT = `Write a concise, direct answer to the following question.
 Focus on factual accuracy and technical details.

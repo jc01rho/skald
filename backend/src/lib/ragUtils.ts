@@ -20,6 +20,9 @@ export function parseRagConfig(ragConfig: Record<string, any>): {
         hybridSearchEnabled: true,
         hybridSearchVectorWeight: 0.7,
         hybridSearchBm25Weight: 0.3,
+        selfRagEnabled: false,
+        selfRagQualityThreshold: 0.75,
+        selfRagRollbackThreshold: -0.1,
     }
 
     const llmProvider = ragConfig.llm_provider || ragConfig.llmProvider || LLM_PROVIDER
@@ -157,6 +160,30 @@ export function parseRagConfig(ragConfig: Record<string, any>): {
         }
     }
 
+    const selfRagEnabled = ragConfig.self_rag?.enabled ?? defaults.selfRagEnabled
+    if (typeof selfRagEnabled !== 'boolean') {
+        return {
+            parsedRagConfig: null,
+            error: `Invalid self_rag enabled: ${selfRagEnabled}. Must be a boolean.`,
+        }
+    }
+
+    const selfRagQualityThreshold = ragConfig.self_rag?.quality_threshold ?? defaults.selfRagQualityThreshold
+    if (typeof selfRagQualityThreshold !== 'number' || selfRagQualityThreshold < 0 || selfRagQualityThreshold > 1) {
+        return {
+            parsedRagConfig: null,
+            error: `Invalid self_rag quality threshold: ${selfRagQualityThreshold}. Must be a number between 0 and 1.`,
+        }
+    }
+
+    const selfRagRollbackThreshold = ragConfig.self_rag?.rollback_threshold ?? defaults.selfRagRollbackThreshold
+    if (typeof selfRagRollbackThreshold !== 'number' || selfRagRollbackThreshold < -1 || selfRagRollbackThreshold > 0) {
+        return {
+            parsedRagConfig: null,
+            error: `Invalid self_rag rollback threshold: ${selfRagRollbackThreshold}. Must be a number between -1 and 0.`,
+        }
+    }
+
     const result = {
         parsedRagConfig: {
             llmProvider: llmProvider as 'cli-proxy-api',
@@ -182,6 +209,11 @@ export function parseRagConfig(ragConfig: Record<string, any>): {
                 enabled: hybridSearchEnabled,
                 vectorWeight: hybridSearchVectorWeight,
                 bm25Weight: hybridSearchBm25Weight,
+            },
+            selfRag: {
+                enabled: selfRagEnabled,
+                qualityThreshold: selfRagQualityThreshold,
+                rollbackThreshold: selfRagRollbackThreshold,
             },
         },
         error: null,

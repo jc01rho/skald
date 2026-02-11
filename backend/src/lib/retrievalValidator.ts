@@ -59,15 +59,16 @@ export async function validateRetrieval(
     }
 
     try {
-        const llm = LLMService.getLLM({ purpose: 'classification', temperature: 0.1 })
-
         const documents = results
             .map((r, i) => `[${i}] ${r.document.slice(0, 200)}... (score: ${r.relevance_score.toFixed(2)})`)
             .join('\n\n')
 
         const prompt = VALIDATION_PROMPT.replace('{query}', query).replace('{documents}', documents)
 
-        const response = await llm.invoke([{ role: 'user', content: prompt }])
+        const response = await LLMService.invokeWithRetry({
+            messages: [{ role: 'user', content: prompt }],
+            temperature: 0.1,
+        })
         const responseText = response.content?.toString().trim() || ''
 
         const cleanedJson = responseText
