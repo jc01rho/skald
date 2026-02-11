@@ -4,6 +4,9 @@ import { DI } from '@/di'
 import { logger } from '@/lib/logger'
 import { detectLanguage, Language } from '@/lib/languageDetector'
 
+// RRF (Reciprocal Rank Fusion) constant - standard value from OneRAG
+const RRF_K = 60
+
 export interface HybridSearchResult {
     uuid: string
     chunk_content: string
@@ -17,7 +20,7 @@ export interface HybridSearchConfig {
     vectorWeight?: number // Default: 0.7
     bm25Weight?: number // Default: 0.3
     topK?: number // Default: 10
-    similarityThreshold?: number // Default: 0.95
+    similarityThreshold?: number // Default: 1.2 (cosine distance 0~2 range, allows cosine_similarity >= 0.4)
     filters?: MemoFilter
 }
 
@@ -32,7 +35,7 @@ export class HybridSearchService {
         queryText: string,
         config: HybridSearchConfig = {}
     ): Promise<HybridSearchResult[]> {
-        const { vectorWeight = 0.7, bm25Weight = 0.3, topK = 10, similarityThreshold = 0.95, filters } = config
+        const { vectorWeight = 0.7, bm25Weight = 0.3, topK = 10, similarityThreshold = 1.2, filters } = config // Default: 1.2 (cosine distance 0~2 range, allows cosine_similarity >= 0.4)
 
         //1. Vector Search
         const vectorResults = await this.vectorSearch(
@@ -46,15 +49,11 @@ export class HybridSearchService {
         //2. BM25 Search (PostgreSQL full-text search)
         const bm25Results = await this.bm25Search(project, queryText, topK * 2, filters ? [filters] : undefined)
 
-        // 3. Score Normalization
-        const normalizedVector = this.normalizeScores(vectorResults, 'vector_score')
+        // 3. RRF (Reciprocal Rank Fusion) merge
+        // Vector and BM25 results are already sorted by their respective scores
+        const combined = this.combineScoresRRF(vectorResults, bm25Results, vectorWeight, bm25Weight)
 
-        const normalizedBM25 = this.normalizeScores(bm25Results, 'bm25_score')
-
-        // 4. Combine scores with weighted fusion
-        const combined = this.combineScores(normalizedVector, normalizedBM25, vectorWeight, bm25Weight)
-
-        // 5. Sort and return topK
+        // 4. Sort and return topK
         return combined.sort((a, b) => b.hybrid_score - a.hybrid_score).slice(0, topK)
     }
 
@@ -228,82 +227,67 @@ export class HybridSearchService {
     }
 
     /**
-     * Normalize scores using min-max normalization
+     * Combine results using Reciprocal Rank Fusion (RRF)
+     * RRF score = Σ [ weight / (k + rank + 1) ]
+     * More robust than weighted linear fusion as it's based on rank, not score magnitude
      */
-    private static normalizeScores(
-        results: Array<{
-            uuid: string
-            chunk_content: string
-            memo_uuid: string
-            vector_score?: number
-            bm25_score?: number
-        }>,
-        scoreKey: 'vector_score' | 'bm25_score'
-    ): Map<string, { chunk_content: string; memo_uuid: string; normalizedScore: number }> {
-        const normalized = new Map()
-
-        if (results.length === 0) return normalized
-
-        // Min-max normalization
-        const scores = results.map((r) => r[scoreKey] as number)
-        const minScore = Math.min(...scores)
-        const maxScore = Math.max(...scores)
-
-        for (const result of results) {
-            const rawScore = (result[scoreKey] as number) ?? 0
-            const normalizedScore = maxScore > minScore ? (rawScore - minScore) / (maxScore - minScore) : 1.0
-
-            normalized.set(result.uuid, {
-                chunk_content: result.chunk_content,
-                memo_uuid: result.memo_uuid,
-                normalizedScore,
-            })
-        }
-
-        return normalized
-    }
-
-    /**
-     * Combine normalized scores with weighted fusion
-     */
-    private static combineScores(
-        vectorScores: Map<string, { chunk_content: string; memo_uuid: string; normalizedScore: number }>,
-        bm25Scores: Map<string, { chunk_content: string; memo_uuid: string; normalizedScore: number }>,
+    private static combineScoresRRF(
+        vectorResults: Array<{ uuid: string; chunk_content: string; memo_uuid: string; vector_score: number }>,
+        bm25Results: Array<{ uuid: string; chunk_content: string; memo_uuid: string; bm25_score: number }>,
         vectorWeight: number,
         bm25Weight: number
     ): HybridSearchResult[] {
-        const combined: HybridSearchResult[] = []
-        const seenUuids = new Set<string>()
+        const rrfScores = new Map<string, number>()
+        const docInfo = new Map<
+            string,
+            { chunk_content: string; memo_uuid: string; vector_score: number; bm25_score: number }
+        >()
 
-        // Process vector results
-        for (const [uuid, data] of vectorScores.entries()) {
-            if (seenUuids.has(uuid)) continue
-            seenUuids.add(uuid)
-
-            const bm25Score = bm25Scores.get(uuid)?.normalizedScore || 0
-            const hybridScore = vectorWeight * data.normalizedScore + bm25Weight * bm25Score
-
-            combined.push({
-                uuid,
-                chunk_content: data.chunk_content,
-                memo_uuid: data.memo_uuid,
-                vector_score: data.normalizedScore,
-                bm25_score: bm25Score,
-                hybrid_score: Math.max(0, Math.min(1, hybridScore)),
-            })
+        // Vector results RRF scores (already sorted by vector_score DESC)
+        for (let rank = 0; rank < vectorResults.length; rank++) {
+            const doc = vectorResults[rank]
+            const score = vectorWeight / (RRF_K + rank + 1)
+            rrfScores.set(doc.uuid, (rrfScores.get(doc.uuid) || 0) + score)
+            if (!docInfo.has(doc.uuid)) {
+                docInfo.set(doc.uuid, {
+                    chunk_content: doc.chunk_content,
+                    memo_uuid: doc.memo_uuid,
+                    vector_score: doc.vector_score,
+                    bm25_score: 0,
+                })
+            }
         }
 
-        // Add BM25-only results
-        for (const [uuid, data] of bm25Scores.entries()) {
-            if (seenUuids.has(uuid)) continue
+        // BM25 results RRF scores (already sorted by bm25_score DESC)
+        for (let rank = 0; rank < bm25Results.length; rank++) {
+            const doc = bm25Results[rank]
+            const score = bm25Weight / (RRF_K + rank + 1)
+            rrfScores.set(doc.uuid, (rrfScores.get(doc.uuid) || 0) + score)
+            if (!docInfo.has(doc.uuid)) {
+                docInfo.set(doc.uuid, {
+                    chunk_content: doc.chunk_content,
+                    memo_uuid: doc.memo_uuid,
+                    vector_score: 0,
+                    bm25_score: doc.bm25_score,
+                })
+            } else {
+                // Update BM25 score for docs that appear in both
+                const info = docInfo.get(doc.uuid)!
+                info.bm25_score = doc.bm25_score
+            }
+        }
 
+        // Convert to HybridSearchResult array
+        const combined: HybridSearchResult[] = []
+        for (const [uuid, rrfScore] of rrfScores.entries()) {
+            const info = docInfo.get(uuid)!
             combined.push({
                 uuid,
-                chunk_content: data.chunk_content,
-                memo_uuid: data.memo_uuid,
-                vector_score: 0,
-                bm25_score: data.normalizedScore,
-                hybrid_score: Math.max(0, Math.min(1, bm25Weight * data.normalizedScore)),
+                chunk_content: info.chunk_content,
+                memo_uuid: info.memo_uuid,
+                vector_score: info.vector_score,
+                bm25_score: info.bm25_score,
+                hybrid_score: rrfScore,
             })
         }
 

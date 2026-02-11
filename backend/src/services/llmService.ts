@@ -2,6 +2,7 @@ import { BaseChatModel } from '@langchain/core/language_models/chat_models'
 import { ChatOpenAI } from '@langchain/openai'
 import { LLM_PROVIDER, CLI_PROXY_API_KEY, CLI_PROXY_API_BASE_URL, CLI_PROXY_API_MODEL } from '../settings'
 import { DEFAULT_LLM_MODELS, MODEL_FALLBACK_CHAINS, PROVIDER_FALLBACK_CHAIN } from '@/llmModels'
+import { logger } from '@/lib/logger'
 
 interface GetLLMParams {
     temperature?: number
@@ -35,10 +36,10 @@ async function withRetry<T>(fn: () => Promise<T>, maxRetries = 3, retryDelayMs =
             return await fn()
         } catch (error) {
             lastError = error as Error
-            console.warn(`Attempt ${attempt}/${maxRetries} failed:`, lastError.message)
+            logger.warn(`Attempt ${attempt}/${maxRetries} failed: ${lastError.message}`)
             if (attempt < maxRetries) {
                 const delay = retryDelayMs * attempt
-                console.log(`Retrying in ${delay}ms...`)
+                logger.info(`Retrying in ${delay}ms...`)
                 await new Promise((resolve) => setTimeout(resolve, delay))
             }
         }
@@ -104,7 +105,7 @@ export class LLMService {
 
         // Step 1: Try current model with retries
         try {
-            console.log(`Attempting to invoke LLM with provider: ${currentProvider}`)
+            logger.info(`Attempting to invoke LLM with provider: ${currentProvider}`)
             return await withRetry(
                 async () => {
                     const llm = this.getLLM({ temperature, providerOverride: currentProvider as any, purpose })
@@ -118,9 +119,9 @@ export class LLMService {
                 throw error
             }
 
-            console.warn('Current model failed after retries, trying model-level fallback chain...')
+            logger.warn('Current model failed after retries, trying model-level fallback chain...')
             const errorMessage = (error as Error).message
-            console.warn(`Error: ${errorMessage}`)
+            logger.warn(`Error: ${errorMessage}`)
 
             // Step 2: Try model-level fallback (only for cli-proxy-api)
             if (currentProvider === 'cli-proxy-api' && MODEL_FALLBACK_CHAINS['cli-proxy-api']) {
@@ -136,7 +137,7 @@ export class LLMService {
 
                 for (const fallbackModel of fallbackModels) {
                     try {
-                        console.log(`Trying fallback model: ${fallbackModel}`)
+                        logger.info(`Trying fallback model: ${fallbackModel}`)
                         const result = await withRetry(
                             async () => {
                                 const llm = this.getLLM({
@@ -150,10 +151,10 @@ export class LLMService {
                             maxRetries,
                             retryDelayMs
                         )
-                        console.log(`Successfully invoked with fallback model: ${fallbackModel}`)
+                        logger.info(`Successfully invoked with fallback model: ${fallbackModel}`)
                         return result
                     } catch (modelError) {
-                        console.warn(`Fallback model ${fallbackModel} failed:`, (modelError as Error).message)
+                        logger.warn(`Fallback model ${fallbackModel} failed: ${(modelError as Error).message}`)
                         continue
                     }
                 }

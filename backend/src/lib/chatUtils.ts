@@ -1,4 +1,5 @@
 import { logger } from '@/lib/logger'
+import { containsCJK } from '@/lib/languageDetector'
 import { ChatMessage } from '@/entities/ChatMessage'
 import { DI } from '@/di'
 import { Project } from '@/entities/Project'
@@ -45,19 +46,16 @@ const _summarizeOldMessages = async (messages: ChatHistoryMessage[]): Promise<st
     }
 
     try {
-        const llm = LLMService.getLLM({ purpose: 'classification' })
         const conversationText = messages
             .map((msg) => `${msg.role === 'user' ? 'User' : 'Assistant'}: ${msg.content}`)
             .join('\n\n')
 
         const summaryPrompt = getMemoryExtractionPrompt(conversationText)
 
-        const result = await llm.invoke([
-            {
-                role: 'user',
-                content: summaryPrompt,
-            },
-        ])
+        const result = await LLMService.invokeWithRetry({
+            messages: [{ role: 'user', content: summaryPrompt }],
+            temperature: 0,
+        })
         const summary = typeof result.content === 'string' ? result.content : String(result.content)
         return summary
     } catch (error) {
@@ -71,7 +69,11 @@ const _summarizeOldMessages = async (messages: ChatHistoryMessage[]): Promise<st
 }
 
 const _estimateTokens = (text: string): number => {
-    // Rough estimate: 1 token ≈ 4 characters (conservative)
+    // Korean/CJK: 1 token ≈ 1.5 characters (GPT tokenizer 기준)
+    // English: 1 token ≈ 4 characters (conservative)
+    if (containsCJK(text)) {
+        return Math.ceil(text.length / 1.5)
+    }
     return Math.ceil(text.length / 4)
 }
 

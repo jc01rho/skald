@@ -93,16 +93,17 @@ export class QueryUnderstandingAgent {
      */
     static async understandQuery(query: string, context: string = ''): Promise<QueryUnderstanding> {
         try {
-            const llm = LLMService.getLLM({ purpose: 'classification', temperature: 0.1 })
-
             const prompt = context
                 ? `${QUERY_UNDERSTANDING_PROMPT}\n\n컨텍스트:\n${context}`
                 : QUERY_UNDERSTANDING_PROMPT
 
-            const response = await llm.invoke([
-                { role: 'system', content: prompt },
-                { role: 'user', content: query },
-            ])
+            const response = await LLMService.invokeWithRetry({
+                messages: [
+                    { role: 'system', content: prompt },
+                    { role: 'user', content: query },
+                ],
+                temperature: 0.1,
+            })
 
             const responseText = response.content?.toString().trim() || ''
             const cleanedJson = responseText
