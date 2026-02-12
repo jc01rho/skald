@@ -23,6 +23,11 @@ export function parseRagConfig(ragConfig: Record<string, any>): {
         selfRagEnabled: false,
         selfRagQualityThreshold: 0.75,
         selfRagRollbackThreshold: -0.1,
+        fallbackSearchEnabled: true,
+        fallbackTriggerThreshold: 0.4,
+        fallbackExpandedTopK: 3,
+        fallbackLoweredThreshold: 0.45,
+        fallbackEnableMultiQuery: true,
     }
 
     const llmProvider = ragConfig.llm_provider || ragConfig.llmProvider || LLM_PROVIDER

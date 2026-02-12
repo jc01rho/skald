@@ -112,7 +112,17 @@ export const chat = async (req: Request, res: Response) => {
         })
     }
 
-    // For non-streaming, we await the graph as before
+    logger.info(
+        {
+            similarityThreshold: parsedRagConfig.vectorSearch.similarityThreshold,
+            topK: parsedRagConfig.vectorSearch.topK,
+            rerankingEnabled: parsedRagConfig.reranking.enabled,
+            rerankingTopK: parsedRagConfig.reranking.topK,
+            hybridSearchEnabled: parsedRagConfig.hybridSearch?.enabled,
+        },
+        'RAG request configuration'
+    )
+
     const ragResultState = await ragGraph.invoke({
         query,
         project,
@@ -156,6 +166,22 @@ export const chat = async (req: Request, res: Response) => {
                 references = JSON.parse(chunk.content)
             }
         }
+
+        const contextLength = contextStr?.length || 0
+        const rerankedCount = rerankedResults?.length || 0
+        const hasContext = contextLength > 0
+        const responseType = fullResponse.length < 50 ? 'rejected' : fullResponse.length < 200 ? 'partial' : 'detailed'
+
+        logger.info(
+            {
+                contextLength,
+                rerankedCount,
+                hasContext,
+                responseType,
+                responseLength: fullResponse.length,
+            },
+            'RAG result metrics'
+        )
 
         let finalResponse = fullResponse
 
