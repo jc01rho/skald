@@ -70,6 +70,13 @@ export interface RAGConfig {
         qualityThreshold?: number
         rollbackThreshold?: number
     }
+    fallbackSearch?: {
+        enabled: boolean
+        triggerThreshold?: number
+        expandedTopK?: number
+        loweredThreshold?: number
+        enableMultiQuery?: boolean
+    }
 }
 
 // Define your state schema
@@ -138,23 +145,86 @@ async function queryRewriteNode(state: typeof RAGState.State) {
     return { rewrittenQuery: null }
 }
 
-/**
- * Adapter function to convert HybridSearchResult to MemoChunkWithDistance.
- * This allows hybrid search results to flow through the existing RAG pipeline.
- */
 function hybridResultToMemoChunk(result: HybridSearchResult): MemoChunkWithDistance {
     return {
         chunk: {
             uuid: result.uuid,
             chunk_content: result.chunk_content,
-            chunk_index: 0, // Not available from hybrid search
-            embedding: [], // Not available from hybrid search (will be fetched if needed for MMR)
+            chunk_index: 0,
+            embedding: [],
             memo_uuid: result.memo_uuid,
-            project_uuid: '', // Not available from hybrid search
+            project_uuid: '',
         },
-        // Convert hybrid_score (0-1, higher is better) to distance (0-2, lower is better)
         distance: 2 * (1 - result.hybrid_score),
     }
+}
+
+function deduplicateByBestScore(allResults: MemoChunkWithDistance[][]): MemoChunkWithDistance[] {
+    const memoScoreMap = new Map<string, MemoChunkWithDistance>()
+
+    for (const results of allResults) {
+        for (const result of results) {
+            const memoUuid = result.chunk.memo_uuid
+            const existing = memoScoreMap.get(memoUuid)
+
+            if (!existing || result.distance < existing.distance) {
+                memoScoreMap.set(memoUuid, result)
+            }
+        }
+    }
+
+    return Array.from(memoScoreMap.values()).sort((a, b) => a.distance - b.distance)
+}
+
+function calculateAverageScore(results: MemoChunkWithDistance[]): number {
+    if (results.length === 0) return 0
+    const avgDistance = results.reduce((sum, r) => sum + r.distance, 0) / results.length
+    return Math.max(0, Math.min(1, 1 - avgDistance / 2))
+}
+
+function checkFallbackCondition(results: MemoChunkWithDistance[], topK: number, threshold: number): boolean {
+    if (results.length >= topK * 0.5) return false
+    const avgScore = calculateAverageScore(results)
+    return avgScore < threshold
+}
+
+async function executeFallbackSearch(
+    query: string,
+    project: Project,
+    filters: MemoFilter[] | undefined,
+    topK: number,
+    threshold: number
+): Promise<MemoChunkWithDistance[]> {
+    const variants = await rewriteMultiQuery(query)
+    const searchQueries = [query, ...variants]
+
+    const expandedTopK = Math.ceil(topK * 3)
+
+    const fallbackResults = await Promise.all(
+        searchQueries.map(async (searchQuery) => {
+            const embeddingVector = await EmbeddingService.generateEmbedding(searchQuery, 'search')
+            return memoChunkVectorSearch(project, embeddingVector, expandedTopK, threshold, filters, true)
+        })
+    )
+
+    return deduplicateByBestScore(fallbackResults)
+}
+
+function mergeSearchResults(
+    primary: MemoChunkWithDistance[],
+    fallback: MemoChunkWithDistance[]
+): MemoChunkWithDistance[] {
+    const seenMemoUuids = new Set(primary.map((r) => r.chunk.memo_uuid))
+    const merged = [...primary]
+
+    for (const result of fallback) {
+        if (!seenMemoUuids.has(result.chunk.memo_uuid)) {
+            merged.push(result)
+            seenMemoUuids.add(result.chunk.memo_uuid)
+        }
+    }
+
+    return merged.sort((a, b) => a.distance - b.distance)
 }
 
 async function vectorSearchNode(state: typeof RAGState.State) {
@@ -223,7 +293,6 @@ async function vectorSearchNode(state: typeof RAGState.State) {
         }
     }
 
-    // Fallback: Run vector searches in parallel for all queries
     const allResults = await Promise.all(
         searchQueries.map(async (searchQuery) => {
             const embeddingVector = await EmbeddingService.generateEmbedding(searchQuery, 'search')
@@ -233,22 +302,27 @@ async function vectorSearchNode(state: typeof RAGState.State) {
                 strategy.topK,
                 ragConfig.vectorSearch.similarityThreshold,
                 filters,
-                true // Use enhanced ranking
+                true
             )
         })
     )
 
-    // Deduplicate results by memo_uuid to avoid redundant chunks
-    const seenMemoUuids = new Set<string>()
-    const uniqueResults: MemoChunkWithDistance[] = []
-    for (const results of allResults) {
-        for (const result of results) {
-            const memoUuid = result.chunk.memo_uuid
-            if (!seenMemoUuids.has(memoUuid)) {
-                seenMemoUuids.add(memoUuid)
-                uniqueResults.push(result)
-            }
-        }
+    const uniqueResults = deduplicateByBestScore(allResults)
+
+    const shouldTriggerFallback = checkFallbackCondition(uniqueResults, strategy.topK, 0.4)
+
+    if (shouldTriggerFallback) {
+        logger.debug(
+            {
+                resultCount: uniqueResults.length,
+                avgScore: calculateAverageScore(uniqueResults),
+            },
+            'Triggering fallback search'
+        )
+
+        const fallbackResults = await executeFallbackSearch(query, project, filters, strategy.topK, 0.45)
+
+        return { chunkResults: mergeSearchResults(uniqueResults, fallbackResults) }
     }
 
     return { chunkResults: uniqueResults }
