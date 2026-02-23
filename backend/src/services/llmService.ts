@@ -1,7 +1,14 @@
 import { BaseChatModel } from '@langchain/core/language_models/chat_models'
 import { ChatOpenAI } from '@langchain/openai'
-import { LLM_PROVIDER, CLI_PROXY_API_KEY, CLI_PROXY_API_BASE_URL, CLI_PROXY_API_MODEL } from '../settings'
-import { DEFAULT_LLM_MODELS, MODEL_FALLBACK_CHAINS, PROVIDER_FALLBACK_CHAIN } from '@/llmModels'
+import {
+    LLM_PROVIDER,
+    CLI_PROXY_API_KEY,
+    CLI_PROXY_API_BASE_URL,
+    CLI_PROXY_API_MODEL,
+    GEMINI_API_BASE_URL,
+    GEMINI_API_KEY,
+} from '../settings'
+import { DEFAULT_LLM_MODELS, MODEL_FALLBACK_CHAINS, PROVIDER_FALLBACK_CHAIN, isGeminiModel } from '@/llmModels'
 import { logger } from '@/lib/logger'
 
 interface GetLLMParams {
@@ -65,20 +72,26 @@ export class LLMService {
         }
 
         if (provider === 'cli-proxy-api') {
-            // CLI Proxy API with OpenAI-compatible API
-            if (!CLI_PROXY_API_KEY) {
-                throw new Error('CLI Proxy API provider is not configured. Please set CLI_PROXY_API_KEY.')
+            if (!CLI_PROXY_API_KEY && !GEMINI_API_KEY) {
+                throw new Error(
+                    'CLI Proxy API provider is not configured. Please set CLI_PROXY_API_KEY or GEMINI_API_KEY.'
+                )
             }
             const modelSlug =
                 modelOverride ||
                 (purpose === 'chat'
                     ? DEFAULT_LLM_MODELS['cli-proxy-api'].defaultChatModel.slug
                     : DEFAULT_LLM_MODELS['cli-proxy-api'].defaultClassificationModel.slug)
+
+            const useGeminiEndpoint = isGeminiModel(modelSlug)
+            const apiKey = useGeminiEndpoint ? GEMINI_API_KEY : CLI_PROXY_API_KEY
+            const baseURL = useGeminiEndpoint ? GEMINI_API_BASE_URL : CLI_PROXY_API_BASE_URL
+
             return new ChatOpenAI({
                 model: modelSlug,
-                apiKey: CLI_PROXY_API_KEY,
+                apiKey,
                 configuration: {
-                    baseURL: CLI_PROXY_API_BASE_URL,
+                    baseURL,
                 },
                 temperature,
             })
