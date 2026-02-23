@@ -42,9 +42,9 @@ export const SUPPORTED_LLM_MODELS = {
 
 export const DEFAULT_LLM_MODELS = {
     'cli-proxy-api': {
-        // Both chat and classification now use qwen-3.5 as default (highest priority)
-        defaultChatModel: SUPPORTED_LLM_MODELS['cli-proxy-api']['qwen-3.5'],
-        defaultClassificationModel: SUPPORTED_LLM_MODELS['cli-proxy-api']['qwen-3.5'],
+        // Both chat and classification now use qwen3-max as default (verified working model)
+        defaultChatModel: SUPPORTED_LLM_MODELS['cli-proxy-api']['qwen3-max'],
+        defaultClassificationModel: SUPPORTED_LLM_MODELS['cli-proxy-api']['qwen3-max'],
     },
 }
 
@@ -55,13 +55,12 @@ export function isGeminiModel(modelSlug: string): boolean {
 
 export const MODEL_FALLBACK_CHAINS = {
     'cli-proxy-api': [
-        // Priority order: qwen-3.5 -> gemini-3.1-pro -> deepseek-v3.2 -> glm-4.7 -> kimi-k2 -> qwen3-max -> rest
-        'qwen-3.5',
+        // Priority order: qwen3-max -> gemini-3.1-pro -> deepseek-v3.2 -> glm-4.7 -> kimi-k2 -> qwen3-235b -> rest
+        'qwen3-max',
         'gemini-3.1-pro',
         'deepseek-v3.2',
         'glm-4.7',
         'kimi-k2',
-        'qwen3-max',
         'gemini-2.5-pro',
         'qwen3-235b',
         'gemini-2.5-flash',

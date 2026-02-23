@@ -376,7 +376,10 @@ export const _generateStreamingResponse = async ({
         res.write(`data: ${JSON.stringify({ type: 'done', chat_id: finalChatId })}\n\n`)
     } catch (error) {
         Sentry.captureException(error)
-        logger.error({ err: error }, 'Streaming chat agent error')
+        logger.error(
+            { err: error, llmProvider: parsedRagConfig?.llmProvider, errorMessage: (error as Error)?.message },
+            'Streaming chat agent error - check if model is supported by CLI Proxy'
+        )
         const errorMsg =
             IS_DEVELOPMENT && error instanceof Error ? `${error.message}\n${error.stack}` : 'An error occurred'
         const errorData = JSON.stringify({ type: 'error', content: errorMsg })

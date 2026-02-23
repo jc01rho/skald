@@ -110,10 +110,11 @@ export class SkaldClient {
                 return
             } catch (error) {
                 const isLastAttempt = attempt === MAX_RETRIES
+                // 'terminated' indicates server closed stream unexpectedly - may be model unsupported
                 if (isLastAttempt) {
                     yield {
                         type: 'error',
-                        content: `Stream request failed after ${MAX_RETRIES} attempts: ${normalizeErrorMessage(error)}`,
+                        content: normalizeErrorMessage(error),
                     }
                     return
                 }
