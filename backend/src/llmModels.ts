@@ -1,10 +1,11 @@
 export const SUPPORTED_LLM_MODELS = {
     'cli-proxy-api': {
         // ========================================
-        // Available Models (27 working models)
+        // Available Models (28 working models)
         // Listed in priority order as specified
         // ========================================
-        'gemini-3-pro': { slug: 'gemini-3-pro', name: 'Gemini 3 Pro' },
+        'qwen-3.5': { slug: 'qwen-3.5', name: 'Qwen 3.5' },
+        'gemini-3.1-pro': { slug: 'gemini-3.1-pro', name: 'Gemini 3.1 Pro' },
         'glm-4.7': { slug: 'glm-4.7', name: 'GLM 4.7' },
         'deepseek-v3.2-reasoner': { slug: 'deepseek-v3.2-reasoner', name: 'DeepSeek V3.2 Reasoner' },
         'gemini-2.5-pro': { slug: 'gemini-2.5-pro', name: 'Gemini 2.5 Pro' },
@@ -41,16 +42,22 @@ export const SUPPORTED_LLM_MODELS = {
 
 export const DEFAULT_LLM_MODELS = {
     'cli-proxy-api': {
-        // Both chat and classification now use gemini-3-pro as default
-        defaultChatModel: SUPPORTED_LLM_MODELS['cli-proxy-api']['gemini-3-pro'],
-        defaultClassificationModel: SUPPORTED_LLM_MODELS['cli-proxy-api']['gemini-3-pro'],
+        // Both chat and classification now use qwen-3.5 as default (highest priority)
+        defaultChatModel: SUPPORTED_LLM_MODELS['cli-proxy-api']['qwen-3.5'],
+        defaultClassificationModel: SUPPORTED_LLM_MODELS['cli-proxy-api']['qwen-3.5'],
     },
+}
+
+// Helper to check if a model slug is a Gemini model
+export function isGeminiModel(modelSlug: string): boolean {
+    return modelSlug.startsWith('gemini-')
 }
 
 export const MODEL_FALLBACK_CHAINS = {
     'cli-proxy-api': [
-        // Priority order: gemini-3-pro -> deepseek-v3.2 -> glm-4.7 -> kimi-k2 -> qwen3-max -> rest
-        'gemini-3-pro',
+        // Priority order: qwen-3.5 -> gemini-3.1-pro -> deepseek-v3.2 -> glm-4.7 -> kimi-k2 -> qwen3-max -> rest
+        'qwen-3.5',
+        'gemini-3.1-pro',
         'deepseek-v3.2',
         'glm-4.7',
         'kimi-k2',

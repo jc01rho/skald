@@ -97,7 +97,11 @@ export const LLM_PROVIDER = process.env.LLM_PROVIDER || 'cli-proxy-api'
 // CLI Proxy API (only supported LLM provider)
 export const CLI_PROXY_API_KEY = process.env.CLI_PROXY_API_KEY
 export const CLI_PROXY_API_BASE_URL = process.env.CLI_PROXY_API_BASE_URL || 'http://cli-proxy-service:8317/v1'
-export const CLI_PROXY_API_MODEL = process.env.CLI_PROXY_API_MODEL || 'gemini-3-pro'
+export const CLI_PROXY_API_MODEL = process.env.CLI_PROXY_API_MODEL || 'qwen-3.5'
+
+// Gemini models use a separate endpoint/auth from the default CLI Proxy API
+export const GEMINI_API_BASE_URL = process.env.GEMINI_API_BASE_URL || 'http://REDACTED_HOST:REDACTED_PORT/v1'
+export const GEMINI_API_KEY = process.env.GEMINI_API_KEY || 'REDACTED_API_KEY'
 
 // Validation of LLM provider configuration on startup
 export const SUPPORTED_LLM_PROVIDERS = ['cli-proxy-api']
