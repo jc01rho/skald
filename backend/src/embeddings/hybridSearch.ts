@@ -35,23 +35,8 @@ export class HybridSearchService {
         queryText: string,
         config: HybridSearchConfig = {}
     ): Promise<HybridSearchResult[]> {
-        const { topK = 10, similarityThreshold = 1.2, filters } = config
+        const { vectorWeight = 0.7, bm25Weight = 0.3, topK = 10, similarityThreshold = 1.2, filters } = config // Default: 1.2 (cosine distance 0~2 range, allows cosine_similarity >= 0.4)
 
-        // Dynamically adjust RRF weights based on query language.
-        // CJK (Korean/Japanese/Chinese) benefits from stronger BM25 (trigram) signal.
-        // English/Latin scripts benefit more from semantic vector search.
-        const detectedLang = detectLanguage(queryText)
-        const isCJK =
-            detectedLang === Language.KOREAN ||
-            detectedLang === Language.JAPANESE ||
-            detectedLang === Language.CHINESE
-        const vectorWeight = config.vectorWeight ?? (isCJK ? 0.5 : 0.7)
-        const bm25Weight = config.bm25Weight ?? (isCJK ? 0.5 : 0.3)
-
-        logger.debug(
-            { detectedLang, isCJK, vectorWeight, bm25Weight, query: queryText.slice(0, 50) },
-            'Hybrid search: dynamic RRF weights applied'
-        )
         //1. Vector Search
         const vectorResults = await this.vectorSearch(
             project,
@@ -60,10 +45,15 @@ export class HybridSearchService {
             similarityThreshold,
             filters ? [filters] : undefined
         )
+
         //2. BM25 Search (PostgreSQL full-text search)
         const bm25Results = await this.bm25Search(project, queryText, topK * 2, filters ? [filters] : undefined)
+
+        // 3. RRF (Reciprocal Rank Fusion) merge
         // Vector and BM25 results are already sorted by their respective scores
         const combined = this.combineScoresRRF(vectorResults, bm25Results, vectorWeight, bm25Weight)
+
+        // 4. Sort and return topK
         return combined.sort((a, b) => b.hybrid_score - a.hybrid_score).slice(0, topK)
     }
 
