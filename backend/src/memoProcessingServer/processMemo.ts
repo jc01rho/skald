@@ -1,4 +1,4 @@
-import { createMemoChunks, generateMemoSummary, CONTEXTUAL_RETRIEVAL_ENABLED } from '@/memoProcessingServer/memoOperations'
+import { createMemoChunks, generateMemoSummary } from '@/memoProcessingServer/memoOperations'
 import { EntityManager } from '@mikro-orm/core'
 import { updateMemoStatus } from '@/lib/memoStatusUtils'
 import { logger } from '@/lib/logger'
@@ -95,9 +95,6 @@ export const processMemo = async (em: EntityManager, memoUuid: string) => {
             processing_status: 'processed',
             processing_completed_at: new Date(),
             processing_error: null,
-            metadata_updates: {
-                contextual_retrieval_applied: CONTEXTUAL_RETRIEVAL_ENABLED,
-            },
         })
 
         logger.info({ memoUuid }, 'Memo processing completed successfully')
