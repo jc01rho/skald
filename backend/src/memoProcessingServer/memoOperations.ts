@@ -9,11 +9,18 @@ import { MemoParentChunk } from '@/entities/MemoParentChunk'
 import { MemoTag } from '@/entities/MemoTag'
 import { MemoSummary } from '@/entities/MemoSummary'
 import { logger } from '@/lib/logger'
+import { processChunksWithContext } from '@/lib/chunkProcessor'
 
 const MAX_TOKENS_FOR_LLM = 4096
 // Rough estimate: 1 token is approximately 4 characters (conservative)
 const CHARS_PER_TOKEN = 4
 const MAX_CHARS_FOR_LLM = MAX_TOKENS_FOR_LLM * CHARS_PER_TOKEN
+// Short document threshold: skip parent-child chunking for small documents
+const SHORT_DOCUMENT_THRESHOLD = 1000 // chars
+
+// Contextual Retrieval: use LLM to generate per-chunk context descriptions for richer embeddings
+// Enable via env var (expensive: 1 LLM call per chunk)
+const CONTEXTUAL_RETRIEVAL_ENABLED = process.env.CONTEXTUAL_RETRIEVAL_ENABLED === 'true'
 
 // Parent-child chunking configuration
 const PARENT_CHUNK_SIZE = 2048 // Larger chunks for LLM context
@@ -95,14 +102,12 @@ const _createChildChunk = async (
     chunkContent: string,
     chunkIndex: number,
     parentChunk: MemoParentChunk,
-    title: string | null = null
+    title: string | null = null,
+    embeddingContent?: string // Optional override: used by Contextual Retrieval
 ): Promise<MemoChunk> => {
-    // Build contextual content for embedding (includes title for better retrieval)
-    const contextualContent = buildContextualContent(chunkContent, title)
-
-    // Generate embedding from contextual content (with title)
-    const vectorEmbedding = await EmbeddingService.generateEmbedding(contextualContent, 'storage')
-
+    // Use provided embedding content (contextual) or fall back to title-prefix approach
+    const contentForEmbedding = embeddingContent || buildContextualContent(chunkContent, title)
+    const vectorEmbedding = await EmbeddingService.generateEmbedding(contentForEmbedding, 'storage')
     return em.create(MemoChunk, {
         uuid: randomUUID(),
         memo: memoUuid,
@@ -159,27 +164,56 @@ export const createMemoChunks = async (
     content: string,
     title: string | null = null
 ): Promise<void> => {
+    // Short document optimization: skip parent-child chunking for small documents.
+    // Avoids unnecessary splits that hurt retrieval quality for short content.
+    if (content.length <= SHORT_DOCUMENT_THRESHOLD) {
+        logger.debug({ memoUuid, contentLength: content.length }, 'Short document: using single-chunk strategy')
+        const singleParent = _createParentChunk(em, memoUuid, projectId, content, 0)
+        const contextualContent = buildContextualContent(content, title)
+        const vectorEmbedding = await EmbeddingService.generateEmbedding(contextualContent, 'storage')
+        const singleChild = em.create(MemoChunk, {
+            uuid: randomUUID(),
+            memo: memoUuid,
+            project: projectId,
+            memo_uuid: memoUuid,
+            project_uuid: projectId,
+            chunk_content: content,
+            chunk_index: 0,
+            embedding: JSON.stringify(vectorEmbedding) as any,
+            parent_chunk: singleParent,
+            parent_chunk_uuid: singleParent.uuid,
+        })
+        await em.persistAndFlush([singleParent, singleChild])
+        logger.info({ memoUuid, contentLength: content.length }, 'Created single chunk for short document')
+        return
+    }
     const parentSplitterInstance = initParentSplitter()
     const childSplitterInstance = initChildSplitter()
-
-    // Step 1: Create parent chunks (large, for context)
     const parentChunksText = await parentSplitterInstance.splitText(content)
-
-    const allParentChunks: MemoParentChunk[] = []
     const allChildChunks: MemoChunk[] = []
-
+    const allParentChunks: MemoParentChunk[] = []
     let globalChildIndex = 0
-
     for (let parentIndex = 0; parentIndex < parentChunksText.length; parentIndex++) {
         const parentText = parentChunksText[parentIndex]
-
-        // Create parent chunk entity (no embedding)
         const parentChunk = _createParentChunk(em, memoUuid, projectId, parentText, parentIndex)
         allParentChunks.push(parentChunk)
-
-        // Step 2: Split parent into child chunks (small, for search)
         const childChunksText = await childSplitterInstance.splitText(parentText)
+        let embeddingContents: Array<string | undefined>
 
+        if (CONTEXTUAL_RETRIEVAL_ENABLED && title) {
+            // Contextual Retrieval: generate LLM context for each chunk to enrich embeddings.
+            // processChunksWithContext returns '[CONTEXT: ...]\n\n{chunk}' format.
+            logger.debug({ memoUuid, chunkCount: childChunksText.length }, 'Contextual Retrieval: generating chunk contexts')
+            const contextualChunks = await processChunksWithContext(
+                childChunksText.map((text, i) => ({ content: text, index: globalChildIndex + i })),
+                content,
+                title
+            )
+            embeddingContents = contextualChunks.map((c) => c.content)
+        } else {
+            // Default: use title-prefix approach (fast, no LLM call per chunk)
+            embeddingContents = childChunksText.map(() => undefined)
+        }
         // Create child chunks with embeddings, linked to parent
         const childPromises = childChunksText.map((childText, localChildIndex) =>
             _createChildChunk(
@@ -189,23 +223,22 @@ export const createMemoChunks = async (
                 childText,
                 globalChildIndex + localChildIndex,
                 parentChunk,
-                title
+                title,
+                embeddingContents[localChildIndex]
             )
         )
-
         const childChunks = await Promise.all(childPromises)
         allChildChunks.push(...childChunks)
         globalChildIndex += childChunksText.length
     }
-
     // Persist all chunks in order: parents first (for FK integrity), then children
     await em.persistAndFlush([...allParentChunks, ...allChildChunks])
-
     logger.info(
         {
             memoUuid,
             parentChunks: allParentChunks.length,
             childChunks: allChildChunks.length,
+            contextualRetrieval: CONTEXTUAL_RETRIEVAL_ENABLED,
         },
         'Created parent-child chunks for memo'
     )
