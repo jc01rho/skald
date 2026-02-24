@@ -108,33 +108,41 @@ async function getChatHistoryNode(state: typeof RAGState.State) {
     return { conversationHistory }
 }
 
-/**
- * Merged node: analyzeQuery + queryRewrite run in parallel via Promise.all.
- * Both are LLM calls and are independent of each other (both use only query + history),
- * so running them concurrently saves one serial LLM round-trip.
- */
-async function analyzeAndRewriteNode(state: typeof RAGState.State) {
+async function queryUnderstandingNode(state: typeof RAGState.State) {
     const { query, conversationHistory, ragConfig } = state
+
+    if (!ragConfig.queryUnderstanding?.enabled) {
+        return { queryUnderstanding: null }
+    }
+
     const context = (conversationHistory || []).map(([role, content]) => `${role}: ${content}`).join('\n')
+
+    const understanding = await QueryUnderstandingAgent.understandQuery(query, context)
+
+    return { queryUnderstanding: understanding }
+}
+
+async function queryRewriteNode(state: typeof RAGState.State) {
+    const { query, conversationHistory, queryUnderstanding, ragConfig } = state
+
+    if (!ragConfig.queryRewrite.enabled) {
+        return { rewrittenQuery: null }
+    }
+
     const conversationMessages = (conversationHistory || [])
         .map(([userMsg, assistantMsg]) => [
             { role: 'user' as const, content: userMsg },
             { role: 'assistant' as const, content: assistantMsg },
         ])
         .flat()
-    const [queryUnderstanding, rewrittenQueryRaw] = await Promise.all([
-        ragConfig.queryUnderstanding?.enabled
-            ? QueryUnderstandingAgent.understandQuery(query, context)
-            : Promise.resolve(null),
-        ragConfig.queryRewrite.enabled
-            ? rewrite(query, conversationMessages)
-            : Promise.resolve(null),
-    ])
 
-    return {
-        queryUnderstanding,
-        rewrittenQuery: rewrittenQueryRaw && rewrittenQueryRaw !== query ? rewrittenQueryRaw : null,
+    const rewrittenQuery = await rewrite(query, conversationMessages)
+
+    if (rewrittenQuery !== query) {
+        return { rewrittenQuery }
     }
+
+    return { rewrittenQuery: null }
 }
 
 function hybridResultToMemoChunk(result: HybridSearchResult): MemoChunkWithDistance {
@@ -665,7 +673,8 @@ function buildLLMInputsNode(state: typeof RAGState.State) {
 // so we let the nodes themselves decide whether to run or not
 const ragGraphDefinition = new StateGraph(RAGState)
     .addNode('getChatHistory', getChatHistoryNode)
-    .addNode('analyzeAndRewrite', analyzeAndRewriteNode)
+    .addNode('analyzeQuery', queryUnderstandingNode)
+    .addNode('queryRewrite', queryRewriteNode)
     .addNode('vectorSearch', vectorSearchNode)
     .addNode('getMemoProperties', getMemoPropertiesNode)
     .addNode('rerank', rerankNode)
@@ -675,18 +684,16 @@ const ragGraphDefinition = new StateGraph(RAGState)
     .addNode('fetchParentChunks', fetchParentChunksNode)
     .addNode('buildLLMInputs', buildLLMInputsNode)
     .addEdge('__start__', 'getChatHistory')
-    .addEdge('getChatHistory', 'analyzeAndRewrite')
-    .addEdge('analyzeAndRewrite', 'vectorSearch')
-    // Fan-out: getMemoProperties and fetchParentChunks run in parallel after vectorSearch
+    .addEdge('getChatHistory', 'analyzeQuery')
+    .addEdge('analyzeQuery', 'queryRewrite')
+    .addEdge('queryRewrite', 'vectorSearch')
     .addEdge('vectorSearch', 'getMemoProperties')
-    .addEdge('vectorSearch', 'fetchParentChunks')
     .addEdge('getMemoProperties', 'rerank')
     .addEdge('rerank', 'validateCrag')
     .addEdge('validateCrag', 'mmr')
     .addEdge('mmr', 'contextReorder')
-    // Fan-in: buildLLMInputs waits for both contextReorder and fetchParentChunks
-    .addEdge(['contextReorder', 'fetchParentChunks'], 'buildLLMInputs')
+    .addEdge('contextReorder', 'fetchParentChunks')
+    .addEdge('fetchParentChunks', 'buildLLMInputs')
     .addEdge('buildLLMInputs', END)
-
 
 export const ragGraph = ragGraphDefinition.compile()
