@@ -20,7 +20,7 @@ const SHORT_DOCUMENT_THRESHOLD = 1000 // chars
 
 // Contextual Retrieval: use LLM to generate per-chunk context descriptions for richer embeddings
 // Enable via env var (expensive: 1 LLM call per chunk)
-export const CONTEXTUAL_RETRIEVAL_ENABLED = process.env.CONTEXTUAL_RETRIEVAL_ENABLED === 'true'
+const CONTEXTUAL_RETRIEVAL_ENABLED = process.env.CONTEXTUAL_RETRIEVAL_ENABLED === 'true'
 
 // Parent-child chunking configuration
 const PARENT_CHUNK_SIZE = 2048 // Larger chunks for LLM context
