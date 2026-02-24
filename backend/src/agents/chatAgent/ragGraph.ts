@@ -131,6 +131,17 @@ async function analyzeAndRewriteNode(state: typeof RAGState.State) {
             : Promise.resolve(null),
     ])
 
+    logger.info(
+        {
+            originalQuery: query,
+            rewrittenQuery: rewrittenQueryRaw,
+            queryChanged: rewrittenQueryRaw && rewrittenQueryRaw !== query,
+            queryUnderstandingEnabled: ragConfig.queryUnderstanding?.enabled,
+            queryRewriteEnabled: ragConfig.queryRewrite.enabled,
+        },
+        'RAG analyzeAndRewrite completed'
+    )
+
     return {
         queryUnderstanding,
         rewrittenQuery: rewrittenQueryRaw && rewrittenQueryRaw !== query ? rewrittenQueryRaw : null,
@@ -259,6 +270,21 @@ async function vectorSearchNode(state: typeof RAGState.State) {
     // Check if hybrid search is enabled (default: true for Korean optimization)
     const useHybridSearch = ragConfig.hybridSearch?.enabled ?? true
 
+    logger.info(
+        {
+            searchQueriesCount: searchQueries.length,
+            searchQueries,
+            useHybridSearch,
+            originalQuery: query,
+            activeQuery: rewrittenQuery || query,
+            similarityThreshold: ragConfig.vectorSearch.similarityThreshold,
+            topK: strategy.topK,
+            vectorWeight: ragConfig.hybridSearch?.vectorWeight ?? 0.7,
+            bm25Weight: ragConfig.hybridSearch?.bm25Weight ?? 0.3,
+        },
+        'RAG vectorSearchNode starting'
+    )
+
     if (useHybridSearch) {
         // Use hybrid search combining vector + BM25
         const primaryQuery = searchQueries[0]
@@ -273,7 +299,19 @@ async function vectorSearchNode(state: typeof RAGState.State) {
                 filters: filters?.[0], // Use first filter if available
             })
 
-            logger.debug({ hybridResultsCount: hybridResults.length, query: primaryQuery }, 'Hybrid search completed')
+            logger.info(
+                {
+                    hybridResultsCount: hybridResults.length,
+                    query: primaryQuery,
+                    topResults: hybridResults.slice(0, 5).map((r) => ({
+                        memo_uuid: r.memo_uuid,
+                        hybrid_score: r.hybrid_score,
+                        distance: 2 * (1 - r.hybrid_score),
+                        chunk_content_preview: r.chunk_content?.slice(0, 80),
+                    })),
+                },
+                'RAG hybrid search completed'
+            )
 
             // Convert hybrid results to MemoChunkWithDistance format
             const uniqueResults = hybridResults.map(hybridResultToMemoChunk)
@@ -339,6 +377,16 @@ async function rerankNode(state: typeof RAGState.State) {
     if (!chunkResults) {
         return { rerankedResults: [] }
     }
+
+    logger.info(
+        {
+            inputChunksCount: chunkResults.length,
+            rerankingEnabled: ragConfig.reranking.enabled,
+            searchQuery: rewrittenQuery || query,
+            topK: ragConfig.reranking.topK,
+        },
+        'RAG rerankNode starting'
+    )
 
     if (!ragConfig.reranking.enabled) {
         // map chunks to rerank results with embeddings for MMR
@@ -411,13 +459,38 @@ async function rerankNode(state: typeof RAGState.State) {
         ...result,
         embedding: chunkResults[result.index]?.chunk.embedding as number[],
     }))
-    return { rerankedResults: resultsWithEmbeddings.slice(0, ragConfig.reranking.topK) }
+    const finalReranked = resultsWithEmbeddings.slice(0, ragConfig.reranking.topK)
+
+    logger.info(
+        {
+            totalRerankResults: results.length,
+            afterTopKFilter: finalReranked.length,
+            topK: ragConfig.reranking.topK,
+            topResults: finalReranked.slice(0, 5).map((r) => ({
+                memo_uuid: r.memo_uuid,
+                memo_title: r.memo_title,
+                relevance_score: r.relevance_score,
+            })),
+        },
+        'RAG rerankNode completed'
+    )
+
+    return { rerankedResults: finalReranked }
 }
 
 async function cragValidationNode(state: typeof RAGState.State) {
     const { rerankedResults, query, ragConfig } = state
 
+    logger.info(
+        {
+            cragEnabled: ragConfig.crag?.enabled,
+            rerankedResultsCount: rerankedResults.length,
+        },
+        'RAG cragValidationNode starting'
+    )
+
     if (!ragConfig.crag?.enabled || rerankedResults.length === 0) {
+        logger.info({ cragEnabled: ragConfig.crag?.enabled, resultCount: rerankedResults.length }, 'CRAG skipped (disabled or no results)')
         return { cragValidation: null }
     }
 
@@ -452,8 +525,13 @@ async function cragValidationNode(state: typeof RAGState.State) {
         })
 
         if (filteredResults.length > 0 && filteredResults.length < rerankedResults.length) {
-            logger.debug(
-                { original: rerankedResults.length, filtered: filteredResults.length },
+            logger.info(
+                {
+                    original: rerankedResults.length,
+                    filtered: filteredResults.length,
+                    removedCount: rerankedResults.length - filteredResults.length,
+                    filterLowRelevance: true,
+                },
                 'CRAG filtered low relevance results'
             )
             return { rerankedResults: filteredResults, cragValidation: validation }
@@ -486,7 +564,18 @@ function cosineSimilarity(doc1: string, doc2: string): number {
 async function mmrNode(state: typeof RAGState.State) {
     const { rerankedResults, ragConfig } = state
 
+    logger.info(
+        {
+            mmrEnabled: ragConfig.reranking.mmrEnabled,
+            inputCount: rerankedResults.length,
+            lambda: ragConfig.reranking.mmrLambda ?? 0.5,
+            topK: ragConfig.reranking.topK,
+        },
+        'RAG mmrNode starting'
+    )
+
     if (!ragConfig.reranking.mmrEnabled || rerankedResults.length < 2) {
+        logger.info('MMR skipped (disabled or < 2 results)')
         return { rerankedResults }
     }
 
@@ -523,6 +612,14 @@ async function mmrNode(state: typeof RAGState.State) {
         selected.push(remaining[bestIndex])
         remaining.splice(bestIndex, 1)
     }
+
+    logger.info(
+        {
+            mmrInputCount: rerankedResults.length,
+            mmrOutputCount: selected.length,
+        },
+        'RAG mmrNode completed'
+    )
 
     return { rerankedResults: selected }
 }
