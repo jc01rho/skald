@@ -7,8 +7,6 @@ import { randomUUID } from 'crypto'
 import * as Sentry from '@sentry/node'
 import { searchGraph, SearchResult } from '../lib/searchGraph'
 import { posthogCapture } from '@/lib/posthogUtils'
-import { checkAndQueueLazyReprocess } from '@/lib/lazyReprocessService'
-import { logger } from '@/lib/logger'
 
 export const search = async (req: Request, res: Response) => {
     const query = req.body.query
@@ -87,14 +85,6 @@ export const search = async (req: Request, res: Response) => {
     })
 
     void createSearchRequest()
-
-    // Fire-and-forget lazy reprocessing (don't await to avoid response delay)
-    const memoUuids = results.map((r) => r.memo_uuid).filter(Boolean)
-    if (memoUuids.length > 0) {
-        checkAndQueueLazyReprocess(memoUuids, project.uuid).catch((err) => {
-            logger.warn({ err }, 'Search: lazy reprocess failed to trigger (non-blocking)')
-        })
-    }
 
     return res.status(200).json({ results })
 }
