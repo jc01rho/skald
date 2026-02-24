@@ -108,7 +108,7 @@ export class HybridSearchService {
             return (results || []).map((row) => ({
                 uuid: row.uuid,
                 chunk_content: row.chunk_content,
-                memo_uuid: row.memo_id,
+            memo_uuid: row.memo_uuid,
                 vector_score: Math.max(0, Math.min(1, row.vector_score)),
             }))
         } catch (error) {
@@ -179,7 +179,7 @@ export class HybridSearchService {
             return (results || []).map((row) => ({
                 uuid: row.uuid,
                 chunk_content: row.chunk_content,
-                memo_uuid: row.memo_id,
+            memo_uuid: row.memo_uuid,
                 bm25_score: Math.max(0, Math.min(1, row.bm25_score)),
             }))
         } catch (error) {
@@ -227,7 +227,7 @@ export class HybridSearchService {
             return (results || []).map((row) => ({
                 uuid: row.uuid,
                 chunk_content: row.chunk_content,
-                memo_uuid: row.memo_id,
+            memo_uuid: row.memo_uuid,
                 bm25_score: Math.max(0, Math.min(1, row.bm25_score)),
             }))
         } catch (error) {
