@@ -7,6 +7,7 @@ export interface MemoStatusUpdate {
     processing_started_at?: Date | null
     processing_completed_at?: Date | null
     processing_error?: string | null
+    metadata_updates?: Record<string, any> // Additional metadata fields to merge
 }
 
 /**
@@ -32,6 +33,14 @@ export async function updateMemoStatus(em: EntityManager, memoUuid: string, upda
         }
         if (updates.processing_error !== undefined) {
             memo.processing_error = updates.processing_error || undefined
+        }
+
+        // Merge metadata updates
+        if (updates.metadata_updates) {
+            memo.metadata = {
+                ...(memo.metadata || {}),
+                ...updates.metadata_updates,
+            }
         }
 
         await em.persistAndFlush(memo)
