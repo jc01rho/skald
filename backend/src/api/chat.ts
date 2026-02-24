@@ -17,6 +17,11 @@ import { trackChatUsage } from '@/middleware/trackChatUsageMiddleware'
 import { posthogCapture } from '@/lib/posthogUtils'
 import { SelfRagEvaluator } from '@/lib/selfRagEvaluator'
 import { ComplexityCalculator } from '@/lib/complexityCalculator'
+import {
+    checkAndQueueLazyReprocess,
+    extractMemoUuidsFromRerankResults,
+    extractMemoUuidsFromReferences,
+} from '@/lib/lazyReprocessService'
 
 export const chat = async (req: Request, res: Response) => {
     const query = req.body.query
@@ -293,6 +298,16 @@ export const chat = async (req: Request, res: Response) => {
             response.references = references
         }
 
+        // Fire-and-forget lazy reprocessing (don't await to avoid response delay)
+        const memoUuids = references
+            ? extractMemoUuidsFromReferences(references)
+            : extractMemoUuidsFromRerankResults(rerankedResults || [])
+        if (memoUuids.length > 0) {
+            checkAndQueueLazyReprocess(memoUuids, project.uuid).catch((err) => {
+                logger.warn({ err }, 'Lazy reprocess: failed to trigger (non-blocking)')
+            })
+        }
+
         return res.status(200).json(response)
     } catch (error) {
         logger.error({ err: error }, 'Chat agent error')
@@ -338,6 +353,7 @@ export const _generateStreamingResponse = async ({
     logger.info({ provider: parsedRagConfig.llmProvider }, 'Starting RAG process for stream')
 
     let fullResponse = ''
+    let streamingRerankedResults: Array<{ memo_uuid?: string }> = []
     try {
         // Run RAG graph *after* headers are sent
         const ragResultState = await ragGraph.invoke({
@@ -350,6 +366,7 @@ export const _generateStreamingResponse = async ({
         })
 
         const { query: finalQuery, contextStr, prompt, rerankedResults } = ragResultState
+        streamingRerankedResults = rerankedResults || []
 
         logger.info('RAG process completed, starting generation')
 
@@ -386,9 +403,16 @@ export const _generateStreamingResponse = async ({
         res.write(`data: ${errorData}\n\n`)
     } finally {
         res.end()
+
+        // Fire-and-forget lazy reprocessing after stream ends (don't block response)
+        const memoUuids = extractMemoUuidsFromRerankResults(streamingRerankedResults)
+        if (memoUuids.length > 0) {
+            checkAndQueueLazyReprocess(memoUuids, project.uuid).catch((err) => {
+                logger.warn({ err }, 'Lazy reprocess: failed to trigger after stream (non-blocking)')
+            })
+        }
     }
 }
-
 export const listChats = async (req: Request, res: Response) => {
     const project = req.context?.requestUser?.project as Project
 
