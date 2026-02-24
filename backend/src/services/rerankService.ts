@@ -1,8 +1,7 @@
 import { z } from 'zod'
+import { POST_RERANK_TOP_K } from '@/settings'
 
 const INTERNAL_RERANK_URL = process.env.INTERNAL_RERANK_URL || 'http://rerank-service:8889/v1/rerank'
-
-const POST_RERANK_TOP_K = parseInt(process.env.POST_RERANK_TOP_K || '10')
 
 interface RerankResult {
     index: number
