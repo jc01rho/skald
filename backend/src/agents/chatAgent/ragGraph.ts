@@ -243,7 +243,10 @@ async function vectorSearchNode(state: typeof RAGState.State) {
         mmr: ragConfig.reranking.mmrEnabled || false,
     }
 
-    const searchQueries: string[] = [rewrittenQuery || query]
+    const searchQueries: string[] = [query]
+    if (rewrittenQuery && rewrittenQuery !== query) {
+        searchQueries.push(rewrittenQuery)
+    }
 
     // Add multi-query variations if enabled
     if (strategy.multiQuery) {
@@ -287,36 +290,44 @@ async function vectorSearchNode(state: typeof RAGState.State) {
 
     if (useHybridSearch) {
         // Use hybrid search combining vector + BM25
-        const primaryQuery = searchQueries[0]
-        const embeddingVector = await EmbeddingService.generateEmbedding(primaryQuery, 'search')
-
+        // Search with all queries (original + rewritten) and merge results
         try {
-            const hybridResults = await HybridSearchService.hybridSearch(project, embeddingVector, primaryQuery, {
-                vectorWeight: ragConfig.hybridSearch?.vectorWeight ?? 0.7,
-                bm25Weight: ragConfig.hybridSearch?.bm25Weight ?? 0.3,
-                topK: strategy.topK,
-                similarityThreshold: ragConfig.vectorSearch.similarityThreshold,
-                filters: filters?.[0], // Use first filter if available
-            })
+            const allHybridResults = await Promise.all(
+                searchQueries.map(async (searchQuery) => {
+                    const embeddingVector = await EmbeddingService.generateEmbedding(searchQuery, 'search')
+                    return HybridSearchService.hybridSearch(project, embeddingVector, searchQuery, {
+                        vectorWeight: ragConfig.hybridSearch?.vectorWeight ?? 0.7,
+                        bm25Weight: ragConfig.hybridSearch?.bm25Weight ?? 0.3,
+                        topK: strategy.topK,
+                        similarityThreshold: ragConfig.vectorSearch.similarityThreshold,
+                        filters: filters?.[0], // Use first filter if available
+                    })
+                })
+            )
+
+            // Merge results from all queries, keeping best score per document
+            const mergedResults = deduplicateByBestScore(
+                allHybridResults.map((results) => results.map(hybridResultToMemoChunk))
+            )
 
             logger.info(
                 {
-                    hybridResultsCount: hybridResults.length,
-                    query: primaryQuery,
-                    topResults: hybridResults.slice(0, 5).map((r) => ({
-                        memo_uuid: r.memo_uuid,
-                        hybrid_score: r.hybrid_score,
-                        distance: 2 * (1 - r.hybrid_score),
-                        chunk_content_preview: r.chunk_content?.slice(0, 80),
+                    searchQueriesUsed: searchQueries.length,
+                    perQueryCounts: allHybridResults.map((r, i) => ({
+                        query: searchQueries[i].slice(0, 50),
+                        count: r.length,
+                    })),
+                    mergedResultsCount: mergedResults.length,
+                    topResults: mergedResults.slice(0, 5).map((r) => ({
+                        memo_uuid: r.chunk.memo_uuid,
+                        distance: r.distance,
+                        chunk_content_preview: r.chunk.chunk_content?.slice(0, 80),
                     })),
                 },
-                'RAG hybrid search completed'
+                'RAG hybrid search completed (multi-query merge)'
             )
 
-            // Convert hybrid results to MemoChunkWithDistance format
-            const uniqueResults = hybridResults.map(hybridResultToMemoChunk)
-
-            return { chunkResults: uniqueResults }
+            return { chunkResults: mergedResults }
         } catch (error) {
             logger.warn({ err: error }, 'Hybrid search failed, falling back to vector-only search')
             // Fall through to vector-only search

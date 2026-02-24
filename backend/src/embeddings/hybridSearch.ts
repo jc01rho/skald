@@ -201,7 +201,7 @@ export class HybridSearchService {
 
         let whereClause = `
             WHERE skald_memochunk.project_id = '${project.uuid}'
-            AND skald_memochunk.chunk_content % ?
+            AND similarity(skald_memochunk.chunk_content, ?) > 0.175
         `
 
         if (whereConditions.length > 0) {
