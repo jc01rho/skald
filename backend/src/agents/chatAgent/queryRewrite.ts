@@ -35,6 +35,7 @@ export const rewrite = async (query: string, conversationHistory: ConversationMe
             return query
         }
 
+        logger.info({ originalQuery: query, rewrittenQuery }, 'Query rewrite completed')
         return rewrittenQuery
     } catch (error) {
         logger.error({ err: error, query }, 'Error rewriting query')
