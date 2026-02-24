@@ -1,5 +1,6 @@
 import { EMBEDDING_VECTOR_DIMENSION } from '../settings'
 import { logger } from '../lib/logger'
+import { getCachedEmbedding, cacheEmbedding } from '../lib/ragCache'
 
 const EMBEDDING_URL =
     process.env.EMBEDDING_SERVICE_URL || process.env.INTERNAL_EMBEDDING_URL || 'http://embedding-service:8889'
@@ -77,8 +78,13 @@ class EmbeddingService {
      * Generate embedding - uses INTERNAL_EMBEDDING_URL environment variable
      */
     static async generateEmbedding(content: string, usage: 'storage' | 'search'): Promise<number[]> {
+        const cached = await getCachedEmbedding(content)
+        if (cached) return cached
         const embedding = await this.generateInternalEmbedding(content)
-        return this.normalizeEmbedding(embedding)
+        const normalized = this.normalizeEmbedding(embedding)
+
+        await cacheEmbedding(content, normalized)
+        return normalized
     }
 }
 
