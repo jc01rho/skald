@@ -100,6 +100,13 @@ export function buildFilterConditions(filters?: MemoFilter[]): { whereConditions
     for (const filter of filters) {
         if (filter.filter_type === 'native_field' && filter.field === 'tags') {
             // tags are in a separate MemoTag table
+            if (filter.value.length === 0) {
+                if (filter.operator === 'in') {
+                    whereConditions.push('FALSE')
+                }
+                // not_in 빈 배열 = 모든 것 매치 → 조건 스킵
+                continue
+            }
             // Format array as PostgreSQL array literal: ARRAY['tag1', 'tag2']::text[]
             const escapedTags = filter.value.map((tag: string) => `'${String(tag).replace(/'/g, "''")}'`).join(', ')
             const arrayLiteral = `ARRAY[${escapedTags}]::text[]`
@@ -122,6 +129,12 @@ export function buildFilterConditions(filters?: MemoFilter[]): { whereConditions
         if (filter.filter_type === 'custom_metadata') {
             fieldPath = `skald_memo.metadata->>?`
             params.push(filter.field)
+        }
+        if ((filter.operator === 'in' || filter.operator === 'not_in') && Array.isArray(filter.value) && filter.value.length === 0) {
+            if (filter.operator === 'in') {
+                whereConditions.push('FALSE')
+            }
+            continue
         }
         whereConditions.push(filterByOperator[filter.operator].getWhereClause(fieldPath))
         params.push(filterByOperator[filter.operator].getFormattedValue(filter.value))

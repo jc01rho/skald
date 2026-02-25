@@ -1,6 +1,7 @@
 import { EntityManager } from '@mikro-orm/core'
 import { Memo, MemoProcessingStatus } from '@/entities/Memo'
 import { logger } from '@/lib/logger'
+import { MemoNotFoundError } from '@/lib/errors'
 
 export interface MemoStatusUpdate {
     processing_status?: MemoProcessingStatus
@@ -19,7 +20,7 @@ export async function updateMemoStatus(em: EntityManager, memoUuid: string, upda
 
         if (!memo) {
             logger.error({ memoUuid }, 'Memo not found for status update')
-            throw new Error(`Memo not found: ${memoUuid}`)
+            throw new MemoNotFoundError(memoUuid)
         }
 
         if (updates.processing_status !== undefined) {

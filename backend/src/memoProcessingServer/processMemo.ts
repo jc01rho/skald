@@ -1,4 +1,9 @@
-import { createMemoChunks, generateMemoSummary, CONTEXTUAL_RETRIEVAL_ENABLED } from '@/memoProcessingServer/memoOperations'
+import { MemoNotFoundError, ProjectNotFoundError } from '@/lib/errors'
+import {
+    createMemoChunks,
+    generateMemoSummary,
+    CONTEXTUAL_RETRIEVAL_ENABLED,
+} from '@/memoProcessingServer/memoOperations'
 import { EntityManager } from '@mikro-orm/core'
 import { updateMemoStatus } from '@/lib/memoStatusUtils'
 import { logger } from '@/lib/logger'
@@ -33,7 +38,7 @@ const runMemoProcessingAgents = async (em: EntityManager, memoUuid: string) => {
     }> = await em.getConnection().execute(sql, [memoUuid])
 
     if (!result || result.length === 0) {
-        throw new Error(`Memo not found: ${memoUuid}`)
+        throw new MemoNotFoundError(memoUuid)
     }
 
     const row = result[0]
@@ -59,7 +64,7 @@ const runMemoProcessingAgents = async (em: EntityManager, memoUuid: string) => {
         const writeOperationsUsed = calculateMemoWritesUsage(markdown)
         const project = await em.findOne(Project, { uuid: row.project_id })
         if (!project) {
-            throw new Error(`Project not found: ${row.project_id}`)
+            throw new ProjectNotFoundError(row.project_id)
         }
         await new UsageTrackingService(em).incrementMemoOperations(
             { uuid: project.organization.uuid } as Organization,
@@ -102,13 +107,23 @@ export const processMemo = async (em: EntityManager, memoUuid: string) => {
 
         logger.info({ memoUuid }, 'Memo processing completed successfully')
     } catch (error) {
+        // If memo doesn't exist, we can't update its status - just log and re-throw
+        if (error instanceof MemoNotFoundError) {
+            logger.warn({ memoUuid: error.memoUuid }, 'Memo not found, skipping processing')
+            throw error
+        }
+
         const errorMessage = error instanceof Error ? error.message : 'Unknown processing error'
 
-        await updateMemoStatus(em, memoUuid, {
-            processing_status: 'error',
-            processing_completed_at: new Date(),
-            processing_error: errorMessage,
-        })
+        try {
+            await updateMemoStatus(em, memoUuid, {
+                processing_status: 'error',
+                processing_completed_at: new Date(),
+                processing_error: errorMessage,
+            })
+        } catch (statusUpdateError) {
+            logger.error({ err: statusUpdateError, memoUuid }, 'Failed to update memo status after error')
+        }
 
         logger.error({ err: error, memoUuid }, 'Memo processing failed')
 

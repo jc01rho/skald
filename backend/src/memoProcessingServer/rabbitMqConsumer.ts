@@ -10,6 +10,7 @@ import {
 } from '../settings'
 import { EntityManager, MikroORM } from '@mikro-orm/core'
 import { logger } from '@/lib/logger'
+import { isNonRetryableError } from '@/lib/errors'
 
 interface MemoMessage {
     memo_uuid: string
@@ -66,9 +67,18 @@ async function processMessage(em: EntityManager, msg: amqplib.ConsumeMessage): P
             logger.info({ memoUuid: data.memo_uuid }, 'Successfully processed and acknowledged memo')
         }
     } catch (error) {
+        // Non-retryable errors (memo/project not found) should not be requeued
+        if (isNonRetryableError(error)) {
+            logger.warn({ err: error }, 'Non-retryable error, acknowledging message without requeue')
+            if (channel) {
+                channel.ack(msg)
+            }
+            return
+        }
+
         logger.error({ err: error }, 'Error processing message')
 
-        // Reject the message and requeue it
+        // Reject the message and requeue it for retry
         if (channel) {
             channel.nack(msg, false, true)
         }
