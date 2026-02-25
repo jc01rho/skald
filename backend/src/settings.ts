@@ -100,8 +100,8 @@ export const CLI_PROXY_API_BASE_URL = process.env.CLI_PROXY_API_BASE_URL || 'htt
 export const CLI_PROXY_API_MODEL = process.env.CLI_PROXY_API_MODEL || 'qwen3-max'
 
 // Gemini models use a separate endpoint/auth from the default CLI Proxy API
-export const GEMINI_API_BASE_URL = process.env.GEMINI_API_BASE_URL || 'http://REDACTED_HOST:REDACTED_PORT/v1'
-export const GEMINI_API_KEY = process.env.GEMINI_API_KEY || 'REDACTED_API_KEY'
+export const GEMINI_API_BASE_URL = process.env.GEMINI_API_BASE_URL || ''
+export const GEMINI_API_KEY = process.env.GEMINI_API_KEY || ''
 
 // LLM Model Configuration (runtime configurable via env)
 export const LLM_DEFAULT_CHAT_MODEL = process.env.LLM_DEFAULT_CHAT_MODEL || 'qwen3-max'
@@ -142,8 +142,8 @@ export function loadLLMConfig(): LLMConfig {
         fallbackChain: (process.env.LLM_FALLBACK_CHAIN || 'qwen3-max,gemini-3.1-pro,deepseek-v3.2,glm-4.7,kimi-k2,gemini-2.5-pro,qwen3-235b,gemini-2.5-flash,free,gemini-2.5-flash-lite,gemini-3-flash-preview,gemini-2.5-computer-use-preview-10-2025,kimi-k2-0905,qwen3-max-preview,qwen3-coder-plus,qwen3-235b-a22b-thinking-2507,qwen3-235b-a22b-instruct,qwen3-32b,deepseek-v3.2-reasoner,deepseek-v3.1,deepseek-v3,deepseek-r1,deepseek-v3.2-chat,tstars2.0,sonnet,opus').split(',').map(s => s.trim()),
         cliProxyApiKey: process.env.CLI_PROXY_API_KEY,
         cliProxyApiBaseUrl: process.env.CLI_PROXY_API_BASE_URL || 'http://cli-proxy-service:8317/v1',
-        geminiApiBaseUrl: process.env.GEMINI_API_BASE_URL || 'http://REDACTED_HOST:REDACTED_PORT/v1',
-        geminiApiKey: process.env.GEMINI_API_KEY || 'REDACTED_API_KEY',
+        geminiApiBaseUrl: process.env.GEMINI_API_BASE_URL || '',
+        geminiApiKey: process.env.GEMINI_API_KEY || '',
     }
     return cachedLLMConfig
 }
