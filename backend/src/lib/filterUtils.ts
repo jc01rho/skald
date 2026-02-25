@@ -136,6 +136,17 @@ export function buildFilterConditions(filters?: MemoFilter[]): { whereConditions
             }
             continue
         }
+        // Handle in/not_in operators with inline array literal to avoid ANY() parameter expansion issues
+        if (filter.operator === 'in' || filter.operator === 'not_in') {
+            const escapedValues = filter.value.map((v: any) => `'${String(v).replace(/'/g, "''")}'`).join(', ')
+            const arrayLiteral = `ARRAY[${escapedValues}]::text[]`
+            if (filter.operator === 'in') {
+                whereConditions.push(`${fieldPath} = ANY(${arrayLiteral})`)
+            } else {
+                whereConditions.push(`${fieldPath} != ALL(${arrayLiteral})`)
+            }
+            continue
+        }
         whereConditions.push(filterByOperator[filter.operator].getWhereClause(fieldPath))
         params.push(filterByOperator[filter.operator].getFormattedValue(filter.value))
     }

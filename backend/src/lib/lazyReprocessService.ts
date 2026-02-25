@@ -48,17 +48,19 @@ export async function checkAndQueueLazyReprocess(memoUuids: string[], projectId:
         const uniqueMemoUuids = [...new Set(memoUuids)]
 
         // Query memos that need reprocessing (contextual_retrieval_applied is false or not set)
+        // Format UUIDs as PostgreSQL array literal to avoid ANY() parameter expansion issues
+        const uuidArrayLiteral = `ARRAY[${uniqueMemoUuids.map((uuid) => `'${uuid}'`).join(', ')}]::uuid[]`
         const memosNeedingReprocess = await DI.em
             .getConnection()
             .execute<Array<{ uuid: string; title: string | null }>>(
                 `SELECT uuid, title 
              FROM skald_memo 
-             WHERE uuid = ANY(?) 
+             WHERE uuid = ANY(${uuidArrayLiteral}) 
                AND project_id = ?
                AND (metadata->>'contextual_retrieval_applied' IS NULL 
                     OR (metadata->>'contextual_retrieval_applied')::boolean = false)
              LIMIT ?`,
-                [uniqueMemoUuids, projectId, LAZY_REPROCESS_MAX_BATCH_SIZE]
+                [projectId, LAZY_REPROCESS_MAX_BATCH_SIZE]
             )
 
         const checkedCount = uniqueMemoUuids.length
