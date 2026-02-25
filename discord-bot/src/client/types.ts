@@ -4,10 +4,17 @@ export type SSEEvent =
     | { type: 'done'; chat_id: string }
     | { type: 'error'; content: string }
 
+export interface MemoFilter {
+    field: string
+    operator: 'eq' | 'neq' | 'contains' | 'startswith' | 'endswith' | 'in' | 'not_in'
+    value: string | string[]
+    filter_type: 'native_field' | 'custom_metadata'
+}
+
 export interface ChatOptions {
     chat_id?: string
     history?: Array<{ role: string; content: string }>
-    filters?: unknown[]
+    filters?: MemoFilter[]
     system_prompt?: string
     rag_config?: Record<string, unknown>
 }

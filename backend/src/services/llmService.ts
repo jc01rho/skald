@@ -1,14 +1,7 @@
 import { BaseChatModel } from '@langchain/core/language_models/chat_models'
 import { ChatOpenAI } from '@langchain/openai'
-import {
-    LLM_PROVIDER,
-    CLI_PROXY_API_KEY,
-    CLI_PROXY_API_BASE_URL,
-    CLI_PROXY_API_MODEL,
-    GEMINI_API_BASE_URL,
-    GEMINI_API_KEY,
-} from '../settings'
-import { DEFAULT_LLM_MODELS, MODEL_FALLBACK_CHAINS, PROVIDER_FALLBACK_CHAIN, isGeminiModel } from '@/llmModels'
+import { getLLMConfig, reloadLLMConfig } from '../settings'
+import { getDefaultLLMModels, getModelFallbackChains, PROVIDER_FALLBACK_CHAIN, isGeminiModel } from '@/llmModels'
 import { logger } from '@/lib/logger'
 
 interface GetLLMParams {
@@ -56,36 +49,37 @@ async function withRetry<T>(fn: () => Promise<T>, maxRetries = 3, retryDelayMs =
 
 /**
  * LLM Service for creating LLM instances based on configuration
+ * Supports hot-reloading of LLM settings via reloadLLMConfig()
  */
 export class LLMService {
-    private static provider: string = LLM_PROVIDER
+    private static provider: string = 'cli-proxy-api'
 
     /**
-     * Get an LLM instance based on environment configuration
+     * Get an LLM instance based on current runtime configuration
      * @param temperature - Temperature for the LLM (default: 0 for deterministic output)
      * @returns Configured LLM instance
      */
     static getLLM({ temperature = 0, providerOverride, purpose = 'chat', modelOverride }: GetLLMParams): BaseChatModel {
-        let provider = this.provider
-        if (providerOverride) {
-            provider = providerOverride
-        }
+        const provider = providerOverride || this.provider
+        const config = getLLMConfig()
 
         if (provider === 'cli-proxy-api') {
-            if (!CLI_PROXY_API_KEY && !GEMINI_API_KEY) {
+            if (!config.cliProxyApiKey && !config.geminiApiKey) {
                 throw new Error(
                     'CLI Proxy API provider is not configured. Please set CLI_PROXY_API_KEY or GEMINI_API_KEY.'
                 )
             }
+
+            const defaultModels = getDefaultLLMModels()
             const modelSlug =
                 modelOverride ||
                 (purpose === 'chat'
-                    ? DEFAULT_LLM_MODELS['cli-proxy-api'].defaultChatModel.slug
-                    : DEFAULT_LLM_MODELS['cli-proxy-api'].defaultClassificationModel.slug)
+                    ? defaultModels['cli-proxy-api'].defaultChatModel.slug
+                    : defaultModels['cli-proxy-api'].defaultClassificationModel.slug)
 
             const useGeminiEndpoint = isGeminiModel(modelSlug)
-            const apiKey = useGeminiEndpoint ? GEMINI_API_KEY : CLI_PROXY_API_KEY
-            const baseURL = useGeminiEndpoint ? GEMINI_API_BASE_URL : CLI_PROXY_API_BASE_URL
+            const apiKey = useGeminiEndpoint ? config.geminiApiKey : config.cliProxyApiKey
+            const baseURL = useGeminiEndpoint ? config.geminiApiBaseUrl : config.cliProxyApiBaseUrl
 
             return new ChatOpenAI({
                 model: modelSlug,
@@ -137,12 +131,16 @@ export class LLMService {
             logger.warn(`Error: ${errorMessage}`)
 
             // Step 2: Try model-level fallback (only for cli-proxy-api)
-            if (currentProvider === 'cli-proxy-api' && MODEL_FALLBACK_CHAINS['cli-proxy-api']) {
-                const models = MODEL_FALLBACK_CHAINS['cli-proxy-api']
+            // Get fresh config for hot-reload support
+            const fallbackChains = getModelFallbackChains()
+            const defaultModels = getDefaultLLMModels()
+
+            if (currentProvider === 'cli-proxy-api' && fallbackChains['cli-proxy-api']) {
+                const models = fallbackChains['cli-proxy-api']
                 const defaultModelSlug =
                     purpose === 'chat'
-                        ? DEFAULT_LLM_MODELS['cli-proxy-api'].defaultChatModel.slug
-                        : DEFAULT_LLM_MODELS['cli-proxy-api'].defaultClassificationModel.slug
+                        ? defaultModels['cli-proxy-api'].defaultChatModel.slug
+                        : defaultModels['cli-proxy-api'].defaultClassificationModel.slug
 
                 // Skip the current model and try the rest
                 const modelFallbackIndex = models.indexOf(defaultModelSlug)
@@ -175,6 +173,35 @@ export class LLMService {
 
             // All fallbacks exhausted
             throw new Error(`All LLM models failed. Last error: ${errorMessage}`)
+        }
+    }
+
+    /**
+     * Reload LLM configuration from environment variables
+     * Call this after updating ConfigMap to apply changes without restart
+     */
+    static reloadConfig() {
+        const newConfig = reloadLLMConfig()
+        this.provider = newConfig.provider
+        logger.info('LLM Service configuration reloaded')
+        return {
+            provider: newConfig.provider,
+            defaultChatModel: newConfig.defaultChatModel,
+            defaultClassificationModel: newConfig.defaultClassificationModel,
+            fallbackChainLength: newConfig.fallbackChain.length,
+        }
+    }
+
+    /**
+     * Get current LLM configuration (for debugging/monitoring)
+     */
+    static getConfig() {
+        const config = getLLMConfig()
+        return {
+            provider: config.provider,
+            defaultChatModel: config.defaultChatModel,
+            defaultClassificationModel: config.defaultClassificationModel,
+            fallbackChain: config.fallbackChain,
         }
     }
 }

@@ -103,6 +103,59 @@ export const CLI_PROXY_API_MODEL = process.env.CLI_PROXY_API_MODEL || 'qwen3-max
 export const GEMINI_API_BASE_URL = process.env.GEMINI_API_BASE_URL || 'http://REDACTED_HOST:REDACTED_PORT/v1'
 export const GEMINI_API_KEY = process.env.GEMINI_API_KEY || 'REDACTED_API_KEY'
 
+// LLM Model Configuration (runtime configurable via env)
+export const LLM_DEFAULT_CHAT_MODEL = process.env.LLM_DEFAULT_CHAT_MODEL || 'qwen3-max'
+export const LLM_DEFAULT_CLASSIFICATION_MODEL = process.env.LLM_DEFAULT_CLASSIFICATION_MODEL || 'qwen3-max'
+
+// Fallback chain: comma-separated model slugs (first = highest priority)
+export const LLM_FALLBACK_CHAIN = (process.env.LLM_FALLBACK_CHAIN || 'qwen3-max,gemini-3.1-pro,deepseek-v3.2,glm-4.7,kimi-k2,gemini-2.5-pro,qwen3-235b,gemini-2.5-flash,free,gemini-2.5-flash-lite,gemini-3-flash-preview,gemini-2.5-computer-use-preview-10-2025,kimi-k2-0905,qwen3-max-preview,qwen3-coder-plus,qwen3-235b-a22b-thinking-2507,qwen3-235b-a22b-instruct,qwen3-32b,deepseek-v3.2-reasoner,deepseek-v3.1,deepseek-v3,deepseek-r1,deepseek-v3.2-chat,tstars2.0,sonnet,opus').split(',').map(s => s.trim())
+
+/**
+ * Hot-reloadable LLM configuration
+ * Re-reads environment variables at runtime
+ */
+export interface LLMConfig {
+    provider: string
+    defaultChatModel: string
+    defaultClassificationModel: string
+    fallbackChain: string[]
+    cliProxyApiKey: string | undefined
+    cliProxyApiBaseUrl: string
+    geminiApiBaseUrl: string
+    geminiApiKey: string,
+}
+
+let cachedLLMConfig: LLMConfig | null = null
+
+export function getLLMConfig(): LLMConfig {
+    if (cachedLLMConfig) {
+        return cachedLLMConfig
+    }
+    return loadLLMConfig()
+}
+
+export function loadLLMConfig(): LLMConfig {
+    cachedLLMConfig = {
+        provider: process.env.LLM_PROVIDER || 'cli-proxy-api',
+        defaultChatModel: process.env.LLM_DEFAULT_CHAT_MODEL || 'qwen3-max',
+        defaultClassificationModel: process.env.LLM_DEFAULT_CLASSIFICATION_MODEL || 'qwen3-max',
+        fallbackChain: (process.env.LLM_FALLBACK_CHAIN || 'qwen3-max,gemini-3.1-pro,deepseek-v3.2,glm-4.7,kimi-k2,gemini-2.5-pro,qwen3-235b,gemini-2.5-flash,free,gemini-2.5-flash-lite,gemini-3-flash-preview,gemini-2.5-computer-use-preview-10-2025,kimi-k2-0905,qwen3-max-preview,qwen3-coder-plus,qwen3-235b-a22b-thinking-2507,qwen3-235b-a22b-instruct,qwen3-32b,deepseek-v3.2-reasoner,deepseek-v3.1,deepseek-v3,deepseek-r1,deepseek-v3.2-chat,tstars2.0,sonnet,opus').split(',').map(s => s.trim()),
+        cliProxyApiKey: process.env.CLI_PROXY_API_KEY,
+        cliProxyApiBaseUrl: process.env.CLI_PROXY_API_BASE_URL || 'http://cli-proxy-service:8317/v1',
+        geminiApiBaseUrl: process.env.GEMINI_API_BASE_URL || 'http://REDACTED_HOST:REDACTED_PORT/v1',
+        geminiApiKey: process.env.GEMINI_API_KEY || 'REDACTED_API_KEY',
+    }
+    return cachedLLMConfig
+}
+
+export function reloadLLMConfig(): LLMConfig {
+    cachedLLMConfig = null
+    logger.info('Reloading LLM configuration from environment...')
+    const newConfig = loadLLMConfig()
+    logger.info({ config: { ...newConfig, cliProxyApiKey: '***', geminiApiKey: '***' } }, 'LLM configuration reloaded')
+    return newConfig
+}
+
 // Validation of LLM provider configuration on startup
 export const SUPPORTED_LLM_PROVIDERS = ['cli-proxy-api']
 if (!SUPPORTED_LLM_PROVIDERS.includes(LLM_PROVIDER)) {
@@ -113,7 +166,6 @@ if (!SUPPORTED_LLM_PROVIDERS.includes(LLM_PROVIDER)) {
 if (!IS_DEVELOPMENT && LLM_PROVIDER === 'cli-proxy-api' && !CLI_PROXY_API_KEY) {
     logger.warn('CLI_PROXY_API_KEY not set in production')
 }
-
 // ---- Embedding Provider Configuration ----
 // NOTE: Embedding is now hardcoded to use internal endpoint (192.168.150.37:8889)
 // EMBEDDING_PROVIDER is kept for backward compatibility but no longer used
