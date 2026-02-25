@@ -188,11 +188,12 @@ spec:
                             configMapKeyRef:
                                 name: skald-config
                                 key: IS_DEVELOPMENT
-                      - name: SECRET_KEY
+                      - name: LOG_LEVEL
                         valueFrom:
-                            secretKeyRef:
-                                name: skald-secrets
-                                key: SECRET_KEY
+                            configMapKeyRef:
+                                name: skald-config
+                                key: LOG_LEVEL
+                      - name: SECRET_KEY
                       # AI 서비스 관련 환경변수
                       - name: LLM_PROVIDER
                         valueFrom:
@@ -245,13 +246,13 @@ spec:
                             secretKeyRef:
                                 name: skald-secrets
                                 key: GEMINI_API_KEY
-                                optional: true
+                                optional: false
                       - name: CLI_PROXY_API_KEY
                         valueFrom:
                             secretKeyRef:
                                 name: skald-secrets
                                 key: CLI_PROXY_API_KEY
-                                optional: true
+                                optional: false
                       - name: CLI_PROXY_API_BASE_URL
                         valueFrom:
                             configMapKeyRef:
