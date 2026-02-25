@@ -345,7 +345,6 @@ const run = async (req: Request, res: Response) => {
             contextStr: contextStr || '',
             rerankResults: rerankedResults || [],
             enableReferences: parsedRagConfig.references.enabled,
-            llmProvider: parsedRagConfig.llmProvider,
         })) {
             if (chunk.type === 'token') {
                 if (!firstTokenReceived) {

@@ -41,6 +41,13 @@ interface InvokeWithRetryParams {
     useFallbackChain?: boolean
 }
 
+interface StreamWithFallbackParams {
+    prompt: any // ChatPromptTemplate
+    input: Record<string, any>
+    temperature?: number
+    maxRetries?: number
+    retryDelayMs?: number
+}
 /**
  * Retry wrapper for LLM operations
  * Retries up to maxRetries times with exponential backoff
@@ -233,5 +240,86 @@ export class LLMService {
             defaultClassificationModel: config.defaultClassificationModel,
             fallbackChain: config.fallbackChain,
         }
+    }
+
+
+    /**
+     * Stream LLM response with fallback chain support
+     * Used by chatAgent for streaming responses with automatic fallback on capacity errors
+     */
+    static async *streamWithFallback({
+        prompt,
+        input,
+        temperature = 0,
+        maxRetries = 3,
+        retryDelayMs = 1000,
+    }: StreamWithFallbackParams): AsyncGenerator<any> {
+        const currentProvider = this.provider
+        const purpose = 'chat'
+        const fallbackChains = getModelFallbackChains()
+        const defaultModels = getDefaultLLMModels()
+        const defaultModelSlug = defaultModels['cli-proxy-api'].defaultChatModel.slug
+
+        // Get all models to try (default + fallbacks)
+        const models = fallbackChains['cli-proxy-api'] || [defaultModelSlug]
+        const modelFallbackIndex = models.indexOf(defaultModelSlug)
+        const modelsToTry = modelFallbackIndex >= 0 ? models.slice(modelFallbackIndex) : models
+
+        let lastError: Error | null = null
+
+        for (const modelSlug of modelsToTry) {
+            try {
+                logger.info(`Attempting to stream LLM with model: ${modelSlug}`)
+                const llm = this.getLLM({ temperature, providerOverride: currentProvider as any, purpose, modelOverride: modelSlug })
+                const chain = prompt.pipe(llm)
+
+                // Try to start streaming with retries for transient errors
+                let stream: AsyncGenerator<any> | null = null
+                for (let attempt = 1; attempt <= maxRetries; attempt++) {
+                    try {
+                        stream = await chain.stream(input)
+                        break
+                    } catch (streamError) {
+                        lastError = streamError as Error
+
+                        if (isCapacityError(lastError)) {
+                            logger.warn(`Capacity error for model ${modelSlug} (attempt ${attempt}/${maxRetries}): ${lastError.message}`)
+                            throw lastError // Move to next model
+                        }
+
+                        logger.warn(`Stream attempt ${attempt}/${maxRetries} failed for model ${modelSlug}: ${lastError.message}`)
+                        if (attempt < maxRetries) {
+                            const delay = retryDelayMs * attempt
+                            logger.info(`Retrying in ${delay}ms...`)
+                            await new Promise((resolve) => setTimeout(resolve, delay))
+                        }
+                    }
+                }
+
+                if (!stream) {
+                    throw lastError
+                }
+
+                // Successfully got stream, yield chunks
+                logger.info(`Successfully started streaming with model: ${modelSlug}`)
+                for await (const chunk of stream) {
+                    yield chunk
+                }
+                return // Success, exit the generator
+            } catch (error) {
+                lastError = error as Error
+                const isCapacity = isCapacityError(lastError)
+
+                if (isCapacity) {
+                    logger.warn(`Capacity error for model ${modelSlug}, trying next fallback model...`)
+                } else {
+                    logger.warn(`Model ${modelSlug} failed: ${lastError.message}`)
+                }
+                continue // Try next model
+            }
+        }
+
+        // All models exhausted
+        throw new Error(`All LLM models failed for streaming. Last error: ${lastError?.message}`)
     }
 }

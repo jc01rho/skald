@@ -163,7 +163,6 @@ export const chat = async (req: Request, res: Response) => {
             contextStr: contextStr || '',
             rerankResults: rerankedResults || [],
             enableReferences: parsedRagConfig.references.enabled,
-            llmProvider: parsedRagConfig.llmProvider,
         })) {
             if (chunk.type === 'token') {
                 fullResponse += chunk.content || ''
@@ -237,7 +236,6 @@ export const chat = async (req: Request, res: Response) => {
                             contextStr: retryState.contextStr || '',
                             rerankResults: retryState.rerankedResults || [],
                             enableReferences: retryRagConfig.references.enabled,
-                            llmProvider: retryRagConfig.llmProvider,
                         })) {
                             if (chunk.type === 'token') retryResponse += chunk.content || ''
                             if (chunk.type === 'references' && chunk.content) {
@@ -376,7 +374,6 @@ export const _generateStreamingResponse = async ({
             contextStr: contextStr || '',
             rerankResults: rerankedResults || [],
             enableReferences: parsedRagConfig.references.enabled,
-            llmProvider: parsedRagConfig.llmProvider,
         })) {
             // format as Server-Sent Event
             const data = JSON.stringify(chunk)
