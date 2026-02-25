@@ -380,11 +380,37 @@ spec:
                             configMapKeyRef:
                                 name: skald-config
                                 key: FRONTEND_URL
-                      - name: CORS_ORIGIN
+                      - name: CORS_ALLOWED_ORIGINS
                         valueFrom:
                             configMapKeyRef:
                                 name: skald-config
-                                key: CORS_ORIGIN
+                                key: CORS_ALLOWED_ORIGINS
+                      # LLM Hot-reload 관련 설정
+                      - name: LLM_DEFAULT_CHAT_MODEL
+                        valueFrom:
+                            configMapKeyRef:
+                                name: skald-config
+                                key: LLM_DEFAULT_CHAT_MODEL
+                      - name: LLM_DEFAULT_CLASSIFICATION_MODEL
+                        valueFrom:
+                            configMapKeyRef:
+                                name: skald-config
+                                key: LLM_DEFAULT_CLASSIFICATION_MODEL
+                      - name: LLM_FALLBACK_CHAIN
+                        valueFrom:
+                            configMapKeyRef:
+                                name: skald-config
+                                key: LLM_FALLBACK_CHAIN
+                      - name: GEMINI_API_BASE_URL
+                        valueFrom:
+                            configMapKeyRef:
+                                name: skald-config
+                                key: GEMINI_API_BASE_URL
+                      - name: ENABLE_SECURITY_SETTINGS
+                        valueFrom:
+                            configMapKeyRef:
+                                name: skald-config
+                                key: ENABLE_SECURITY_SETTINGS
                       # AWS S3 관련 환경변수
                       - name: AWS_REGION
                         value: ' '
