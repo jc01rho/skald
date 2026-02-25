@@ -291,6 +291,32 @@ spec:
                                 name: skald-config
                                 key: INTERNAL_RERANK_URL
                                 optional: true
+                      # LLM Hot-reload 관련 설정
+                      - name: LLM_DEFAULT_CHAT_MODEL
+                        valueFrom:
+                            configMapKeyRef:
+                                name: skald-config
+                                key: LLM_DEFAULT_CHAT_MODEL
+                      - name: LLM_DEFAULT_CLASSIFICATION_MODEL
+                        valueFrom:
+                            configMapKeyRef:
+                                name: skald-config
+                                key: LLM_DEFAULT_CLASSIFICATION_MODEL
+                      - name: LLM_FALLBACK_CHAIN
+                        valueFrom:
+                            configMapKeyRef:
+                                name: skald-config
+                                key: LLM_FALLBACK_CHAIN
+                      - name: GEMINI_API_BASE_URL
+                        valueFrom:
+                            configMapKeyRef:
+                                name: skald-config
+                                key: GEMINI_API_BASE_URL
+                      - name: ENABLE_SECURITY_SETTINGS
+                        valueFrom:
+                            configMapKeyRef:
+                                name: skald-config
+                                key: ENABLE_SECURITY_SETTINGS
                       - name: STRIPE_SECRET_KEY
                         value: ' '
 
