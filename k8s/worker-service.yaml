@@ -4,7 +4,9 @@ metadata:
     name: skald-worker
     namespace: skald
     labels:
-        app: skald-worker
+        app: skald
+        component: worker
+        environment: production
 spec:
     type: ClusterIP
     ports:
@@ -13,4 +15,5 @@ spec:
           targetPort: http
           protocol: TCP
     selector:
-        app: skald-worker
+        app: skald
+        component: worker

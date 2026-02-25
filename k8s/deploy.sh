@@ -689,7 +689,7 @@ deploy_worker() {
     # 이미지 태그 치환
     sed "s|\${IMAGE_TAG:-latest}|$IMAGE_TAG|g" worker-deployment.yaml > /tmp/worker-deployment.yaml
     echo "Worker Deployment 임시 파일 생성 완료: /tmp/worker-deployment.yaml"
-    echo "Image in temp file: $(grep 'ghcr.io/jc01rho/skald-worker:' /tmp/worker-deployment.yaml)"
+    echo "Image in temp file: $(grep 'ghcr.io/jc01rho/skald-worker-v2:' /tmp/worker-deployment.yaml)"
 
     if kubectl apply -f /tmp/worker-deployment.yaml -n "$NAMESPACE"; then
         log_success "Worker Deployment 생성 완료"
@@ -711,6 +711,22 @@ deploy_worker() {
         log_error "Worker ServiceAccount 생성 실패"
         exit 1
     fi
+
+    # 강제 롤아웃 리스타트 (latest 태그 갱신을 위해)
+    # 이미지가 변경되지 않았더라도(latest), 파드를 재시작하여 새 이미지를 pull하도록 함
+    log_info "Worker Deployment 롤아웃 리스타트 실행..."
+    kubectl rollout restart deployment/skald-worker -n "$NAMESPACE"
+    
+    # 롤아웃 완료 대기
+    log_info "Worker 롤아웃 완료 대기 중..."
+    kubectl rollout status deployment/skald-worker -n "$NAMESPACE"
+    
+    # 파드가 안정화될 때까지 잠시 대기
+    log_info "Worker 파드 안정화 대기 중..."
+    sleep 5
+    
+    # Worker Pod 준비 대기
+    wait_for_pods "component=worker" 300
 
     # 임시 파일 정리
     rm -f /tmp/worker-deployment.yaml
@@ -841,8 +857,7 @@ verify_deployment() {
 verify_service_health() {
     log_info "서비스 상세 상태 확인 중..."
     
-    local services=("postgres-service" "rabbitmq-service" "redis-service" "api-service" "ui-service" "embedding-service-service" "docling-service" "worker-service")
-    
+    local services=("postgres-service" "rabbitmq-service" "redis-service" "api-service" "ui-service" "embedding-service" "docling-service" "skald-worker")
     for service in "${services[@]}"; do
         if kubectl get svc "$service" -n "$NAMESPACE" &>/dev/null; then
             check_service_health "$service" "$NAMESPACE"
@@ -1004,7 +1019,7 @@ undeploy_worker() {
     log_info "Step 2.5: Worker Deployment/Service 삭제 중..."
 
     # Worker Service 삭제
-    if kubectl delete service worker-service -n "$NAMESPACE" --ignore-not-found=true; then
+    if kubectl delete service skald-worker -n "$NAMESPACE" --ignore-not-found=true; then
         log_success "Worker Service 삭제 완료"
     else
         log_error "Worker Service 삭제 실패"
@@ -1085,10 +1100,10 @@ undeploy_ai_services() {
     fi
     
     # Embedding Service 삭제
-    if kubectl delete service embedding-service-service -n "$NAMESPACE" --ignore-not-found=true; then
-        log_success "Embedding Service Service 삭제 완료"
+    if kubectl delete service embedding-service -n "$NAMESPACE" --ignore-not-found=true; then
+        log_success "Embedding Service 삭제 완료"
     else
-        log_error "Embedding Service Service 삭제 실패"
+        log_error "Embedding Service 삭제 실패"
         return 1
     fi
     
