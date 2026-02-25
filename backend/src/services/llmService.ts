@@ -4,6 +4,22 @@ import { getLLMConfig, reloadLLMConfig } from '../settings'
 import { getDefaultLLMModels, getModelFallbackChains, PROVIDER_FALLBACK_CHAIN, isGeminiModel } from '@/llmModels'
 import { logger } from '@/lib/logger'
 
+/**
+ * Check if an error indicates model capacity issues (503 No capacity)
+ * These errors should immediately trigger fallback instead of retry
+ */
+function isCapacityError(error: Error): boolean {
+    const message = error.message.toLowerCase()
+    return (
+        message.includes('503') ||
+        message.includes('no capacity') ||
+        message.includes('unavailable') ||
+        message.includes('overloaded') ||
+        message.includes('rate limit') ||
+        message.includes('too many requests')
+    )
+}
+
 interface GetLLMParams {
     temperature?: number
     providerOverride?: 'cli-proxy-api'
@@ -27,7 +43,8 @@ interface InvokeWithRetryParams {
 
 /**
  * Retry wrapper for LLM operations
- * Retries up to 3 times with exponential backoff
+ * Retries up to maxRetries times with exponential backoff
+ * Skips retry for capacity errors (503) - should fallback instead
  */
 async function withRetry<T>(fn: () => Promise<T>, maxRetries = 3, retryDelayMs = 1000): Promise<T> {
     let lastError: Error | null = null
@@ -36,6 +53,14 @@ async function withRetry<T>(fn: () => Promise<T>, maxRetries = 3, retryDelayMs =
             return await fn()
         } catch (error) {
             lastError = error as Error
+
+            // Check if this is a capacity error - should fallback immediately
+            if (isCapacityError(lastError)) {
+                logger.warn(`Capacity error detected (attempt ${attempt}/${maxRetries}): ${lastError.message}`)
+                logger.info('Skipping retry, proceeding to fallback model...')
+                throw lastError // Let the caller handle fallback
+            }
+
             logger.warn(`Attempt ${attempt}/${maxRetries} failed: ${lastError.message}`)
             if (attempt < maxRetries) {
                 const delay = retryDelayMs * attempt
@@ -96,7 +121,7 @@ export class LLMService {
 
     /**
      * Invoke LLM with retry logic and fallback chain
-     * 1. Try current model with 3 retries
+     * 1. Try current model with 3 retries (skip retry for capacity errors)
      * 2. If all retries fail, try next model in fallback chain
      * 3. If all models fail, throw error (no provider-level fallback as cli-proxy-api is the only provider)
      */
@@ -126,7 +151,12 @@ export class LLMService {
                 throw error
             }
 
-            logger.warn('Current model failed after retries, trying model-level fallback chain...')
+            const isCapacity = isCapacityError(error as Error)
+            if (isCapacity) {
+                logger.warn('Capacity error detected, trying model-level fallback chain...')
+            } else {
+                logger.warn('Current model failed after retries, trying model-level fallback chain...')
+            }
             const errorMessage = (error as Error).message
             logger.warn(`Error: ${errorMessage}`)
 
