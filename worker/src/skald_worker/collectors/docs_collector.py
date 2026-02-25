@@ -290,7 +290,8 @@ class DocsCollector:
         elif item_type in ("tech", "techs"):
             title = item.get("title", "Untitled Tech Doc")
             doc_id = f"tech-{item.get('id', '')}"
-            category = item.get("product_id", "")
+            category = item.get("category", "")
+            product_id = item.get("product_id", "")
             component = ""
             description = item.get("description", "")
             author = item.get("author", "")
@@ -311,6 +312,7 @@ class DocsCollector:
             title = item.get("title", "Untitled Troubleshoot")
             doc_id = f"ts-{item.get('id', '')}"
             category = item.get("category", "")
+            product_id = item.get("product_id", "")
             component = item.get("component", "") or ""
             issue_sum = item.get("issue_sum", "")
             ts_solution = item.get("ts_solution", "")
@@ -327,7 +329,7 @@ class DocsCollector:
         else:
             title = "Untitled"
             doc_id = f"doc-{item.get('id', '')}"
-            category = component = description = author = created = updated = ""
+            category = component = description = author = created = updated = product_id = ""
             url_path = ""
 
         # Build metadata
@@ -342,6 +344,10 @@ class DocsCollector:
             "source_url": f"{self.base_url}{url_path}" if url_path else "",
             "spms_id": item.get("id", ""),
         }
+        
+        # Add product_id for troubleshoots and techs only
+        if item_type in ("troubleshoot", "troubleshoots", "tech", "techs") and product_id:
+            metadata["product_id"] = product_id
 
         # Build markdown content
         sections = []

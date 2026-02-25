@@ -1,3 +1,5 @@
+import { getLLMConfig } from './settings'
+
 export const SUPPORTED_LLM_MODELS = {
     'cli-proxy-api': {
         // ========================================
@@ -40,50 +42,41 @@ export const SUPPORTED_LLM_MODELS = {
     },
 }
 
-export const DEFAULT_LLM_MODELS = {
-    'cli-proxy-api': {
-        // Both chat and classification now use qwen3-max as default (verified working model)
-        defaultChatModel: SUPPORTED_LLM_MODELS['cli-proxy-api']['qwen3-max'],
-        defaultClassificationModel: SUPPORTED_LLM_MODELS['cli-proxy-api']['qwen3-max'],
-    },
+/**
+ * Get default models based on current runtime configuration
+ * This allows hot-reloading of LLM settings
+ */
+export function getDefaultLLMModels() {
+    const config = getLLMConfig()
+    const models = SUPPORTED_LLM_MODELS['cli-proxy-api'] as Record<string, { slug: string; name: string }>
+    return {
+        'cli-proxy-api': {
+            defaultChatModel: models[config.defaultChatModel] || models['qwen3-max'],
+            defaultClassificationModel: models[config.defaultClassificationModel] || models['qwen3-max'],
+        },
+    }
 }
+
+// Backward-compatible static export (uses cached config)
+export const DEFAULT_LLM_MODELS = getDefaultLLMModels()
 
 // Helper to check if a model slug is a Gemini model
 export function isGeminiModel(modelSlug: string): boolean {
     return modelSlug.startsWith('gemini-')
 }
 
-export const MODEL_FALLBACK_CHAINS = {
-    'cli-proxy-api': [
-        // Priority order: qwen3-max -> gemini-3.1-pro -> deepseek-v3.2 -> glm-4.7 -> kimi-k2 -> qwen3-235b -> rest
-        'qwen3-max',
-        'gemini-3.1-pro',
-        'deepseek-v3.2',
-        'glm-4.7',
-        'kimi-k2',
-        'gemini-2.5-pro',
-        'qwen3-235b',
-        'gemini-2.5-flash',
-        'free',
-        'gemini-2.5-flash-lite',
-        'gemini-3-flash-preview',
-        'gemini-2.5-computer-use-preview-10-2025',
-        'kimi-k2-0905',
-        'qwen3-max-preview',
-        'qwen3-coder-plus',
-        'qwen3-235b-a22b-thinking-2507',
-        'qwen3-235b-a22b-instruct',
-        'qwen3-32b',
-        'deepseek-v3.2-reasoner',
-        'deepseek-v3.1',
-        'deepseek-v3',
-        'deepseek-r1',
-        'deepseek-v3.2-chat',
-        'tstars2.0',
-        'sonnet',
-        'opus',
-    ],
+/**
+ * Get fallback chain based on current runtime configuration
+ */
+export function getModelFallbackChains() {
+    const config = getLLMConfig()
+    return {
+        'cli-proxy-api': config.fallbackChain,
+    }
 }
+
+// Backward-compatible static export (uses cached config)
+export const MODEL_FALLBACK_CHAINS = getModelFallbackChains()
 
 // Provider-level fallback chain: cli-proxy-api is the only provider
 export const PROVIDER_FALLBACK_CHAIN = ['cli-proxy-api']
