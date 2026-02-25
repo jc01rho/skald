@@ -4,16 +4,20 @@ metadata:
     name: skald-worker
     namespace: skald
     labels:
-        app: skald-worker
+        app: skald
+        component: worker
+        environment: production
 spec:
     replicas: 1
     selector:
         matchLabels:
-            app: skald-worker
+            app: skald
+            component: worker
     template:
         metadata:
             labels:
-                app: skald-worker
+                app: skald
+                component: worker
             annotations:
                 prometheus.io/scrape: 'true'
                 prometheus.io/port: '8080'
@@ -26,7 +30,7 @@ spec:
                 fsGroup: 1000
             containers:
                 - name: worker
-                  image: ghcr.io/jc01rho/skald-worker:latest
+                  image: ghcr.io/jc01rho/skald-worker-v2:latest
                   imagePullPolicy: Always
                   ports:
                       - name: http
