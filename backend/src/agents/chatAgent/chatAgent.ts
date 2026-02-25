@@ -17,22 +17,23 @@ export async function* streamChatAgent({
     contextStr,
     rerankResults,
     enableReferences,
-    llmProvider,
 }: {
     query: string
     prompt: ChatPromptTemplate
     contextStr: string
     rerankResults: RerankResult[]
     enableReferences: boolean
-    llmProvider?: 'cli-proxy-api'
 }): AsyncGenerator<StreamChunk> {
-    const llm = LLMService.getLLM({ purpose: 'chat', providerOverride: llmProvider })
-    const chain = prompt.pipe(llm)
-
-    const stream = await chain.stream({
-        input: query,
-        context: contextStr,
+    // Use streamWithFallback for automatic fallback on 503 capacity errors
+    const stream = LLMService.streamWithFallback({
+        prompt,
+        input: {
+            input: query,
+            context: contextStr,
+        },
+        temperature: 0.7,
     })
+
     for await (const chunk of stream) {
         if (chunk.content) {
             // Normalize content to string, handling different LLM response formats
@@ -53,6 +54,7 @@ export async function* streamChatAgent({
             }
         }
     }
+
     if (enableReferences && rerankResults.length > 0) {
         const references: Record<number, { memo_uuid: string; memo_title: string }> = {}
         for (let i = 0; i < rerankResults.length; i++) {
