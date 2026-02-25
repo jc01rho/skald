@@ -95,12 +95,6 @@ spec:
                                 name: skald-config
                                 key: EXTERNAL_EMBEDDING_URL
                                 optional: true
-                      # Ollama/Local LLM connection URL
-                      - name: LOCAL_LLM_BASE_URL
-                        valueFrom:
-                            configMapKeyRef:
-                                name: skald-config
-                                key: LOCAL_LLM_BASE_URL
                       # Gemini embedding-001 supports: 768, 1536, 3072 (default is 768 for efficiency)
                       - name: TARGET_DIMENSION
                         value: '2048'
