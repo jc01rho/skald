@@ -171,30 +171,42 @@ export async function handleMention(message: Message, client: Client) {
 
         const allInfoDocUrls = Array.from(new Set([...inferredInfoDocUrls, ...referenceInfoDocUrls]))
 
+        // Send reference embed (non-fatal - don't fail if this errors)
         if (Object.keys(references).length > 0) {
-            const refEmbed = new EmbedBuilder()
-                .setTitle('📚 참고 자료')
-                .setColor(0x5865f2)
-                .setDescription(
-                    Object.entries(references)
-                        .map(([key, ref]) => {
-                            const sourceUrl = ref.source_url?.trim()
-                            if (sourceUrl) {
-                                return `**[${key}]** ${ref.memo_title}\n🔗 ${sourceUrl}`
-                            }
-                            return `**[${key}]** ${ref.memo_title}`
-                        })
-                        .join('\n')
-                )
-            await message.reply({ embeds: [refEmbed] })
+            try {
+                const lines = Object.entries(references).map(([key, ref]) => {
+                    const sourceUrl = ref.source_url?.trim()
+                    if (sourceUrl) {
+                        return `**[${key}]** ${ref.memo_title}\n🔗 ${sourceUrl}`
+                    }
+                    return `**[${key}]** ${ref.memo_title}`
+                })
+                
+                // Discord embed description limit is 4096 chars
+                const description = lines.join('\n').slice(0, 4000)
+                
+                const refEmbed = new EmbedBuilder()
+                    .setTitle('📚 참고 자료')
+                    .setColor(0x5865f2)
+                    .setDescription(description)
+                await message.reply({ embeds: [refEmbed] })
+            } catch (embedError) {
+                logger.warn({ embedError }, 'Failed to send reference embed (non-fatal)')
+            }
         }
 
+        // Send info doc links (non-fatal - don't fail if this errors)
         if (allInfoDocUrls.length > 0) {
-            const linkEmbed = new EmbedBuilder()
-                .setTitle('🔗 문서 원문 링크')
-                .setColor(0x2ecc71)
-                .setDescription(allInfoDocUrls.map((url) => `- ${url}`).join('\n'))
-            await message.reply({ embeds: [linkEmbed] })
+            try {
+                const description = allInfoDocUrls.map((url) => `- ${url}`).join('\n').slice(0, 4000)
+                const linkEmbed = new EmbedBuilder()
+                    .setTitle('🔗 문서 원문 링크')
+                    .setColor(0x2ecc71)
+                    .setDescription(description)
+                await message.reply({ embeds: [linkEmbed] })
+            } catch (embedError) {
+                logger.warn({ embedError }, 'Failed to send info doc links embed (non-fatal)')
+            }
         }
 
         history.push({ role: 'user', content: query })

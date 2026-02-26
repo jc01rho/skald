@@ -49,6 +49,11 @@ export class DiscordStreamEditor {
 
     private async performEdit(): Promise<void> {
         const content = this.formatContent()
+        
+        // Discord doesn't allow empty messages
+        if (!content || content.trim().length === 0) {
+            return
+        }
 
         try {
             await this.message.edit(content)
