@@ -9,11 +9,13 @@ interface RerankResult {
     relevance_score: number
     memo_uuid?: string
     memo_title?: string
+    source_url?: string
 }
 
 interface RerankMetadata {
     memo_uuid: string
     memo_title: string
+    source_url?: string
 }
 
 export class RerankService {
@@ -67,6 +69,7 @@ export class RerankService {
             if (metadata && metadata[result.index]) {
                 rerankResult.memo_uuid = metadata[result.index].memo_uuid
                 rerankResult.memo_title = metadata[result.index].memo_title
+                rerankResult.source_url = metadata[result.index].source_url
             }
 
             return rerankResult

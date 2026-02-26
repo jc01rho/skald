@@ -26,6 +26,7 @@ interface RerankResult {
     relevance_score: number
     memo_uuid?: string
     memo_title?: string
+    source_url?: string
     embedding?: number[] // Optional embedding for MMR diversity calculation
 }
 
@@ -94,7 +95,10 @@ const RAGState = Annotation.Root({
     rewrittenQuery: Annotation<string | null>,
     chunkResults: Annotation<MemoChunkWithDistance[] | null>,
     rerankedResults: Annotation<RerankResult[]>,
-    memoPropertiesMap: Annotation<Map<string, { title: string; summary: string; content: string }> | null>,
+    memoPropertiesMap: Annotation<Map<
+        string,
+        { title: string; summary: string; content: string; source_url: string }
+    > | null>,
     parentChunkMap: Annotation<Map<string, string> | null>,
     cragValidation: Annotation<RetrievalValidation | null>,
     prompt: Annotation<ChatPromptTemplate>,
@@ -405,6 +409,7 @@ async function rerankNode(state: typeof RAGState.State) {
                 relevance_score: similarity,
                 memo_uuid: chunk.chunk.memo_uuid,
                 memo_title: memoPropertiesMap?.get(chunk.chunk.memo_uuid)?.title || '',
+                source_url: memoPropertiesMap?.get(chunk.chunk.memo_uuid)?.source_url || '',
                 embedding: chunk.chunk.embedding as number[], // Pass embedding for MMR
             })
         }
@@ -413,7 +418,7 @@ async function rerankNode(state: typeof RAGState.State) {
 
     const searchQuery = rewrittenQuery || query
     const rerankData: string[] = []
-    const rerankMetadata: Array<{ memo_uuid: string; memo_title: string }> = []
+    const rerankMetadata: Array<{ memo_uuid: string; memo_title: string; source_url?: string }> = []
 
     for (const chunkResult of chunkResults) {
         const chunk = chunkResult.chunk
@@ -428,6 +433,7 @@ async function rerankNode(state: typeof RAGState.State) {
         rerankMetadata.push({
             memo_uuid: chunk.memo_uuid,
             memo_title: memoPropertiesMap?.get(chunk.memo_uuid)?.title || '',
+            source_url: memoPropertiesMap?.get(chunk.memo_uuid)?.source_url || '',
         })
     }
 
@@ -447,7 +453,7 @@ async function rerankNode(state: typeof RAGState.State) {
     const truncatedRerankMetadata = rerankMetadata.slice(0, rerankCutoff)
 
     const truncatedDataBatches: string[][] = []
-    const truncatedMetadataBatches: Array<Array<{ memo_uuid: string; memo_title: string }>> = []
+    const truncatedMetadataBatches: Array<Array<{ memo_uuid: string; memo_title: string; source_url?: string }>> = []
     for (let i = 0; i < truncatedRerankData.length; i += batchSize) {
         truncatedDataBatches.push(truncatedRerankData.slice(i, i + batchSize))
         truncatedMetadataBatches.push(truncatedRerankMetadata.slice(i, i + batchSize))
@@ -475,6 +481,7 @@ async function rerankNode(state: typeof RAGState.State) {
             topResults: finalReranked.slice(0, 5).map((r) => ({
                 memo_uuid: r.memo_uuid,
                 memo_title: r.memo_title,
+                source_url: r.source_url,
                 relevance_score: r.relevance_score,
             })),
         },
