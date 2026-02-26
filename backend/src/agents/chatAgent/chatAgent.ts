@@ -9,6 +9,7 @@ interface StreamChunk {
 interface RerankResult {
     memo_uuid?: string
     memo_title?: string
+    source_url?: string
 }
 
 export async function* streamChatAgent({
@@ -56,13 +57,14 @@ export async function* streamChatAgent({
     }
 
     if (enableReferences && rerankResults.length > 0) {
-        const references: Record<number, { memo_uuid: string; memo_title: string }> = {}
+        const references: Record<number, { memo_uuid: string; memo_title: string; source_url?: string }> = {}
         for (let i = 0; i < rerankResults.length; i++) {
             const rerankResult = rerankResults[i]
             if (rerankResult.memo_uuid && rerankResult.memo_title) {
                 references[i + 1] = {
                     memo_uuid: rerankResult.memo_uuid,
                     memo_title: rerankResult.memo_title,
+                    source_url: rerankResult.source_url,
                 }
             }
         }

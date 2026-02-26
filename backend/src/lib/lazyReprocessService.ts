@@ -160,7 +160,7 @@ export function extractMemoUuidsFromRerankResults(rerankResults: Array<{ memo_uu
  * References format: { "1": { "memo_uuid": "...", "memo_title": "..." }, ... }
  */
 export function extractMemoUuidsFromReferences(
-    references: Record<string, { memo_uuid: string; memo_title: string }>
+    references: Record<string, { memo_uuid: string; memo_title: string; source_url?: string }>
 ): string[] {
     return Object.values(references)
         .map((r) => r.memo_uuid)

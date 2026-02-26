@@ -276,6 +276,8 @@ class DocsCollector:
     def item_to_markdown(self, item: dict[str, Any], item_type: str) -> tuple[str, str, dict[str, Any]]:
         """Convert SPMS item to markdown format for Skald memo."""
 
+        product_id = ""
+
         # Extract title based on item type
         if item_type in ("function", "functions"):
             title = item.get("name", "Untitled Function")
@@ -344,7 +346,7 @@ class DocsCollector:
             "source_url": f"{self.base_url}{url_path}" if url_path else "",
             "spms_id": item.get("id", ""),
         }
-        
+
         # Add product_id for troubleshoots and techs only
         if item_type in ("troubleshoot", "troubleshoots", "tech", "techs") and product_id:
             metadata["product_id"] = product_id
@@ -540,4 +542,6 @@ def get_docs_collector() -> DocsCollector:
     if _docs_collector is None:
         _docs_collector = DocsCollector()
     return _docs_collector
+
+
 # Fresh rebuild 20260207081045

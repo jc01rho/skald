@@ -5,6 +5,27 @@ import { config } from '../config.js'
 import { logger } from '../logger.js'
 import { MemoFilter } from '../client/types.js'
 
+const INFO_DOC_ID_REGEX = /\binfo-(\d+)\b/gi
+
+function buildInfoDocUrl(infoId: string): string {
+    const base = config.spmsInfoBaseUrl.replace(/\/$/, '')
+    return `${base}/${infoId}`
+}
+
+function extractInfoDocUrls(text: string): string[] {
+    const found = new Set<string>()
+    let match: RegExpExecArray | null = null
+
+    INFO_DOC_ID_REGEX.lastIndex = 0
+
+    while ((match = INFO_DOC_ID_REGEX.exec(text)) !== null) {
+        const infoId = match[1]
+        found.add(buildInfoDocUrl(infoId))
+    }
+
+    return Array.from(found)
+}
+
 // Product ID keywords for automatic detection
 const PRODUCT_ID_KEYWORDS = [
     'sast',
@@ -19,14 +40,13 @@ const PRODUCT_ID_KEYWORDS = [
     'ihub',
 ] as const
 
-type ProductId = typeof PRODUCT_ID_KEYWORDS[number]
+type ProductId = (typeof PRODUCT_ID_KEYWORDS)[number]
 
 // Korean keyword aliases for sparrow
 const SPARROW_ALIASES = ['엔터프라이즈', '엔터'] as const
 
 // Product keywords that can combine with sparrow alias
 const SPARROW_COMBINE_KEYWORDS = ['sast', 'sca'] as const
-type SparrowCombineKeyword = typeof SPARROW_COMBINE_KEYWORDS[number]
 
 /**
  * Detect product_id keyword from user query
@@ -35,17 +55,17 @@ type SparrowCombineKeyword = typeof SPARROW_COMBINE_KEYWORDS[number]
  */
 function detectProductId(query: string): ProductId | undefined {
     const lowerQuery = query.toLowerCase()
-    
+
     // 1. Check for explicit compound keywords first (longer matches take precedence)
     for (const keyword of ['sparrow-sca', 'sparrow-sast']) {
         if (lowerQuery.includes(keyword)) {
             return keyword as ProductId
         }
     }
-    
+
     // 2. Check for Korean alias + product keyword combinations
     // e.g., '엔터프라이즈 sast' -> sparrow-sast
-    const hasSparrowAlias = SPARROW_ALIASES.some(alias => query.includes(alias))
+    const hasSparrowAlias = SPARROW_ALIASES.some((alias) => query.includes(alias))
     if (hasSparrowAlias) {
         for (const productKeyword of SPARROW_COMBINE_KEYWORDS) {
             if (lowerQuery.includes(productKeyword)) {
@@ -55,7 +75,7 @@ function detectProductId(query: string): ProductId | undefined {
         // If sparrow alias found but no combination keyword, return sparrow
         return 'sparrow'
     }
-    
+
     // 3. Check for single keywords (skip compound keywords in iteration)
     for (const keyword of PRODUCT_ID_KEYWORDS) {
         if (keyword.startsWith('sparrow-')) continue
@@ -63,7 +83,7 @@ function detectProductId(query: string): ProductId | undefined {
             return keyword as ProductId
         }
     }
-    
+
     return undefined
 }
 
@@ -92,19 +112,21 @@ export async function handleMention(message: Message, client: Client) {
         })
 
         let fullResponse = ''
-        let references: Record<string, { memo_uuid: string; memo_title: string }> = {}
-        
+        let references: Record<string, { memo_uuid: string; memo_title: string; source_url?: string }> = {}
+
         // Detect product_id from query and build filter
         const detectedProductId = detectProductId(query)
         const filters: MemoFilter[] | undefined = detectedProductId
-            ? [{
-                field: 'product_id',
-                operator: 'eq',
-                value: detectedProductId,
-                filter_type: 'custom_metadata',
-            }]
+            ? [
+                  {
+                      field: 'product_id',
+                      operator: 'eq',
+                      value: detectedProductId,
+                      filter_type: 'custom_metadata',
+                  },
+              ]
             : undefined
-        
+
         if (detectedProductId) {
             logger.info({ detectedProductId }, 'Product ID detected from query')
         }
@@ -117,8 +139,8 @@ export async function handleMention(message: Message, client: Client) {
                 llm_provider: 'cli-proxy-api',
                 query_rewrite: { enabled: true },
                 reranking: { enabled: true, top_k: 100 },
-                vector_search: { top_k: 100, similarity_threshold: 0.40 },
-                references: { enabled: false }
+                vector_search: { top_k: 100, similarity_threshold: 0.4 },
+                references: { enabled: true },
             },
         })) {
             switch (event.type) {
@@ -139,16 +161,35 @@ export async function handleMention(message: Message, client: Client) {
 
         await editor.finalize()
 
+        const inferredInfoDocUrls = extractInfoDocUrls(fullResponse)
+        const referenceInfoDocUrls = Object.values(references).flatMap((ref) => extractInfoDocUrls(ref.memo_title))
+
+        const allInfoDocUrls = Array.from(new Set([...inferredInfoDocUrls, ...referenceInfoDocUrls]))
+
         if (Object.keys(references).length > 0) {
             const refEmbed = new EmbedBuilder()
                 .setTitle('📚 참고 자료')
                 .setColor(0x5865f2)
                 .setDescription(
                     Object.entries(references)
-                        .map(([key, ref]) => `**[${key}]** ${ref.memo_title}`)
+                        .map(([key, ref]) => {
+                            const sourceUrl = ref.source_url?.trim()
+                            if (sourceUrl) {
+                                return `**[${key}]** ${ref.memo_title}\n🔗 ${sourceUrl}`
+                            }
+                            return `**[${key}]** ${ref.memo_title}`
+                        })
                         .join('\n')
                 )
             await message.reply({ embeds: [refEmbed] })
+        }
+
+        if (allInfoDocUrls.length > 0) {
+            const linkEmbed = new EmbedBuilder()
+                .setTitle('🔗 문서 원문 링크')
+                .setColor(0x2ecc71)
+                .setDescription(allInfoDocUrls.map((url) => `- ${url}`).join('\n'))
+            await message.reply({ embeds: [linkEmbed] })
         }
 
         history.push({ role: 'user', content: query })

@@ -13,5 +13,6 @@ export const config = {
     skaldApiUrl: requireEnv('SKALD_API_URL'),
     skaldApiKey: requireEnv('SKALD_API_KEY'),
     skaldProjectId: requireEnv('SKALD_PROJECT_ID'),
+    spmsInfoBaseUrl: process.env.SPMS_INFO_BASE_URL || 'http://spms.sparrow.local/enterprise/information',
     logLevel: process.env.LOG_LEVEL || 'info',
 }

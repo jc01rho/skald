@@ -188,7 +188,7 @@ export const chat = async (req: Request, res: Response) => {
     try {
         // non-streaming response - compose full response from stream
         let fullResponse = ''
-        let references: Record<number, { memo_uuid: string; memo_title: string }> | undefined
+        let references: Record<number, { memo_uuid: string; memo_title: string; source_url?: string }> | undefined
 
         for await (const chunk of streamChatAgent({
             query: finalQuery,
@@ -261,7 +261,9 @@ export const chat = async (req: Request, res: Response) => {
                         })
 
                         let retryResponse = ''
-                        let retryReferences: Record<number, { memo_uuid: string; memo_title: string }> | undefined
+                        let retryReferences:
+                            | Record<number, { memo_uuid: string; memo_title: string; source_url?: string }>
+                            | undefined
 
                         for await (const chunk of streamChatAgent({
                             query: retryState.query,
@@ -359,6 +361,7 @@ export const _setStreamingResponseHeaders = (res: Response) => {
 interface RerankResult {
     memo_uuid?: string
     memo_title?: string
+    source_url?: string
 }
 
 export const _generateStreamingResponse = async ({
