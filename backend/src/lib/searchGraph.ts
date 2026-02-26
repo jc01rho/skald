@@ -6,6 +6,9 @@ import { getTitleAndSummaryAndContentForMemoList } from '@/queries/memo'
 import { StateGraph, END } from '@langchain/langgraph'
 import { Annotation } from '@langchain/langgraph'
 import { RerankService } from '@/services/rerankService'
+import { mapWithConcurrency } from '@/lib/asyncUtils'
+import { HNSWOptimizationService } from '@/lib/hnswOptimization'
+import { DI } from '@/di'
 
 export interface SearchResult {
     chunk_uuid: string
@@ -38,6 +41,8 @@ const SearchGraphState = Annotation.Root({
 
 async function vectorSearchNode(state: typeof SearchGraphState.State) {
     const { query, project, filters, limit } = state
+
+    await HNSWOptimizationService.applyRuntimeSearchTuning(DI.em)
 
     const embeddingVector = await EmbeddingService.generateEmbedding(query, 'search')
     const chunkResults = await memoChunkVectorSearch(project, embeddingVector, limit, 0.75, filters)
@@ -76,18 +81,20 @@ async function rerankNode(state: typeof SearchGraphState.State) {
         })
     }
 
-    // split into batches of 25 to ensure we're under token limits for the reranker
+    const rerankCutoff = Math.min(limit * 4, rerankData.length)
+    const truncatedData = rerankData.slice(0, rerankCutoff)
+    const truncatedMetadata = rerankMetadata.slice(0, rerankCutoff)
+
     const rerankDataBatches: string[][] = []
     const rerankMetadataBatches: Array<Array<{ memo_uuid: string; memo_title: string }>> = []
 
-    for (let i = 0; i < rerankData.length; i += 25) {
-        rerankDataBatches.push(rerankData.slice(i, i + 25))
-        rerankMetadataBatches.push(rerankMetadata.slice(i, i + 25))
+    for (let i = 0; i < truncatedData.length; i += 25) {
+        rerankDataBatches.push(truncatedData.slice(i, i + 25))
+        rerankMetadataBatches.push(truncatedMetadata.slice(i, i + 25))
     }
 
-    // rerank all batches concurrently, adjusting indices to be global
-    const batchResults = await Promise.all(
-        rerankDataBatches.map((batch, batchIdx) => RerankService.rerank(query, batch, rerankMetadataBatches[batchIdx]))
+    const batchResults = await mapWithConcurrency(rerankDataBatches, 3, async (batch, batchIdx) =>
+        RerankService.rerank(query, batch, rerankMetadataBatches[batchIdx])
     )
 
     // Adjust indices to be global (batch-relative indices need to be offset by batch start)

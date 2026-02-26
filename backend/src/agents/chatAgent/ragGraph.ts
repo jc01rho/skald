@@ -17,6 +17,8 @@ import { DI } from '@/di'
 import { MemoParentChunk } from '@/entities/MemoParentChunk'
 import { reorderForLongContext, selectOptimalStrategy, ReorderStrategy } from '@/lib/contextReorder'
 import { validateRetrieval, getRetryStrategy, RetrievalValidation } from '@/lib/retrievalValidator'
+import { mapWithConcurrency } from '@/lib/asyncUtils'
+import { HNSWOptimizationService } from '@/lib/hnswOptimization'
 
 interface RerankResult {
     index: number
@@ -126,9 +128,7 @@ async function analyzeAndRewriteNode(state: typeof RAGState.State) {
         ragConfig.queryUnderstanding?.enabled
             ? QueryUnderstandingAgent.understandQuery(query, context)
             : Promise.resolve(null),
-        ragConfig.queryRewrite.enabled
-            ? rewrite(query, conversationMessages)
-            : Promise.resolve(null),
+        ragConfig.queryRewrite.enabled ? rewrite(query, conversationMessages) : Promise.resolve(null),
     ])
 
     logger.info(
@@ -203,12 +203,10 @@ async function executeFallbackSearch(
 
     const expandedTopK = Math.ceil(topK * 3)
 
-    const fallbackResults = await Promise.all(
-        searchQueries.map(async (searchQuery) => {
-            const embeddingVector = await EmbeddingService.generateEmbedding(searchQuery, 'search')
-            return memoChunkVectorSearch(project, embeddingVector, expandedTopK, threshold, filters, true)
-        })
-    )
+    const fallbackResults = await mapWithConcurrency(searchQueries, 3, async (searchQuery) => {
+        const embeddingVector = await EmbeddingService.generateEmbedding(searchQuery, 'search')
+        return memoChunkVectorSearch(project, embeddingVector, expandedTopK, threshold, filters, true)
+    })
 
     return deduplicateByBestScore(fallbackResults)
 }
@@ -233,6 +231,8 @@ function mergeSearchResults(
 async function vectorSearchNode(state: typeof RAGState.State) {
     const { rewrittenQuery, query, project, filters, ragConfig, queryUnderstanding } = state
 
+    await HNSWOptimizationService.applyRuntimeSearchTuning(DI.em)
+
     // Use dynamic search strategy from query understanding if available, otherwise use defaults
     const strategy = queryUnderstanding || {
         multiQuery: ragConfig.queryRewrite.multiQuery || false,
@@ -248,26 +248,22 @@ async function vectorSearchNode(state: typeof RAGState.State) {
         searchQueries.push(rewrittenQuery)
     }
 
-    // Add multi-query variations if enabled
-    if (strategy.multiQuery) {
-        const variants = await rewriteMultiQuery(query)
+    const [variants, hypothetical, jiraHypothetical] = await Promise.all([
+        strategy.multiQuery ? rewriteMultiQuery(query) : Promise.resolve<string[]>([]),
+        strategy.hyde ? generateHyDE(query) : Promise.resolve(''),
+        strategy.jiraHyde ? generateJiraHyDE(query) : Promise.resolve(''),
+    ])
+
+    if (variants.length > 0) {
         searchQueries.push(...variants)
     }
 
-    // Add HyDE hypothetical document if enabled
-    if (strategy.hyde) {
-        const hypothetical = await generateHyDE(query)
-        if (hypothetical) {
-            searchQueries.push(hypothetical)
-        }
+    if (hypothetical) {
+        searchQueries.push(hypothetical)
     }
 
-    // Add Jira-specific HyDE if enabled
-    if (strategy.jiraHyde) {
-        const jiraHypothetical = await generateJiraHyDE(query)
-        if (jiraHypothetical) {
-            searchQueries.push(jiraHypothetical)
-        }
+    if (jiraHypothetical) {
+        searchQueries.push(jiraHypothetical)
     }
 
     // Check if hybrid search is enabled (default: true for Korean optimization)
@@ -292,18 +288,16 @@ async function vectorSearchNode(state: typeof RAGState.State) {
         // Use hybrid search combining vector + BM25
         // Search with all queries (original + rewritten) and merge results
         try {
-            const allHybridResults = await Promise.all(
-                searchQueries.map(async (searchQuery) => {
-                    const embeddingVector = await EmbeddingService.generateEmbedding(searchQuery, 'search')
-                    return HybridSearchService.hybridSearch(project, embeddingVector, searchQuery, {
-                        vectorWeight: ragConfig.hybridSearch?.vectorWeight ?? 0.7,
-                        bm25Weight: ragConfig.hybridSearch?.bm25Weight ?? 0.3,
-                        topK: strategy.topK,
-                        similarityThreshold: ragConfig.vectorSearch.similarityThreshold,
-                        filters: filters?.[0], // Use first filter if available
-                    })
+            const allHybridResults = await mapWithConcurrency(searchQueries, 4, async (searchQuery) => {
+                const embeddingVector = await EmbeddingService.generateEmbedding(searchQuery, 'search')
+                return HybridSearchService.hybridSearch(project, embeddingVector, searchQuery, {
+                    vectorWeight: ragConfig.hybridSearch?.vectorWeight ?? 0.7,
+                    bm25Weight: ragConfig.hybridSearch?.bm25Weight ?? 0.3,
+                    topK: strategy.topK,
+                    similarityThreshold: ragConfig.vectorSearch.similarityThreshold,
+                    filters: filters?.[0], // Use first filter if available
                 })
-            )
+            })
 
             // Merge results from all queries, keeping best score per document
             const mergedResults = deduplicateByBestScore(
@@ -334,19 +328,17 @@ async function vectorSearchNode(state: typeof RAGState.State) {
         }
     }
 
-    const allResults = await Promise.all(
-        searchQueries.map(async (searchQuery) => {
-            const embeddingVector = await EmbeddingService.generateEmbedding(searchQuery, 'search')
-            return memoChunkVectorSearch(
-                project,
-                embeddingVector,
-                strategy.topK,
-                ragConfig.vectorSearch.similarityThreshold,
-                filters,
-                true
-            )
-        })
-    )
+    const allResults = await mapWithConcurrency(searchQueries, 4, async (searchQuery) => {
+        const embeddingVector = await EmbeddingService.generateEmbedding(searchQuery, 'search')
+        return memoChunkVectorSearch(
+            project,
+            embeddingVector,
+            strategy.topK,
+            ragConfig.vectorSearch.similarityThreshold,
+            filters,
+            true
+        )
+    })
 
     const uniqueResults = deduplicateByBestScore(allResults)
 
@@ -361,7 +353,8 @@ async function vectorSearchNode(state: typeof RAGState.State) {
             'Triggering fallback search'
         )
 
-        const fallbackResults = await executeFallbackSearch(query, project, filters, strategy.topK, 0.45)
+        const fallbackBaseQuery = searchQueries[0] || query
+        const fallbackResults = await executeFallbackSearch(fallbackBaseQuery, project, filters, strategy.topK, 0.45)
 
         return { chunkResults: mergeSearchResults(uniqueResults, fallbackResults) }
     }
@@ -449,18 +442,20 @@ async function rerankNode(state: typeof RAGState.State) {
     const maxTokens = modelTokenLimits[VOYAGE_RERANK_MODEL] || modelTokenLimits['default']
     const batchSize = Math.max(10, Math.min(50, Math.floor((maxTokens * 0.7) / avgTokensPerChunk)))
 
-    const rerankDataBatches: string[][] = []
-    const rerankMetadataBatches: Array<Array<{ memo_uuid: string; memo_title: string }>> = []
+    const rerankCutoff = Math.min(ragConfig.reranking.topK * 4, chunkResults.length)
+    const truncatedRerankData = rerankData.slice(0, rerankCutoff)
+    const truncatedRerankMetadata = rerankMetadata.slice(0, rerankCutoff)
 
-    for (let i = 0; i < rerankData.length; i += batchSize) {
-        rerankDataBatches.push(rerankData.slice(i, i + batchSize))
-        rerankMetadataBatches.push(rerankMetadata.slice(i, i + batchSize))
+    const truncatedDataBatches: string[][] = []
+    const truncatedMetadataBatches: Array<Array<{ memo_uuid: string; memo_title: string }>> = []
+    for (let i = 0; i < truncatedRerankData.length; i += batchSize) {
+        truncatedDataBatches.push(truncatedRerankData.slice(i, i + batchSize))
+        truncatedMetadataBatches.push(truncatedRerankMetadata.slice(i, i + batchSize))
     }
 
-    // rerank all batches concurrently using the processed query
     const results = (
-        await Promise.all(
-            rerankDataBatches.map((batch, idx) => RerankService.rerank(searchQuery, batch, rerankMetadataBatches[idx]))
+        await mapWithConcurrency(truncatedDataBatches, 3, async (batch, idx) =>
+            RerankService.rerank(searchQuery, batch, truncatedMetadataBatches[idx])
         )
     ).flat()
 
@@ -501,7 +496,10 @@ async function cragValidationNode(state: typeof RAGState.State) {
     )
 
     if (!ragConfig.crag?.enabled || rerankedResults.length === 0) {
-        logger.info({ cragEnabled: ragConfig.crag?.enabled, resultCount: rerankedResults.length }, 'CRAG skipped (disabled or no results)')
+        logger.info(
+            { cragEnabled: ragConfig.crag?.enabled, resultCount: rerankedResults.length },
+            'CRAG skipped (disabled or no results)'
+        )
         return { cragValidation: null }
     }
 
@@ -683,14 +681,13 @@ async function fetchParentChunksNode(state: typeof RAGState.State) {
     try {
         // Query to get parent chunk content for each child chunk
         // Format UUIDs as PostgreSQL array literal to avoid ANY() parameter expansion issues
-        const uuidArrayLiteral = `ARRAY[${childChunkUuids.map((uuid) => `'${uuid}'`).join(', ')}]::uuid[]`
         const sql = `
             SELECT 
                 c.uuid as child_uuid,
                 p.chunk_content as parent_content
             FROM skald_memochunk c
             LEFT JOIN skald_memoparentchunk p ON c.parent_chunk_id = p.uuid
-            WHERE c.uuid = ANY(${uuidArrayLiteral})
+            WHERE c.uuid = ANY(?::uuid[])
             AND p.uuid IS NOT NULL
         `
 
@@ -699,7 +696,7 @@ async function fetchParentChunksNode(state: typeof RAGState.State) {
                 child_uuid: string
                 parent_content: string
             }>
-        >(sql)
+        >(sql, [childChunkUuids])
 
         // Build map: child_chunk_uuid -> parent_chunk_content
         const parentChunkMap = new Map<string, string>()
@@ -797,6 +794,5 @@ const ragGraphDefinition = new StateGraph(RAGState)
     // Fan-in: buildLLMInputs waits for both contextReorder and fetchParentChunks
     .addEdge(['contextReorder', 'fetchParentChunks'], 'buildLLMInputs')
     .addEdge('buildLLMInputs', END)
-
 
 export const ragGraph = ragGraphDefinition.compile()

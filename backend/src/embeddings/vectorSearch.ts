@@ -5,6 +5,7 @@ import { VECTOR_SEARCH_TOP_K } from '@/settings'
 import { Operator } from '@/lib/filterUtils'
 import { applyEnhancedRanking, RankedResult } from '@/lib/searchRanking'
 import { Memo } from '@/entities/Memo'
+import { cacheSearchResults, getCachedSearchResults } from '@/lib/ragCache'
 
 export interface MemoChunkWithDistance {
     chunk: {
@@ -76,12 +77,32 @@ export const memoChunkVectorSearch = async (
     filters?: MemoFilter[],
     useEnhancedRanking: boolean = true
 ): Promise<MemoChunkWithDistanceAndScore[]> => {
+    const cacheScope = {
+        projectUuid: project.uuid,
+        topK,
+        similarityThreshold,
+        filters: filters ?? null,
+        useEnhancedRanking,
+    }
+
+    const cached = await getCachedSearchResults(`vector:${JSON.stringify(embeddingVector)}`, cacheScope)
+    if (cached) {
+        return cached as MemoChunkWithDistanceAndScore[]
+    }
+
     const { whereConditions, params } = buildFilterConditions(filters)
-    const allParams = [JSON.stringify(embeddingVector), JSON.stringify(embeddingVector), ...params]
+    const allParams = [
+        JSON.stringify(embeddingVector),
+        JSON.stringify(embeddingVector),
+        similarityThreshold,
+        project.uuid,
+        ...params,
+        topK * 2,
+    ]
 
     let whereClause = `
-        WHERE (skald_memochunk.embedding::halfvec(2048) <=> ?::halfvec(2048)) <= ${similarityThreshold}
-        AND skald_memochunk.project_id = '${project.uuid}'
+        WHERE (skald_memochunk.embedding::halfvec(2048) <=> ?::halfvec(2048)) <= ?
+        AND skald_memochunk.project_id = ?
     `
 
     if (whereConditions.length > 0) {
@@ -100,7 +121,7 @@ export const memoChunkVectorSearch = async (
         JOIN skald_memo ON skald_memochunk.memo_id = skald_memo.uuid
         ${whereClause}
         ORDER BY distance
-        LIMIT ${topK * 2}
+        LIMIT ?
     `
 
     try {
@@ -148,7 +169,7 @@ export const memoChunkVectorSearch = async (
             )
 
             // Sort by final_score and return topK
-            return ranked
+            const finalRanked = ranked
                 .sort((a, b) => b.final_score - a.final_score)
                 .slice(0, topK)
                 .map((r) => ({
@@ -164,16 +185,22 @@ export const memoChunkVectorSearch = async (
                     final_score: r.final_score,
                     ranking_factors: r.ranking_factors,
                 }))
+
+            await cacheSearchResults(`vector:${JSON.stringify(embeddingVector)}`, cacheScope, finalRanked)
+            return finalRanked
         }
 
         // Fallback to basic results without enhanced ranking
-        return basicResults
+        const finalBasic = basicResults
             .map((r) => ({
                 chunk: r.chunk,
                 distance: r.distance,
                 final_score: Math.max(0, Math.min(1, 1 - r.distance / 2)),
             }))
             .slice(0, topK)
+
+        await cacheSearchResults(`vector:${JSON.stringify(embeddingVector)}`, cacheScope, finalBasic)
+        return finalBasic
     } catch (error) {
         throw new Error(`Vector search error: ${error}`)
     }

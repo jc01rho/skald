@@ -3,6 +3,7 @@ import { buildFilterConditions, MemoFilter } from '@/lib/filterUtils'
 import { DI } from '@/di'
 import { logger } from '@/lib/logger'
 import { detectLanguage, Language } from '@/lib/languageDetector'
+import { cacheSearchResults, getCachedSearchResults } from '@/lib/ragCache'
 
 // RRF (Reciprocal Rank Fusion) constant - standard value from OneRAG
 const RRF_K = 60
@@ -42,29 +43,39 @@ export class HybridSearchService {
         // English/Latin scripts benefit more from semantic vector search.
         const detectedLang = detectLanguage(queryText)
         const isCJK =
-            detectedLang === Language.KOREAN ||
-            detectedLang === Language.JAPANESE ||
-            detectedLang === Language.CHINESE
+            detectedLang === Language.KOREAN || detectedLang === Language.JAPANESE || detectedLang === Language.CHINESE
         const vectorWeight = config.vectorWeight ?? (isCJK ? 0.5 : 0.7)
         const bm25Weight = config.bm25Weight ?? (isCJK ? 0.5 : 0.3)
+
+        const cacheScope = {
+            projectUuid: project.uuid,
+            topK,
+            similarityThreshold,
+            vectorWeight,
+            bm25Weight,
+            detectedLang,
+            filters: filters ?? null,
+        }
+
+        const cached = await getCachedSearchResults(queryText, cacheScope)
+        if (cached) {
+            return cached as HybridSearchResult[]
+        }
 
         logger.debug(
             { detectedLang, isCJK, vectorWeight, bm25Weight, query: queryText.slice(0, 50) },
             'Hybrid search: dynamic RRF weights applied'
         )
-        //1. Vector Search
-        const vectorResults = await this.vectorSearch(
-            project,
-            queryEmbedding,
-            topK * 2, // Get more results for fusion
-            similarityThreshold,
-            filters ? [filters] : undefined
-        )
-        //2. BM25 Search (PostgreSQL full-text search)
-        const bm25Results = await this.bm25Search(project, queryText, topK * 2, filters ? [filters] : undefined)
+        const [vectorResults, bm25Results] = await Promise.all([
+            this.vectorSearch(project, queryEmbedding, topK * 2, similarityThreshold, filters ? [filters] : undefined),
+            this.bm25Search(project, queryText, topK * 2, filters ? [filters] : undefined),
+        ])
         // Vector and BM25 results are already sorted by their respective scores
         const combined = this.combineScoresRRF(vectorResults, bm25Results, vectorWeight, bm25Weight)
-        return combined.sort((a, b) => b.hybrid_score - a.hybrid_score).slice(0, topK)
+        const finalResults = combined.sort((a, b) => b.hybrid_score - a.hybrid_score).slice(0, topK)
+        await cacheSearchResults(queryText, cacheScope, finalResults)
+
+        return finalResults
     }
 
     /**
@@ -78,11 +89,18 @@ export class HybridSearchService {
         filters?: MemoFilter[]
     ): Promise<Array<{ uuid: string; chunk_content: string; memo_uuid: string; vector_score: number }>> {
         const { whereConditions, params } = buildFilterConditions(filters || [])
-        const allParams = [JSON.stringify(embeddingVector), JSON.stringify(embeddingVector), ...params]
+        const allParams = [
+            JSON.stringify(embeddingVector),
+            JSON.stringify(embeddingVector),
+            similarityThreshold,
+            project.uuid,
+            ...params,
+            topK,
+        ]
 
         let whereClause = `
-            WHERE (skald_memochunk.embedding::halfvec(2048) <=> ?::halfvec(2048)) <= ${similarityThreshold}
-            AND skald_memochunk.project_id = '${project.uuid}'
+            WHERE (skald_memochunk.embedding::halfvec(2048) <=> ?::halfvec(2048)) <= ?
+            AND skald_memochunk.project_id = ?
         `
 
         if (whereConditions.length > 0) {
@@ -99,7 +117,7 @@ export class HybridSearchService {
             JOIN skald_memo ON skald_memochunk.memo_id = skald_memo.uuid
             ${whereClause}
             ORDER BY vector_score DESC
-            LIMIT ${topK}
+            LIMIT ?
         `
 
         try {
@@ -108,7 +126,7 @@ export class HybridSearchService {
             return (results || []).map((row) => ({
                 uuid: row.uuid,
                 chunk_content: row.chunk_content,
-            memo_uuid: row.memo_uuid,
+                memo_uuid: row.memo_uuid,
                 vector_score: Math.max(0, Math.min(1, row.vector_score)),
             }))
         } catch (error) {
@@ -149,9 +167,10 @@ export class HybridSearchService {
         filters?: MemoFilter[]
     ): Promise<Array<{ uuid: string; chunk_content: string; memo_uuid: string; bm25_score: number }>> {
         const { whereConditions, params } = buildFilterConditions(filters || [])
+        const allParams = [queryText, project.uuid, queryText, ...params, topK]
 
         let whereClause = `
-            WHERE skald_memochunk.project_id = '${project.uuid}'
+            WHERE skald_memochunk.project_id = ?
             AND to_tsvector('english', skald_memochunk.chunk_content) @@ plainto_tsquery('english', ?)
         `
 
@@ -170,16 +189,16 @@ export class HybridSearchService {
             JOIN skald_memo ON skald_memochunk.memo_id = skald_memo.uuid
             ${whereClause}
             ORDER BY bm25_score DESC
-            LIMIT ${topK}
+            LIMIT ?
         `
 
         try {
-            const results = await DI.em.getConnection().execute<any[]>(sql, [queryText, ...params])
+            const results = await DI.em.getConnection().execute<any[]>(sql, allParams)
 
             return (results || []).map((row) => ({
                 uuid: row.uuid,
                 chunk_content: row.chunk_content,
-            memo_uuid: row.memo_uuid,
+                memo_uuid: row.memo_uuid,
                 bm25_score: Math.max(0, Math.min(1, row.bm25_score)),
             }))
         } catch (error) {
@@ -198,10 +217,11 @@ export class HybridSearchService {
         filters?: MemoFilter[]
     ): Promise<Array<{ uuid: string; chunk_content: string; memo_uuid: string; bm25_score: number }>> {
         const { whereConditions, params } = buildFilterConditions(filters || [])
+        const allParams = [queryText, project.uuid, queryText, ...params, queryText, topK]
 
         let whereClause = `
-            WHERE skald_memochunk.project_id = '${project.uuid}'
-            AND similarity(skald_memochunk.chunk_content, ?) > 0.175
+            WHERE skald_memochunk.project_id = ?
+            AND skald_memochunk.chunk_content % ?
         `
 
         if (whereConditions.length > 0) {
@@ -217,17 +237,17 @@ export class HybridSearchService {
             FROM skald_memochunk
             JOIN skald_memo ON skald_memochunk.memo_id = skald_memo.uuid
             ${whereClause}
-            ORDER BY bm25_score DESC
-            LIMIT ${topK}
+            ORDER BY skald_memochunk.chunk_content <-> ?
+            LIMIT ?
         `
 
         try {
-            const results = await DI.em.getConnection().execute<any[]>(sql, [queryText, queryText, ...params])
+            const results = await DI.em.getConnection().execute<any[]>(sql, allParams)
 
             return (results || []).map((row) => ({
                 uuid: row.uuid,
                 chunk_content: row.chunk_content,
-            memo_uuid: row.memo_uuid,
+                memo_uuid: row.memo_uuid,
                 bm25_score: Math.max(0, Math.min(1, row.bm25_score)),
             }))
         } catch (error) {
