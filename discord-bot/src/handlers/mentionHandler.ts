@@ -149,7 +149,12 @@ export async function handleMention(message: Message, client: Client) {
                     editor.append(event.content)
                     break
                 case 'references':
-                    references = event.content
+                    // Backend sends references as JSON string, need to parse
+                    if (typeof event.content === 'string') {
+                        references = JSON.parse(event.content)
+                    } else {
+                        references = event.content
+                    }
                     break
                 case 'done':
                     break
