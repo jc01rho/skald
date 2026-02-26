@@ -2,7 +2,8 @@ export type SSEEvent =
     | { type: 'token'; content: string }
     | {
           type: 'references'
-          content: Record<string, { memo_uuid: string; memo_title: string; source_url?: string }>
+          // Backend sends JSON.stringify(references), so content is actually a string
+          content: string | Record<string, { memo_uuid: string; memo_title: string; source_url?: string }>
       }
     | { type: 'done'; chat_id: string }
     | { type: 'error'; content: string }
