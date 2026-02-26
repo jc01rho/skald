@@ -275,5 +275,3 @@ kubectl logs -f deployment/api-server -n skald | grep -E "LLM|invoke|fallback|re
 - **SQL ANY() Error** - 빈 배열 필터는 자동으로 `FALSE` 처리
 - **Memo Not Found Loop** - 존재하지 않는 memo는 재시도 없이 종료
 - **Deployment Label Mismatch** - `component` 라벨 확인 (deploy.sh에서 사용)
-cd discord-bot && pnpm install && pnpm run dev
-```
