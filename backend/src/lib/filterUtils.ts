@@ -107,22 +107,21 @@ export function buildFilterConditions(filters?: MemoFilter[]): { whereConditions
                 // not_in 빈 배열 = 모든 것 매치 → 조건 스킵
                 continue
             }
-            // Format array as PostgreSQL array literal: ARRAY['tag1', 'tag2']::text[]
-            const escapedTags = filter.value.map((tag: string) => `'${String(tag).replace(/'/g, "''")}'`).join(', ')
-            const arrayLiteral = `ARRAY[${escapedTags}]::text[]`
+            const normalizedTags = filter.value.map((tag: string) => String(tag))
             const tagSubquery =
                 filter.operator === 'not_in'
                     ? `EXISTS (
                     SELECT 1 FROM skald_memotag
                     WHERE skald_memotag.memo_id = skald_memo.uuid
-                    AND skald_memotag.tag != ALL(${arrayLiteral})
+                    AND skald_memotag.tag != ALL(?::text[])
                 )`
                     : `EXISTS (
                     SELECT 1 FROM skald_memotag
                     WHERE skald_memotag.memo_id = skald_memo.uuid
-                    AND skald_memotag.tag = ANY(${arrayLiteral})
+                    AND skald_memotag.tag = ANY(?::text[])
                 )`
             whereConditions.push(tagSubquery)
+            params.push(normalizedTags)
             continue
         }
         let fieldPath = `skald_memo.${filter.field}`
@@ -130,21 +129,24 @@ export function buildFilterConditions(filters?: MemoFilter[]): { whereConditions
             fieldPath = `skald_memo.metadata->>?`
             params.push(filter.field)
         }
-        if ((filter.operator === 'in' || filter.operator === 'not_in') && Array.isArray(filter.value) && filter.value.length === 0) {
+        if (
+            (filter.operator === 'in' || filter.operator === 'not_in') &&
+            Array.isArray(filter.value) &&
+            filter.value.length === 0
+        ) {
             if (filter.operator === 'in') {
                 whereConditions.push('FALSE')
             }
             continue
         }
-        // Handle in/not_in operators with inline array literal to avoid ANY() parameter expansion issues
         if (filter.operator === 'in' || filter.operator === 'not_in') {
-            const escapedValues = filter.value.map((v: any) => `'${String(v).replace(/'/g, "''")}'`).join(', ')
-            const arrayLiteral = `ARRAY[${escapedValues}]::text[]`
+            const normalizedValues = filter.value.map((v: any) => String(v))
             if (filter.operator === 'in') {
-                whereConditions.push(`${fieldPath} = ANY(${arrayLiteral})`)
+                whereConditions.push(`${fieldPath} = ANY(?::text[])`)
             } else {
-                whereConditions.push(`${fieldPath} != ALL(${arrayLiteral})`)
+                whereConditions.push(`${fieldPath} != ALL(?::text[])`)
             }
+            params.push(normalizedValues)
             continue
         }
         whereConditions.push(filterByOperator[filter.operator].getWhereClause(fieldPath))

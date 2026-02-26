@@ -51,14 +51,34 @@ export class HNSWOptimizationService {
         efSearch: number = DEFAULT_HNSW_CONFIG.efSearch
     ): Promise<void> {
         try {
-            await em.getConnection().execute(`
-                SET hnsw.ef_search = ${efSearch}
-            `)
+            await em.getConnection().execute("SELECT set_config('hnsw.ef_search', ?, false)", [String(efSearch)])
 
             logger.debug({ efSearch }, 'HNSW search settings configured')
         } catch (error) {
             logger.error({ err: error }, 'Failed to configure HNSW search settings')
             throw error
+        }
+    }
+
+    static async applyRuntimeSearchTuning(em: EntityManager): Promise<void> {
+        try {
+            await em
+                .getConnection()
+                .execute("SELECT set_config('hnsw.ef_search', ?, false)", [String(DEFAULT_HNSW_CONFIG.efSearch)])
+        } catch (error) {
+            logger.warn({ err: error }, 'Failed to apply hnsw.ef_search runtime tuning')
+        }
+
+        try {
+            await em.getConnection().execute("SELECT set_config('hnsw.iterative_scan', ?, false)", ['strict_order'])
+        } catch (error) {
+            logger.warn({ err: error }, 'Failed to apply hnsw.iterative_scan runtime tuning')
+        }
+
+        try {
+            await em.getConnection().execute("SELECT set_config('ivfflat.probes', ?, false)", ['10'])
+        } catch (error) {
+            logger.warn({ err: error }, 'Failed to apply ivfflat.probes runtime tuning')
         }
     }
 

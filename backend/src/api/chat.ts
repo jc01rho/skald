@@ -22,6 +22,8 @@ import {
     extractMemoUuidsFromRerankResults,
     extractMemoUuidsFromReferences,
 } from '@/lib/lazyReprocessService'
+import { cacheResponse, getCachedResponse } from '@/lib/ragCache'
+import crypto from 'crypto'
 
 export const chat = async (req: Request, res: Response) => {
     const query = req.body.query
@@ -77,9 +79,40 @@ export const chat = async (req: Request, res: Response) => {
     }
 
     const routeResult = routeQuery(query)
+
+    const responseCacheKey = crypto
+        .createHash('sha256')
+        .update(
+            JSON.stringify({
+                projectUuid: project.uuid,
+                query,
+                filters,
+                stream,
+                chatId: chatId || null,
+                clientSystemPrompt: clientSystemPrompt || null,
+                ragConfig: parsedRagConfig,
+            })
+        )
+        .digest('hex')
+
+    if (!stream) {
+        const cachedResponse = await getCachedResponse(responseCacheKey)
+        if (cachedResponse) {
+            const finalChatId = await createChatMessagePair(project, query, cachedResponse, chatId, clientSystemPrompt)
+            return res.status(200).json({
+                ok: true,
+                chat_id: finalChatId,
+                response: cachedResponse,
+                intermediate_steps: [],
+            })
+        }
+    }
+
     if (routeResult.route !== 'rag' && routeResult.response) {
         const directResponse = routeResult.response
         const finalChatId = await createChatMessagePair(project, query, directResponse, chatId, clientSystemPrompt)
+
+        await cacheResponse(responseCacheKey, directResponse)
 
         if (stream) {
             _setStreamingResponseHeaders(res)
@@ -284,6 +317,8 @@ export const chat = async (req: Request, res: Response) => {
         }
 
         const finalChatId = await createChatMessagePair(project, query, finalResponse, chatId, clientSystemPrompt)
+
+        await cacheResponse(responseCacheKey, finalResponse)
 
         const response: any = {
             ok: true,
