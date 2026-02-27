@@ -41,6 +41,23 @@ function extractCitedReferenceKeys(text: string): Set<string> {
     return citedKeys
 }
 
+function linkifyCitationsWithReferences(
+    text: string,
+    references: Record<string, { memo_uuid: string; memo_title: string; source_url?: string }>
+): string {
+    return text.replace(/\[\[(\d+)\]\]|\[(\d+)\]/g, (match, bracketedKey, plainKey) => {
+        const key = bracketedKey ?? plainKey
+        if (!key) return match
+
+        const sourceUrl = references[key]?.source_url?.trim()
+        if (!sourceUrl) {
+            return match
+        }
+
+        return `[${key}](${sourceUrl})`
+    })
+}
+
 // Product ID keywords for automatic detection
 const PRODUCT_ID_KEYWORDS = [
     'sast',
@@ -180,6 +197,19 @@ export async function handleMention(message: Message, client: Client) {
         }
 
         await editor.finalize()
+
+        const linkifiedResponse = linkifyCitationsWithReferences(fullResponse, references)
+        if (linkifiedResponse !== fullResponse) {
+            try {
+                const finalContent =
+                    linkifiedResponse.length > 1900 ? `${linkifiedResponse.slice(0, 1897)}...` : linkifiedResponse
+                if (finalContent.trim().length > 0) {
+                    await reply.edit(finalContent)
+                }
+            } catch (editError) {
+                logger.warn({ editError }, 'Failed to apply citation links to final response (non-fatal)')
+            }
+        }
 
         const citedReferenceKeys = extractCitedReferenceKeys(fullResponse)
         const citedReferenceEntries = Object.entries(references).filter(([key]) => citedReferenceKeys.has(key))
