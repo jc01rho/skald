@@ -1,8 +1,9 @@
 # PROJECT KNOWLEDGE BASE
 
-**Generated:** 2026-02-25
-**Commit:** d710f8f
+**Generated:** 2026-02-27
+**Commit:** f020911
 **Branch:** main
+**DevCenter Project:** [147 - Parrot 프로젝트](https://devcenter.sparrow.im/projects/147)
 
 ## OVERVIEW
 
@@ -211,11 +212,13 @@ cd discord-bot && pnpm install && pnpm run dev
 
 **Deployment Workflow:**
 
+- **ALWAYS follow this exact sequence:** `github push` → wait for GitHub Actions build completion → `k8s/deploy.sh -y`
+
 1. **Commit & Push** - 코드 커밋 후 GitHub에 푸시
 2. **GitHub Actions** - 자동으로 Docker 이미지 빌드 및 푸시 (Backend, Worker)
-   - `.github/workflows/build-backend.yml` - Backend 이미지 빌드
-   - `.github/workflows/build-worker.yml` - Worker 이미지 빌드
-   - 트리거: `main` 브랜치 푸시 또는 수동 실행
+    - `.github/workflows/build-backend.yml` - Backend 이미지 빌드
+    - `.github/workflows/build-worker.yml` - Worker 이미지 빌드
+    - 트리거: `main` 브랜치 푸시 또는 수동 실행
 3. **Wait for GH Actions** - GitHub Actions 완료 대기 (약 1-2분)
 4. **Run deploy.sh** - Kubernetes 배포 실행
 
@@ -225,6 +228,9 @@ cd k8s && ./deploy.sh
 
 # 또는 환경변수로 자동 승인
 cd k8s && echo "y" | ./deploy.sh
+
+# 항상 사용하는 자동 승인 배포 명령
+cd k8s && ./deploy.sh -y
 ```
 
 **Deploy Script Phases:**
@@ -275,3 +281,67 @@ kubectl logs -f deployment/api-server -n skald | grep -E "LLM|invoke|fallback|re
 - **SQL ANY() Error** - 빈 배열 필터는 자동으로 `FALSE` 처리
 - **Memo Not Found Loop** - 존재하지 않는 memo는 재시도 없이 종료
 - **Deployment Label Mismatch** - `component` 라벨 확인 (deploy.sh에서 사용)
+
+<!-- gitnexus:start -->
+
+# GitNexus MCP
+
+This project is indexed by GitNexus as **skald** (2511 symbols, 6116 relationships, 179 execution flows).
+
+GitNexus provides a knowledge graph over this codebase — call chains, blast radius, execution flows, and semantic search.
+
+## Always Start Here
+
+For any task involving code understanding, debugging, impact analysis, or refactoring, you must:
+
+1. **Read `gitnexus://repo/{name}/context`** — codebase overview + check index freshness
+2. **Match your task to a skill below** and **read that skill file**
+3. **Follow the skill's workflow and checklist**
+
+> If step 1 warns the index is stale, run `npx gitnexus analyze` in the terminal first.
+
+## Skills
+
+| Task                                         | Read this skill file                               |
+| -------------------------------------------- | -------------------------------------------------- |
+| Understand architecture / "How does X work?" | `.claude/skills/gitnexus/exploring/SKILL.md`       |
+| Blast radius / "What breaks if I change X?"  | `.claude/skills/gitnexus/impact-analysis/SKILL.md` |
+| Trace bugs / "Why is X failing?"             | `.claude/skills/gitnexus/debugging/SKILL.md`       |
+| Rename / extract / split / refactor          | `.claude/skills/gitnexus/refactoring/SKILL.md`     |
+
+## Tools Reference
+
+| Tool             | What it gives you                                                        |
+| ---------------- | ------------------------------------------------------------------------ |
+| `query`          | Process-grouped code intelligence — execution flows related to a concept |
+| `context`        | 360-degree symbol view — categorized refs, processes it participates in  |
+| `impact`         | Symbol blast radius — what breaks at depth 1/2/3 with confidence         |
+| `detect_changes` | Git-diff impact — what do your current changes affect                    |
+| `rename`         | Multi-file coordinated rename with confidence-tagged edits               |
+| `cypher`         | Raw graph queries (read `gitnexus://repo/{name}/schema` first)           |
+| `list_repos`     | Discover indexed repos                                                   |
+
+## Resources Reference
+
+Lightweight reads (~100-500 tokens) for navigation:
+
+| Resource                                       | Content                                   |
+| ---------------------------------------------- | ----------------------------------------- |
+| `gitnexus://repo/{name}/context`               | Stats, staleness check                    |
+| `gitnexus://repo/{name}/clusters`              | All functional areas with cohesion scores |
+| `gitnexus://repo/{name}/cluster/{clusterName}` | Area members                              |
+| `gitnexus://repo/{name}/processes`             | All execution flows                       |
+| `gitnexus://repo/{name}/process/{processName}` | Step-by-step trace                        |
+| `gitnexus://repo/{name}/schema`                | Graph schema for Cypher                   |
+
+## Graph Schema
+
+**Nodes:** File, Function, Class, Interface, Method, Community, Process
+**Edges (via CodeRelation.type):** CALLS, IMPORTS, EXTENDS, IMPLEMENTS, DEFINES, MEMBER_OF, STEP_IN_PROCESS
+
+```cypher
+MATCH (caller)-[:CodeRelation {type: 'CALLS'}]->(f:Function {name: "myFunc"})
+RETURN caller.name, caller.filePath
+```
+
+<!-- gitnexus:end -->

@@ -1,4 +1,4 @@
-import { Client, EmbedBuilder, Message } from 'discord.js'
+import { Client, EmbedBuilder, Message, ThreadChannel } from 'discord.js'
 import { SkaldClient } from '../client/SkaldClient.js'
 import { DiscordStreamEditor } from '../discord/DiscordStreamEditor.js'
 import { config } from '../config.js'
@@ -56,6 +56,13 @@ function linkifyCitationsWithReferences(
 
         return `[${key}](${sourceUrl})`
     })
+}
+
+function normalizeCitationSpacing(text: string): string {
+    return text
+        .replace(/(\[\d+\]\([^\s)]+\))(?=\[\d+\]\([^\s)]+\))/g, '$1 ')
+        .replace(/(\[\[\d+\]\])(?=\[\[\d+\]\])/g, '$1 ')
+        .replace(/(\[\d+\])(?=\[\d+\])/g, '$1 ')
 }
 
 // Product ID keywords for automatic detection
@@ -120,20 +127,59 @@ function detectProductId(query: string): ProductId | undefined {
 }
 
 const conversationHistory = new Map<string, Array<{ role: string; content: string }>>()
+
+function buildThreadName(query: string): string {
+    const normalized = query.replace(/\s+/g, ' ').trim()
+    if (!normalized) {
+        return 'Skald 답변 스레드'
+    }
+
+    const compact = normalized.slice(0, 70)
+    return `🤖 ${compact}`
+}
+
+async function resolveResponseThread(message: Message, query: string): Promise<ThreadChannel> {
+    if (message.channel.isThread()) {
+        return message.channel
+    }
+
+    return message.startThread({
+        name: buildThreadName(query),
+        autoArchiveDuration: 60,
+    })
+}
+
 export async function handleMention(message: Message, client: Client) {
     if (message.author.bot) return
     if (!client.user || !message.mentions.has(client.user)) return
 
     const query = message.content.replace(/<@!?\d+>/g, '').trim()
-    if (!query) {
-        await message.reply('질문을 입력해 주세요! 예: `@Skald Bot 우리 프로젝트 아키텍처는?`')
+
+    let responseThread: ThreadChannel
+    try {
+        responseThread = await resolveResponseThread(message, query)
+    } catch (threadError) {
+        logger.error({ threadError }, 'Failed to create response thread')
+
+        try {
+            await message.author.send('스레드 생성에 실패했습니다. 봇의 스레드 생성 권한을 확인해 주세요.')
+        } catch (dmError) {
+            logger.warn({ dmError }, 'Failed to DM thread creation failure')
+            await message.reply('스레드 생성에 실패했습니다. 봇의 스레드 생성 권한을 확인해 주세요.')
+        }
+
         return
     }
 
-    const historyKey = `${message.author.id}-${message.channelId}`
+    if (!query) {
+        await responseThread.send('질문을 입력해 주세요! 예: `@Skald Bot 우리 프로젝트 아키텍처는?`')
+        return
+    }
+
+    const historyKey = `${message.author.id}-${responseThread.id}`
     const history = conversationHistory.get(historyKey) || []
 
-    const reply = await message.reply('⏳ 답변을 생성하고 있습니다...')
+    const reply = await responseThread.send('⏳ 답변을 생성하고 있습니다...')
     const editor = new DiscordStreamEditor(reply)
 
     try {
@@ -196,7 +242,7 @@ export async function handleMention(message: Message, client: Client) {
             }
         }
 
-        const finalResponse = linkifyCitationsWithReferences(fullResponse, references)
+        const finalResponse = normalizeCitationSpacing(linkifyCitationsWithReferences(fullResponse, references))
 
         try {
             await editor.finalize(finalResponse)
@@ -235,7 +281,7 @@ export async function handleMention(message: Message, client: Client) {
                     .setTitle('📚 참고 자료')
                     .setColor(0x5865f2)
                     .setDescription(description)
-                await message.reply({ embeds: [refEmbed] })
+                await responseThread.send({ embeds: [refEmbed] })
             } catch (embedError) {
                 logger.warn({ embedError }, 'Failed to send reference embed (non-fatal)')
             }
@@ -252,7 +298,7 @@ export async function handleMention(message: Message, client: Client) {
                     .setTitle('🔗 문서 원문 링크')
                     .setColor(0x2ecc71)
                     .setDescription(description)
-                await message.reply({ embeds: [linkEmbed] })
+                await responseThread.send({ embeds: [linkEmbed] })
             } catch (embedError) {
                 logger.warn({ embedError }, 'Failed to send info doc links embed (non-fatal)')
             }
