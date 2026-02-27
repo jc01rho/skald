@@ -105,7 +105,6 @@ Parrot은 **RAG(Retrieval-Augmented Generation)** 아키텍처를 기반으로 �
 
 ### AI/ML
 
-- **CLI Proxy API** - LLM 호출 (다중 모델 폴백 지원)
 - **Sentence Transformers** - 문서 임베딩
 - **BM25 + Vector Search** - 하이브리드 검색
 
@@ -210,39 +209,7 @@ Parrot: SAST 분석 결과의 우선순위는 다음 기준으로 정할 수 있
 
 ---
 
-## 🛠️ 시작하기
 
-### Docker Compose (로컬 테스트)
 
-```bash
-git clone https://github.com/jc01rho/skald
-cd skald
-echo "CLI_PROXY_API_KEY=your_key" > .env
-docker-compose up
-```
-
-### Kubernetes (프로덕션)
-
-```bash
-cd k8s
-# secret.yaml 설정 후
-./deploy.sh
-```
-
----
-
-## 📞 문의
-
-- **이슈 리포트**: [GitHub Issues](https://github.com/jc01rho/skald/issues)
-- **기능 요청**: [GitHub Discussions](https://github.com/jc01rho/skald/discussions)
-
----
-
-## 📜 라이선스
-
-MIT License (오픈소스)
-Enterprise Edition (`ee/` 디렉토리)은 별도 라이선스 적용
-
----
 
 > **Parrot** - 조직의 지식을 AI로 연결합니다. 🦜
