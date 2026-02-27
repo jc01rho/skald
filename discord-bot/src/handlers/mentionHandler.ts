@@ -65,6 +65,56 @@ function normalizeCitationSpacing(text: string): string {
         .replace(/(\[\d+\])(?=\[\d+\])/g, '$1 ')
 }
 
+function splitForDiscord(content: string, maxLength: number = 1900): string[] {
+    const normalized = content.trim()
+    if (!normalized) return []
+    if (normalized.length <= maxLength) return [normalized]
+
+    const chunks: string[] = []
+    const lines = normalized.split('\n')
+    let current = ''
+
+    for (const line of lines) {
+        const candidate = current ? `${current}\n${line}` : line
+        if (candidate.length <= maxLength) {
+            current = candidate
+            continue
+        }
+
+        if (current) {
+            chunks.push(current)
+            current = ''
+        }
+
+        if (line.length <= maxLength) {
+            current = line
+            continue
+        }
+
+        for (let start = 0; start < line.length; start += maxLength) {
+            chunks.push(line.slice(start, start + maxLength))
+        }
+    }
+
+    if (current) {
+        chunks.push(current)
+    }
+
+    return chunks
+}
+
+async function sendFinalResponseFallback(thread: ThreadChannel, finalResponse: string): Promise<void> {
+    const chunks = splitForDiscord(finalResponse)
+    if (chunks.length === 0) {
+        return
+    }
+
+    await thread.send('⚠️ 스트리밍 전송 중 문제가 발생해 전체 답변을 일반 메시지로 재전송합니다.')
+    for (const chunk of chunks) {
+        await thread.send(chunk)
+    }
+}
+
 // Product ID keywords for automatic detection
 const PRODUCT_ID_KEYWORDS = [
     'sast',
@@ -247,7 +297,8 @@ export async function handleMention(message: Message, client: Client) {
         try {
             await editor.finalize(finalResponse)
         } catch (editError) {
-            logger.warn({ editError }, 'Failed to send final response chunks (non-fatal)')
+            logger.error({ editError }, 'Failed to stream final response, falling back to plain messages')
+            await sendFinalResponseFallback(responseThread, finalResponse)
         }
 
         const citedReferenceKeys = extractCitedReferenceKeys(fullResponse)

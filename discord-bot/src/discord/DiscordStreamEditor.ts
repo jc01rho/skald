@@ -40,7 +40,7 @@ export class DiscordStreamEditor {
             try {
                 await this.performEdit()
             } catch (error) {
-                console.error('Failed to edit message:', error)
+                logger.error({ error }, 'Failed to edit message')
                 // Retry after a short delay if not finalized
                 if (!this.isFinalized) {
                     this.scheduleEdit()
@@ -164,6 +164,7 @@ export class DiscordStreamEditor {
                 await this.performEdit()
             } catch (error) {
                 logger.error({ error }, 'Failed to finalize message')
+                throw new Error('Failed to finalize streaming message')
             }
             return
         }
