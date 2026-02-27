@@ -201,6 +201,10 @@ async function resolveResponseThread(message: Message, query: string): Promise<T
 
 export async function handleMention(message: Message, client: Client) {
     if (message.author.bot) return
+
+    const hasBroadcastMention = message.mentions.everyone || /(^|\s)@(everyone|here)\b/i.test(message.content)
+    if (hasBroadcastMention) return
+
     if (!client.user || !message.mentions.has(client.user)) return
 
     const query = message.content.replace(/<@!?\d+>/g, '').trim()
