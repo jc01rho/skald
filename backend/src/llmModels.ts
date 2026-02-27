@@ -8,7 +8,7 @@ export const SUPPORTED_LLM_MODELS = {
         // ========================================
         'qwen-3.5': { slug: 'qwen-3.5', name: 'Qwen 3.5' },
         'gemini-3.1-pro': { slug: 'gemini-3.1-pro', name: 'Gemini 3.1 Pro' },
-        'glm-4.7': { slug: 'glm-4.7', name: 'GLM 4.7' },
+        'glm-5': { slug: 'glm-5', name: 'GLM 5' },
         'deepseek-v3.2-reasoner': { slug: 'deepseek-v3.2-reasoner', name: 'DeepSeek V3.2 Reasoner' },
         'gemini-2.5-pro': { slug: 'gemini-2.5-pro', name: 'Gemini 2.5 Pro' },
         'qwen3-max': { slug: 'qwen3-max', name: 'Qwen 3 Max' },
@@ -22,7 +22,7 @@ export const SUPPORTED_LLM_MODELS = {
             name: 'Gemini 2.5 Computer Use Preview',
         },
         'kimi-k2-0905': { slug: 'kimi-k2-0905', name: 'Kimi K2 0905' },
-        'kimi-k2': { slug: 'kimi-k2', name: 'Kimi K2' },
+        kimi: { slug: 'kimi', name: 'Kimi' },
         'qwen3-max-preview': { slug: 'qwen3-max-preview', name: 'Qwen 3 Max Preview' },
         'qwen3-coder-plus': { slug: 'qwen3-coder-plus', name: 'Qwen 3 Coder Plus' },
         'qwen3-235b-a22b-thinking-2507': {
@@ -36,9 +36,9 @@ export const SUPPORTED_LLM_MODELS = {
         'deepseek-r1': { slug: 'deepseek-r1', name: 'DeepSeek R1' },
         'deepseek-v3.2': { slug: 'deepseek-v3.2', name: 'DeepSeek V3.2' },
         'deepseek-v3.2-chat': { slug: 'deepseek-v3.2-chat', name: 'DeepSeek V3.2 Chat' },
-        'tstars2.0': { slug: 'tstars2.0', name: 'TStars 2.0' },
+        'giga-potato': { slug: 'giga-potato', name: 'Giga Potato' },
         sonnet: { slug: 'sonnet', name: 'Sonnet' },
-        opus: { slug: 'opus', name: 'Opus' },
+        // opus removed - using free instead
     },
 }
 
@@ -51,8 +51,8 @@ export function getDefaultLLMModels() {
     const models = SUPPORTED_LLM_MODELS['cli-proxy-api'] as Record<string, { slug: string; name: string }>
     return {
         'cli-proxy-api': {
-            defaultChatModel: models[config.defaultChatModel] || models['qwen3-max'],
-            defaultClassificationModel: models[config.defaultClassificationModel] || models['qwen3-max'],
+            defaultChatModel: models[config.defaultChatModel] || models['gemini-3.1-pro'],
+            defaultClassificationModel: models[config.defaultClassificationModel] || models['qwen-3.5'],
         },
     }
 }
