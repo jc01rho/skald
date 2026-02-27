@@ -1,7 +1,9 @@
 import { Message } from 'discord.js'
+import { logger } from '../logger.js'
 
 export class DiscordStreamEditor {
     private message: Message
+    private extraMessages: Message[] = []
     private buffer: string = ''
     private lastEditTime: number = 0
     private timer: NodeJS.Timeout | null = null
@@ -48,39 +50,107 @@ export class DiscordStreamEditor {
     }
 
     private async performEdit(): Promise<void> {
-        const content = this.formatContent()
-        
-        // Discord doesn't allow empty messages
-        if (!content || content.trim().length === 0) {
+        const chunks = this.formatChunks()
+
+        if (chunks.length === 0) {
             return
         }
 
-        try {
-            await this.message.edit(content)
-            this.lastEditTime = Date.now()
-        } catch (error) {
-            console.error('Failed to edit message:', error)
-            throw error // Re-throw so scheduleEdit can catch it
-        }
+        await this.syncMessages(chunks)
+        this.lastEditTime = Date.now()
     }
 
-    private formatContent(): string {
-        let content = this.buffer
+    private splitMessage(text: string): string[] {
+        const normalized = text.trim()
+        if (!normalized) {
+            return []
+        }
 
-        if (content.length > this.MAX_LENGTH) {
-            content = content.slice(0, this.MAX_LENGTH - 3) + '...'
+        if (normalized.length <= this.MAX_LENGTH) {
+            return [normalized]
+        }
+
+        const chunks: string[] = []
+        const lines = normalized.split('\n')
+        let current = ''
+
+        for (const line of lines) {
+            const candidate = current ? `${current}\n${line}` : line
+            if (candidate.length <= this.MAX_LENGTH) {
+                current = candidate
+                continue
+            }
+
+            if (current) {
+                chunks.push(current)
+                current = ''
+            }
+
+            if (line.length <= this.MAX_LENGTH) {
+                current = line
+                continue
+            }
+
+            for (let start = 0; start < line.length; start += this.MAX_LENGTH) {
+                chunks.push(line.slice(start, start + this.MAX_LENGTH))
+            }
+        }
+
+        if (current) {
+            chunks.push(current)
+        }
+
+        return chunks
+    }
+
+    private formatChunks(): string[] {
+        const chunks = this.splitMessage(this.buffer)
+        if (chunks.length === 0) {
+            return []
         }
 
         if (!this.isFinalized) {
-            return `${this.STREAMING_INDICATOR} ${content}`
+            chunks[0] = `${this.STREAMING_INDICATOR} ${chunks[0]}`
         }
 
-        return content
+        return chunks
     }
 
-    async finalize(): Promise<void> {
+    private async syncMessages(chunks: string[]): Promise<void> {
+        await this.message.edit(chunks[0])
+
+        for (let index = 1; index < chunks.length; index++) {
+            const targetIndex = index - 1
+            const existing = this.extraMessages[targetIndex]
+
+            if (existing) {
+                await existing.edit(chunks[index])
+                continue
+            }
+
+            const created = await this.message.reply(chunks[index])
+            this.extraMessages.push(created)
+        }
+
+        if (this.extraMessages.length > chunks.length - 1) {
+            const staleMessages = this.extraMessages.splice(chunks.length - 1)
+            for (const stale of staleMessages) {
+                try {
+                    await stale.delete()
+                } catch (error) {
+                    logger.warn({ error }, 'Failed to delete stale streaming message')
+                }
+            }
+        }
+    }
+
+    async finalize(finalContent?: string): Promise<void> {
         if (this.isFinalized) {
             return
+        }
+
+        if (typeof finalContent === 'string') {
+            this.buffer = finalContent
         }
 
         this.isFinalized = true
@@ -93,7 +163,7 @@ export class DiscordStreamEditor {
             try {
                 await this.performEdit()
             } catch (error) {
-                console.error('Failed to finalize message:', error)
+                logger.error({ error }, 'Failed to finalize message')
             }
             return
         }
@@ -103,6 +173,7 @@ export class DiscordStreamEditor {
 
     async showError(error: string): Promise<void> {
         this.isFinalized = true
+        this.buffer = ''
 
         if (this.timer !== null) {
             clearTimeout(this.timer)
@@ -113,8 +184,19 @@ export class DiscordStreamEditor {
 
         try {
             await this.message.edit(errorMessage)
+
+            if (this.extraMessages.length > 0) {
+                const staleMessages = this.extraMessages.splice(0)
+                for (const stale of staleMessages) {
+                    try {
+                        await stale.delete()
+                    } catch (deleteError) {
+                        logger.warn({ deleteError }, 'Failed to delete stale error message chunk')
+                    }
+                }
+            }
         } catch (editError) {
-            console.error('Failed to show error message:', editError)
+            logger.error({ editError }, 'Failed to show error message')
         }
     }
 }
