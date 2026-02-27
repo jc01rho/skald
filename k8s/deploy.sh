@@ -786,6 +786,19 @@ deploy_discord_bot() {
         exit 1
     fi
 
+    # 강제 롤아웃 리스타트 (latest 태그 갱신을 위해)
+    # 이미지가 변경되지 않았더라도(latest), 파드를 재시작하여 새 이미지를 pull하도록 함
+    log_info "Discord Bot Deployment 롤아웃 리스타트 실행..."
+    kubectl rollout restart deployment/discord-bot -n "$NAMESPACE"
+
+    # 롤아웃 완료 대기
+    log_info "Discord Bot 롤아웃 완료 대기 중..."
+    kubectl rollout status deployment/discord-bot -n "$NAMESPACE"
+
+    # 파드가 안정화될 때까지 잠시 대기
+    log_info "Discord Bot 파드 안정화 대기 중..."
+    sleep 5
+
     # Discord Bot Pod 준비 대기
     wait_for_pods "component=discord-bot" 300
 
