@@ -108,7 +108,7 @@ export const LLM_DEFAULT_CHAT_MODEL = process.env.LLM_DEFAULT_CHAT_MODEL || 'gem
 export const LLM_DEFAULT_CLASSIFICATION_MODEL = process.env.LLM_DEFAULT_CLASSIFICATION_MODEL || 'qwen-3.5'
 
 // Fallback chain: comma-separated model slugs (first = highest priority)
-const DEFAULT_FALLBACK_CHAIN = 'gemini-3.1-pro,qwen-3.5,deepseek-v3.2,glm-5,kimi,qwen3-235b,free,gemini-2.5-flash-lite,gemini-3-flash-preview,gemini-2.5-computer-use-preview-10-2025,kimi-k2-0905,qwen3-max-preview,qwen3-coder-plus,qwen3-235b-a22b-thinking-2507,qwen3-235b-a22b-instruct,qwen3-32b,deepseek-v3.2-reasoner,deepseek-v3.1,deepseek-v3,deepseek-r1,deepseek-v3.2-chat,giga-potato,sonnet,free'
+const DEFAULT_FALLBACK_CHAIN = 'gemini-3.1-pro,qwen-3.5,deepseek-v3.2,glm-5,kimi,qwen3-235b,free,gemini-3-flash-preview,qwen3-max-preview,qwen3-coder-plus,qwen3-235b-a22b-thinking-2507,qwen3-235b-a22b-instruct,qwen3-32b,deepseek-v3.2-reasoner,deepseek-v3.1,deepseek-v3,deepseek-r1,deepseek-v3.2-chat,giga-potato,sonnet,free'
 export const LLM_FALLBACK_CHAIN = (process.env.LLM_FALLBACK_CHAIN || DEFAULT_FALLBACK_CHAIN).split(',').map(s => s.trim())
 
 /**
