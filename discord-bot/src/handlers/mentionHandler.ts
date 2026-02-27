@@ -26,6 +26,21 @@ function extractInfoDocUrls(text: string): string[] {
     return Array.from(found)
 }
 
+function extractCitedReferenceKeys(text: string): Set<string> {
+    const citedKeys = new Set<string>()
+    const citationRegex = /\[\[(\d+)\]\]|\[(\d+)\]/g
+    let match: RegExpExecArray | null = null
+
+    while ((match = citationRegex.exec(text)) !== null) {
+        const key = match[1] ?? match[2]
+        if (key) {
+            citedKeys.add(key)
+        }
+    }
+
+    return citedKeys
+}
+
 // Product ID keywords for automatic detection
 const PRODUCT_ID_KEYWORDS = [
     'sast',
@@ -166,25 +181,33 @@ export async function handleMention(message: Message, client: Client) {
 
         await editor.finalize()
 
-        const inferredInfoDocUrls = extractInfoDocUrls(fullResponse)
-        const referenceInfoDocUrls = Object.values(references).flatMap((ref) => extractInfoDocUrls(ref.memo_title))
+        const citedReferenceKeys = extractCitedReferenceKeys(fullResponse)
+        const citedReferenceEntries = Object.entries(references).filter(([key]) => citedReferenceKeys.has(key))
 
-        const allInfoDocUrls = Array.from(new Set([...inferredInfoDocUrls, ...referenceInfoDocUrls]))
+        const inferredInfoDocUrls = extractInfoDocUrls(fullResponse)
+        const citedReferenceSourceUrls = citedReferenceEntries
+            .map(([, ref]) => ref.source_url?.trim())
+            .filter((url): url is string => Boolean(url))
+        const citedReferenceInfoDocUrls = citedReferenceEntries.flatMap(([, ref]) => extractInfoDocUrls(ref.memo_title))
+
+        const allInfoDocUrls = Array.from(
+            new Set([...inferredInfoDocUrls, ...citedReferenceSourceUrls, ...citedReferenceInfoDocUrls])
+        )
 
         // Send reference embed (non-fatal - don't fail if this errors)
-        if (Object.keys(references).length > 0) {
+        if (citedReferenceEntries.length > 0) {
             try {
-                const lines = Object.entries(references).map(([key, ref]) => {
+                const lines = citedReferenceEntries.map(([key, ref]) => {
                     const sourceUrl = ref.source_url?.trim()
                     if (sourceUrl) {
                         return `**[${key}]** ${ref.memo_title}\n🔗 ${sourceUrl}`
                     }
                     return `**[${key}]** ${ref.memo_title}`
                 })
-                
+
                 // Discord embed description limit is 4096 chars
                 const description = lines.join('\n').slice(0, 4000)
-                
+
                 const refEmbed = new EmbedBuilder()
                     .setTitle('📚 참고 자료')
                     .setColor(0x5865f2)
@@ -198,7 +221,10 @@ export async function handleMention(message: Message, client: Client) {
         // Send info doc links (non-fatal - don't fail if this errors)
         if (allInfoDocUrls.length > 0) {
             try {
-                const description = allInfoDocUrls.map((url) => `- ${url}`).join('\n').slice(0, 4000)
+                const description = allInfoDocUrls
+                    .map((url) => `- ${url}`)
+                    .join('\n')
+                    .slice(0, 4000)
                 const linkEmbed = new EmbedBuilder()
                     .setTitle('🔗 문서 원문 링크')
                     .setColor(0x2ecc71)
