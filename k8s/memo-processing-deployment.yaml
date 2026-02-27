@@ -259,12 +259,6 @@ spec:
                                 name: skald-config
                                 key: CLI_PROXY_BASE_URL
                                 optional: true
-                      - name: CLI_PROXY_API_MODEL
-                        valueFrom:
-                            configMapKeyRef:
-                                name: skald-config
-                                key: CLI_PROXY_API_MODEL
-                                optional: true
                       # 마이크로서비스 URL 설정
                       - name: EMBEDDING_SERVICE_URL
                         valueFrom:
