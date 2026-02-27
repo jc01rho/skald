@@ -97,18 +97,19 @@ export const LLM_PROVIDER = process.env.LLM_PROVIDER || 'cli-proxy-api'
 // CLI Proxy API (only supported LLM provider)
 export const CLI_PROXY_API_KEY = process.env.CLI_PROXY_API_KEY
 export const CLI_PROXY_API_BASE_URL = process.env.CLI_PROXY_API_BASE_URL || 'http://cli-proxy-service:8317/v1'
-export const CLI_PROXY_API_MODEL = process.env.CLI_PROXY_API_MODEL || 'qwen3-max'
+
 
 // Gemini models use a separate endpoint/auth from the default CLI Proxy API
 export const GEMINI_API_BASE_URL = process.env.GEMINI_API_BASE_URL || ''
 export const GEMINI_API_KEY = process.env.GEMINI_API_KEY || ''
 
 // LLM Model Configuration (runtime configurable via env)
-export const LLM_DEFAULT_CHAT_MODEL = process.env.LLM_DEFAULT_CHAT_MODEL || 'qwen3-max'
-export const LLM_DEFAULT_CLASSIFICATION_MODEL = process.env.LLM_DEFAULT_CLASSIFICATION_MODEL || 'qwen3-max'
+export const LLM_DEFAULT_CHAT_MODEL = process.env.LLM_DEFAULT_CHAT_MODEL || 'gemini-3.1-pro'
+export const LLM_DEFAULT_CLASSIFICATION_MODEL = process.env.LLM_DEFAULT_CLASSIFICATION_MODEL || 'qwen-3.5'
 
 // Fallback chain: comma-separated model slugs (first = highest priority)
-export const LLM_FALLBACK_CHAIN = (process.env.LLM_FALLBACK_CHAIN || 'qwen3-max,gemini-3.1-pro,deepseek-v3.2,glm-4.7,kimi-k2,gemini-2.5-pro,qwen3-235b,gemini-2.5-flash,free,gemini-2.5-flash-lite,gemini-3-flash-preview,gemini-2.5-computer-use-preview-10-2025,kimi-k2-0905,qwen3-max-preview,qwen3-coder-plus,qwen3-235b-a22b-thinking-2507,qwen3-235b-a22b-instruct,qwen3-32b,deepseek-v3.2-reasoner,deepseek-v3.1,deepseek-v3,deepseek-r1,deepseek-v3.2-chat,tstars2.0,sonnet,opus').split(',').map(s => s.trim())
+const DEFAULT_FALLBACK_CHAIN = 'gemini-3.1-pro,qwen-3.5,deepseek-v3.2,glm-5,kimi,gemini-2.5-pro,qwen3-235b,gemini-2.5-flash,free,gemini-2.5-flash-lite,gemini-3-flash-preview,gemini-2.5-computer-use-preview-10-2025,kimi-k2-0905,qwen3-max-preview,qwen3-coder-plus,qwen3-235b-a22b-thinking-2507,qwen3-235b-a22b-instruct,qwen3-32b,deepseek-v3.2-reasoner,deepseek-v3.1,deepseek-v3,deepseek-r1,deepseek-v3.2-chat,giga-potato,sonnet,free'
+export const LLM_FALLBACK_CHAIN = (process.env.LLM_FALLBACK_CHAIN || DEFAULT_FALLBACK_CHAIN).split(',').map(s => s.trim())
 
 /**
  * Hot-reloadable LLM configuration
@@ -137,9 +138,9 @@ export function getLLMConfig(): LLMConfig {
 export function loadLLMConfig(): LLMConfig {
     cachedLLMConfig = {
         provider: process.env.LLM_PROVIDER || 'cli-proxy-api',
-        defaultChatModel: process.env.LLM_DEFAULT_CHAT_MODEL || 'qwen3-max',
-        defaultClassificationModel: process.env.LLM_DEFAULT_CLASSIFICATION_MODEL || 'qwen3-max',
-        fallbackChain: (process.env.LLM_FALLBACK_CHAIN || 'qwen3-max,gemini-3.1-pro,deepseek-v3.2,glm-4.7,kimi-k2,gemini-2.5-pro,qwen3-235b,gemini-2.5-flash,free,gemini-2.5-flash-lite,gemini-3-flash-preview,gemini-2.5-computer-use-preview-10-2025,kimi-k2-0905,qwen3-max-preview,qwen3-coder-plus,qwen3-235b-a22b-thinking-2507,qwen3-235b-a22b-instruct,qwen3-32b,deepseek-v3.2-reasoner,deepseek-v3.1,deepseek-v3,deepseek-r1,deepseek-v3.2-chat,tstars2.0,sonnet,opus').split(',').map(s => s.trim()),
+        defaultChatModel: process.env.LLM_DEFAULT_CHAT_MODEL || 'gemini-3.1-pro',
+        defaultClassificationModel: process.env.LLM_DEFAULT_CLASSIFICATION_MODEL || 'qwen-3.5',
+        fallbackChain: (process.env.LLM_FALLBACK_CHAIN || DEFAULT_FALLBACK_CHAIN).split(',').map(s => s.trim()),
         cliProxyApiKey: process.env.CLI_PROXY_API_KEY,
         cliProxyApiBaseUrl: process.env.CLI_PROXY_API_BASE_URL || 'http://cli-proxy-service:8317/v1',
         geminiApiBaseUrl: process.env.GEMINI_API_BASE_URL || '',

@@ -128,9 +128,7 @@ export class LLMService {
 
     /**
      * Invoke LLM with retry logic and fallback chain
-     * 1. Try current model with 3 retries (skip retry for capacity errors)
-     * 2. If all retries fail, try next model in fallback chain
-     * 3. If all models fail, throw error (no provider-level fallback as cli-proxy-api is the only provider)
+     * Traverses fallback chain starting from default model for consistent behavior with streamWithFallback
      */
     static async invokeWithRetry({
         messages,
@@ -141,76 +139,59 @@ export class LLMService {
     }: InvokeWithRetryParams): Promise<any> {
         const currentProvider = this.provider
         const purpose = 'chat' // Default to chat for now
+        const fallbackChains = getModelFallbackChains()
+        const defaultModels = getDefaultLLMModels()
+        const defaultModelSlug =
+            purpose === 'chat'
+                ? defaultModels['cli-proxy-api'].defaultChatModel.slug
+                : defaultModels['cli-proxy-api'].defaultClassificationModel.slug
 
-        // Step 1: Try current model with retries
-        try {
-            logger.info(`Attempting to invoke LLM with provider: ${currentProvider}`)
-            return await withRetry(
-                async () => {
-                    const llm = this.getLLM({ temperature, providerOverride: currentProvider as any, purpose })
-                    return await llm.invoke(messages)
-                },
-                maxRetries,
-                retryDelayMs
-            )
-        } catch (error) {
-            if (!useFallbackChain) {
-                throw error
-            }
+        // Get all models to try (default + fallbacks), consistent with streamWithFallback
+        const models = fallbackChains['cli-proxy-api'] || [defaultModelSlug]
+        const modelFallbackIndex = models.indexOf(defaultModelSlug)
+        const modelsToTry = modelFallbackIndex >= 0 ? models.slice(modelFallbackIndex) : models
 
-            const isCapacity = isCapacityError(error as Error)
-            if (isCapacity) {
-                logger.warn('Capacity error detected, trying model-level fallback chain...')
-            } else {
-                logger.warn('Current model failed after retries, trying model-level fallback chain...')
-            }
-            const errorMessage = (error as Error).message
-            logger.warn(`Error: ${errorMessage}`)
-
-            // Step 2: Try model-level fallback (only for cli-proxy-api)
-            // Get fresh config for hot-reload support
-            const fallbackChains = getModelFallbackChains()
-            const defaultModels = getDefaultLLMModels()
-
-            if (currentProvider === 'cli-proxy-api' && fallbackChains['cli-proxy-api']) {
-                const models = fallbackChains['cli-proxy-api']
-                const defaultModelSlug =
-                    purpose === 'chat'
-                        ? defaultModels['cli-proxy-api'].defaultChatModel.slug
-                        : defaultModels['cli-proxy-api'].defaultClassificationModel.slug
-
-                // Skip the current model and try the rest
-                const modelFallbackIndex = models.indexOf(defaultModelSlug)
-                const fallbackModels = modelFallbackIndex >= 0 ? models.slice(modelFallbackIndex + 1) : models
-
-                for (const fallbackModel of fallbackModels) {
-                    try {
-                        logger.info(`Trying fallback model: ${fallbackModel}`)
-                        const result = await withRetry(
-                            async () => {
-                                const llm = this.getLLM({
-                                    temperature,
-                                    providerOverride: currentProvider as any,
-                                    purpose,
-                                    modelOverride: fallbackModel,
-                                })
-                                return await llm.invoke(messages)
-                            },
-                            maxRetries,
-                            retryDelayMs
-                        )
-                        logger.info(`Successfully invoked with fallback model: ${fallbackModel}`)
-                        return result
-                    } catch (modelError) {
-                        logger.warn(`Fallback model ${fallbackModel} failed: ${(modelError as Error).message}`)
-                        continue
-                    }
-                }
-            }
-
-            // All fallbacks exhausted
-            throw new Error(`All LLM models failed. Last error: ${errorMessage}`)
+        if (!useFallbackChain) {
+            // Only try default model without fallback
+            const llm = this.getLLM({ temperature, providerOverride: currentProvider as any, purpose })
+            return await llm.invoke(messages)
         }
+
+        let lastError: Error | null = null
+
+        for (const modelSlug of modelsToTry) {
+            try {
+                logger.info(`Attempting to invoke LLM with model: ${modelSlug}`)
+                const result = await withRetry(
+                    async () => {
+                        const llm = this.getLLM({
+                            temperature,
+                            providerOverride: currentProvider as any,
+                            purpose,
+                            modelOverride: modelSlug,
+                        })
+                        return await llm.invoke(messages)
+                    },
+                    maxRetries,
+                    retryDelayMs
+                )
+                logger.info(`Successfully invoked with model: ${modelSlug}`)
+                return result
+            } catch (error) {
+                lastError = error as Error
+                const isCapacity = isCapacityError(lastError)
+
+                if (isCapacity) {
+                    logger.warn(`Capacity error for model ${modelSlug}, trying next fallback model...`)
+                } else {
+                    logger.warn(`Model ${modelSlug} failed: ${lastError.message}`)
+                }
+                continue
+            }
+        }
+
+        // All models exhausted
+        throw new Error(`All LLM models failed for invoke. Last error: ${lastError?.message}`)
     }
 
     /**
