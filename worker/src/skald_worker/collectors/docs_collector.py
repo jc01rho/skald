@@ -126,7 +126,6 @@ class DocsCollector:
         """Fetch functions from SPMS."""
         params: dict[str, Any] = {
             "status": "completed",
-            "product": "enterprise",
             "page": page,
             "size": page_size,
         }
