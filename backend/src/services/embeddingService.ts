@@ -75,6 +75,73 @@ class EmbeddingService {
     }
 
     /**
+     * Generate embeddings for multiple inputs in a single HTTP call.
+     * OpenAI-compatible API accepts `input` as a string array.
+     * Falls back to sequential single calls if batch request fails.
+     */
+    private static async generateInternalEmbeddingsBatch(contents: string[]): Promise<number[][]> {
+        if (contents.length === 0) return []
+        if (contents.length === 1) {
+            const single = await this.generateInternalEmbedding(contents[0])
+            return [single]
+        }
+
+        const controller = new AbortController()
+        const timeoutId = setTimeout(() => controller.abort(), 60000) // longer timeout for batch
+
+        try {
+            const response = await fetch(INTERNAL_EMBEDDING_URL, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    input: contents,
+                    model: 'text-embedding-model',
+                }),
+                signal: controller.signal,
+            })
+
+            clearTimeout(timeoutId)
+
+            if (!response.ok) {
+                const errorText = await response.text()
+                throw new Error(`Batch embedding service error: ${response.status} - ${errorText}`)
+            }
+
+            const data = (await response.json()) as {
+                data: Array<{ embedding: number[]; index: number }>
+                model: string
+                usage: { prompt_tokens: number; total_tokens: number }
+            }
+
+            if (!data.data || data.data.length === 0) {
+                throw new Error('Batch embedding returned empty results')
+            }
+
+            // Sort by index to maintain input order
+            const sorted = [...data.data].sort((a, b) => a.index - b.index)
+            return sorted.map((d) => d.embedding)
+        } catch (error) {
+            clearTimeout(timeoutId)
+            if (error instanceof Error && error.name === 'AbortError') {
+                logger.error({ url: INTERNAL_EMBEDDING_URL, batchSize: contents.length }, 'Batch embedding request timed out after 60s')
+                throw new Error('Batch embedding service request timed out')
+            }
+            // Fall back to sequential single calls
+            logger.warn(
+                { err: error, batchSize: contents.length },
+                'Batch embedding failed, falling back to sequential calls'
+            )
+            const results: number[][] = []
+            for (const content of contents) {
+                results.push(await this.generateInternalEmbedding(content))
+            }
+            return results
+        }
+    }
+
+    /**
      * Generate embedding - uses INTERNAL_EMBEDDING_URL environment variable
      */
     static async generateEmbedding(content: string, usage: 'storage' | 'search'): Promise<number[]> {
@@ -85,6 +152,48 @@ class EmbeddingService {
 
         await cacheEmbedding(content, normalized)
         return normalized
+    }
+
+    /**
+     * Generate embeddings for multiple texts in a single batch HTTP call.
+     * Uses cache for individual items — only uncached texts are sent to the API.
+     * Returns embeddings in the same order as input.
+     */
+    static async generateEmbeddingsBatch(contents: string[], usage: 'storage' | 'search'): Promise<number[][]> {
+        if (contents.length === 0) return []
+        if (contents.length === 1) return [await this.generateEmbedding(contents[0], usage)]
+
+        // Check cache for each input
+        const results: (number[] | null)[] = new Array(contents.length).fill(null)
+        const uncachedIndices: number[] = []
+        const uncachedContents: string[] = []
+
+        for (let i = 0; i < contents.length; i++) {
+            const cached = await getCachedEmbedding(contents[i])
+            if (cached) {
+                results[i] = cached
+            } else {
+                uncachedIndices.push(i)
+                uncachedContents.push(contents[i])
+            }
+        }
+
+        if (uncachedContents.length > 0) {
+            logger.debug(
+                { total: contents.length, cached: contents.length - uncachedContents.length, uncached: uncachedContents.length },
+                'Batch embedding: cache hit ratio'
+            )
+
+            const rawEmbeddings = await this.generateInternalEmbeddingsBatch(uncachedContents)
+
+            for (let j = 0; j < uncachedIndices.length; j++) {
+                const normalized = this.normalizeEmbedding(rawEmbeddings[j])
+                results[uncachedIndices[j]] = normalized
+                await cacheEmbedding(uncachedContents[j], normalized)
+            }
+        }
+
+        return results as number[][]
     }
 }
 

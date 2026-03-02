@@ -100,6 +100,7 @@ const RAGState = Annotation.Root({
         { title: string; summary: string; content: string; source_url: string }
     > | null>,
     parentChunkMap: Annotation<Map<string, string> | null>,
+    precomputedQueryEmbedding: Annotation<number[] | null>,
     cragValidation: Annotation<RetrievalValidation | null>,
     prompt: Annotation<ChatPromptTemplate>,
     contextStr: Annotation<string | null>,
@@ -128,11 +129,15 @@ async function analyzeAndRewriteNode(state: typeof RAGState.State) {
             { role: 'assistant' as const, content: assistantMsg },
         ])
         .flat()
-    const [queryUnderstanding, rewrittenQueryRaw] = await Promise.all([
+
+    // P1-6: Speculative search — pre-compute original query embedding in parallel with LLM calls
+    // This embedding will be reused in vectorSearchNode, saving one round-trip
+    const [queryUnderstanding, rewrittenQueryRaw, precomputedQueryEmbedding] = await Promise.all([
         ragConfig.queryUnderstanding?.enabled
             ? QueryUnderstandingAgent.understandQuery(query, context)
             : Promise.resolve(null),
         ragConfig.queryRewrite.enabled ? rewrite(query, conversationMessages) : Promise.resolve(null),
+        EmbeddingService.generateEmbedding(query, 'search'),
     ])
 
     logger.info(
@@ -142,13 +147,15 @@ async function analyzeAndRewriteNode(state: typeof RAGState.State) {
             queryChanged: rewrittenQueryRaw && rewrittenQueryRaw !== query,
             queryUnderstandingEnabled: ragConfig.queryUnderstanding?.enabled,
             queryRewriteEnabled: ragConfig.queryRewrite.enabled,
+            precomputedEmbedding: !!precomputedQueryEmbedding,
         },
-        'RAG analyzeAndRewrite completed'
+        'RAG analyzeAndRewrite completed (with speculative embedding)'
     )
 
     return {
         queryUnderstanding,
         rewrittenQuery: rewrittenQueryRaw && rewrittenQueryRaw !== query ? rewrittenQueryRaw : null,
+        precomputedQueryEmbedding,
     }
 }
 
@@ -233,9 +240,7 @@ function mergeSearchResults(
 }
 
 async function vectorSearchNode(state: typeof RAGState.State) {
-    const { rewrittenQuery, query, project, filters, ragConfig, queryUnderstanding } = state
-
-    await HNSWOptimizationService.applyRuntimeSearchTuning(DI.em)
+    const { rewrittenQuery, query, project, filters, ragConfig, queryUnderstanding, precomputedQueryEmbedding } = state
 
     // Use dynamic search strategy from query understanding if available, otherwise use defaults
     const strategy = queryUnderstanding || {
@@ -246,6 +251,9 @@ async function vectorSearchNode(state: typeof RAGState.State) {
         rerank: ragConfig.reranking.enabled,
         mmr: ragConfig.reranking.mmrEnabled || false,
     }
+
+    // P2-2: Dynamic HNSW ef_search based on topK
+    await HNSWOptimizationService.applyRuntimeSearchTuning(DI.em, strategy.topK)
 
     const searchQueries: string[] = [query]
     if (rewrittenQuery && rewrittenQuery !== query) {
@@ -290,18 +298,30 @@ async function vectorSearchNode(state: typeof RAGState.State) {
 
     if (useHybridSearch) {
         // Use hybrid search combining vector + BM25
-        // Search with all queries (original + rewritten) and merge results
+        // P0-2 + P1-6: Use precomputed embedding for original query, batch the rest
         try {
-            const allHybridResults = await mapWithConcurrency(searchQueries, 4, async (searchQuery) => {
-                const embeddingVector = await EmbeddingService.generateEmbedding(searchQuery, 'search')
-                return HybridSearchService.hybridSearch(project, embeddingVector, searchQuery, {
-                    vectorWeight: ragConfig.hybridSearch?.vectorWeight ?? 0.7,
-                    bm25Weight: ragConfig.hybridSearch?.bm25Weight ?? 0.3,
-                    topK: strategy.topK,
-                    similarityThreshold: ragConfig.vectorSearch.similarityThreshold,
-                    filters: filters?.[0], // Use first filter if available
-                })
-            })
+            // Separate original query (already embedded in analyzeAndRewrite) from remaining queries
+            const remainingQueries = searchQueries.slice(1)
+            const remainingEmbeddings = remainingQueries.length > 0
+                ? await EmbeddingService.generateEmbeddingsBatch(remainingQueries, 'search')
+                : []
+            const allEmbeddings = [
+                precomputedQueryEmbedding || await EmbeddingService.generateEmbedding(query, 'search'),
+                ...remainingEmbeddings,
+            ]
+            const allHybridResults = await mapWithConcurrency(
+                searchQueries.map((sq, i) => ({ query: sq, embedding: allEmbeddings[i] })),
+                4,
+                async ({ query: searchQuery, embedding: embeddingVector }) => {
+                    return HybridSearchService.hybridSearch(project, embeddingVector, searchQuery, {
+                        vectorWeight: ragConfig.hybridSearch?.vectorWeight ?? 0.7,
+                        bm25Weight: ragConfig.hybridSearch?.bm25Weight ?? 0.3,
+                        topK: strategy.topK,
+                        similarityThreshold: ragConfig.vectorSearch.similarityThreshold,
+                        filters: filters?.[0], // Use first filter if available
+                    })
+                }
+            )
 
             // Merge results from all queries, keeping best score per document
             const mergedResults = deduplicateByBestScore(
@@ -332,17 +352,29 @@ async function vectorSearchNode(state: typeof RAGState.State) {
         }
     }
 
-    const allResults = await mapWithConcurrency(searchQueries, 4, async (searchQuery) => {
-        const embeddingVector = await EmbeddingService.generateEmbedding(searchQuery, 'search')
-        return memoChunkVectorSearch(
-            project,
-            embeddingVector,
-            strategy.topK,
-            ragConfig.vectorSearch.similarityThreshold,
-            filters,
-            true
-        )
-    })
+    // P0-2 + P1-6: Batch embedding for vector-only search path (reuse precomputed embedding)
+    const remainingQueriesFallback = searchQueries.slice(1)
+    const remainingEmbeddingsFallback = remainingQueriesFallback.length > 0
+        ? await EmbeddingService.generateEmbeddingsBatch(remainingQueriesFallback, 'search')
+        : []
+    const allEmbeddings = [
+        precomputedQueryEmbedding || await EmbeddingService.generateEmbedding(query, 'search'),
+        ...remainingEmbeddingsFallback,
+    ]
+    const allResults = await mapWithConcurrency(
+        searchQueries.map((sq, i) => ({ query: sq, embedding: allEmbeddings[i] })),
+        4,
+        async ({ embedding: embeddingVector }) => {
+            return memoChunkVectorSearch(
+                project,
+                embeddingVector,
+                strategy.topK,
+                ragConfig.vectorSearch.similarityThreshold,
+                filters,
+                true
+            )
+        }
+    )
 
     const uniqueResults = deduplicateByBestScore(allResults)
 
@@ -512,6 +544,12 @@ async function cragValidationNode(state: typeof RAGState.State) {
 
     const scoreThreshold = ragConfig.crag.scoreThreshold ?? 0.5
     const avgScore = rerankedResults.reduce((sum, r) => sum + r.relevance_score, 0) / rerankedResults.length
+    const HIGH_CONFIDENCE_THRESHOLD = 0.75
+
+    if (avgScore >= HIGH_CONFIDENCE_THRESHOLD) {
+        logger.info({ avgScore, threshold: HIGH_CONFIDENCE_THRESHOLD }, 'CRAG skipped: high confidence scores')
+        return { cragValidation: null }
+    }
 
     if (avgScore >= scoreThreshold) {
         logger.debug({ avgScore, threshold: scoreThreshold }, 'CRAG skipped: scores above threshold')
@@ -596,27 +634,53 @@ async function mmrNode(state: typeof RAGState.State) {
     }
 
     const lambda = ragConfig.reranking.mmrLambda ?? 0.5
-    const selected: typeof rerankedResults = []
-    const remaining = [...rerankedResults]
+
+    // Pre-compute similarity matrix for O(n²) → O(n²/2) optimization
+    // simMatrix[i][j] = cosine similarity between rerankedResults[i] and rerankedResults[j]
+    const n = rerankedResults.length
+    const simMatrix: (number | null)[][] = Array.from({ length: n }, () => Array(n).fill(null))
+
+    for (let i = 0; i < n; i++) {
+        const embeddingI = rerankedResults[i].embedding
+        if (!embeddingI) continue
+        for (let j = i + 1; j < n; j++) {
+            const embeddingJ = rerankedResults[j].embedding
+            if (!embeddingJ) continue
+            const sim = cosineSimilarityEmbedding(embeddingI, embeddingJ)
+            simMatrix[i][j] = sim
+            simMatrix[j][i] = sim
+        }
+    }
+
+    // Track selected indices into the original array
+    const selectedIndices: number[] = []
+    const remainingIndices = rerankedResults.map((_, i) => i)
 
     // Greedy MMR algorithm with embedding-based diversity
-    while (selected.length < Math.min(rerankedResults.length, ragConfig.reranking.topK)) {
+    while (selectedIndices.length < Math.min(n, ragConfig.reranking.topK)) {
         let bestIndex = 0
         let bestScore = -Infinity
 
-        for (let i = 0; i < remaining.length; i++) {
-            const relevance = remaining[i].relevance_score
+        for (let i = 0; i < remainingIndices.length; i++) {
+            const resultIndex = remainingIndices[i]
+            const relevance = rerankedResults[resultIndex].relevance_score
 
-            // Use embedding-based diversity only; skip diversity when embeddings unavailable (Korean-safe)
-            const diversity =
-                selected.length === 0
-                    ? 0
-                    : remaining[i].embedding && selected.every((s) => s.embedding)
-                      ? selected.reduce(
-                            (min, s) => Math.min(min, cosineSimilarityEmbedding(remaining[i].embedding!, s.embedding!)),
-                            Infinity
-                        )
-                      : 0 // No embedding available: skip diversity (word overlap unreliable for Korean/CJK)
+            // Use embedding-based diversity only; skip diversity when embeddings unavailable
+            let diversity = 0
+            if (selectedIndices.length > 0) {
+                // Check if this result has an embedding
+                if (rerankedResults[resultIndex].embedding) {
+                    // Find max similarity with any selected item
+                    let maxSim = -Infinity
+                    for (const selectedIdx of selectedIndices) {
+                        const sim = simMatrix[resultIndex][selectedIdx]
+                        if (sim !== null && sim > maxSim) {
+                            maxSim = sim
+                        }
+                    }
+                    diversity = maxSim === -Infinity ? 0 : maxSim
+                }
+            }
 
             const mmrScore = lambda * relevance - (1 - lambda) * diversity
             if (mmrScore > bestScore) {
@@ -625,9 +689,11 @@ async function mmrNode(state: typeof RAGState.State) {
             }
         }
 
-        selected.push(remaining[bestIndex])
-        remaining.splice(bestIndex, 1)
+        selectedIndices.push(remainingIndices[bestIndex])
+        remainingIndices.splice(bestIndex, 1)
     }
+
+    const selected = selectedIndices.map((i) => rerankedResults[i])
 
     logger.info(
         {
@@ -726,6 +792,25 @@ async function fetchParentChunksNode(state: typeof RAGState.State) {
 function buildLLMInputsNode(state: typeof RAGState.State) {
     const { conversationHistory, ragConfig, rerankedResults, clientSystemPrompt, parentChunkMap, chunkResults } = state
 
+    // P0-4: Confidence-based abstain — compute average relevance score
+    const CONFIDENCE_THRESHOLD = 0.35
+    const avgRelevanceScore =
+        rerankedResults.length > 0
+            ? rerankedResults.reduce((sum, r) => sum + r.relevance_score, 0) / rerankedResults.length
+            : 0
+    const isLowConfidence = rerankedResults.length === 0 || avgRelevanceScore < CONFIDENCE_THRESHOLD
+
+    if (isLowConfidence) {
+        logger.info(
+            {
+                avgRelevanceScore: avgRelevanceScore.toFixed(3),
+                threshold: CONFIDENCE_THRESHOLD,
+                resultCount: rerankedResults.length,
+            },
+            'Low confidence retrieval detected — injecting abstain guidance'
+        )
+    }
+
     // Build context string using parent chunk content when available (better for LLM)
     // Falls back to child chunk content if no parent is available
     let contextStr = ''
@@ -749,6 +834,21 @@ function buildLLMInputsNode(state: typeof RAGState.State) {
     }
 
     let systemPrompt = ragConfig.references.enabled ? CHAT_AGENT_INSTRUCTIONS_WITH_SOURCES : CHAT_AGENT_INSTRUCTIONS
+
+    // P0-4: Inject low-confidence guidance into system prompt
+    if (isLowConfidence) {
+        const abstainGuidance =
+            '\n\n[검색 신뢰도 경고]\n' +
+            '검색된 컨텍스트의 관련성 점수가 낮습니다 (평균: ' +
+            avgRelevanceScore.toFixed(2) +
+            '). ' +
+            '다음 지침을 따르십시오:\n' +
+            '- 검색 결과가 질문과 직접적으로 관련이 없다면, "현재 ���장된 문서에서 해당 질문에 대한 충분한 정보를 찾지 못했습니다"라고 솔직하게 답변하십시오.\n' +
+            '- 부분적으로 관련된 정보가 있다면, 해당 부분만 답변하고 확신이 낮음을 명시하십시오.\n' +
+            '- 절대로 컨텍스트에 없는 내용을 만들어내지 마십시오.\n' +
+            '- 답변 시 "검색 결과의 관련성이 낮아" 또는 "제한된 정보에 기반하여"와 같은 표현을 사용하십시오.'
+        systemPrompt += abstainGuidance
+    }
 
     if (clientSystemPrompt) {
         // escape curly braces in clientSystemPrompt so they're treated as literal text

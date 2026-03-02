@@ -66,9 +66,10 @@ export class HybridSearchService {
             { detectedLang, isCJK, vectorWeight, bm25Weight, query: queryText.slice(0, 50) },
             'Hybrid search: dynamic RRF weights applied'
         )
+        const searchBudget = topK + Math.min(topK, 20)
         const [vectorResults, bm25Results] = await Promise.all([
-            this.vectorSearch(project, queryEmbedding, topK * 2, similarityThreshold, filters ? [filters] : undefined),
-            this.bm25Search(project, queryText, topK * 2, filters ? [filters] : undefined),
+            this.vectorSearch(project, queryEmbedding, searchBudget, similarityThreshold, filters ? [filters] : undefined),
+            this.bm25Search(project, queryText, searchBudget, filters ? [filters] : undefined),
         ])
         // Vector and BM25 results are already sorted by their respective scores
         const combined = this.combineScoresRRF(vectorResults, bm25Results, vectorWeight, bm25Weight)
@@ -167,11 +168,11 @@ export class HybridSearchService {
         filters?: MemoFilter[]
     ): Promise<Array<{ uuid: string; chunk_content: string; memo_uuid: string; bm25_score: number }>> {
         const { whereConditions, params } = buildFilterConditions(filters || [])
-        const allParams = [queryText, project.uuid, queryText, ...params, topK]
+        const allParams = [project.uuid, queryText, ...params, queryText, topK]
 
         let whereClause = `
             WHERE skald_memochunk.project_id = ?
-            AND to_tsvector('english', skald_memochunk.chunk_content) @@ plainto_tsquery('english', ?)
+            AND skald_memochunk.content_tsvector @@ plainto_tsquery('english', ?)
         `
 
         if (whereConditions.length > 0) {
@@ -183,7 +184,7 @@ export class HybridSearchService {
                 skald_memochunk.uuid,
                 skald_memochunk.chunk_content,
                 skald_memochunk.memo_uuid,
-                ts_rank(to_tsvector('english', skald_memochunk.chunk_content),
+                ts_rank(skald_memochunk.content_tsvector,
                         plainto_tsquery('english', ?)) as bm25_score
             FROM skald_memochunk
             JOIN skald_memo ON skald_memochunk.memo_id = skald_memo.uuid
