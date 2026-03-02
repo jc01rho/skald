@@ -518,9 +518,7 @@ deploy_backend() {
     fi
     
     # Memo Processing 서비스 배포
-    sed "s|\${DOCKER_REGISTRY:-skaldlabs}|$BACKEND_REGISTRY|g" memo-processing-deployment.yaml | \
-    sed "s|\${IMAGE_TAG:-latest}|$IMAGE_TAG|g" > /tmp/memo-processing-deployment.yaml
-        # 이미지 태그 치환
+    # 이미지 태그 치환 (IMAGE_TAG 변수 사용)
     sed "s|\${IMAGE_TAG:-latest}|$IMAGE_TAG|g" memo-processing-deployment.yaml > /tmp/memo-processing-deployment.yaml
     echo "Memo Processing Deployment 임시 파일 생성 완료: /tmp/memo-processing-deployment.yaml"
     echo "Image in temp file: $(grep 'ghcr.io/jc01rho/skald/backend:' /tmp/memo-processing-deployment.yaml)"
@@ -1133,7 +1131,7 @@ undeploy_backend() {
     log_info "Step 4: Backend 서비스 Deployment/Service 삭제 중..."
     
     # Memo Processing Service 삭제
-    if kubectl delete deployment memo-processing-deployment -n "$NAMESPACE" --ignore-not-found=true; then
+    if kubectl delete deployment memo-processing-server -n "$NAMESPACE" --ignore-not-found=true; then
         log_success "Memo Processing Deployment 삭제 완료"
     else
         log_error "Memo Processing Deployment 삭제 실패"
@@ -1149,7 +1147,7 @@ undeploy_backend() {
     fi
     
     # API Deployment 삭제
-    if kubectl delete deployment api-deployment -n "$NAMESPACE" --ignore-not-found=true; then
+    if kubectl delete deployment api-server -n "$NAMESPACE" --ignore-not-found=true; then
         log_success "API Deployment 삭제 완료"
     else
         log_error "API Deployment 삭제 실패"
@@ -1537,9 +1535,11 @@ main() {
         create_namespace
         deploy_traefik
         
-        # ConfigMap 및 Secret 생성 (환경 변수 기반)
-        generate_configmap_from_env
+        # ConfigMap 및 Secret 생성
         create_configs
+        
+        # 환경 변수 파일 기반 ConfigMap 값 덮어쓰기 (create_configs 이후 실행)
+        generate_configmap_from_env
         
         create_pvcs  # PVC 생성 함수는 호출되지만 내부 로직 생략됨
         deploy_infrastructure
