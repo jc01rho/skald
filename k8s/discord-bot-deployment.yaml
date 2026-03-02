@@ -19,7 +19,7 @@ spec:
         spec:
             containers:
                 - name: discord-bot
-                  image: ghcr.io/jc01rho/discord-bot:latest
+                  image: ghcr.io/jc01rho/discord-bot:${IMAGE_TAG:-latest}
                   imagePullPolicy: Always
                   ports:
                       - name: http
