@@ -1,5 +1,6 @@
 import { LLMService } from '@/services/llmService'
 import { ChatPromptTemplate } from '@langchain/core/prompts'
+import { logger } from '@/lib/logger'
 
 interface StreamChunk {
     type: 'token' | 'error' | 'done' | 'references'
@@ -10,6 +11,20 @@ interface RerankResult {
     memo_uuid?: string
     memo_title?: string
     source_url?: string
+}
+
+/**
+ * Extract cited reference numbers from LLM response text.
+ * Matches [[N]] citation format and returns unique, sorted reference numbers.
+ */
+function extractCitedReferenceNumbers(text: string): number[] {
+    const citationPattern = /\[\[(\d+)\]\]/g
+    const cited = new Set<number>()
+    let match
+    while ((match = citationPattern.exec(text)) !== null) {
+        cited.add(parseInt(match[1], 10))
+    }
+    return Array.from(cited).sort((a, b) => a - b)
 }
 
 export async function* streamChatAgent({
@@ -35,6 +50,9 @@ export async function* streamChatAgent({
         temperature: 0.7,
     })
 
+    // P1-1: Accumulate full response text for citation cross-validation
+    let fullResponseText = ''
+
     for await (const chunk of stream) {
         if (chunk.content) {
             // Normalize content to string, handling different LLM response formats
@@ -49,6 +67,8 @@ export async function* streamChatAgent({
                 normalizedContent = String(chunk.content)
             }
 
+            fullResponseText += normalizedContent
+
             yield {
                 type: 'token',
                 content: normalizedContent,
@@ -57,21 +77,49 @@ export async function* streamChatAgent({
     }
 
     if (enableReferences && rerankResults.length > 0) {
-        const references: Record<number, { memo_uuid: string; memo_title: string; source_url?: string }> = {}
+        // P1-1: Cross-validate citations — only include references actually cited by the LLM
+        const citedNumbers = extractCitedReferenceNumbers(fullResponseText)
+        const allReferences: Record<number, { memo_uuid: string; memo_title: string; source_url?: string }> = {}
         for (let i = 0; i < rerankResults.length; i++) {
             const rerankResult = rerankResults[i]
             if (rerankResult.memo_uuid && rerankResult.memo_title) {
-                references[i + 1] = {
+                allReferences[i + 1] = {
                     memo_uuid: rerankResult.memo_uuid,
                     memo_title: rerankResult.memo_title,
                     source_url: rerankResult.source_url,
                 }
             }
         }
-        if (Object.keys(references).length > 0) {
+
+        // Filter to only cited references if citations exist in the response
+        let filteredReferences = allReferences
+        if (citedNumbers.length > 0) {
+            filteredReferences = {}
+            for (const num of citedNumbers) {
+                if (allReferences[num]) {
+                    filteredReferences[num] = allReferences[num]
+                }
+            }
+
+            const totalAvailable = Object.keys(allReferences).length
+            const totalCited = Object.keys(filteredReferences).length
+            if (totalCited < totalAvailable) {
+                logger.info(
+                    {
+                        totalAvailable,
+                        totalCited,
+                        citedNumbers,
+                        droppedCount: totalAvailable - totalCited,
+                    },
+                    'Citation post-processing: filtered uncited references'
+                )
+            }
+        }
+
+        if (Object.keys(filteredReferences).length > 0) {
             yield {
                 type: 'references',
-                content: JSON.stringify(references),
+                content: JSON.stringify(filteredReferences),
             }
         }
     }

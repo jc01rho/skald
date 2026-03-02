@@ -97,7 +97,7 @@ export const memoChunkVectorSearch = async (
         similarityThreshold,
         project.uuid,
         ...params,
-        topK * 2,
+        topK + Math.min(topK, 20),
     ]
 
     let whereClause = `

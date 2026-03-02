@@ -60,11 +60,21 @@ export class HNSWOptimizationService {
         }
     }
 
-    static async applyRuntimeSearchTuning(em: EntityManager): Promise<void> {
+    /**
+     * Apply runtime HNSW tuning based on search parameters.
+     * ef_search is dynamically scaled based on topK to ensure good recall.
+     * Rule of thumb: ef_search >= topK * 2 for high recall.
+     */
+    static async applyRuntimeSearchTuning(em: EntityManager, topK: number = 50): Promise<void> {
+        // P2-2: Dynamic ef_search based on topK
+        const minEfSearch = DEFAULT_HNSW_CONFIG.efSearch
+        const dynamicEfSearch = Math.max(minEfSearch, topK * 2)
+
         try {
             await em
                 .getConnection()
-                .execute("SELECT set_config('hnsw.ef_search', ?, false)", [String(DEFAULT_HNSW_CONFIG.efSearch)])
+                .execute("SELECT set_config('hnsw.ef_search', ?, false)", [String(dynamicEfSearch)])
+            logger.debug({ efSearch: dynamicEfSearch, topK }, 'HNSW ef_search configured dynamically')
         } catch (error) {
             logger.warn({ err: error }, 'Failed to apply hnsw.ef_search runtime tuning')
         }
