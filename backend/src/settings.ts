@@ -103,11 +103,12 @@ export const GEMINI_API_BASE_URL = process.env.GEMINI_API_BASE_URL || ''
 export const GEMINI_API_KEY = process.env.GEMINI_API_KEY || ''
 
 // LLM Model Configuration (runtime configurable via env)
-export const LLM_DEFAULT_CHAT_MODEL = process.env.LLM_DEFAULT_CHAT_MODEL || 'qwen-3.5'
-export const LLM_DEFAULT_CLASSIFICATION_MODEL = process.env.LLM_DEFAULT_CLASSIFICATION_MODEL || 'qwen-3.5'
+export const LLM_DEFAULT_CHAT_MODEL = process.env.LLM_DEFAULT_CHAT_MODEL || 'gpt-5.2'
+export const LLM_DEFAULT_CLASSIFICATION_MODEL = process.env.LLM_DEFAULT_CLASSIFICATION_MODEL || 'gpt-5.2'
 
 // Fallback chain: comma-separated model slugs (first = highest priority)
 const DEFAULT_FALLBACK_CHAIN =
+    'gpt-5.2,qwen-3.5,deepseek-v3.2,glm-5,kimi,qwen3-235b,free,gemini-2.5-pro,gemini-3-flash-preview,qwen3-max-preview,qwen3-coder-plus,qwen3-235b-a22b-thinking-2507,qwen3-235b-a22b-instruct,qwen3-32b,deepseek-v3.2-reasoner,deepseek-v3.1,deepseek-v3,deepseek-r1,deepseek-v3.2-chat,giga-potato,sonnet'
     'step,qwen-3.5,deepseek-v3.2,glm-5,kimi,qwen3-235b,free,gemini-2.5-pro,gemini-3-flash-preview,qwen3-max-preview,qwen3-coder-plus,qwen3-235b-a22b-thinking-2507,qwen3-235b-a22b-instruct,qwen3-32b,deepseek-v3.2-reasoner,deepseek-v3.1,deepseek-v3,deepseek-r1,deepseek-v3.2-chat,giga-potato,sonnet'
 export const LLM_FALLBACK_CHAIN = (process.env.LLM_FALLBACK_CHAIN || DEFAULT_FALLBACK_CHAIN)
     .split(',')
@@ -140,8 +141,8 @@ export function getLLMConfig(): LLMConfig {
 export function loadLLMConfig(): LLMConfig {
     cachedLLMConfig = {
         provider: process.env.LLM_PROVIDER || 'cli-proxy-api',
-        defaultChatModel: process.env.LLM_DEFAULT_CHAT_MODEL || 'qwen-3.5',
-        defaultClassificationModel: process.env.LLM_DEFAULT_CLASSIFICATION_MODEL || 'qwen-3.5',
+        defaultChatModel: process.env.LLM_DEFAULT_CHAT_MODEL || 'gpt-5.2',
+        defaultClassificationModel: process.env.LLM_DEFAULT_CLASSIFICATION_MODEL || 'gpt-5.2',
         fallbackChain: (process.env.LLM_FALLBACK_CHAIN || DEFAULT_FALLBACK_CHAIN).split(',').map((s) => s.trim()),
         cliProxyApiKey: process.env.CLI_PROXY_API_KEY,
         cliProxyApiBaseUrl: process.env.CLI_PROXY_API_BASE_URL || '',
