@@ -274,11 +274,17 @@ spec:
                                 name: skald-config
                                 key: LOCAL_RERANK_MODEL
                       - name: STRIPE_SECRET_KEY
-                        value: ' '
-
+                        valueFrom:
+                            secretKeyRef:
+                                name: skald-secrets
+                                key: STRIPE_SECRET_KEY
+                                optional: true
                       - name: DATALAB_API_KEY
-                        value: ' '
-
+                        valueFrom:
+                            secretKeyRef:
+                                name: skald-secrets
+                                key: DATALAB_API_KEY
+                                optional: true
                       - name: OPENAI_API_KEY
                         valueFrom:
                             secretKeyRef:
@@ -401,13 +407,29 @@ spec:
                                 key: LOG_LEVEL
                       # AWS S3 관련 환경변수
                       - name: AWS_REGION
-                        value: ' '
+                        valueFrom:
+                            configMapKeyRef:
+                                name: skald-config
+                                key: AWS_REGION
+                                optional: true
                       - name: AWS_ACCESS_KEY_ID
-                        value: ' '
+                        valueFrom:
+                            secretKeyRef:
+                                name: skald-secrets
+                                key: AWS_ACCESS_KEY_ID
+                                optional: true
                       - name: AWS_SECRET_ACCESS_KEY
-                        value: ' '
+                        valueFrom:
+                            secretKeyRef:
+                                name: skald-secrets
+                                key: AWS_SECRET_ACCESS_KEY
+                                optional: true
                       - name: S3_BUCKET_NAME
-                        value: ' '
+                        valueFrom:
+                            configMapKeyRef:
+                                name: skald-config
+                                key: S3_BUCKET_NAME
+                                optional: true
                   # 헬스체크 설정
                   readinessProbe:
                       httpGet:
