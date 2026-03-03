@@ -47,7 +47,7 @@ await canConnectToRedis() // Exits on failure
 **DI Pattern**
 
 ```typescript
-import { DI } from '@/lib/di'
+import { DI } from '@/di'
 const entity = await DI.em.findOne(...)
 const service = DI.someService
 ```
@@ -62,3 +62,8 @@ const service = DI.someService
 - NEVER use console.log directly (use logger)
 - NEVER skip connection validation at startup
 - NEVER inline complex parsing logic (use lib utilities)
+
+## LLM ENDPOINT POLICY
+
+- 모든 모델 호출(Gemini 포함)은 **코드 하드코딩 금지**이며, 환경변수(`CLI_PROXY_API_BASE_URL`, `GEMINI_API_BASE_URL`)로만 지정합니다.
+- `CLI_PROXY_API_BASE_URL`와 `GEMINI_API_BASE_URL`는 동일한 값을 사용해야 합니다.

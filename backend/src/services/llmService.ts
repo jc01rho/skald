@@ -20,6 +20,20 @@ function isCapacityError(error: Error): boolean {
     )
 }
 
+function normalizeOpenAIBaseUrl(rawBaseUrl: string): string {
+    const trimmed = (rawBaseUrl || '').trim()
+    if (!trimmed) {
+        return trimmed
+    }
+
+    const withoutTrailingSlash = trimmed.replace(/\/+$/, '')
+    if (withoutTrailingSlash.endsWith('/v1')) {
+        return withoutTrailingSlash
+    }
+
+    return `${withoutTrailingSlash}/v1`
+}
+
 interface GetLLMParams {
     temperature?: number
     providerOverride?: 'cli-proxy-api'
@@ -111,7 +125,9 @@ export class LLMService {
 
             const useGeminiEndpoint = isGeminiModel(modelSlug)
             const apiKey = useGeminiEndpoint ? config.geminiApiKey : config.cliProxyApiKey
-            const baseURL = useGeminiEndpoint ? config.geminiApiBaseUrl : config.cliProxyApiBaseUrl
+            const baseURL = normalizeOpenAIBaseUrl(
+                useGeminiEndpoint ? config.geminiApiBaseUrl : config.cliProxyApiBaseUrl
+            )
 
             return new ChatOpenAI({
                 model: modelSlug,
@@ -223,7 +239,6 @@ export class LLMService {
         }
     }
 
-
     /**
      * Stream LLM response with fallback chain support
      * Used by chatAgent for streaming responses with automatic fallback on capacity errors
@@ -251,7 +266,12 @@ export class LLMService {
         for (const modelSlug of modelsToTry) {
             try {
                 logger.info(`Attempting to stream LLM with model: ${modelSlug}`)
-                const llm = this.getLLM({ temperature, providerOverride: currentProvider as any, purpose, modelOverride: modelSlug })
+                const llm = this.getLLM({
+                    temperature,
+                    providerOverride: currentProvider as any,
+                    purpose,
+                    modelOverride: modelSlug,
+                })
                 const chain = prompt.pipe(llm)
 
                 // Try to start streaming with retries for transient errors
@@ -264,11 +284,15 @@ export class LLMService {
                         lastError = streamError as Error
 
                         if (isCapacityError(lastError)) {
-                            logger.warn(`Capacity error for model ${modelSlug} (attempt ${attempt}/${maxRetries}): ${lastError.message}`)
+                            logger.warn(
+                                `Capacity error for model ${modelSlug} (attempt ${attempt}/${maxRetries}): ${lastError.message}`
+                            )
                             throw lastError // Move to next model
                         }
 
-                        logger.warn(`Stream attempt ${attempt}/${maxRetries} failed for model ${modelSlug}: ${lastError.message}`)
+                        logger.warn(
+                            `Stream attempt ${attempt}/${maxRetries} failed for model ${modelSlug}: ${lastError.message}`
+                        )
                         if (attempt < maxRetries) {
                             const delay = retryDelayMs * attempt
                             logger.info(`Retrying in ${delay}ms...`)
