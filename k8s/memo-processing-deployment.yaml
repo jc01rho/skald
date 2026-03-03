@@ -306,10 +306,18 @@ spec:
                                 name: skald-config
                                 key: ENABLE_SECURITY_SETTINGS
                       - name: STRIPE_SECRET_KEY
-                        value: ' '
+                        valueFrom:
+                            secretKeyRef:
+                                name: skald-secrets
+                                key: STRIPE_SECRET_KEY
+                                optional: true
 
                       - name: DATALAB_API_KEY
-                        value: ' '
+                        valueFrom:
+                            secretKeyRef:
+                                name: skald-secrets
+                                key: DATALAB_API_KEY
+                                optional: true
                       # 메시지 큐 설정
                       - name: INTER_PROCESS_QUEUE
                         valueFrom:
@@ -333,13 +341,29 @@ spec:
                         value: 'redis://$(REDIS_HOST):$(REDIS_PORT)'
                       # S3 설정
                       - name: AWS_REGION
-                        value: ' '
+                        valueFrom:
+                            configMapKeyRef:
+                                name: skald-config
+                                key: AWS_REGION
+                                optional: true
                       - name: AWS_ACCESS_KEY_ID
-                        value: ' '
+                        valueFrom:
+                            secretKeyRef:
+                                name: skald-secrets
+                                key: AWS_ACCESS_KEY_ID
+                                optional: true
                       - name: AWS_SECRET_ACCESS_KEY
-                        value: ' '
+                        valueFrom:
+                            secretKeyRef:
+                                name: skald-secrets
+                                key: AWS_SECRET_ACCESS_KEY
+                                optional: true
                       - name: S3_BUCKET_NAME
-                        value: ' '
+                        valueFrom:
+                            configMapKeyRef:
+                                name: skald-config
+                                key: S3_BUCKET_NAME
+                                optional: true
                   # 보안 설정
                   securityContext:
                       allowPrivilegeEscalation: false
