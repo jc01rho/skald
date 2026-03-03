@@ -52,8 +52,8 @@ export function getDefaultLLMModels() {
     const models = SUPPORTED_LLM_MODELS['cli-proxy-api'] as Record<string, { slug: string; name: string }>
     return {
         'cli-proxy-api': {
-            defaultChatModel: models[config.defaultChatModel] || models['qwen-3.5'],
-            defaultClassificationModel: models[config.defaultClassificationModel] || models['qwen-3.5'],
+            defaultChatModel: models[config.defaultChatModel] || models['gpt-5.2'],
+            defaultClassificationModel: models[config.defaultClassificationModel] || models['gpt-5.2'],
         },
     }
 }
