@@ -85,3 +85,8 @@ spec:
 - NEVER commit actual secret files
 - NEVER skip resource limits in deployments
 - NEVER use hardcoded image tags without versioning
+
+## LLM ENDPOINT POLICY
+
+- 모든 모델 호출(Gemini 포함)은 **코드 하드코딩 금지**이며, 환경변수(`CLI_PROXY_API_BASE_URL`, `GEMINI_API_BASE_URL`)로만 지정합니다.
+- `CLI_PROXY_API_BASE_URL`와 `GEMINI_API_BASE_URL`는 동일한 값을 사용해야 합니다.

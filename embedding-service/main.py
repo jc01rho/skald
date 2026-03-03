@@ -53,11 +53,16 @@ GROQ_API_KEYS_STR = os.getenv("GROQ_API_KEYS", "")
 GROQ_API_KEYS = [k.strip() for k in GROQ_API_KEYS_STR.split(",") if k.strip()]
 SILICONFLOW_API_KEY = os.getenv("SILICONFLOW_API_KEY", "")
 SILICONFLOW_MODEL = os.getenv("SILICONFLOW_MODEL", "nex-agi/DeepSeek-V3.1-Nex-N1")
+SILICONFLOW_BASE_URL = os.getenv("SILICONFLOW_BASE_URL", "")
 OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY", "")
 OPENROUTER_MODEL = os.getenv("OPENROUTER_MODEL", "xiaomi/mimo-v2-flash:free")
+OPENROUTER_BASE_URL = os.getenv("OPENROUTER_BASE_URL", "")
+OPENROUTER_HTTP_REFERER = os.getenv("OPENROUTER_HTTP_REFERER", "")
 MISTRAL_API_KEY = os.getenv("MISTRAL_API_KEY", "")
 MISTRAL_MODEL = os.getenv("MISTRAL_MODEL", "mistral-medium-latest")
+MISTRAL_BASE_URL = os.getenv("MISTRAL_BASE_URL", "")
 GITHUB_TOKEN = os.getenv("GITHUB_TOKEN", "")
+GITHUB_BASE_URL = os.getenv("GITHUB_BASE_URL", "")
 GITHUB_MODELS_STR = os.getenv(
     "GITHUB_MODELS",
     "deepseek/DeepSeek-R1,xai/grok-3-mini,xai/grok-3,deepseek/DeepSeek-V3-0324,openai/gpt-4o-mini,openai/o4-mini",
@@ -70,10 +75,12 @@ if not GITHUB_MODELS:
 
 POLLINATIONS_API_KEY = os.getenv("POLLINATIONS_API_KEY", "")
 POLLINATIONS_MODEL = os.getenv("POLLINATIONS_MODEL", "openai")
+POLLINATIONS_BASE_URL = os.getenv("POLLINATIONS_BASE_URL", "")
 
 # Z.ai LLM Provider
 ZAI_API_KEY = os.getenv("ZAI_API_KEY", "")
 ZAI_MODEL = os.getenv("ZAI_MODEL", "glm-4.7")
+ZAI_BASE_URL = os.getenv("ZAI_BASE_URL", "")
 
 # CLI Proxy API (OpenAI-compatible with multi-model support)
 CLI_PROXY_API_KEY = os.getenv("CLI_PROXY_API_KEY", "")
@@ -449,10 +456,13 @@ if RERANK_PROVIDER == "local":
 kiwi_instance = None
 try:
     from kiwipiepy import Kiwi
+
     kiwi_instance = Kiwi()
     logger.info("Kiwi Korean morphological analyzer loaded successfully")
 except ImportError:
-    logger.warning("kiwipiepy not installed. Korean tokenization will not be available.")
+    logger.warning(
+        "kiwipiepy not installed. Korean tokenization will not be available."
+    )
 except Exception as e:
     logger.error(f"Failed to initialize Kiwi: {e}")
 
@@ -463,17 +473,49 @@ except Exception as e:
 _MEANINGFUL_POS_TAGS = frozenset({"NNG", "NNP", "VV", "VA", "MAG", "SL", "SN", "SH"})
 
 # Korean stopwords (from OneRAG reference)
-KOREAN_STOPWORDS = frozenset({
-    # 조사
-    "은", "는", "이", "가", "을", "를", "의", "에", "에서", "로", "으로",
-    "와", "과", "도", "만", "부터", "까지", "라", "이라",
-    # 접속부사
-    "그리고", "그러나", "하지만", "그래서", "따라서",
-    # 대명사
-    "이것", "그것", "저것", "이거", "그거", "저거",
-    # 기타 고빈도 저정보 단어
-    "것", "수", "등", "때", "중",
-})
+KOREAN_STOPWORDS = frozenset(
+    {
+        # 조사
+        "은",
+        "는",
+        "이",
+        "가",
+        "을",
+        "를",
+        "의",
+        "에",
+        "에서",
+        "로",
+        "으로",
+        "와",
+        "과",
+        "도",
+        "만",
+        "부터",
+        "까지",
+        "라",
+        "이라",
+        # 접속부사
+        "그리고",
+        "그러나",
+        "하지만",
+        "그래서",
+        "따라서",
+        # 대명사
+        "이것",
+        "그것",
+        "저것",
+        "이거",
+        "그거",
+        "저거",
+        # 기타 고빈도 저정보 단어
+        "것",
+        "수",
+        "등",
+        "때",
+        "중",
+    }
+)
 
 
 # ============================================================
@@ -943,7 +985,9 @@ class RerankResponse(BaseModel):
 
 class TokenizeRequest(BaseModel):
     text: str = Field(..., description="Text to tokenize")
-    filter_pos: bool = Field(default=True, description="Filter to meaningful POS tags only")
+    filter_pos: bool = Field(
+        default=True, description="Filter to meaningful POS tags only"
+    )
     filter_stopwords: bool = Field(default=True, description="Remove Korean stopwords")
 
 
@@ -1241,9 +1285,7 @@ async def tokenize_text(request: TokenizeRequest):
                 continue
             tokens.append(form)
 
-        logger.debug(
-            f"Tokenized '{text[:50]}...' -> {len(tokens)} tokens"
-        )
+        logger.debug(f"Tokenized '{text[:50]}...' -> {len(tokens)} tokens")
         return TokenizeResponse(tokens=tokens, original_length=len(text))
     except Exception as e:
         logger.error(f"Tokenization failed: {str(e)}")
@@ -1761,7 +1803,9 @@ async def _call_siliconflow(
     if not SILICONFLOW_API_KEY:
         return None
 
-    url = "https://api.siliconflow.com/v1/chat/completions"
+    if not SILICONFLOW_BASE_URL:
+        return None
+    url = f"{SILICONFLOW_BASE_URL.rstrip('/')}/v1/chat/completions"
     headers = {
         "Authorization": f"Bearer {SILICONFLOW_API_KEY}",
         "Content-Type": "application/json",
@@ -1830,12 +1874,14 @@ async def _call_zai(
 ):
     """
     Call Z.ai API (ChatGLM).
-    Z.ai API endpoint: https://api.z.ai/api/paas/v4/chat/completions
+    Z.ai API endpoint is configured via ZAI_BASE_URL env.
     """
     if not ZAI_API_KEY:
         return None
 
-    url = "https://api.z.ai/api/paas/v4/chat/completions"
+    if not ZAI_BASE_URL:
+        return None
+    url = f"{ZAI_BASE_URL.rstrip('/')}/api/paas/v4/chat/completions"
     headers = {
         "Authorization": f"Bearer {ZAI_API_KEY}",
         "Content-Type": "application/json",
@@ -1888,11 +1934,13 @@ async def _call_openrouter(
     if not OPENROUTER_API_KEY:
         return None
 
-    url = "https://openrouter.ai/api/v1/chat/completions"
+    if not OPENROUTER_BASE_URL:
+        return None
+    url = f"{OPENROUTER_BASE_URL.rstrip('/')}/api/v1/chat/completions"
     headers = {
         "Authorization": f"Bearer {OPENROUTER_API_KEY}",
         "Content-Type": "application/json",
-        "HTTP-Referer": "https://skald.sparrow.local",
+        "HTTP-Referer": OPENROUTER_HTTP_REFERER,
         "X-Title": "Skald AI",
     }
 
@@ -1943,7 +1991,9 @@ async def _call_mistral(
     if not MISTRAL_API_KEY:
         return None
 
-    url = "https://api.mistral.ai/v1/chat/completions"
+    if not MISTRAL_BASE_URL:
+        return None
+    url = f"{MISTRAL_BASE_URL.rstrip('/')}/v1/chat/completions"
     headers = {
         "Authorization": f"Bearer {MISTRAL_API_KEY}",
         "Content-Type": "application/json",
@@ -2052,7 +2102,9 @@ async def _call_github(
     if not GITHUB_TOKEN:
         return None
 
-    url = "https://models.github.ai/inference/chat/completions?api-version=2024-05-01-preview"
+    if not GITHUB_BASE_URL:
+        return None
+    url = f"{GITHUB_BASE_URL.rstrip('/')}/inference/chat/completions?api-version=2024-05-01-preview"
     headers = {
         "Authorization": f"Bearer {GITHUB_TOKEN}",
         "Content-Type": "application/json",
@@ -2106,7 +2158,9 @@ async def _call_pollinations(
     if not POLLINATIONS_API_KEY:
         return None
 
-    url = "https://gen.pollinations.ai/v1/chat/completions"
+    if not POLLINATIONS_BASE_URL:
+        return None
+    url = f"{POLLINATIONS_BASE_URL.rstrip('/')}/v1/chat/completions"
     headers = {
         "Authorization": f"Bearer {POLLINATIONS_API_KEY}",
         "Content-Type": "application/json",
@@ -2289,7 +2343,7 @@ async def chat_completions(request: ChatCompletionRequest):
     # ==========================================
     # 2. Try SiliconFlow (Fallback 1)
     # ==========================================
-    if SILICONFLOW_API_KEY:
+    if SILICONFLOW_API_KEY and SILICONFLOW_BASE_URL:
         try:
             logger.info(f"Attempting SiliconFlow: Model={SILICONFLOW_MODEL}")
             if request.stream:
@@ -2328,7 +2382,7 @@ async def chat_completions(request: ChatCompletionRequest):
     # ==========================================
     # 3. Try GitHub (Fallback 2)
     # ==========================================
-    if GITHUB_TOKEN and GITHUB_MODELS:
+    if GITHUB_TOKEN and GITHUB_MODELS and GITHUB_BASE_URL:
         # Try models in GitHub list
         all_gh_models = github_model_manager.get_all()
         start_model = github_model_manager.get_current()
@@ -2400,7 +2454,7 @@ async def chat_completions(request: ChatCompletionRequest):
     # ==========================================
     # 6. Try Mistral (Fallback 5)
     # ==========================================
-    if MISTRAL_API_KEY:
+    if MISTRAL_API_KEY and MISTRAL_BASE_URL:
         try:
             logger.info(f"Attempting Mistral: Model={MISTRAL_MODEL}")
             if request.stream:
@@ -2508,7 +2562,7 @@ async def chat_completions(request: ChatCompletionRequest):
     # ==========================================
     # 6. Try OpenRouter (Fallback 5)
     # ==========================================
-    if OPENROUTER_API_KEY:
+    if OPENROUTER_API_KEY and OPENROUTER_BASE_URL:
         if not openrouter_usage_tracker.can_make_request():
             logger.warning("OpenRouter daily limit reached, skipping to next fallback")
         else:

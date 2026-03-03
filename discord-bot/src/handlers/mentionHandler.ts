@@ -8,7 +8,10 @@ import { MemoFilter } from '../client/types.js'
 const INFO_DOC_ID_REGEX = /\binfo-(\d+)\b/gi
 
 function buildInfoDocUrl(infoId: string): string {
-    const base = config.spmsInfoBaseUrl.replace(/\/$/, '')
+    const base = config.spmsInfoBaseUrl.trim().replace(/\/$/, '')
+    if (!base) {
+        return `info-${infoId}`
+    }
     return `${base}/${infoId}`
 }
 

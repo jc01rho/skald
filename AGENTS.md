@@ -1,347 +1,106 @@
 # PROJECT KNOWLEDGE BASE
 
-**Generated:** 2026-02-27
-**Commit:** f020911
+**Generated:** 2026-03-03
+**Commit:** 761d941
 **Branch:** main
-**DevCenter Project:** [147 - Parrot 프로젝트](https://devcenter.sparrow.im/projects/147)
 
 ## OVERVIEW
 
-Skald: Open-source production RAG platform with plug-and-play API. TypeScript backend (Express + MikroORM + PostgreSQL + pgvector), React/Vite frontend with Zustand, Python embedding/worker services, Kubernetes deployment. CLI Proxy API as sole LLM provider.
+Skald는 프로덕션 RAG 플랫폼입니다. 루트는 React/Vite 프론트엔드이고, `backend/`(TS API), `worker/`(Python 수집기), `embedding-service/`(Python 임베딩), `k8s/`(배포)로 분리된 **inverted monorepo** 구조입니다.
 
 ## STRUCTURE
 
-```
-skald/                      # Root = Frontend package (inverted monorepo)
-├── backend/                # TypeScript/Express API + LangGraph agents
+```text
+skald/
+├── backend/                # Express + MikroORM + LangGraph
 │   └── src/
-│       ├── api/            # Express route handlers (20 files)
-│       ├── entities/       # MikroORM database models (26 entities)
-│       ├── migrations/     # Database schema migrations (28 files)
-│       ├── lib/            # Shared utilities (35 files: logger, DI, postgres, redis)
-│       ├── agents/         # LangGraph RAG agents (chat, memo processing)
-│       │   └── chatAgent/  # Core RAG pipeline (11-node graph)
-│       ├── services/       # Business logic (LLM, embedding, rerank, Stripe)
-│       ├── middleware/     # Express middleware (auth, rate limit, CSRF)
-│       └── __tests__/      # Jest tests (serial, maxWorkers=1)
-├── frontend/               # React/Vite UI (source in frontend/src/)
-│   └── src/
-│       ├── stores/         # Zustand state management (14 stores)
-│       ├── components/     # React components (ui/, feature folders)
-│       ├── pages/          # Route-level pages (21 files)
-│       └── lib/            # Frontend utilities (api.ts, types.ts)
-├── worker/                 # Python FastAPI worker (Jira/docs collectors)
-│   └── src/skald_worker/   # Circuit breaker + retry patterns
-├── embedding-service/      # Python FastAPI embeddings (single-file service)
-├── discord-bot/            # Discord integration (separate deploy via GitHub Actions)
-├── k8s/                    # Kubernetes manifests (55 files, 8 microservices)
-├── ee/                     # Enterprise edition (separate license)
-├── mock_data/              # Odin-docs test fixtures
-└── memory-bank/            # AI context persistence files
+│       ├── api/            # REST endpoints
+│       ├── agents/         # RAG agents (chatAgent/ragGraph.ts)
+│       ├── entities/       # DB models
+│       ├── lib/            # shared infra utils
+│       └── services/       # LLM/embedding/rerank/billing
+├── frontend/
+│   └── src/                # React app source (root package is frontend)
+├── worker/
+│   └── src/skald_worker/   # FastAPI collector worker
+├── embedding-service/      # FastAPI embedding microservice
+├── discord-bot/            # Discord integration
+├── k8s/                    # Kubernetes manifests + deploy.sh
+└── ee/                     # Enterprise-only extensions (separate license)
 ```
 
 ## WHERE TO LOOK
 
-| Task             | Location                                    | Notes                               |
-| ---------------- | ------------------------------------------- | ----------------------------------- |
-| API endpoints    | backend/src/api/\*.ts                       | Express routes, middleware arrays   |
-| Database models  | backend/src/entities/\*.ts                  | MikroORM decorators, 26 entities    |
-| RAG pipeline     | backend/src/agents/chatAgent/               | LangGraph StateGraph, 11 nodes      |
-| LLM access       | backend/src/services/llmService.ts          | CLI Proxy API only, retry+fallback  |
-| State management | frontend/src/stores/\*.ts                   | Zustand, one per domain             |
-| UI components    | frontend/src/components/                    | Feature-grouped subdirs             |
-| API client       | frontend/src/lib/api.ts                     | ALL requests go through here        |
-| Deployment       | k8s/\*.yaml                                 | K8s manifests, 4-phase deploy order |
-| Python worker    | worker/src/skald_worker/                    | Jira/docs collectors                |
-| Embeddings       | embedding-service/main.py                   | FastAPI + sentence-transformers     |
-| Subscription     | backend/src/services/subscriptionService.ts | Stripe billing (845 lines)          |
-| Discord bot      | discord-bot/                                | Separate deploy, GitHub Actions     |
+| Task             | Location                                   | Notes                              |
+| ---------------- | ------------------------------------------ | ---------------------------------- |
+| API 엔드포인트   | `backend/src/api/*.ts`                     | 미들웨어 배열 + zod 검증 패턴      |
+| RAG 파이프라인   | `backend/src/agents/chatAgent/ragGraph.ts` | 핵심 검색/리랭크/스트리밍 플로우   |
+| LLM 호출         | `backend/src/services/llmService.ts`       | 공급자 직접 호출 금지, 여기만 사용 |
+| 공용 인프라 유틸 | `backend/src/lib/`                         | logger/redis/postgres/DI           |
+| 프론트 상태      | `frontend/src/stores/*.ts`                 | 공유 상태는 Zustand                |
+| 프론트 API 호출  | `frontend/src/lib/api.ts`                  | 컴포넌트 direct fetch/axios 금지   |
+| 워커 수집기      | `worker/src/skald_worker/collectors/`      | Jira/docs ingest                   |
+| 임베딩 서비스    | `embedding-service/main.py`                | 단일 서비스 진입점                 |
+| 배포             | `k8s/deploy.sh`, `k8s/*.yaml`              | 단계적 배포                        |
 
 ## CODE MAP
 
-| Symbol              | Type       | Location                                    | Role                  |
-| ------------------- | ---------- | ------------------------------------------- | --------------------- |
-| chatAgent           | Function   | backend/src/agents/chatAgent/chatAgent.ts   | RAG entry point       |
-| ragGraph            | StateGraph | backend/src/agents/chatAgent/ragGraph.ts    | 11-node LangGraph     |
-| LLMService          | Class      | backend/src/services/llmService.ts          | Single LLM provider   |
-| DI                  | Object     | backend/src/lib/di.ts                       | Dependency injection  |
-| SubscriptionService | Class      | backend/src/services/subscriptionService.ts | Stripe webhooks       |
-| HybridSearchService | Class      | backend/src/embeddings/hybridSearch.ts      | Vector + BM25 search  |
-| api                 | Axios      | frontend/src/lib/api.ts                     | HTTP client with CSRF |
-| useAuthStore        | Store      | frontend/src/stores/authStore.ts            | Auth state            |
-| useChatStore        | Store      | frontend/src/stores/chatStore.ts            | Chat/streaming state  |
-| CircuitBreaker      | Class      | worker/src/skald_worker/circuit_breaker.py  | Fault tolerance       |
+| Symbol            | Type            | Location                                   | Role                         |
+| ----------------- | --------------- | ------------------------------------------ | ---------------------------- |
+| `getModeFromArgs` | function        | `backend/src/index.ts`                     | backend dual-mode 분기       |
+| `DI` / `initDI`   | object/function | `backend/src/di.ts`                        | MikroORM repository DI       |
+| `ragGraph`        | LangGraph flow  | `backend/src/agents/chatAgent/ragGraph.ts` | RAG 검색/리랭크 파이프라인   |
+| `api`             | axios client    | `frontend/src/lib/api.ts`                  | CSRF/인증 포함 단일 API 경로 |
+| `app`             | FastAPI app     | `worker/src/skald_worker/main.py`          | worker 서비스 진입점         |
 
-## CONVENTIONS
+## CONVENTIONS (DEVIATIONS ONLY)
 
-### Backend
+- **Inverted monorepo**: 루트 `package.json`이 프론트엔드용입니다.
+- **Dual backend mode**: `backend/src/index.ts`가 `--mode=express-server` / `--mode=memo-processing-server`를 처리합니다.
+- **LLM provider policy**: 백엔드는 CLI Proxy API 체인 중심으로 동작하며 호출은 `LLMService`를 통해서만 수행합니다.
+- **Testing policy**: backend Jest는 `maxWorkers=1` 직렬 실행입니다(DB 안전성).
+- **Frontend state policy**: 공유 상태는 Zustand, `useState`는 컴포넌트 로컬 상태에만 허용됩니다.
 
-- **Tooling:** pnpm, tsx for runtime
-- **Entry:** backend/src/index.ts (--mode=express-server | memo-processing-server)
-- **ORM:** MikroORM with PostgreSQL, pgvector for embeddings
-- **LLM:** CLI Proxy API only (CLI_PROXY_API_KEY) - no provider switching
-- **Logging:** Pino (logger.ts) with redaction - NEVER console.log
-- **Auth:** httpOnly cookies + CSRF, Google OAuth
-- **Testing:** Jest, maxWorkers=1 (serial), src/\_\_tests\_\_/\*.test.ts
-- **Path Alias:** @/\* → src/\* (backend tsconfig)
+## ANTI-PATTERNS (PROJECT-SPECIFIC)
 
-### Frontend
-
-- **Tooling:** Vite, React, Zustand, Tailwind
-- **State:** Zustand stores in stores/\*.ts - NO useState for shared state
-- **API:** api.ts for ALL requests - NO direct axios/fetch in components
-- **Routing:** File-based via pages/ structure
-- **Styling:** Tailwind CSS with cn() utility from shadcn
-- **Path Alias:** @/\* → frontend/src/\* (root tsconfig)
-
-### Python Services
-
-- **Worker:** FastAPI, Ruff linting (E, F, I, UP, B, SIM), 120 char lines
-- **Embedding:** FastAPI + sentence-transformers
-- **Resilience:** Circuit breaker (5 failures → 30s open), exponential backoff retry
-- **Package Manager:** uv
-
-### Code Style
-
-- **Prettier:** 4 spaces, no semicolons, single quotes, 120 chars
-- **ESLint:** Flat config (eslint.config.js), TypeScript + React, no-explicit-any disabled
-- **Pre-commit:** Husky + lint-staged (prettier --write on staged files)
-- **General:** Concise, simple code - avoid complex patterns
-
-## ANTI-PATTERNS (THIS PROJECT)
-
-- **Frontend:** NEVER useState for shared state → use Zustand stores
-- **Frontend:** NEVER direct axios/fetch → use api.ts
-- **Backend:** NEVER multiple components per file → one main + tiny helpers
-- **Backend:** NEVER call LLM providers directly → use LLMService.getLLM(purpose)
-- **Backend:** NEVER instantiate services manually → use DI container
-- **Testing:** NO parallel tests → serial (maxWorkers=1) for DB safety
-- **Auth:** NEVER localStorage tokens → httpOnly cookies only
-- **LLM:** NO provider switching → CLI Proxy API is the only provider
-- **Logging:** NEVER console.log → use logger from lib/logger.ts
-- **PostHog:** NEVER scatter feature flags → use in as few places as possible
-- **PostHog:** ALWAYS use enums for flag names (UPPERCASE_WITH_UNDERSCORE)
-- **Streaming:** NEVER send SSE headers after async work → headers BEFORE RAG graph
-
-## UNIQUE STYLES
-
-### Inverted Monorepo
-
-- Root package.json = Frontend (Vite/React)
-- Backend is subdirectory with own package.json
-- No workspace manager (no pnpm-workspace.yaml)
-
-### RAG Pipeline (11-node LangGraph)
-
-- **Flow:** history → analyzeQuery → rewrite → search → properties → rerank → validateCrag → mmr → contextReorder → fetchParentChunks → buildLLMInputs
-- **Self-controlling nodes:** Each node checks ragConfig to decide execution
-- **Parent-child chunking:** 512 chars for search, 2048 chars for LLM context
-- **Citations:** Strict [[N]] format, references injected as final SSE chunk
-
-### Dual Server Mode
-
-- `--mode=express-server`: HTTP API (port 8000)
-- `--mode=memo-processing-server`: RabbitMQ/SQS/Redis consumer
-- Same codebase, different entry modes
-
-### Dependency Injection
-
-- Manual DI via backend/src/lib/di.ts, initDI() at startup
-- All MikroORM repositories accessible via DI.entityName
+- `frontend/src/lib/api.ts` 우회 금지 (컴포넌트에서 direct axios/fetch 금지)
+- 공유 상태를 `useState`로 관리 금지 (`frontend/src/stores/` 패턴 사용)
+- LLM SDK 직접 호출 금지 (`backend/src/services/llmService.ts` 경유)
+- `console.log` 사용 금지 (`backend/src/lib/logger.ts` 사용)
+- SSE 헤더를 async 작업 뒤에 설정 금지 (`backend/src/api/chat.ts`)
+- 병렬 DB 테스트 금지 (`backend/jest.config.js`에서 직렬 실행)
+- K8s secret 실파일 커밋 금지 (`k8s/secret.yaml.example` 템플릿만 추적)
 
 ## COMMANDS
 
 ```bash
-# Backend
-cd backend && pnpm dev:express-server      # API server
-cd backend && pnpm dev:memo-processing-server  # Ingestion server
-cd backend && pnpm build                   # Compile TypeScript
-cd backend && pnpm test                    # Jest tests (serial)
-cd backend && pnpm migrate:up              # Apply migrations
+# frontend (root)
+pnpm dev
+pnpm build
 
-# Frontend (from root)
-pnpm dev                         # Vite dev server
-pnpm build                       # Production build
+# backend
+cd backend && pnpm dev:express-server
+cd backend && pnpm dev:memo-processing-server
+cd backend && pnpm build
+cd backend && pnpm test
 
-# Docker
-docker-compose up                # All services locally
-docker-compose --profile local up  # With local embedding service
+# worker
+cd worker && uv run python -m skald_worker
 
-# Worker (Python)
-cd worker && uv run python -m skald_worker  # Start worker
-cd worker && pytest                          # Run tests
+# embedding-service
+cd embedding-service && uv run uvicorn main:app --host 0.0.0.0 --port 8001
 
-# Embedding Service (Python)
-cd embedding-service && uvicorn main:app --host 0.0.0.0 --port 8001
+# k8s
+cd k8s && ./deploy.sh -y
 ```
 
 ## NOTES
 
-- **LLM Provider:** CLI Proxy API exclusively - all others removed
-- **Database:** PostgreSQL + pgvector for vector search
-- **Message Queue:** RabbitMQ for async memo processing (SQS, Redis also supported)
-- **Path Aliases:** @/\* → frontend/src/\* (root), @/\* → src/\* (backend)
-- **No CI/CD pipeline:** Manual builds/deployments, pre-commit via Husky/lint-staged
-- **Streaming Critical:** Chat headers MUST be sent before RAG graph invocation to avoid 504
-- **K8s Deploy Order:** Infrastructure → Core App → AI Services → Frontend/Ingress
-- **Large Files:** subscriptionService.ts (845), ragGraph.ts (623), memo.ts (513) - complexity hotspots
+- GitHub Actions로 컨테이너 빌드 워크플로우가 존재합니다 (`.github/workflows/*`).
+- `ee/`는 MIT 범위 밖의 별도 라이선스 코드입니다.
+- 하위 AGENTS는 중복 설명보다 해당 도메인의 비표준 제약만 기록해야 합니다.
 
-## DEPLOYMENT POLICIES
+## LLM ENDPOINT POLICY
 
-### Discord Bot
-
-**Build Process:**
-
-- **ONLY via GitHub Actions** - `.github/workflows/build-discord-bot.yml`
-- Triggered by: push to `main` branch with `discord-bot/**` changes, or `v*` tags
-- **NEVER build locally** for production deployments
-- Image: `ghcr.io/jc01rho/discord-bot:latest`
-
-**Deployment:**
-
-- **ONLY via `k8s/deploy.sh`** script
-- Uses `discord-bot-secret.local.yaml` for sensitive data (never commit actual secrets)
-
-**Local Development:**
-
-```bash
-cd discord-bot && pnpm install && pnpm run dev
-```
-
-### Kubernetes Deployment
-
-**Deployment Workflow:**
-
-- **ALWAYS follow this exact sequence:** `github push` → wait for GitHub Actions build completion → `k8s/deploy.sh -y`
-
-1. **Commit & Push** - 코드 커밋 후 GitHub에 푸시
-2. **GitHub Actions** - 자동으로 Docker 이미지 빌드 및 푸시 (Backend, Worker)
-    - `.github/workflows/build-backend.yml` - Backend 이미지 빌드
-    - `.github/workflows/build-worker.yml` - Worker 이미지 빌드
-    - 트리거: `main` 브랜치 푸시 또는 수동 실행
-3. **Wait for GH Actions** - GitHub Actions 완료 대기 (약 1-2분)
-4. **Run deploy.sh** - Kubernetes 배포 실행
-
-```bash
-# 배포 스크립트 실행
-cd k8s && ./deploy.sh
-
-# 또는 환경변수로 자동 승인
-cd k8s && echo "y" | ./deploy.sh
-
-# 항상 사용하는 자동 승인 배포 명령
-cd k8s && ./deploy.sh -y
-```
-
-**Deploy Script Phases:**
-
-1. Namespace & ConfigMap 생성
-2. Secrets 생성 (`k8s/secret.yaml` 필요)
-3. PostgreSQL & RabbitMQ 배포 (StatefulSet)
-4. Redis 배포
-5. Backend API Server 배포
-6. Memo Processing Server 배포
-7. AI Services (Embedding, Docling, Worker) 배포
-8. Frontend UI 배포
-9. Ingress 설정
-
-**Important Files:**
-
-- `k8s/configmap.yaml` - 비민감 환경변수
-- `k8s/secret.yaml` - 민감 정보 (Git 추적 안함, `secret.yaml.example` 참조)
-- `k8s/deploy.sh` - 전체 배포 자동화 스크립트
-
-**Key Environment Variables:**
-
-- `LOG_LEVEL` - 로깅 레벨 (info, debug, warn)
-- `LLM_DEFAULT_CHAT_MODEL` - 기본 채팅 모델
-- `LLM_FALLBACK_CHAIN` - 폴백 모델 체인 (쉼표 구분)
-- `CLI_PROXY_API_KEY` - LLM API 키
-- `GEMINI_API_KEY` - Gemini API 키 (선택)
-
-**Deployment Verification:**
-
-```bash
-# Pod 상태 확인
-kubectl get pods -n skald
-
-# 서비스 상태 확인
-kubectl get services -n skald
-
-# 로그 확인
-kubectl logs -f deployment/api-server -n skald
-
-# LLM 호출 로그 확인 (LOG_LEVEL=info 필요)
-kubectl logs -f deployment/api-server -n skald | grep -E "LLM|invoke|fallback|retry"
-```
-
-**Common Issues:**
-
-- **503 No Capacity Error** - LLMService가 자동으로 fallback 모델로 전환
-- **SQL ANY() Error** - 빈 배열 필터는 자동으로 `FALSE` 처리
-- **Memo Not Found Loop** - 존재하지 않는 memo는 재시도 없이 종료
-- **Deployment Label Mismatch** - `component` 라벨 확인 (deploy.sh에서 사용)
-
-<!-- gitnexus:start -->
-
-# GitNexus MCP
-
-This project is indexed by GitNexus as **skald** (2511 symbols, 6116 relationships, 179 execution flows).
-
-GitNexus provides a knowledge graph over this codebase — call chains, blast radius, execution flows, and semantic search.
-
-## Always Start Here
-
-For any task involving code understanding, debugging, impact analysis, or refactoring, you must:
-
-1. **Read `gitnexus://repo/{name}/context`** — codebase overview + check index freshness
-2. **Match your task to a skill below** and **read that skill file**
-3. **Follow the skill's workflow and checklist**
-
-> If step 1 warns the index is stale, run `npx gitnexus analyze` in the terminal first.
-
-## Skills
-
-| Task                                         | Read this skill file                               |
-| -------------------------------------------- | -------------------------------------------------- |
-| Understand architecture / "How does X work?" | `.claude/skills/gitnexus/exploring/SKILL.md`       |
-| Blast radius / "What breaks if I change X?"  | `.claude/skills/gitnexus/impact-analysis/SKILL.md` |
-| Trace bugs / "Why is X failing?"             | `.claude/skills/gitnexus/debugging/SKILL.md`       |
-| Rename / extract / split / refactor          | `.claude/skills/gitnexus/refactoring/SKILL.md`     |
-
-## Tools Reference
-
-| Tool             | What it gives you                                                        |
-| ---------------- | ------------------------------------------------------------------------ |
-| `query`          | Process-grouped code intelligence — execution flows related to a concept |
-| `context`        | 360-degree symbol view — categorized refs, processes it participates in  |
-| `impact`         | Symbol blast radius — what breaks at depth 1/2/3 with confidence         |
-| `detect_changes` | Git-diff impact — what do your current changes affect                    |
-| `rename`         | Multi-file coordinated rename with confidence-tagged edits               |
-| `cypher`         | Raw graph queries (read `gitnexus://repo/{name}/schema` first)           |
-| `list_repos`     | Discover indexed repos                                                   |
-
-## Resources Reference
-
-Lightweight reads (~100-500 tokens) for navigation:
-
-| Resource                                       | Content                                   |
-| ---------------------------------------------- | ----------------------------------------- |
-| `gitnexus://repo/{name}/context`               | Stats, staleness check                    |
-| `gitnexus://repo/{name}/clusters`              | All functional areas with cohesion scores |
-| `gitnexus://repo/{name}/cluster/{clusterName}` | Area members                              |
-| `gitnexus://repo/{name}/processes`             | All execution flows                       |
-| `gitnexus://repo/{name}/process/{processName}` | Step-by-step trace                        |
-| `gitnexus://repo/{name}/schema`                | Graph schema for Cypher                   |
-
-## Graph Schema
-
-**Nodes:** File, Function, Class, Interface, Method, Community, Process
-**Edges (via CodeRelation.type):** CALLS, IMPORTS, EXTENDS, IMPLEMENTS, DEFINES, MEMBER_OF, STEP_IN_PROCESS
-
-```cypher
-MATCH (caller)-[:CodeRelation {type: 'CALLS'}]->(f:Function {name: "myFunc"})
-RETURN caller.name, caller.filePath
-```
-
-<!-- gitnexus:end -->
+- 모든 모델 호출(Gemini 포함)은 **코드 하드코딩 금지**이며, 환경변수(`CLI_PROXY_API_BASE_URL`, `GEMINI_API_BASE_URL`)로만 지정합니다.
+- `CLI_PROXY_API_BASE_URL`와 `GEMINI_API_BASE_URL`는 동일한 값을 사용해야 합니다.

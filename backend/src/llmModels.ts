@@ -6,8 +6,9 @@ export const SUPPORTED_LLM_MODELS = {
         // Available Models (28 working models)
         // Listed in priority order as specified
         // ========================================
+        'step': { slug: 'step', name: 'Step' },
         'qwen-3.5': { slug: 'qwen-3.5', name: 'Qwen 3.5' },
-        'gemini-3.1-pro': { slug: 'gemini-3.1-pro', name: 'Gemini 3.1 Pro' },
+        'gemini-3.1-pro-preview': { slug: 'gemini-3.1-pro-preview', name: 'Gemini 3.1 Pro Preview' },
         'glm-5': { slug: 'glm-5', name: 'GLM 5' },
         'deepseek-v3.2-reasoner': { slug: 'deepseek-v3.2-reasoner', name: 'DeepSeek V3.2 Reasoner' },
         'gemini-2.5-pro': { slug: 'gemini-2.5-pro', name: 'Gemini 2.5 Pro' },
@@ -51,7 +52,7 @@ export function getDefaultLLMModels() {
     const models = SUPPORTED_LLM_MODELS['cli-proxy-api'] as Record<string, { slug: string; name: string }>
     return {
         'cli-proxy-api': {
-            defaultChatModel: models[config.defaultChatModel] || models['gemini-3.1-pro'],
+            defaultChatModel: models[config.defaultChatModel] || models['qwen-3.5'],
             defaultClassificationModel: models[config.defaultClassificationModel] || models['qwen-3.5'],
         },
     }

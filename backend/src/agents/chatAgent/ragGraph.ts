@@ -302,11 +302,12 @@ async function vectorSearchNode(state: typeof RAGState.State) {
         try {
             // Separate original query (already embedded in analyzeAndRewrite) from remaining queries
             const remainingQueries = searchQueries.slice(1)
-            const remainingEmbeddings = remainingQueries.length > 0
-                ? await EmbeddingService.generateEmbeddingsBatch(remainingQueries, 'search')
-                : []
+            const remainingEmbeddings =
+                remainingQueries.length > 0
+                    ? await EmbeddingService.generateEmbeddingsBatch(remainingQueries, 'search')
+                    : []
             const allEmbeddings = [
-                precomputedQueryEmbedding || await EmbeddingService.generateEmbedding(query, 'search'),
+                precomputedQueryEmbedding || (await EmbeddingService.generateEmbedding(query, 'search')),
                 ...remainingEmbeddings,
             ]
             const allHybridResults = await mapWithConcurrency(
@@ -354,11 +355,12 @@ async function vectorSearchNode(state: typeof RAGState.State) {
 
     // P0-2 + P1-6: Batch embedding for vector-only search path (reuse precomputed embedding)
     const remainingQueriesFallback = searchQueries.slice(1)
-    const remainingEmbeddingsFallback = remainingQueriesFallback.length > 0
-        ? await EmbeddingService.generateEmbeddingsBatch(remainingQueriesFallback, 'search')
-        : []
+    const remainingEmbeddingsFallback =
+        remainingQueriesFallback.length > 0
+            ? await EmbeddingService.generateEmbeddingsBatch(remainingQueriesFallback, 'search')
+            : []
     const allEmbeddings = [
-        precomputedQueryEmbedding || await EmbeddingService.generateEmbedding(query, 'search'),
+        precomputedQueryEmbedding || (await EmbeddingService.generateEmbedding(query, 'search')),
         ...remainingEmbeddingsFallback,
     ]
     const allResults = await mapWithConcurrency(
@@ -753,14 +755,14 @@ async function fetchParentChunksNode(state: typeof RAGState.State) {
 
     try {
         // Query to get parent chunk content for each child chunk
-        // Format UUIDs as PostgreSQL array literal to avoid ANY() parameter expansion issues
+        const placeholders = childChunkUuids.map(() => '?').join(', ')
         const sql = `
             SELECT 
                 c.uuid as child_uuid,
                 p.chunk_content as parent_content
             FROM skald_memochunk c
             LEFT JOIN skald_memoparentchunk p ON c.parent_chunk_id = p.uuid
-            WHERE c.uuid = ANY(?::uuid[])
+            WHERE c.uuid IN (${placeholders})
             AND p.uuid IS NOT NULL
         `
 
@@ -769,7 +771,7 @@ async function fetchParentChunksNode(state: typeof RAGState.State) {
                 child_uuid: string
                 parent_content: string
             }>
-        >(sql, [childChunkUuids])
+        >(sql, childChunkUuids)
 
         // Build map: child_chunk_uuid -> parent_chunk_content
         const parentChunkMap = new Map<string, string>()
