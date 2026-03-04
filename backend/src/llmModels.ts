@@ -6,7 +6,8 @@ export const SUPPORTED_LLM_MODELS = {
         // Available Models (28 working models)
         // Listed in priority order as specified
         // ========================================
-        'step': { slug: 'step', name: 'Step' },
+        'gpt-5.2': { slug: 'gpt-5.2', name: 'GPT 5.2' },
+        step: { slug: 'step', name: 'Step' },
         'qwen-3.5': { slug: 'qwen-3.5', name: 'Qwen 3.5' },
         'gemini-3.1-pro-preview': { slug: 'gemini-3.1-pro-preview', name: 'Gemini 3.1 Pro Preview' },
         'glm-5': { slug: 'glm-5', name: 'GLM 5' },
@@ -50,10 +51,21 @@ export const SUPPORTED_LLM_MODELS = {
 export function getDefaultLLMModels() {
     const config = getLLMConfig()
     const models = SUPPORTED_LLM_MODELS['cli-proxy-api'] as Record<string, { slug: string; name: string }>
+    const fallbackSlug = config.fallbackChain[0]
+    const resolvedChatModel = models[config.defaultChatModel] || (fallbackSlug ? models[fallbackSlug] : undefined)
+    const resolvedClassificationModel =
+        models[config.defaultClassificationModel] || (fallbackSlug ? models[fallbackSlug] : undefined)
+
+    if (!resolvedChatModel || !resolvedClassificationModel) {
+        throw new Error(
+            'No valid default model found from environment/config. Check LLM_DEFAULT_CHAT_MODEL, LLM_DEFAULT_CLASSIFICATION_MODEL, LLM_FALLBACK_CHAIN.'
+        )
+    }
+
     return {
         'cli-proxy-api': {
-            defaultChatModel: models[config.defaultChatModel] || models['gpt-5.2'],
-            defaultClassificationModel: models[config.defaultClassificationModel] || models['gpt-5.2'],
+            defaultChatModel: resolvedChatModel,
+            defaultClassificationModel: resolvedClassificationModel,
         },
     }
 }
