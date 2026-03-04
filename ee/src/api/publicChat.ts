@@ -121,7 +121,7 @@ export const _generateStreamingResponse = async ({
     contextStr: string
     rerankResults: RerankResult[]
     enableReferences: boolean
-    llmProvider: 'openai' | 'anthropic' | 'local' | 'groq' | 'gemini'
+    llmProvider: 'openai' | 'anthropic' | 'local' | 'gemini'
 }): Promise<string> => {
     _setStreamingResponseHeaders(res)
 

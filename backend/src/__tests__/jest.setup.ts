@@ -3,7 +3,6 @@ jest.mock('@/api/config', () => {
     const AVAILABLE_LLM_PROVIDERS = [
         { provider: 'openai', label: 'OpenAI', model: 'gpt-4o-mini' },
         { provider: 'anthropic', label: 'Anthropic', model: 'claude-3-7-sonnet-20250219' },
-        { provider: 'groq', label: 'Groq', model: 'llama-3.1-8b-instant' },
         { provider: 'local', label: 'Local', model: 'llama-3.1-8b-instruct' },
     ]
 

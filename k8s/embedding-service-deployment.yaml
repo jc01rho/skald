@@ -61,18 +61,13 @@ spec:
                             secretKeyRef:
                                 name: skald-secrets
                                 key: VOYAGE_API_KEY
-                      - name: GROQ_API_KEYS
-                        valueFrom:
-                            secretKeyRef:
-                                name: skald-secrets
-                                key: GROQ_API_KEYS
 
                       # 임베딩 프로바이더 설정
                       - name: EMBEDDING_PROVIDER
                         valueFrom:
                             configMapKeyRef:
                                 name: skald-config
-                                key: EMBEDDING_SERVICE_PROVIDER
+                                key: EMBEDDING_PROVIDER
                       - name: EMBEDDING_MODEL
                         valueFrom:
                             configMapKeyRef:
@@ -118,63 +113,24 @@ spec:
                             secretKeyRef:
                                 name: skald-secrets
                                 key: SILICONFLOW_API_KEY
+                                optional: true
                       - name: SILICONFLOW_MODEL
                         valueFrom:
                             configMapKeyRef:
                                 name: skald-config
                                 key: SILICONFLOW_MODEL
-                      - name: MISTRAL_API_KEY
-                        valueFrom:
-                            secretKeyRef:
-                                name: skald-secrets
-                                key: MISTRAL_API_KEY
-                      - name: MISTRAL_MODEL
-                        valueFrom:
-                            configMapKeyRef:
-                                name: skald-config
-                                key: MISTRAL_MODEL
+                                optional: true
                       - name: OPENROUTER_API_KEY
                         valueFrom:
                             secretKeyRef:
                                 name: skald-secrets
                                 key: OPENROUTER_API_KEY
+                                optional: true
                       - name: OPENROUTER_MODEL
                         valueFrom:
                             configMapKeyRef:
                                 name: skald-config
                                 key: OPENROUTER_MODEL
-                      - name: GITHUB_TOKEN
-                        valueFrom:
-                            secretKeyRef:
-                                name: skald-secrets
-                                key: GITHUB_TOKEN
-                      - name: GITHUB_MODELS
-                        valueFrom:
-                            configMapKeyRef:
-                                name: skald-config
-                                key: GITHUB_MODELS
-                      - name: POLLINATIONS_API_KEY
-                        valueFrom:
-                            secretKeyRef:
-                                name: skald-secrets
-                                key: POLLINATIONS_API_KEY
-                      - name: POLLINATIONS_MODEL
-                        valueFrom:
-                            configMapKeyRef:
-                                name: skald-config
-                                key: POLLINATIONS_MODEL
-                      # Z.ai LLM Provider
-                      - name: ZAI_API_KEY
-                        valueFrom:
-                            secretKeyRef:
-                                name: skald-secrets
-                                key: ZAI_API_KEY
-                                optional: true
-                      - name: ZAI_MODEL
-                        valueFrom:
-                            configMapKeyRef:
-                                name: skald-config
-                                key: ZAI_MODEL
                                 optional: true
                       # CLI Proxy API (OpenAI-compatible multi-model)
                       - name: CLI_PROXY_API_KEY
