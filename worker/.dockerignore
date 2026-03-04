@@ -1,0 +1,45 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+*.egg-info/
+dist/
+build/
+
+# Virtual environments
+venv/
+env/
+ENV/
+.venv
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Git
+.git/
+.gitignore
+.github/
+
+# Documentation
+LICENSE
+# Note: README.md is NOT excluded because pyproject.toml references it for package metadata
+
+# Tests
+tests/
+.pytest_cache/
+.coverage
+
+# CI/CD
+.github/
+.gitlab-ci.yml
+.travis.yml
