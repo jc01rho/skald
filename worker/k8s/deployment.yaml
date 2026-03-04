@@ -1,0 +1,78 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+    name: skald-worker
+    namespace: skald
+    labels:
+        app: skald-worker
+spec:
+    replicas: 1
+    selector:
+        matchLabels:
+            app: skald-worker
+    template:
+        metadata:
+            labels:
+                app: skald-worker
+            annotations:
+                prometheus.io/scrape: 'true'
+                prometheus.io/port: '8080'
+                prometheus.io/path: '/metrics'
+        spec:
+            serviceAccountName: skald-worker
+            securityContext:
+                runAsNonRoot: true
+                runAsUser: 1000
+                fsGroup: 1000
+            containers:
+                - name: worker
+                  image: ghcr.io/jc01rho/skald-worker:${IMAGE_TAG:-latest}
+                  imagePullPolicy: Always
+                  ports:
+                      - name: http
+                        containerPort: 8080
+                        protocol: TCP
+                      - name: metrics
+                        containerPort: 8080
+                        protocol: TCP
+                  envFrom:
+                      - configMapRef:
+                            name: skald-worker-config
+                      - secretRef:
+                            name: skald-worker-secrets
+                  resources:
+                      requests:
+                          memory: '256Mi'
+                          cpu: '100m'
+                      limits:
+                          memory: '512Mi'
+                          cpu: '500m'
+                  livenessProbe:
+                      httpGet:
+                          path: /health
+                          port: http
+                      initialDelaySeconds: 10
+                      periodSeconds: 30
+                      timeoutSeconds: 10
+                      failureThreshold: 3
+                  readinessProbe:
+                      httpGet:
+                          path: /health
+                          port: http
+                      initialDelaySeconds: 5
+                      periodSeconds: 10
+                      timeoutSeconds: 5
+                      failureThreshold: 3
+                  securityContext:
+                      allowPrivilegeEscalation: false
+                      readOnlyRootFilesystem: true
+                      capabilities:
+                          drop:
+                              - ALL
+                  volumeMounts:
+                      - name: tmp
+                        mountPath: /tmp
+            volumes:
+                - name: tmp
+                  emptyDir: {}
+            restartPolicy: Always
