@@ -7,7 +7,7 @@ import type { Project } from '@/lib/types'
 const CURRENT_PROJECT_KEY = 'skald_current_project_uuid'
 
 interface RAGConfig {
-    llmProvider: 'openai' | 'anthropic' | 'local' | 'groq' | 'gemini'
+    llmProvider: 'openai' | 'anthropic' | 'local' | 'gemini'
     references: {
         enabled: boolean
     }

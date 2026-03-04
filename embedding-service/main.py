@@ -7,7 +7,6 @@ import random
 from datetime import date
 from typing import Literal, Optional, Union, Any
 import httpx
-from groq import Groq, AsyncGroq
 
 import numpy as np
 from fastapi import FastAPI, HTTPException
@@ -49,43 +48,15 @@ QUERY_LANGUAGE = os.getenv("QUERY_LANGUAGE", "ko")  # 한글 최적화 기본값
 _ollama_url = os.getenv("LOCAL_LLM_BASE_URL", "http://localhost:11434")
 # Remove /v1 suffix if present (Ollama native API doesn't use /v1)
 OLLAMA_BASE_URL = _ollama_url.rstrip("/").removesuffix("/v1")
-GROQ_API_KEYS_STR = os.getenv("GROQ_API_KEYS", "")
-GROQ_API_KEYS = [k.strip() for k in GROQ_API_KEYS_STR.split(",") if k.strip()]
 SILICONFLOW_API_KEY = os.getenv("SILICONFLOW_API_KEY", "")
-SILICONFLOW_MODEL = os.getenv("SILICONFLOW_MODEL", "nex-agi/DeepSeek-V3.1-Nex-N1")
 SILICONFLOW_BASE_URL = os.getenv("SILICONFLOW_BASE_URL", "")
 OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY", "")
-OPENROUTER_MODEL = os.getenv("OPENROUTER_MODEL", "xiaomi/mimo-v2-flash:free")
 OPENROUTER_BASE_URL = os.getenv("OPENROUTER_BASE_URL", "")
 OPENROUTER_HTTP_REFERER = os.getenv("OPENROUTER_HTTP_REFERER", "")
-MISTRAL_API_KEY = os.getenv("MISTRAL_API_KEY", "")
-MISTRAL_MODEL = os.getenv("MISTRAL_MODEL", "mistral-medium-latest")
-MISTRAL_BASE_URL = os.getenv("MISTRAL_BASE_URL", "")
-GITHUB_TOKEN = os.getenv("GITHUB_TOKEN", "")
-GITHUB_BASE_URL = os.getenv("GITHUB_BASE_URL", "")
-GITHUB_MODELS_STR = os.getenv(
-    "GITHUB_MODELS",
-    "deepseek/DeepSeek-R1,xai/grok-3-mini,xai/grok-3,deepseek/DeepSeek-V3-0324,openai/gpt-4o-mini,openai/o4-mini",
-)
-GITHUB_MODELS = [m.strip() for m in GITHUB_MODELS_STR.split(",") if m.strip()]
-# GITHUB_MODEL fallback for backward compatibility
-if not GITHUB_MODELS:
-    _model = os.getenv("GITHUB_MODEL", "deepseek/DeepSeek-V3-0324")
-    GITHUB_MODELS = [_model]
-
-POLLINATIONS_API_KEY = os.getenv("POLLINATIONS_API_KEY", "")
-POLLINATIONS_MODEL = os.getenv("POLLINATIONS_MODEL", "openai")
-POLLINATIONS_BASE_URL = os.getenv("POLLINATIONS_BASE_URL", "")
-
-# Z.ai LLM Provider
-ZAI_API_KEY = os.getenv("ZAI_API_KEY", "")
-ZAI_MODEL = os.getenv("ZAI_MODEL", "glm-4.7")
-ZAI_BASE_URL = os.getenv("ZAI_BASE_URL", "")
-
 # CLI Proxy API (OpenAI-compatible with multi-model support)
 CLI_PROXY_API_KEY = os.getenv("CLI_PROXY_API_KEY", "")
 CLI_PROXY_BASE_URL = os.getenv("CLI_PROXY_BASE_URL", "")
-CLI_PROXY_MODELS_STR = os.getenv("CLI_PROXY_MODELS", "default")
+CLI_PROXY_MODELS_STR = os.getenv("CLI_PROXY_MODELS", "")
 CLI_PROXY_MODELS = [m.strip() for m in CLI_PROXY_MODELS_STR.split(",") if m.strip()]
 
 # OPENROUTER_API_KEY removed as per user request
@@ -104,6 +75,7 @@ except json.JSONDecodeError:
     logger.warning("Invalid LOCAL_LLM_ENDPOINTS_JSON format, using empty list")
     LOCAL_LLM_ENDPOINTS = []
 
+
 print(f"Using embedding provider: {EMBEDDING_PROVIDER}")
 print(f"Using rerank provider: {RERANK_PROVIDER}")
 print(f"Using embedding model: {EMBEDDING_MODEL}")
@@ -113,71 +85,7 @@ print(f"Query language: {QUERY_LANGUAGE}")
 if EMBEDDING_PROVIDER == "external":
     print(f"Using external embedding URL: {EXTERNAL_EMBEDDING_URL}")
 
-# Thread-safe exhaustion-based round-robin API key management
-import random
-from datetime import datetime, date
-
-
-class GroqKeyManager:
-    """
-    Simple API key manager with RPM-based rate limiting at 90% of allowed RPM.
-    No cooldowns, no protection logic - just simple round-robin with RPM throttling.
-    """
-
-    RPM_USAGE_PERCENT = 0.90  # Use 90% of allowed RPM
-
-    def __init__(self, api_keys: list[str]):
-        self._keys = api_keys
-        self._current_index = 0
-        self._lock = threading.Lock()
-        self._key_count = len(api_keys)
-        self._usage_count: dict[str, int] = {k: 0 for k in api_keys}
-        logger.info(
-            f"Initialized GroqKeyManager with {self._key_count} keys (simple RPM-based at 90%)"
-        )
-
-    def get_current_key(self) -> tuple[str, int]:
-        """Get the current active API key. Returns (api_key, key_index) tuple."""
-        with self._lock:
-            current_key = self._keys[self._current_index]
-            self._usage_count[current_key] += 1
-            return current_key, self._current_index
-
-    def rotate_key(self):
-        """Rotate to the next key in round-robin fashion."""
-        with self._lock:
-            old_index = self._current_index
-            self._current_index = (self._current_index + 1) % self._key_count
-            logger.info(
-                f"Rotated from key [{old_index + 1}] to key [{self._current_index + 1}]"
-            )
-
-    def get_key_count(self) -> int:
-        return self._key_count
-
-    def get_available_key_count(self) -> int:
-        return self._key_count
-
-    def get_all_keys(self) -> list[str]:
-        """Return all managed keys."""
-        return self._keys
-
-    def get_status(self) -> dict:
-        """Get simple status of all keys."""
-        with self._lock:
-            return {
-                "total_keys": self._key_count,
-                "current_key_index": self._current_index + 1,
-                "rpm_usage_percent": self.RPM_USAGE_PERCENT,
-                "keys": [
-                    {
-                        "index": idx + 1,
-                        "is_current": idx == self._current_index,
-                        "usage_count": self._usage_count.get(key, 0),
-                    }
-                    for idx, key in enumerate(self._keys)
-                ],
-            }
+# Thread-safe usage tracking
 
 
 class DailyUsageTracker:
@@ -256,77 +164,12 @@ class RoundRobinManager:
         return self.items
 
 
-github_model_manager = RoundRobinManager(GITHUB_MODELS, name="GitHub Models")
 cli_proxy_model_manager = RoundRobinManager(CLI_PROXY_MODELS, name="CLI Proxy Models")
-# pollinations_model_manager removed to disable round-robin
 
 
-# Simple RPM-based rate limiter (no cooldowns, just timing)
-class SimpleRPMThrottler:
-    """
-    Simple rate limiter that enforces RPM at 90% of allowed limit.
-    No cooldowns, no complex logic - just wait if we're going too fast.
-    """
-
-    def __init__(self):
-        self._last_request_times: dict[
-            str, list[float]
-        ] = {}  # model -> list of timestamps
-        self._lock = threading.Lock()
-
-    def get_wait_time(self, model: str) -> float:
-        """Calculate wait time to stay within 90% of RPM limit."""
-        with self._lock:
-            now = time.time()
-            limits = GROQ_MODEL_LIMITS.get(model, DEFAULT_MODEL_LIMITS)
-            rpm = limits["rpm"]
-            effective_rpm = rpm * 0.90  # 90% of allowed RPM
-
-            if model not in self._last_request_times:
-                self._last_request_times[model] = []
-
-            # Clean old timestamps (older than 60 seconds)
-            self._last_request_times[model] = [
-                t for t in self._last_request_times[model] if now - t < 60
-            ]
-
-            # Count requests in last minute
-            recent_count = len(self._last_request_times[model])
-
-            if recent_count < effective_rpm:
-                return 0.0  # Under limit, no wait needed
-
-            # Calculate wait time based on oldest request
-            if self._last_request_times[model]:
-                oldest = min(self._last_request_times[model])
-                wait_until = oldest + 60  # Wait until oldest request expires
-                wait_time = max(0, wait_until - now)
-                return wait_time
-
-            return 0.0
-
-    def record_request(self, model: str):
-        """Record a request timestamp for the model."""
-        with self._lock:
-            now = time.time()
-            if model not in self._last_request_times:
-                self._last_request_times[model] = []
-            self._last_request_times[model].append(now)
-
-    def get_status(self) -> dict:
-        """Get current status."""
-        with self._lock:
-            now = time.time()
-            status = {}
-            for model, times in self._last_request_times.items():
-                recent_times = [t for t in times if now - t < 60]
-                limits = GROQ_MODEL_LIMITS.get(model, DEFAULT_MODEL_LIMITS)
-                status[model] = {
-                    "requests_last_minute": len(recent_times),
-                    "rpm_limit": limits["rpm"],
-                    "effective_rpm": int(limits["rpm"] * 0.90),
-                }
-            return status
+def _resolve_provider_model(env_var: str, requested_model: str) -> str:
+    configured = os.getenv(env_var, "").strip()
+    return configured or requested_model
 
 
 # Dimension error cooldown management
@@ -358,35 +201,6 @@ class DimensionErrorCooldown:
             )
 
 
-class ProviderErrorCooldown:
-    """
-    Manages cooldown period when provider errors occur.
-    Used for 24-hour blocking on pollinations errors.
-    """
-
-    def __init__(self, cooldown_seconds: float = 86400.0):  # 24 hours default
-        self._cooldown_until: float = 0.0
-        self._lock = threading.Lock()
-        self._cooldown_duration = cooldown_seconds
-
-    def is_in_cooldown(self) -> tuple[bool, float]:
-        """Check if currently in cooldown. Returns (is_in_cooldown, remaining_seconds)."""
-        with self._lock:
-            current_time = time.time()
-            if current_time < self._cooldown_until:
-                remaining = self._cooldown_until - current_time
-                return True, remaining
-            return False, 0.0
-
-    def activate_cooldown(self):
-        """Activate cooldown period."""
-        with self._lock:
-            self._cooldown_until = time.time() + self._cooldown_duration
-            logger.error(
-                f"Provider error detected! Provider entering {self._cooldown_duration / 3600:.0f} hour cooldown."
-            )
-
-
 # OpenAI-compatible Chat Models
 class ChatMessage(BaseModel):
     role: str
@@ -399,27 +213,11 @@ class ChatCompletionRequest(BaseModel):
     stream: bool = False
     temperature: Optional[float] = 0.7
     max_tokens: Optional[int] = None
-    llm_provider: Optional[str] = (
-        None  # Optional: 'zai', etc. to force specific provider
-    )
+    llm_provider: Optional[str] = None
 
 
 # Initialize managers
-# Initialize managers
-groq_key_manager: GroqKeyManager | None = None
 dimension_error_cooldown = DimensionErrorCooldown(cooldown_seconds=3600.0)  # 1 hour
-pollinations_error_cooldown = ProviderErrorCooldown(
-    cooldown_seconds=86400.0
-)  # 24 hours
-
-# Initialize Groq Manager if keys are present
-if GROQ_API_KEYS:
-    groq_key_manager = GroqKeyManager(GROQ_API_KEYS)
-    print(
-        f"Groq API configured with {len(GROQ_API_KEYS)} keys (thread-safe round-robin)"
-    )
-else:
-    logger.warning("GROQ_API_KEY is not set. Groq features (chat) will not work.")
 
 if EMBEDDING_PROVIDER == "ollama":
     print(f"Using Ollama base URL: {OLLAMA_BASE_URL}")
@@ -1306,57 +1104,7 @@ class KeyValidationResult(BaseModel):
 
 @app.post("/api-keys/validate")
 async def validate_api_keys():
-    """
-    Test all configured Groq API keys to check if they are valid or blocked.
-    WARNING: This consumes a small amount of quota for each key.
-    """
-    if not groq_key_manager:
-        raise HTTPException(status_code=503, detail="Groq API keys not configured")
-
-    all_keys = groq_key_manager.get_all_keys()
-    results = []
-
-    # Simple test payload
-    messages = [{"role": "user", "content": "ping"}]
-
-    for key in all_keys:
-        key_mask = f"{key[:4]}...{key[-4:]}" if len(key) > 8 else "***"
-        result = KeyValidationResult(key_mask=key_mask, is_valid=False)
-
-        try:
-            # Create a localized client for this key
-            client = AsyncGroq(api_key=key, max_retries=0)
-
-            # Use a fast, cheap model for testing
-            await client.chat.completions.create(
-                model="llama-3.1-8b-instant", messages=messages, max_completion_tokens=1
-            )
-            result.is_valid = True
-            result.status_code = 200
-        except Exception as e:
-            error_str = str(e)
-            result.error_message = error_str
-
-            # Extract status code if available in error object or string
-            if hasattr(e, "status_code"):
-                result.status_code = e.status_code
-            elif "401" in error_str:
-                result.status_code = 401
-            elif "429" in error_str:
-                result.status_code = 429
-            elif "404" in error_str:
-                result.status_code = 404
-            else:
-                result.status_code = 500
-
-        results.append(result)
-
-    return {
-        "total_keys": len(all_keys),
-        "valid_keys_count": sum(1 for r in results if r.is_valid),
-        "blocked_keys_count": sum(1 for r in results if not r.is_valid),
-        "details": results,
-    }
+    raise HTTPException(status_code=410, detail="Groq provider has been removed")
 
 
 @app.get("/info")
@@ -1389,134 +1137,11 @@ async def get_info():
 
 @app.get("/api-keys/status")
 async def get_api_keys_status():
-    """
-    Get the status of Groq API keys for monitoring.
-    Shows usage counts, rate-limit status, and cooldown times.
-    """
-    if groq_key_manager is None:
-        return {
-            "provider": EMBEDDING_PROVIDER,
-            "message": "Groq API key management not active",
-            "keys": None,
-        }
-
     return {
         "provider": EMBEDDING_PROVIDER,
-        "strategy": "exhaustion-based round-robin",
-        "status": groq_key_manager.get_status(),
-        "available_keys": groq_key_manager.get_available_key_count(),
+        "message": "Groq provider has been removed",
+        "keys": None,
     }
-
-
-# ============================================================
-# Chat Proxy (Groq Round-Robin)
-# ============================================================
-
-
-# Groq Official Model Limits (as of 2024-12)
-# RPM: Requests per Minute, RPD: Requests per Day
-# TPM: Tokens per Minute, TPD: Tokens per Day
-GROQ_MODEL_LIMITS = {
-    "allam-2-7b": {"rpm": 30, "rpd": 7000, "tpm": 6000, "tpd": 500000},
-    "groq/compound": {"rpm": 30, "rpd": 250, "tpm": 70000, "tpd": None},  # No limit
-    "groq/compound-mini": {"rpm": 30, "rpd": 250, "tpm": 70000, "tpd": None},
-    "llama-3.1-8b-instant": {"rpm": 30, "rpd": 14400, "tpm": 6000, "tpd": 500000},
-    "llama-3.3-70b-versatile": {"rpm": 30, "rpd": 1000, "tpm": 12000, "tpd": 100000},
-    "meta-llama/llama-4-maverick-17b-128e-instruct": {
-        "rpm": 30,
-        "rpd": 1000,
-        "tpm": 6000,
-        "tpd": 500000,
-    },
-    "meta-llama/llama-4-scout-17b-16e-instruct": {
-        "rpm": 30,
-        "rpd": 1000,
-        "tpm": 30000,
-        "tpd": 500000,
-    },
-    "meta-llama/llama-guard-4-12b": {
-        "rpm": 30,
-        "rpd": 14400,
-        "tpm": 15000,
-        "tpd": 500000,
-    },
-    "meta-llama/llama-prompt-guard-2-22m": {
-        "rpm": 30,
-        "rpd": 14400,
-        "tpm": 15000,
-        "tpd": 500000,
-    },
-    "meta-llama/llama-prompt-guard-2-86m": {
-        "rpm": 30,
-        "rpd": 14400,
-        "tpm": 15000,
-        "tpd": 500000,
-    },
-    "moonshotai/kimi-k2-instruct": {
-        "rpm": 60,
-        "rpd": 1000,
-        "tpm": 10000,
-        "tpd": 300000,
-    },
-    "moonshotai/kimi-k2-instruct-0905": {
-        "rpm": 60,
-        "rpd": 1000,
-        "tpm": 10000,
-        "tpd": 300000,
-    },
-    "openai/gpt-oss-120b": {"rpm": 30, "rpd": 1000, "tpm": 8000, "tpd": 200000},
-    "openai/gpt-oss-20b": {"rpm": 30, "rpd": 1000, "tpm": 8000, "tpd": 200000},
-    "openai/gpt-oss-safeguard-20b": {
-        "rpm": 30,
-        "rpd": 1000,
-        "tpm": 8000,
-        "tpd": 200000,
-    },
-    "qwen/qwen3-32b": {"rpm": 60, "rpd": 1000, "tpm": 6000, "tpd": 500000},
-}
-
-# Default limits for unknown models
-DEFAULT_MODEL_LIMITS = {"rpm": 30, "rpd": 1000, "tpm": 6000, "tpd": 100000}
-
-# Simple RPM throttler - initialized
-rpm_throttler = SimpleRPMThrottler()
-
-
-# Model fallback chains (Primary -> [Fallbacks])
-GROQ_MODEL_FALLBACKS = {
-    # High Intelligence / Chat Tier
-    "llama-3.3-70b-versatile": [
-        "llama-3.3-70b-versatile",
-        "qwen/qwen3-32b",
-        "moonshotai/kimi-k2-instruct",  # 60 RPM
-        # Fallback to Fast Tier if High Tier is exhausted
-        "openai/gpt-oss-120b",
-        "groq/compound",
-        "llama-3.1-8b-instant",
-        "moonshotai/kimi-k2-instruct-0905",
-        "meta-llama/llama-4-scout-17b-16e-instruct",
-        "meta-llama/llama-4-maverick-17b-128e-instruct",
-        "openai/gpt-oss-20b",
-        "openai/gpt-oss-safeguard-20b",
-        "allam-2-7b",
-        "groq/compound-mini",
-    ],
-    # Fast / Classification Tier
-    "llama-3.1-8b-instant": [
-        "openai/gpt-oss-120b",
-        "groq/compound",
-        "llama-3.1-8b-instant",
-        "moonshotai/kimi-k2-instruct-0905",  # 60 RPM
-        "meta-llama/llama-4-scout-17b-16e-instruct",  # 30 RPM, 30k TPM
-        "meta-llama/llama-4-maverick-17b-128e-instruct",  # 30 RPM
-        "openai/gpt-oss-20b",
-        "openai/gpt-oss-safeguard-20b",
-        "allam-2-7b",
-        "groq/compound-mini",
-        "meta-llama/llama-guard-4-12b",
-        "meta-llama/llama-prompt-guard-2-22m",
-    ],
-}
 
 
 async def _call_local_llm_fallback(
@@ -1689,35 +1314,6 @@ async def _stream_single_response(response_dict: dict):
         yield f"data: {json.dumps(error_data)}\n\n"
 
 
-async def _stream_groq_response(response_iterator, model_name: str):
-    """Generator for streaming Groq response in OpenAI format"""
-    try:
-        async for chunk in response_iterator:
-            content = chunk.choices[0].delta.content
-            if content:
-                data = {
-                    "id": f"chatcmpl-{int(time.time())}",
-                    "object": "chat.completion.chunk",
-                    "created": int(time.time()),
-                    "model": model_name,
-                    "choices": [
-                        {
-                            "index": 0,
-                            "delta": {"content": content},
-                            "finish_reason": None,
-                        }
-                    ],
-                }
-                yield f"data: {json.dumps(data)}\n\n"
-
-        # End of stream
-        yield "data: [DONE]\n\n"
-    except Exception as e:
-        logger.error(f"Error during streaming: {e}")
-        error_data = {"error": str(e)}
-        yield f"data: {json.dumps(error_data)}\n\n"
-
-
 class MemoProcessingThrottler:
     """
     Throttler for memo processing to enforce a duty cycle:
@@ -1796,6 +1392,7 @@ memo_throttler = MemoProcessingThrottler(run_duration=120.0, cooldown_duration=1
 
 async def _call_siliconflow(
     messages: list[dict],
+    model: str,
     temperature: float = 0.7,
     max_tokens: int = 4095,
     stream: bool = False,
@@ -1815,7 +1412,7 @@ async def _call_siliconflow(
     is_json = any("json" in m.get("content", "").lower() for m in messages)
 
     payload = {
-        "model": SILICONFLOW_MODEL,
+        "model": model,
         "messages": messages,
         "temperature": temperature,
         "max_tokens": max_tokens,
@@ -1866,67 +1463,9 @@ async def _stream_siliconflow_response(response, model_name):
         await response.aclose()
 
 
-async def _call_zai(
-    messages: list[dict],
-    temperature: float = 0.7,
-    max_tokens: int = 4096,
-    stream: bool = False,
-):
-    """
-    Call Z.ai API (ChatGLM).
-    Z.ai API endpoint is configured via ZAI_BASE_URL env.
-    """
-    if not ZAI_API_KEY:
-        return None
-
-    if not ZAI_BASE_URL:
-        return None
-    url = f"{ZAI_BASE_URL.rstrip('/')}/api/paas/v4/chat/completions"
-    headers = {
-        "Authorization": f"Bearer {ZAI_API_KEY}",
-        "Content-Type": "application/json",
-    }
-
-    payload = {
-        "model": ZAI_MODEL,
-        "messages": messages,
-        "temperature": temperature,
-        "max_tokens": max_tokens,
-        "stream": stream,
-    }
-
-    if stream:
-        return await global_httpx_client.post(url, json=payload, headers=headers)
-    else:
-        response = await global_httpx_client.post(url, json=payload, headers=headers)
-        response.raise_for_status()
-        return response.json()
-
-
-async def _stream_zai_response(response, model_name):
-    """
-    Stream Z.ai API response in OpenAI format.
-    """
-    try:
-        async for line in response.aiter_lines():
-            if not line.strip():
-                continue
-            if line.startswith("data: "):
-                data_str = line[6:].strip()
-                if data_str == "[DONE]":
-                    yield "data: [DONE]\n\n"
-                    break
-
-                yield f"data: {data_str}\n\n"
-    except Exception as e:
-        logger.error(f"Error during Z.ai streaming: {e}")
-        yield f"data: {json.dumps({'error': str(e)})}\n\n"
-    finally:
-        await response.aclose()
-
-
 async def _call_openrouter(
     messages: list[dict],
+    model: str,
     temperature: float = 0.7,
     max_tokens: int = 4096,
     stream: bool = False,
@@ -1945,7 +1484,7 @@ async def _call_openrouter(
     }
 
     payload = {
-        "model": OPENROUTER_MODEL,
+        "model": model,
         "messages": messages,
         "temperature": temperature,
         "max_tokens": max_tokens,
@@ -1980,39 +1519,6 @@ async def _stream_openrouter_response(response, model_name):
         yield f"data: {json.dumps({'error': str(e)})}\n\n"
     finally:
         await response.aclose()
-
-
-async def _call_mistral(
-    messages: list[dict],
-    temperature: float = 0.7,
-    max_tokens: int = 4096,
-    stream: bool = False,
-):
-    if not MISTRAL_API_KEY:
-        return None
-
-    if not MISTRAL_BASE_URL:
-        return None
-    url = f"{MISTRAL_BASE_URL.rstrip('/')}/v1/chat/completions"
-    headers = {
-        "Authorization": f"Bearer {MISTRAL_API_KEY}",
-        "Content-Type": "application/json",
-    }
-
-    payload = {
-        "model": MISTRAL_MODEL,
-        "messages": messages,
-        "temperature": temperature,
-        "max_tokens": max_tokens,
-        "stream": stream,
-    }
-
-    if stream:
-        return await global_httpx_client.post(url, json=payload, headers=headers)
-    else:
-        response = await global_httpx_client.post(url, json=payload, headers=headers)
-        response.raise_for_status()
-        return response.json()
 
 
 async def _call_cli_proxy(
@@ -2070,154 +1576,9 @@ async def _stream_cli_proxy_response(response, model_name):
         await response.aclose()
 
 
-async def _stream_mistral_response(response, model_name):
-    """
-    Stream Mistral API response in OpenAI format.
-    """
-    try:
-        async for line in response.aiter_lines():
-            if not line.strip():
-                continue
-            if line.startswith("data: "):
-                data_str = line[6:].strip()
-                if data_str == "[DONE]":
-                    yield "data: [DONE]\n\n"
-                    break
-
-                yield f"data: {data_str}\n\n"
-    except Exception as e:
-        logger.error(f"Error during Mistral streaming: {e}")
-        yield f"data: {json.dumps({'error': str(e)})}\n\n"
-    finally:
-        await response.aclose()
-
-
-async def _call_github(
-    messages: list[dict],
-    model: str,
-    temperature: float = 0.7,
-    max_tokens: int = 4096,
-    stream: bool = False,
-):
-    if not GITHUB_TOKEN:
-        return None
-
-    if not GITHUB_BASE_URL:
-        return None
-    url = f"{GITHUB_BASE_URL.rstrip('/')}/inference/chat/completions?api-version=2024-05-01-preview"
-    headers = {
-        "Authorization": f"Bearer {GITHUB_TOKEN}",
-        "Content-Type": "application/json",
-    }
-
-    payload = {
-        "model": model,
-        "messages": messages,
-        "temperature": temperature,
-        "max_tokens": max_tokens,
-        "stream": stream,
-    }
-
-    if stream:
-        return await global_httpx_client.post(url, json=payload, headers=headers)
-    else:
-        response = await global_httpx_client.post(url, json=payload, headers=headers)
-        response.raise_for_status()
-        return response.json()
-
-
-async def _stream_github_response(response, model_name):
-    """
-    Stream GitHub Models API response in OpenAI format.
-    """
-    try:
-        async for line in response.aiter_lines():
-            if not line.strip():
-                continue
-            if line.startswith("data: "):
-                data_str = line[6:].strip()
-                if data_str == "[DONE]":
-                    yield "data: [DONE]\n\n"
-                    break
-
-                yield f"data: {data_str}\n\n"
-    except Exception as e:
-        logger.error(f"Error during GitHub streaming: {e}")
-        yield f"data: {json.dumps({'error': str(e)})}\n\n"
-    finally:
-        await response.aclose()
-
-
-async def _call_pollinations(
-    messages: list[dict],
-    model: str,
-    temperature: float = 0.7,
-    max_tokens: int = 2048,
-    stream: bool = False,
-):
-    if not POLLINATIONS_API_KEY:
-        return None
-
-    if not POLLINATIONS_BASE_URL:
-        return None
-    url = f"{POLLINATIONS_BASE_URL.rstrip('/')}/v1/chat/completions"
-    headers = {
-        "Authorization": f"Bearer {POLLINATIONS_API_KEY}",
-        "Content-Type": "application/json",
-    }
-
-    payload = {
-        "model": model,
-        "messages": messages,
-        "temperature": temperature,
-        "max_tokens": max_tokens,
-        "stream": stream,
-        "modalities": ["text"],
-    }
-
-    if stream:
-        return await global_httpx_client.post(url, json=payload, headers=headers)
-    else:
-        response = await global_httpx_client.post(url, json=payload, headers=headers)
-        response.raise_for_status()
-        return response.json()
-
-
-async def _stream_pollinations_response(response, model_name):
-    """
-    Stream Pollinations AI response in OpenAI format.
-    """
-    try:
-        async for line in response.aiter_lines():
-            if not line.strip():
-                continue
-            if line.startswith("data: "):
-                data_str = line[6:].strip()
-                if data_str == "[DONE]":
-                    yield "data: [DONE]\n\n"
-                    break
-
-                yield f"data: {data_str}\n\n"
-    except Exception as e:
-        logger.error(f"Error during Pollinations streaming: {e}")
-        yield f"data: {json.dumps({'error': str(e)})}\n\n"
-    finally:
-        await response.aclose()
-
-
 @app.post("/v1/chat/completions")
 async def chat_completions(request: ChatCompletionRequest):
-    """
-    OpenAI-compatible chat completion endpoint.
-    Primary: Pollinations.ai (openai-fast)
-        Fallback 1: SiliconFlow (DeepSeek-V3)
-        Fallback 2: GitHub (DeepSeek-R1 Round-Robin)
-        Fallback 3: Mistral (Mistral Medium)
-        Fallback 4: CLI Proxy API (Multi-model Round-Robin)
-        Fallback 5: OpenRouter (Xiaomi Mimo-V2-Flash)
-        Fallback 6: Groq (llama-3.3-70b/70b-versatile etc)
-        Fallback 7: Local LLM (ollama)
-    """
+    """OpenAI-compatible chat completion endpoint."""
 
     requested_model = request.model
     messages_payload = [
@@ -2232,123 +1593,18 @@ async def chat_completions(request: ChatCompletionRequest):
     )
 
     # ==========================================
-    # 0. Check for explicit LLM provider (Z.ai)
-    # ==========================================
-    if request.llm_provider and request.llm_provider.lower() == "zai":
-        if not ZAI_API_KEY:
-            raise HTTPException(
-                status_code=503,
-                detail="Z.ai provider requested but ZAI_API_KEY is not configured",
-            )
-
-        try:
-            logger.info(f"Attempting Z.ai (explicit provider): Model={ZAI_MODEL}")
-            if request.stream:
-                zai_response = await _call_zai(
-                    messages_payload,
-                    request.temperature or 0.7,
-                    request.max_tokens or 4096,
-                    stream=True,
-                )
-                if zai_response.status_code == 200:
-                    logger.info("✅ Z.ai (stream) succeeded")
-                    return StreamingResponse(
-                        _stream_zai_response(zai_response, ZAI_MODEL),
-                        media_type="text/event-stream",
-                    )
-                else:
-                    error_body = await zai_response.aread()
-                    error_msg = error_body.decode()
-                    logger.error(
-                        f"Z.ai failed with status {zai_response.status_code}: {error_msg}"
-                    )
-                    await zai_response.aclose()
-                    raise HTTPException(
-                        status_code=zai_response.status_code,
-                        detail=f"Z.ai error: {error_msg}",
-                    )
-            else:
-                zai_data = await _call_zai(
-                    messages_payload,
-                    request.temperature or 0.7,
-                    request.max_tokens or 4096,
-                    stream=False,
-                )
-                if zai_data:
-                    logger.info("✅ Z.ai succeeded")
-                    return zai_data
-                else:
-                    raise HTTPException(
-                        status_code=500, detail="Z.ai returned empty response"
-                    )
-        except HTTPException:
-            raise
-        except Exception as e:
-            logger.error(f"Z.ai error: {e}")
-            raise HTTPException(status_code=500, detail=f"Z.ai error: {str(e)}")
-
-    # ==========================================
-    # 1. Try Pollinations.ai (Primary)
-    # ==========================================
-    is_cooldown, remaining = pollinations_error_cooldown.is_in_cooldown()
-    if is_cooldown:
-        logger.warning(
-            f"Pollinations in cooldown for {remaining:.0f}s, skipping to SiliconFlow"
-        )
-    elif POLLINATIONS_API_KEY:
-        try:
-            logger.info(f"Attempting Pollinations: Model={POLLINATIONS_MODEL}")
-            if request.stream:
-                pl_response = await _call_pollinations(
-                    messages_payload,
-                    POLLINATIONS_MODEL,
-                    request.temperature or 0.7,
-                    request.max_tokens or 2048,
-                    stream=True,
-                )
-                if pl_response.status_code == 200:
-                    logger.info(f"✅ Pollinations (stream) succeeded")
-                    return StreamingResponse(
-                        _stream_pollinations_response(pl_response, POLLINATIONS_MODEL),
-                        media_type="text/event-stream",
-                    )
-                else:
-                    error_body = await pl_response.aread()
-                    error_msg = error_body.decode()
-                    logger.warning(
-                        f"Pollinations failed with status {pl_response.status_code}: {error_msg}"
-                    )
-                    # Activate 24-hour cooldown on error
-                    pollinations_error_cooldown.activate_cooldown()
-                    await pl_response.aclose()
-            else:
-                pl_data = await _call_pollinations(
-                    messages_payload,
-                    POLLINATIONS_MODEL,
-                    request.temperature or 0.7,
-                    request.max_tokens or 2048,
-                    stream=False,
-                )
-                if pl_data:
-                    logger.info("✅ Pollinations succeeded")
-                    return pl_data
-                else:
-                    # Activate 24-hour cooldown on empty response
-                    pollinations_error_cooldown.activate_cooldown()
-        except Exception as e:
-            logger.error(f"Pollinations AI error: {e}")
-            # Activate 24-hour cooldown on exception
-            pollinations_error_cooldown.activate_cooldown()
-
-    # ==========================================
     # 2. Try SiliconFlow (Fallback 1)
     # ==========================================
     if SILICONFLOW_API_KEY and SILICONFLOW_BASE_URL:
         try:
-            logger.info(f"Attempting SiliconFlow: Model={SILICONFLOW_MODEL}")
+            siliconflow_model = _resolve_provider_model(
+                "SILICONFLOW_MODEL", requested_model
+            )
+            logger.info(f"Attempting SiliconFlow: Model={siliconflow_model}")
             if request.stream:
                 sf_response = await _call_siliconflow(
                     messages_payload,
+                    siliconflow_model,
                     request.temperature or 0.7,
                     request.max_tokens or 4095,
                     stream=True,
@@ -2356,7 +1612,7 @@ async def chat_completions(request: ChatCompletionRequest):
                 if sf_response.status_code == 200:
                     logger.info("✅ SiliconFlow (stream) succeeded")
                     return StreamingResponse(
-                        _stream_siliconflow_response(sf_response, SILICONFLOW_MODEL),
+                        _stream_siliconflow_response(sf_response, siliconflow_model),
                         media_type="text/event-stream",
                     )
                 else:
@@ -2368,6 +1624,7 @@ async def chat_completions(request: ChatCompletionRequest):
             else:
                 sf_data = await _call_siliconflow(
                     messages_payload,
+                    siliconflow_model,
                     request.temperature or 0.7,
                     request.max_tokens or 4095,
                     stream=False,
@@ -2377,117 +1634,6 @@ async def chat_completions(request: ChatCompletionRequest):
                     return sf_data
         except Exception as e:
             logger.error(f"SiliconFlow error: {e}")
-            # Continue to GitHub fallback
-
-    # ==========================================
-    # 3. Try GitHub (Fallback 2)
-    # ==========================================
-    if GITHUB_TOKEN and GITHUB_MODELS and GITHUB_BASE_URL:
-        # Try models in GitHub list
-        all_gh_models = github_model_manager.get_all()
-        start_model = github_model_manager.get_current()
-        start_idx = all_gh_models.index(start_model)
-
-        # We try all models starting from current index
-        for i in range(len(all_gh_models)):
-            current_idx = (start_idx + i) % len(all_gh_models)
-            target_gh_model = all_gh_models[current_idx]
-
-            try:
-                logger.info(
-                    f"Attempting GitHub [{i + 1}/{len(all_gh_models)}]: Model={target_gh_model}"
-                )
-                if request.stream:
-                    gh_response = await _call_github(
-                        messages_payload,
-                        target_gh_model,
-                        request.temperature or 0.7,
-                        request.max_tokens or 4096,
-                        stream=True,
-                    )
-                    if gh_response.status_code == 200:
-                        logger.info(
-                            f"✅ GitHub (stream) succeeded with {target_gh_model}"
-                        )
-                        return StreamingResponse(
-                            _stream_github_response(gh_response, target_gh_model),
-                            media_type="text/event-stream",
-                        )
-                    else:
-                        error_body = await gh_response.aread()
-                        error_msg = error_body.decode()
-                        logger.warning(
-                            f"GitHub model {target_gh_model} failed ({gh_response.status_code}): {error_msg}"
-                        )
-                        await gh_response.aclose()
-
-                        # If quota/rate limit, rotate and try next GitHub model
-                        if (
-                            gh_response.status_code in [429, 403]
-                            or "quota" in error_msg.lower()
-                        ):
-                            github_model_manager.rotate()
-                            continue
-                        else:
-                            # Other error, move on to Mistral fallback entirely?
-                            # Or try next model? Let's try next model for now.
-                            continue
-                else:
-                    gh_data = await _call_github(
-                        messages_payload,
-                        target_gh_model,
-                        request.temperature or 0.7,
-                        request.max_tokens or 4096,
-                        stream=False,
-                    )
-                    if gh_data:
-                        logger.info(f"✅ GitHub succeeded with {target_gh_model}")
-                        return gh_data
-            except Exception as e:
-                logger.error(f"GitHub Models error on {target_gh_model}: {e}")
-                github_model_manager.rotate()
-                continue
-
-        # If we exhausted all GitHub models
-        logger.warning("All GitHub models failed, moving to Mistral fallback")
-
-    # ==========================================
-    # 6. Try Mistral (Fallback 5)
-    # ==========================================
-    if MISTRAL_API_KEY and MISTRAL_BASE_URL:
-        try:
-            logger.info(f"Attempting Mistral: Model={MISTRAL_MODEL}")
-            if request.stream:
-                m_response = await _call_mistral(
-                    messages_payload,
-                    request.temperature or 0.7,
-                    request.max_tokens or 4096,
-                    stream=True,
-                )
-                if m_response.status_code == 200:
-                    logger.info("✅ Mistral (stream) succeeded")
-                    return StreamingResponse(
-                        _stream_mistral_response(m_response, MISTRAL_MODEL),
-                        media_type="text/event-stream",
-                    )
-                else:
-                    error_body = await m_response.aread()
-                    logger.warning(
-                        f"Mistral failed with status {m_response.status_code}: {error_body.decode()}"
-                    )
-                    await m_response.aclose()
-            else:
-                m_data = await _call_mistral(
-                    messages_payload,
-                    request.temperature or 0.7,
-                    request.max_tokens or 4096,
-                    stream=False,
-                )
-                if m_data:
-                    logger.info("✅ Mistral succeeded")
-                    return m_data
-        except Exception as e:
-            logger.error(f"Mistral error: {e}")
             # Continue to CLI Proxy fallback
 
     # ==========================================
@@ -2567,12 +1713,16 @@ async def chat_completions(request: ChatCompletionRequest):
             logger.warning("OpenRouter daily limit reached, skipping to next fallback")
         else:
             try:
+                openrouter_model = _resolve_provider_model(
+                    "OPENROUTER_MODEL", requested_model
+                )
                 logger.info(
-                    f"Attempting OpenRouter: Model={OPENROUTER_MODEL} (Usage: {openrouter_usage_tracker.count + 1}/{openrouter_usage_tracker.limit})"
+                    f"Attempting OpenRouter: Model={openrouter_model} (Usage: {openrouter_usage_tracker.count + 1}/{openrouter_usage_tracker.limit})"
                 )
                 if request.stream:
                     or_response = await _call_openrouter(
                         messages_payload,
+                        openrouter_model,
                         request.temperature or 0.7,
                         request.max_tokens or 4096,
                         stream=True,
@@ -2581,7 +1731,7 @@ async def chat_completions(request: ChatCompletionRequest):
                         logger.info("✅ OpenRouter (stream) succeeded")
                         openrouter_usage_tracker.record_request()
                         return StreamingResponse(
-                            _stream_openrouter_response(or_response, OPENROUTER_MODEL),
+                            _stream_openrouter_response(or_response, openrouter_model),
                             media_type="text/event-stream",
                         )
                     else:
@@ -2593,6 +1743,7 @@ async def chat_completions(request: ChatCompletionRequest):
                 else:
                     or_data = await _call_openrouter(
                         messages_payload,
+                        openrouter_model,
                         request.temperature or 0.7,
                         request.max_tokens or 4096,
                         stream=False,
@@ -2603,143 +1754,6 @@ async def chat_completions(request: ChatCompletionRequest):
                         return or_data
             except Exception as e:
                 logger.error(f"OpenRouter error: {e}")
-                # Continue to Groq fallback
-
-    # ==========================================
-    # 8. Try Groq (Fallback 7)
-    # ==========================================
-    logger.info("Falling back to Groq...")
-
-    # Determine fallback chain based on requested model
-    if requested_model in GROQ_MODEL_FALLBACKS:
-        model_chain = GROQ_MODEL_FALLBACKS[requested_model]
-    else:
-        found = False
-        for chain in GROQ_MODEL_FALLBACKS.values():
-            if requested_model in chain:
-                model_chain = chain.copy()
-                model_chain = [m for m in model_chain if m != requested_model]
-                model_chain.insert(0, requested_model)
-                found = True
-                break
-
-        if not found:
-            logger.info(
-                f"Requested model {requested_model} unknown, defaulting to llama-3.3-70b-versatile chain"
-            )
-            model_chain = GROQ_MODEL_FALLBACKS["llama-3.3-70b-versatile"]
-
-    if not groq_key_manager:
-        logger.warning("Groq API keys not configured, jumping to local LLM fallback")
-    else:
-        last_exception = None
-
-        # Try models in fallback chain
-        for model_index, target_model in enumerate(model_chain):
-            logger.info(
-                f"Trying Groq Model [{model_index + 1}/{len(model_chain)}]: '{target_model}'"
-            )
-
-            # Simple RPM-based throttling at 90%
-            wait_time = rpm_throttler.get_wait_time(target_model)
-            if wait_time > 0:
-                logger.info(
-                    f"RPM throttle: waiting {wait_time:.2f}s for model {target_model}"
-                )
-                await asyncio.sleep(wait_time)
-
-            # Get current key
-            try:
-                current_key, key_index = groq_key_manager.get_current_key()
-            except ValueError as e:
-                logger.error(f"No Groq API keys available: {e}")
-                break
-
-            try:
-                logger.info(
-                    f"  > Attempting Groq: Model={target_model} | KeyIndex={key_index + 1}/{groq_key_manager.get_key_count()} | KeyPrefix={current_key[:8]}..."
-                )
-
-                # Record request before making it
-                rpm_throttler.record_request(target_model)
-
-                client = AsyncGroq(api_key=current_key, max_retries=0)
-
-                completion = await client.chat.completions.create(
-                    model=target_model,
-                    messages=messages_payload,
-                    temperature=request.temperature or 0.6,
-                    max_completion_tokens=request.max_tokens or 4096,
-                    top_p=0.95,
-                    stream=request.stream,
-                )
-
-                if request.stream:
-                    logger.info("✅ Groq (stream) succeeded")
-                    return StreamingResponse(
-                        _stream_groq_response(completion, target_model),
-                        media_type="text/event-stream",
-                    )
-                else:
-                    logger.info("✅ Groq succeeded")
-                    return {
-                        "id": f"chatcmpl-{int(time.time())}",
-                        "object": "chat.completion",
-                        "created": int(time.time()),
-                        "model": target_model,
-                        "choices": [
-                            {
-                                "index": 0,
-                                "message": {
-                                    "role": "assistant",
-                                    "content": completion.choices[0].message.content,
-                                },
-                                "finish_reason": completion.choices[0].finish_reason,
-                            }
-                        ],
-                        "usage": {
-                            "prompt_tokens": completion.usage.prompt_tokens,
-                            "completion_tokens": completion.usage.completion_tokens,
-                            "total_tokens": completion.usage.total_tokens,
-                        },
-                    }
-
-            except Exception as e:
-                error_str = str(e)
-                last_exception = e
-
-                # Check for 413 Payload Too Large - fallback immediately
-                is_payload_too_large = (
-                    "413" in error_str
-                    or "payload too large" in error_str.lower()
-                    or "request entity too large" in error_str.lower()
-                )
-
-                if is_payload_too_large:
-                    logger.warning(
-                        f"Payload Too Large (413) on Groq. Jumping to local LLM..."
-                    )
-                    break  # Go to local LLM
-
-                # Rate limit - rotate key and try next model
-                is_rate_limit = "429" in error_str or "rate" in error_str.lower()
-                if is_rate_limit:
-                    logger.warning(
-                        f"Rate Limit (429) on Groq Model [{target_model}]. Rotating key and trying next model..."
-                    )
-                    groq_key_manager.rotate_key()
-                    continue
-
-                # Model not found - try next model
-                if "not found" in error_str.lower():
-                    logger.warning(
-                        f"Groq Model {target_model} not found. Trying next model..."
-                    )
-                    continue
-
-                # Other error - log and try next model
-                logger.error(f"Error on Groq {target_model}: {error_str}")
-                continue
 
     # ==========================================
     # 3. Try Local LLM (Fallback 2)
@@ -2763,65 +1777,8 @@ async def chat_completions(request: ChatCompletionRequest):
     # If all else fails
     raise HTTPException(
         status_code=503,
-        detail="All providers (SiliconFlow, GitHub, Pollinations, Mistral, OpenRouter, Groq, Local LLM) failed or are unavailable.",
+        detail="All providers (SiliconFlow, CLI Proxy, OpenRouter, Local LLM) failed or are unavailable.",
     )
-
-
-@app.get("/groq/status")
-async def get_groq_status():
-    """
-    Get simple status of LLM API management.
-    """
-    return {
-        "key_manager": groq_key_manager.get_status() if groq_key_manager else None,
-        "rpm_throttler": rpm_throttler.get_status(),
-        "openrouter_usage": openrouter_usage_tracker.get_status(),
-        "providers": {
-            "siliconflow": {
-                "configured": bool(SILICONFLOW_API_KEY),
-                "model": SILICONFLOW_MODEL,
-            },
-            "github": {
-                "configured": bool(GITHUB_TOKEN),
-                "current_model": github_model_manager.get_current(),
-                "all_models": github_model_manager.get_all(),
-            },
-            "pollinations": {
-                "configured": bool(POLLINATIONS_API_KEY),
-                "model": POLLINATIONS_MODEL,
-            },
-            "mistral": {"configured": bool(MISTRAL_API_KEY), "model": MISTRAL_MODEL},
-            "openrouter": {
-                "configured": bool(OPENROUTER_API_KEY),
-                "model": OPENROUTER_MODEL,
-            },
-            "groq": {
-                "configured": bool(GROQ_API_KEYS),
-                "keys_count": len(GROQ_API_KEYS),
-            },
-        },
-        "groq_model_limits": {
-            model: {
-                "rpm": limits["rpm"],
-                "rpd": limits["rpd"],
-                "tpm": limits["tpm"],
-                "tpd": limits["tpd"] or "unlimited",
-            }
-            for model, limits in GROQ_MODEL_LIMITS.items()
-        },
-    }
-
-
-@app.get("/groq/health")
-async def get_groq_health():
-    """Get quick health summary of Groq API usage."""
-    return {
-        "status": "healthy",
-        "available_keys": groq_key_manager.get_available_key_count()
-        if groq_key_manager
-        else 0,
-        "rpm_status": rpm_throttler.get_status(),
-    }
 
 
 if __name__ == "__main__":

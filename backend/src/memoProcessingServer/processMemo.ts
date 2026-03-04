@@ -79,7 +79,7 @@ const runMemoProcessingAgents = async (em: EntityManager, memoUuid: string) => {
 
     const promises = [createMemoChunks(em, row.memo_uuid, row.project_id, row.content, row.title)]
 
-    if (['openai', 'anthropic', 'gemini', 'local', 'groq'].includes(LLM_PROVIDER)) {
+    if (['openai', 'anthropic', 'gemini', 'local'].includes(LLM_PROVIDER)) {
         // promises.push(extractTagsFromMemo(em, row.memo_uuid, row.content, row.project_id))
         promises.push(generateMemoSummary(em, row.memo_uuid, row.content, row.project_id))
     }

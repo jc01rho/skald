@@ -103,16 +103,14 @@ export const GEMINI_API_BASE_URL = process.env.GEMINI_API_BASE_URL || ''
 export const GEMINI_API_KEY = process.env.GEMINI_API_KEY || ''
 
 // LLM Model Configuration (runtime configurable via env)
-export const LLM_DEFAULT_CHAT_MODEL = process.env.LLM_DEFAULT_CHAT_MODEL || 'gpt-5.2'
-export const LLM_DEFAULT_CLASSIFICATION_MODEL = process.env.LLM_DEFAULT_CLASSIFICATION_MODEL || 'gpt-5.2'
+export const LLM_DEFAULT_CHAT_MODEL = process.env.LLM_DEFAULT_CHAT_MODEL || ''
+export const LLM_DEFAULT_CLASSIFICATION_MODEL = process.env.LLM_DEFAULT_CLASSIFICATION_MODEL || ''
 
 // Fallback chain: comma-separated model slugs (first = highest priority)
-const DEFAULT_FALLBACK_CHAIN =
-    'gpt-5.2,qwen-3.5,deepseek-v3.2,glm-5,kimi,qwen3-235b,free,gemini-2.5-pro,gemini-3-flash-preview,qwen3-max-preview,qwen3-coder-plus,qwen3-235b-a22b-thinking-2507,qwen3-235b-a22b-instruct,qwen3-32b,deepseek-v3.2-reasoner,deepseek-v3.1,deepseek-v3,deepseek-r1,deepseek-v3.2-chat,giga-potato,sonnet'
-    'step,qwen-3.5,deepseek-v3.2,glm-5,kimi,qwen3-235b,free,gemini-2.5-pro,gemini-3-flash-preview,qwen3-max-preview,qwen3-coder-plus,qwen3-235b-a22b-thinking-2507,qwen3-235b-a22b-instruct,qwen3-32b,deepseek-v3.2-reasoner,deepseek-v3.1,deepseek-v3,deepseek-r1,deepseek-v3.2-chat,giga-potato,sonnet'
-export const LLM_FALLBACK_CHAIN = (process.env.LLM_FALLBACK_CHAIN || DEFAULT_FALLBACK_CHAIN)
+export const LLM_FALLBACK_CHAIN = (process.env.LLM_FALLBACK_CHAIN || '')
     .split(',')
     .map((s) => s.trim())
+    .filter(Boolean)
 
 /**
  * Hot-reloadable LLM configuration
@@ -141,14 +139,28 @@ export function getLLMConfig(): LLMConfig {
 export function loadLLMConfig(): LLMConfig {
     cachedLLMConfig = {
         provider: process.env.LLM_PROVIDER || 'cli-proxy-api',
-        defaultChatModel: process.env.LLM_DEFAULT_CHAT_MODEL || 'gpt-5.2',
-        defaultClassificationModel: process.env.LLM_DEFAULT_CLASSIFICATION_MODEL || 'gpt-5.2',
-        fallbackChain: (process.env.LLM_FALLBACK_CHAIN || DEFAULT_FALLBACK_CHAIN).split(',').map((s) => s.trim()),
+        defaultChatModel: process.env.LLM_DEFAULT_CHAT_MODEL || '',
+        defaultClassificationModel: process.env.LLM_DEFAULT_CLASSIFICATION_MODEL || '',
+        fallbackChain: (process.env.LLM_FALLBACK_CHAIN || '')
+            .split(',')
+            .map((s) => s.trim())
+            .filter(Boolean),
         cliProxyApiKey: process.env.CLI_PROXY_API_KEY,
         cliProxyApiBaseUrl: process.env.CLI_PROXY_API_BASE_URL || '',
         geminiApiBaseUrl: process.env.GEMINI_API_BASE_URL || '',
         geminiApiKey: process.env.GEMINI_API_KEY || '',
     }
+
+    if (
+        !cachedLLMConfig.defaultChatModel &&
+        !cachedLLMConfig.defaultClassificationModel &&
+        cachedLLMConfig.fallbackChain.length === 0
+    ) {
+        throw new Error(
+            'LLM model configuration is missing. Set at least one of: LLM_DEFAULT_CHAT_MODEL, LLM_DEFAULT_CLASSIFICATION_MODEL, LLM_FALLBACK_CHAIN'
+        )
+    }
+
     return cachedLLMConfig
 }
 
@@ -180,12 +192,8 @@ export const EMBEDDING_PROVIDER = process.env.EMBEDDING_PROVIDER || 'internal'
 // RERANKING_PROVIDER is kept for backward compatibility but no longer used
 export const RERANKING_PROVIDER = process.env.RERANKING_PROVIDER || 'internal'
 
-// Voyage AI (kept for backward compatibility, no longer used)
-export const VOYAGE_API_KEY = process.env.VOYAGE_API_KEY
-export const VOYAGE_EMBEDDING_MODEL = process.env.VOYAGE_EMBEDDING_MODEL || 'voyage-3-large'
-
 // OpenAI (kept for backward compatibility, no longer used for embedding)
-export const OPENAI_EMBEDDING_MODEL = process.env.OPENAI_EMBEDDING_MODEL || 'text-embedding-3-large'
+export const OPENAI_EMBEDDING_MODEL = process.env.OPENAI_EMBEDDING_MODEL || ''
 
 // Local (kept for backward compatibility, no longer used)
 export const EMBEDDING_SERVICE_URL = process.env.EMBEDDING_SERVICE_URL || 'http://localhost:8001'

@@ -78,7 +78,6 @@ services:
             - VOYAGE_API_KEY=${VOYAGE_API_KEY:-}
             - OPENAI_API_KEY=${OPENAI_API_KEY:-}
             - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
-            - GROQ_API_KEY=${GROQ_API_KEY:-}
             - GEMINI_API_KEY=${GEMINI_API_KEY:-}
             - LOCAL_LLM_BASE_URL=${LOCAL_LLM_BASE_URL:-}
             - LOCAL_LLM_MODEL=${LOCAL_LLM_MODEL:-}
@@ -134,7 +133,6 @@ services:
             - VOYAGE_API_KEY=${VOYAGE_API_KEY:-}
             - OPENAI_API_KEY=${OPENAI_API_KEY:-}
             - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
-            - GROQ_API_KEY=${GROQ_API_KEY:-}
             - GEMINI_API_KEY=${GEMINI_API_KEY:-}
             - LOCAL_LLM_BASE_URL=${LOCAL_LLM_BASE_URL:-}
             - LOCAL_LLM_MODEL=${LOCAL_LLM_MODEL:-}

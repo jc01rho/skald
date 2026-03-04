@@ -239,12 +239,6 @@ spec:
                             secretKeyRef:
                                 name: skald-secrets
                                 key: ANTHROPIC_API_KEY
-                      - name: GROQ_API_KEY
-                        valueFrom:
-                            secretKeyRef:
-                                name: skald-secrets
-                                key: GROQ_API_KEY
-                                optional: true
                       - name: GEMINI_API_KEY
                         valueFrom:
                             secretKeyRef:

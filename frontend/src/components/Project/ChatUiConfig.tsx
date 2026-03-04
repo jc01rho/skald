@@ -11,7 +11,7 @@ import { api, getOrgPath } from '@/lib/api'
 import type { Project } from '@/lib/types'
 
 interface RAGConfig {
-    llmProvider: 'openai' | 'anthropic' | 'local' | 'groq' | 'gemini'
+    llmProvider: 'openai' | 'anthropic' | 'local' | 'gemini'
     references: {
         enabled: boolean
     }
