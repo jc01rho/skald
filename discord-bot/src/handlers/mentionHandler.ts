@@ -6,6 +6,7 @@ import { logger } from '../logger.js'
 import { MemoFilter } from '../client/types.js'
 
 const INFO_DOC_ID_REGEX = /\binfo-(\d+)\b/gi
+const JIRA_ISSUE_KEY_REGEX = /\b([A-Z][A-Z0-9]+-\d+)\b/g
 
 function buildInfoDocUrl(infoId: string): string {
     const base = config.spmsInfoBaseUrl.trim().replace(/\/$/, '')
@@ -13,6 +14,27 @@ function buildInfoDocUrl(infoId: string): string {
         return `info-${infoId}`
     }
     return `${base}/${infoId}`
+}
+
+function buildJiraIssueUrl(issueKey: string): string {
+    const base = config.jiraBaseUrl
+        .trim()
+        .replace(/\/$/, '')
+        .replace(/\/browse$/i, '')
+    if (!base) {
+        return issueKey
+    }
+    return `${base}/browse/${issueKey}`
+}
+
+function linkifyJiraIssueKeys(text: string): string {
+    return text.replace(JIRA_ISSUE_KEY_REGEX, (match, issueKey) => {
+        if (!issueKey) {
+            return match
+        }
+
+        return `[${issueKey}](${buildJiraIssueUrl(issueKey)})`
+    })
 }
 
 function extractInfoDocUrls(text: string): string[] {
@@ -52,7 +74,12 @@ function linkifyCitationsWithReferences(
         const key = bracketedKey ?? plainKey
         if (!key) return match
 
-        const sourceUrl = references[key]?.source_url?.trim()
+        const reference = references[key]
+        if (!reference) {
+            return match
+        }
+
+        const sourceUrl = reference.source_url?.trim()
         if (!sourceUrl) {
             return match
         }
@@ -326,10 +353,11 @@ export async function handleMention(message: Message, client: Client) {
             try {
                 const lines = citedReferenceEntries.map(([key, ref]) => {
                     const sourceUrl = ref.source_url?.trim()
+                    const titleWithJiraLinks = linkifyJiraIssueKeys(ref.memo_title)
                     if (sourceUrl) {
-                        return `**[${key}]** ${ref.memo_title}\n🔗 ${sourceUrl}`
+                        return `**[${key}]** ${titleWithJiraLinks}\n🔗 ${sourceUrl}`
                     }
-                    return `**[${key}]** ${ref.memo_title}`
+                    return `**[${key}]** ${titleWithJiraLinks}`
                 })
 
                 // Discord embed description limit is 4096 chars
