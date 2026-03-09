@@ -678,8 +678,16 @@ deploy_worker() {
             log_error "Worker ConfigMap 생성 실패"
             exit 1
         fi
+    elif [ -f "../worker/k8s/configmap.yaml" ]; then
+        log_info "../worker/k8s/configmap.yaml 사용"
+        if kubectl apply -f ../worker/k8s/configmap.yaml -n "$NAMESPACE"; then
+            log_success "Worker ConfigMap 생성 완료 (worker/k8s)"
+        else
+            log_error "Worker ConfigMap 생성 실패"
+            exit 1
+        fi
     else
-        log_error "Worker ConfigMap 파일이 없습니다 (worker-configmap.local.yaml 또는 worker-configmap.yaml)"
+        log_error "Worker ConfigMap 파일이 없습니다 (worker-configmap.local.yaml, worker-configmap.yaml 또는 ../worker/k8s/configmap.yaml)"
         exit 1
     fi
 
@@ -700,8 +708,16 @@ deploy_worker() {
             log_error "Worker Secret 생성 실패"
             exit 1
         fi
+    elif [ -f "../worker/k8s/secret.yaml" ]; then
+        log_info "../worker/k8s/secret.yaml 사용"
+        if kubectl apply -f ../worker/k8s/secret.yaml -n "$NAMESPACE"; then
+            log_success "Worker Secret 생성 완료 (worker/k8s)"
+        else
+            log_error "Worker Secret 생성 실패"
+            exit 1
+        fi
     else
-        log_warning "Worker Secret 파일이 없습니다 (worker-secret.local.yaml 또는 worker-secret.yaml)"
+        log_warning "Worker Secret 파일이 없습니다 (worker-secret.local.yaml, worker-secret.yaml 또는 ../worker/k8s/secret.yaml)"
         log_warning "Worker가 제대로 작동하지 않을 수 있습니다."
     fi
 
