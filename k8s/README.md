@@ -4,17 +4,7 @@
 
 ## 검증 상태
 
-✅ **전체 검증 완료**: 2025-12-02
-📋 **상세 검증 보고서**: [VALIDATION_REPORT.md](VALIDATION_REPORT.md) 참조
-
-### 주요 검증 결과
-
-- ✅ YAML 문법 검증 통과 (수정된 파일: ingress.yaml, ingress-nginx-values.yaml)
-- ✅ Docker Compose ↔ Kubernetes 매핑 검증 완료
-- ⚠️ GitHub Actions 워크플로우 일부 문제 발견 (네임스페이스 불일치)
-- ✅ 배포 스크립트 문법 및 권한 검증 통과
-- ⚠️ 설정 일관성 부분 개선 필요
-- ✅ 보안 설정 기본 검증 통과
+이 문서는 현재 배포 절차와 운영 기준을 유지하는 **정본 문서**입니다. 일회성 수정 보고서/중간 산출물 문서는 저장소 정리 과정에서 제거될 수 있으므로, 최신 배포 검증 기준은 본 README와 각 매니페스트를 기준으로 확인하세요.
 
 ## 목차
 
@@ -996,7 +986,6 @@ kubectl exec -it deployment/api-server -n skald -- \
 | `ingress-nginx-values.yaml`         | NGINX Ingress Controller 설정 | Ingress Controller        |
 | `init-scripts-configmap.yaml`       | PostgreSQL 초기화 스크립트    | 데이터베이스 초기화       |
 | `api-url-architecture-design.md`    | API URL 아키텍처 설계 문서    | 기술 문서                 |
-| `UI-API-FIX-SUMMARY.md`             | UI API 호출 문제 해결 요약    | 변경 사항 문서            |
 
 ### Kubernetes 공식 문서 링크
 
@@ -1009,35 +998,42 @@ kubectl exec -it deployment/api-server -n skald -- \
 - [Secret 가이드](https://kubernetes.io/docs/concepts/configuration/secret/)
 - [PersistentVolume 가이드](https://kubernetes.io/docs/concepts/storage/persistent-volumes/)
 
-## 12. 검증 보고서
+## 12. 검증 기준
 
-### 검증 개요
+### 운영 검증 개요
 
-전체 Kubernetes 설정 및 배포 자동화 시스템에 대한 종합적인 검증이 완료되었습니다. 상세한 검증 결과는 [VALIDATION_REPORT.md](VALIDATION_REPORT.md)를 참고하세요.
+현재 운영 검증은 별도 일회성 보고서가 아니라 아래 기준으로 수행합니다.
 
-### 검증 항목
+1. **YAML / Shell 문법 검증**
+    - `kubectl apply --dry-run=client -f <manifest>`
+    - `bash -n k8s/deploy.sh`
 
-1. **YAML 문법 검증** ✅
-    - 모든 K8s 매니페스트 파일의 문법 검증 완료
-    - 수정된 파일: ingress.yaml, ingress-nginx-values.yaml
+2. **실배포 검증**
+    - `cd k8s && ./deploy.sh -y`
+    - rollout 및 readiness 확인
 
-2. **Docker Compose ↔ Kubernetes 매핑** ✅
+3. **서비스 연결 검증**
+    - `api-service`, `rabbitmq-service`, `skald-worker`, `ui-service` endpoint 확인
+    - 필요 시 애플리케이션 로그(`kubectl logs`)로 후속 검증
+
+4. **문서 정합성 검증**
+    - 본 README, `k8s/AGENTS.md`, `worker/k8s/README.md`, `worker/k8s/AGENTS.md`를 기준으로 유지
     - 모든 서비스의 매핑 상태 확인 완료
     - 환경변수, 포트, 네트워크 설정 검증 완료
 
-3. **GitHub Actions 워크플로우** ⚠️
+5. **GitHub Actions 워크플로우** ⚠️
     - 일부 워크플로우에서 네임스페이스 불일치 문제 발견
     - 이미지 태그 업데이트 로직 개선 필요
 
-4. **배포 스크립트** ✅
+6. **배포 스크립트** ✅
     - 쉘 문법 검증 통과
     - 실행 권한 확인 완료 (0755)
 
-5. **설정 일관성** ⚠️
+7. **설정 일관성** ⚠️
     - 이미지 태그 패턴 일부 불일치
     - 환경변수 참조 방식 통일 필요
 
-6. **보안 검증** ✅
+8. **보안 검증** ✅
     - Secret/ConfigMap 적절히 사용됨
     - RBAC 기본 설정 확인됨
     - NetworkPolicy 추가 권장
