@@ -125,6 +125,24 @@ describe('RAG Pipeline Integration Tests', () => {
             expect(error).toBeNull()
             expect(parsedRagConfig?.reranking.mmrEnabled).toBe(true)
         })
+
+        it('should parse confidence threshold with default', () => {
+            const { parsedRagConfig, error } = parseRagConfig({})
+
+            expect(error).toBeNull()
+            expect(parsedRagConfig?.confidence?.threshold).toBe(0.35)
+        })
+
+        it('should reject invalid confidence threshold', () => {
+            const { parsedRagConfig, error } = parseRagConfig({
+                confidence: {
+                    threshold: 1.2,
+                },
+            })
+
+            expect(parsedRagConfig).toBeNull()
+            expect(error).toContain('confidence threshold')
+        })
     })
 
     describe('Hybrid Search Integration', () => {
