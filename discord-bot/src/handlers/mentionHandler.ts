@@ -7,6 +7,12 @@ import { MemoFilter } from '../client/types.js'
 
 const INFO_DOC_ID_REGEX = /\binfo-(\d+)\b/gi
 const JIRA_ISSUE_KEY_REGEX = /\b([A-Z][A-Z0-9]+-\d+)\b/g
+const INFO_DOC_ID_SINGLE_REGEX = /\binfo-(\d+)\b/i
+const JIRA_ISSUE_KEY_SINGLE_REGEX = /\b([A-Z][A-Z0-9]+-\d+)\b/
+
+function isHttpUrl(value: string | undefined): value is string {
+    return Boolean(value && /^https?:\/\//i.test(value))
+}
 
 function buildInfoDocUrl(infoId: string): string {
     const base = config.spmsInfoBaseUrl.trim().replace(/\/$/, '')
@@ -49,6 +55,19 @@ function extractInfoDocUrls(text: string): string[] {
     }
 
     return Array.from(found)
+}
+
+function extractFirstInfoDocUrl(text: string): string | undefined {
+    const match = text.match(INFO_DOC_ID_SINGLE_REGEX)
+    const infoId = match?.[1]
+    const url = infoId ? buildInfoDocUrl(infoId) : undefined
+    return isHttpUrl(url) ? url : undefined
+}
+
+function extractFirstJiraIssueUrl(text: string): string | undefined {
+    const issueKey = text.match(JIRA_ISSUE_KEY_SINGLE_REGEX)?.[1]
+    const url = issueKey ? buildJiraIssueUrl(issueKey) : undefined
+    return isHttpUrl(url) ? url : undefined
 }
 
 function extractCitedReferenceKeys(text: string): Set<string> {
@@ -145,7 +164,10 @@ function linkifyCitationsWithReferences(
             continue
         }
 
-        const sourceUrl = reference.source_url?.trim()
+        const sourceUrl =
+            reference.source_url?.trim() ||
+            extractFirstJiraIssueUrl(reference.memo_title) ||
+            extractFirstInfoDocUrl(reference.memo_title)
         if (!sourceUrl) {
             result += `[${match.key}]`
             cursor = match.end
@@ -169,6 +191,30 @@ function normalizeCitationSpacing(text: string): string {
         .replace(/(\[\d+\])(?=\[\d+\])/g, '$1 ')
         .replace(/([\p{L}\p{N}])(\[\[(\d+)\]\]|\[(\d+)\])/gu, '$1 $2')
         .replace(/(\[\[(\d+)\]\]|\[(\d+)\])([\p{L}\p{N}])/gu, '$1 $4')
+}
+
+function recoverPlainNumericCitations(
+    text: string,
+    references: Record<string, { memo_uuid: string; memo_title: string; source_url?: string }>
+): string {
+    const availableKeys = new Set(Object.keys(references))
+    if (availableKeys.size === 0) {
+        return text
+    }
+
+    return text.replace(/((?:\[\d+\]|\d+)(?:[\s,]+(?:\[\d+\]|\d+))+)/g, (cluster) => {
+        if (!/\[\d+\]/.test(cluster)) {
+            return cluster
+        }
+
+        return cluster.replace(/(^|[\s,])(\d+)(?=([\s,]+|$))/g, (match, prefix: string, digits: string) => {
+            if (!availableKeys.has(digits)) {
+                return match
+            }
+
+            return `${prefix}[${digits}]`
+        })
+    })
 }
 
 function splitForDiscord(content: string, maxLength: number = 1900): string[] {
@@ -402,7 +448,9 @@ export async function handleMention(message: Message, client: Client) {
             }
         }
 
-        const finalResponse = linkifyCitationsWithReferences(normalizeCitationSpacing(fullResponse), references)
+        const normalizedResponse = normalizeCitationSpacing(fullResponse)
+        const recoveredResponse = recoverPlainNumericCitations(normalizedResponse, references)
+        const finalResponse = linkifyCitationsWithReferences(recoveredResponse, references)
 
         try {
             await editor.finalize(finalResponse)
@@ -428,7 +476,10 @@ export async function handleMention(message: Message, client: Client) {
         if (citedReferenceEntries.length > 0) {
             try {
                 const lines = citedReferenceEntries.map(([key, ref]) => {
-                    const sourceUrl = ref.source_url?.trim()
+                    const sourceUrl =
+                        ref.source_url?.trim() ||
+                        extractFirstJiraIssueUrl(ref.memo_title) ||
+                        extractFirstInfoDocUrl(ref.memo_title)
                     const titleWithJiraLinks = linkifyJiraIssueKeys(ref.memo_title)
                     if (sourceUrl) {
                         return `**[${key}]** ${titleWithJiraLinks}\n🔗 ${sourceUrl}`
