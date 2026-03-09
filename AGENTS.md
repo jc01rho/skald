@@ -1,7 +1,7 @@
 # PROJECT KNOWLEDGE BASE
 
-**Generated:** 2026-03-03
-**Commit:** 761d941
+**Generated:** 2026-03-09
+**Commit:** d46758e
 **Branch:** main
 
 ## OVERVIEW
@@ -31,17 +31,18 @@ skald/
 
 ## WHERE TO LOOK
 
-| Task             | Location                                   | Notes                              |
-| ---------------- | ------------------------------------------ | ---------------------------------- |
-| API 엔드포인트   | `backend/src/api/*.ts`                     | 미들웨어 배열 + zod 검증 패턴      |
-| RAG 파이프라인   | `backend/src/agents/chatAgent/ragGraph.ts` | 핵심 검색/리랭크/스트리밍 플로우   |
-| LLM 호출         | `backend/src/services/llmService.ts`       | 공급자 직접 호출 금지, 여기만 사용 |
-| 공용 인프라 유틸 | `backend/src/lib/`                         | logger/redis/postgres/DI           |
-| 프론트 상태      | `frontend/src/stores/*.ts`                 | 공유 상태는 Zustand                |
-| 프론트 API 호출  | `frontend/src/lib/api.ts`                  | 컴포넌트 direct fetch/axios 금지   |
-| 워커 수집기      | `worker/src/skald_worker/collectors/`      | Jira/docs ingest                   |
-| 임베딩 서비스    | `embedding-service/main.py`                | 단일 서비스 진입점                 |
-| 배포             | `k8s/deploy.sh`, `k8s/*.yaml`              | 단계적 배포                        |
+| Task             | Location                                   | Notes                                         |
+| ---------------- | ------------------------------------------ | --------------------------------------------- |
+| API 엔드포인트   | `backend/src/api/*.ts`                     | 미들웨어 배열 + zod 검증 패턴                 |
+| RAG 파이프라인   | `backend/src/agents/chatAgent/ragGraph.ts` | 핵심 검색/리랭크/스트리밍 플로우              |
+| LLM 호출         | `backend/src/services/llmService.ts`       | 공급자 직접 호출 금지, 여기만 사용            |
+| 공용 인프라 유틸 | `backend/src/lib/`                         | logger/redis/postgres/DI                      |
+| 프론트 상태      | `frontend/src/stores/*.ts`                 | 공유 상태는 Zustand                           |
+| 프론트 API 호출  | `frontend/src/lib/api.ts`                  | 컴포넌트 direct fetch/axios 금지              |
+| 워커 수집기      | `worker/src/skald_worker/collectors/`      | Jira/docs ingest                              |
+| 임베딩 서비스    | `embedding-service/main.py`                | 단일 서비스 진입점                            |
+| 배포             | `k8s/deploy.sh`, `k8s/*.yaml`              | 단계적 배포 + 롤아웃 확인                     |
+| 워커 배포 설정   | `worker/k8s/*.yaml`, `k8s/worker-*.yaml`   | worker config/secret는 `worker/k8s` 원본 사용 |
 
 ## CODE MAP
 
@@ -60,6 +61,8 @@ skald/
 - **LLM provider policy**: 백엔드는 CLI Proxy API 체인 중심으로 동작하며 호출은 `LLMService`를 통해서만 수행합니다.
 - **Testing policy**: backend Jest는 `maxWorkers=1` 직렬 실행입니다(DB 안전성).
 - **Frontend state policy**: 공유 상태는 Zustand, `useState`는 컴포넌트 로컬 상태에만 허용됩니다.
+- **K8s worker config ownership**: root `k8s/`는 worker Deployment/Service/ServiceAccount를 들고 있고, worker ConfigMap/Secret 원본은 `worker/k8s/`에 있습니다. `k8s/deploy.sh`는 `worker-configmap.local.yaml` → `worker-configmap.yaml` → `../worker/k8s/configmap.yaml` 순으로 fallback 합니다.
+- **RabbitMQ self-host/K8s defaults**: 문서화된 self-host/K8s 경로에서는 RabbitMQ 사용자명이 `skald`, secret 템플릿의 `RABBITMQ_PASSWORD`/`RABBITMQ_DEFAULT_PASS`도 `skald` 기준입니다. vhost 기본값은 `/` 입니다.
 
 ## ANTI-PATTERNS (PROJECT-SPECIFIC)
 
@@ -99,6 +102,7 @@ cd k8s && ./deploy.sh -y
 - GitHub Actions로 컨테이너 빌드 워크플로우가 존재합니다 (`.github/workflows/*`).
 - `ee/`는 MIT 범위 밖의 별도 라이선스 코드입니다.
 - 하위 AGENTS는 중복 설명보다 해당 도메인의 비표준 제약만 기록해야 합니다.
+- RabbitMQ 기본 자격증명/기본 사용자 생성 설정은 신규 노드(빈 데이터 디렉터리) 부팅 시에만 적용됩니다. 기존 RabbitMQ PVC가 있으면 secret 값만 바꿔도 실제 브로커 계정은 그대로일 수 있습니다.
 
 ## LLM ENDPOINT POLICY
 
