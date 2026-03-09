@@ -53,39 +53,114 @@ function extractInfoDocUrls(text: string): string[] {
 
 function extractCitedReferenceKeys(text: string): Set<string> {
     const citedKeys = new Set<string>()
-    const citationRegex = /\[\[(\d+)\]\]|\[(\d+)\]/g
-    let match: RegExpExecArray | null = null
-
-    while ((match = citationRegex.exec(text)) !== null) {
-        const key = match[1] ?? match[2]
-        if (key) {
-            citedKeys.add(key)
-        }
+    for (const match of findCitationMatches(text)) {
+        citedKeys.add(match.key)
     }
 
     return citedKeys
+}
+
+type CitationMatch = {
+    start: number
+    end: number
+    raw: string
+    key: string
+}
+
+function findCitationMatches(text: string): CitationMatch[] {
+    const matches: CitationMatch[] = []
+
+    let i = 0
+    while (i < text.length) {
+        if (text[i] !== '[') {
+            i += 1
+            continue
+        }
+
+        if (text[i + 1] === '[') {
+            let j = i + 2
+            while (j < text.length && /\d/.test(text[j])) {
+                j += 1
+            }
+
+            const hasDigits = j > i + 2
+            if (hasDigits && text[j] === ']' && text[j + 1] === ']') {
+                const key = text.slice(i + 2, j)
+                matches.push({
+                    start: i,
+                    end: j + 2,
+                    raw: text.slice(i, j + 2),
+                    key,
+                })
+                i = j + 2
+                continue
+            }
+        }
+
+        let j = i + 1
+        while (j < text.length && /\d/.test(text[j])) {
+            j += 1
+        }
+
+        const hasDigits = j > i + 1
+        if (hasDigits && text[j] === ']') {
+            const key = text.slice(i + 1, j)
+            matches.push({
+                start: i,
+                end: j + 1,
+                raw: text.slice(i, j + 1),
+                key,
+            })
+            i = j + 1
+            continue
+        }
+
+        i += 1
+    }
+
+    return matches
 }
 
 function linkifyCitationsWithReferences(
     text: string,
     references: Record<string, { memo_uuid: string; memo_title: string; source_url?: string }>
 ): string {
-    return text.replace(/\[\[(\d+)\]\]|\[(\d+)\]/g, (match, bracketedKey, plainKey) => {
-        const key = bracketedKey ?? plainKey
-        if (!key) return match
+    const matches = findCitationMatches(text)
+    if (matches.length === 0) {
+        return text
+    }
 
-        const reference = references[key]
+    let result = ''
+    let cursor = 0
+
+    for (const match of matches) {
+        if (match.start > cursor) {
+            result += text.slice(cursor, match.start)
+        }
+
+        const reference = references[match.key]
         if (!reference) {
-            return `[${key}]`
+            result += `[${match.key}]`
+            cursor = match.end
+            continue
         }
 
         const sourceUrl = reference.source_url?.trim()
         if (!sourceUrl) {
-            return `[${key}]`
+            result += `[${match.key}]`
+            cursor = match.end
+            continue
         }
 
-        return `[${key}](${sourceUrl})`
-    })
+        result += `[${match.key}](${sourceUrl})`
+        cursor = match.end
+    }
+
+    if (cursor < text.length) {
+        result += text.slice(cursor)
+    }
+
+    return result
 }
 
 function normalizeCitationSpacing(text: string): string {
