@@ -80,6 +80,9 @@ export interface RAGConfig {
         loweredThreshold?: number
         enableMultiQuery?: boolean
     }
+    confidence?: {
+        threshold?: number
+    }
 }
 
 // Define your state schema
@@ -194,6 +197,22 @@ function calculateAverageScore(results: MemoChunkWithDistance[]): number {
     if (results.length === 0) return 0
     const avgDistance = results.reduce((sum, r) => sum + r.distance, 0) / results.length
     return Math.max(0, Math.min(1, 1 - avgDistance / 2))
+}
+
+function calculateDynamicConfidenceThreshold(results: RerankResult[], baseThreshold: number): number {
+    if (results.length === 0) {
+        return baseThreshold
+    }
+
+    const scores = results.map((result) => result.relevance_score)
+    const averageScore = scores.reduce((sum, score) => sum + score, 0) / scores.length
+    const maxScore = Math.max(...scores)
+
+    if (maxScore >= baseThreshold) {
+        return baseThreshold
+    }
+
+    return Math.max(0.18, Math.min(baseThreshold, averageScore * 0.9))
 }
 
 function checkFallbackCondition(results: MemoChunkWithDistance[], topK: number, threshold: number): boolean {
@@ -795,18 +814,20 @@ function buildLLMInputsNode(state: typeof RAGState.State) {
     const { conversationHistory, ragConfig, rerankedResults, clientSystemPrompt, parentChunkMap, chunkResults } = state
 
     // P0-4: Confidence-based abstain — compute average relevance score
-    const CONFIDENCE_THRESHOLD = 0.35
+    const baseConfidenceThreshold = ragConfig.confidence?.threshold ?? 0.35
     const avgRelevanceScore =
         rerankedResults.length > 0
             ? rerankedResults.reduce((sum, r) => sum + r.relevance_score, 0) / rerankedResults.length
             : 0
-    const isLowConfidence = rerankedResults.length === 0 || avgRelevanceScore < CONFIDENCE_THRESHOLD
+    const confidenceThreshold = calculateDynamicConfidenceThreshold(rerankedResults, baseConfidenceThreshold)
+    const isLowConfidence = rerankedResults.length === 0 || avgRelevanceScore < confidenceThreshold
 
     if (isLowConfidence) {
         logger.info(
             {
                 avgRelevanceScore: avgRelevanceScore.toFixed(3),
-                threshold: CONFIDENCE_THRESHOLD,
+                threshold: confidenceThreshold,
+                baseThreshold: baseConfidenceThreshold,
                 resultCount: rerankedResults.length,
             },
             'Low confidence retrieval detected — injecting abstain guidance'

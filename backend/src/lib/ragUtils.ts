@@ -28,6 +28,7 @@ export function parseRagConfig(ragConfig: Record<string, any>): {
         fallbackExpandedTopK: 3,
         fallbackLoweredThreshold: 0.45,
         fallbackEnableMultiQuery: true,
+        confidenceThreshold: 0.35,
     }
 
     const llmProvider = ragConfig.llm_provider || ragConfig.llmProvider || LLM_PROVIDER
@@ -189,6 +190,14 @@ export function parseRagConfig(ragConfig: Record<string, any>): {
         }
     }
 
+    const confidenceThreshold = ragConfig.confidence?.threshold ?? defaults.confidenceThreshold
+    if (typeof confidenceThreshold !== 'number' || confidenceThreshold < 0 || confidenceThreshold > 1) {
+        return {
+            parsedRagConfig: null,
+            error: `Invalid confidence threshold: ${confidenceThreshold}. Must be a number between 0 and 1.`,
+        }
+    }
+
     const result = {
         parsedRagConfig: {
             llmProvider: llmProvider as 'cli-proxy-api',
@@ -219,6 +228,9 @@ export function parseRagConfig(ragConfig: Record<string, any>): {
                 enabled: selfRagEnabled,
                 qualityThreshold: selfRagQualityThreshold,
                 rollbackThreshold: selfRagRollbackThreshold,
+            },
+            confidence: {
+                threshold: confidenceThreshold,
             },
         },
         error: null,
