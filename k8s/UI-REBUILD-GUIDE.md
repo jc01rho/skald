@@ -11,37 +11,40 @@
 ### 옵션 1: GitHub Actions 사용 (권장)
 
 1. **워크플로우 트리거**
-   ```bash
-   # GitHub 웹 인터페이스에서:
-   # 1. Actions 탭으로 이동
-   # 2. "Build UI for Kubernetes" 선택
-   # 3. "Run workflow" 클릭
-   # 4. 브랜치: main, 이미지 태그: k8s-latest (기본값)
-   ```
 
-   또는 GitHub CLI 사용:
-   ```bash
-   gh workflow run build-ui-for-k8s.yml \
-     --ref main \
-     --field image_tag=k8s-latest
-   ```
+    ```bash
+    # GitHub 웹 인터페이스에서:
+    # 1. Actions 탭으로 이동
+    # 2. "Build UI for Kubernetes" 선택
+    # 3. "Run workflow" 클릭
+    # 4. 브랜치: main, 이미지 태그: k8s-latest (기본값)
+    ```
+
+    또는 GitHub CLI 사용:
+
+    ```bash
+    gh workflow run build-ui-for-k8s.yml \
+      --ref main \
+      --field image_tag=k8s-latest
+    ```
 
 2. **빌드 완료 대기** (약 5-10분)
-   - GitHub Actions 페이지에서 진행 상황 확인
-   - 성공 시 `ghcr.io/jc01rho/skald-ui:k8s-latest` 이미지 생성됨
+    - GitHub Actions 페이지에서 진행 상황 확인
+    - 성공 시 `ghcr.io/jc01rho/skald-ui:k8s-latest` 이미지 생성됨
 
 3. **로컬에서 배포**
-   ```bash
-   cd /home/sparrow/git/skald/k8s
-   
-   # 이미지가 공개되어 있으면 바로 배포
-   IMAGE_TAG=k8s-latest ./deploy.sh
-   
-   # 또는 이미지를 먼저 pull (private인 경우)
-   docker login ghcr.io
-   docker pull ghcr.io/jc01rho/skald-ui:k8s-latest
-   IMAGE_TAG=k8s-latest ./deploy.sh
-   ```
+
+    ```bash
+    cd /home/sparrow/git/skald/k8s
+
+    # 이미지가 공개되어 있으면 바로 배포
+    IMAGE_TAG=k8s-latest ./deploy.sh
+
+    # 또는 이미지를 먼저 pull (private인 경우)
+    docker login ghcr.io
+    docker pull ghcr.io/jc01rho/skald-ui:k8s-latest
+    IMAGE_TAG=k8s-latest ./deploy.sh
+    ```
 
 ### 옵션 2: 로컬 빌드 및 배포
 
@@ -97,8 +100,8 @@ docker run --rm ghcr.io/jc01rho/skald-ui:k8s-latest \
 kubectl get pods -n skald -l component=ui
 
 # 환경 변수 확인
-kubectl exec -it deployment/ui -n skald -- env | grep VITE_API_URL
-# 예상: VITE_API_URL=/api
+kubectl exec -it deployment/ui -n skald -- env | grep VITE_API_
+# 예상: VITE_API_URL= / VITE_API_HOST= (빈 값)
 
 # Nginx 프록시 테스트
 kubectl exec -it deployment/ui -n skald -- \
@@ -112,8 +115,8 @@ kubectl exec -it deployment/ui -n skald -- \
 2. 개발자 도구 (F12) → Network 탭
 3. 로그인 또는 API 호출 발생시키기
 4. 요청 URL 확인:
-   - ✅ `https://ui.skald.sparrow.local/api/...`
-   - ❌ `http://localhost:8080/api/...`
+    - ✅ `https://ui.skald.sparrow.local/api/...`
+    - ❌ `http://localhost:8080/api/...`
 
 ## 트러블슈팅
 
@@ -140,6 +143,7 @@ docker login ghcr.io
 **원인**: 잘못된 이미지 사용
 
 **해결**:
+
 ```bash
 # 현재 사용 중인 이미지 확인
 kubectl get deployment ui -n skald -o jsonpath='{.spec.template.spec.containers[0].image}'
@@ -157,12 +161,12 @@ kubectl rollout restart deployment/ui -n skald
 ```mermaid
 graph LR
     A[Frontend 코드 변경] --> B[GitHub Actions 트리거]
-    B --> C[이미지 빌드<br/>VITE_API_HOST='']
+    B --> C[이미지 빌드<br/>GitHub Actions: VITE_API_HOST=''<br/>로컬 스크립트: VITE_API_HOST='/api']
     C --> D[GHCR에 푸시<br/>k8s-latest]
     D --> E[로컬에서 이미지 pull]
     E --> F[deploy.sh 실행]
     F --> G[K8s 클러스터에 배포]
-    
+
     A2[긴급 수정] --> B2[로컬 빌드]
     B2 --> F
 ```
