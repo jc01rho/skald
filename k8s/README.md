@@ -293,7 +293,8 @@ kubectl apply -f configmap.yaml
 
 # Secret 생성 (먼저 복사 및 설정 필요)
 cp secret.yaml.example secret.yaml
-# secret.yaml 파일의 모든 플레이스홀더 값을 실제 값으로 교체
+# secret.yaml 파일의 값을 실제 환경에 맞게 검토/교체
+# 현재 추적 템플릿은 RabbitMQ를 skald / skald 기준으로 맞춰 둠
 # base64 인코딩 예시: echo -n "your-secret-value" | base64
 
 # Secret 적용
@@ -309,13 +310,9 @@ kubectl get secret -n skald
 
 ### Step 3: PersistentVolumeClaim 생성
 
+PostgreSQL과 RabbitMQ는 별도 PVC manifest를 적용하지 않고 StatefulSet의 `volumeClaimTemplates`로 PVC를 생성합니다.
+
 ```bash
-# PostgreSQL PVC 생성
-kubectl apply -f postgres-pvc.yaml
-
-# RabbitMQ PVC 생성
-kubectl apply -f rabbitmq-pvc.yaml
-
 # 확인
 kubectl get pvc -n skald
 ```
@@ -379,6 +376,31 @@ kubectl wait --for=condition=ready pod -l component=embedding-service -n skald -
 kubectl wait --for=condition=ready pod -l component=docling-service -n skald --timeout=300s
 ```
 
+### Step 6.5: Skald Worker 배포
+
+```bash
+# Worker ConfigMap/Secret 원본은 worker/k8s 디렉터리에 있음
+kubectl apply -f ../worker/k8s/configmap.yaml
+kubectl apply -f ../worker/k8s/secret.yaml
+
+# Worker 런타임 매니페스트는 root k8s 디렉터리에 있음
+kubectl apply -f worker-serviceaccount.yaml
+kubectl apply -f worker-deployment.yaml
+kubectl apply -f worker-service.yaml
+
+# 상태 확인
+kubectl get pods -n skald -l component=worker
+
+# 준비될 때까지 대기
+kubectl wait --for=condition=ready pod -l component=worker -n skald --timeout=300s
+```
+
+`deploy.sh`는 Worker 설정 파일을 다음 순서로 찾습니다.
+
+1. `worker-configmap.local.yaml` / `worker-secret.local.yaml`
+2. `worker-configmap.yaml` / `worker-secret.yaml`
+3. `../worker/k8s/configmap.yaml` / `../worker/k8s/secret.yaml`
+
 ### Step 7: Frontend UI 배포
 
 ```bash
@@ -438,9 +460,9 @@ data:
     DB_PASSWORD: 'your-base64-encoded-db-password'
     POSTGRES_PASSWORD: 'your-base64-encoded-postgres-password'
 
-    # RabbitMQ
-    RABBITMQ_PASSWORD: 'your-base64-encoded-rabbitmq-password'
-    RABBITMQ_DEFAULT_PASS: 'your-base64-encoded-rabbitmq-default-pass'
+    # RabbitMQ (tracked template default: skald / skald)
+    RABBITMQ_PASSWORD: 'c2thbGQ=' # echo -n "skald" | base64
+    RABBITMQ_DEFAULT_PASS: 'c2thbGQ=' # echo -n "skald" | base64
 
     # AI 서비스 API 키
     OPENAI_API_KEY: 'your-base64-encoded-openai-key'
@@ -474,13 +496,13 @@ data:
     DB_HOST: 'postgres-service'
     DB_PORT: '5432'
     DB_NAME: 'skald'
-    DB_USER: 'skald_user'
+    DB_USER: 'postgres'
 
     # RabbitMQ 연결 정보
     RABBITMQ_HOST: 'rabbitmq-service'
     RABBITMQ_PORT: '5672'
-    RABBITMQ_USER: 'skald_user'
-    RABBITMQ_VHOST: '/skald'
+    RABBITMQ_USER: 'skald'
+    RABBITMQ_VHOST: '/'
 
     # 마이크로서비스 URL
     EMBEDDING_SERVICE_URL: 'http://embedding-service:8000'
@@ -663,7 +685,7 @@ kubectl get ingress skald-ingress -n skald -o wide
 # 접속 URL
 # 메인 애플리케이션: https://your-domain.com
 # API 엔드포인트: https://your-domain.com/api
-# RabbitMQ Management: https://your-domain.com/rabbitmq
+# RabbitMQ Management는 기본 ingress에 노출되지 않음 (port-forward 사용)
 ```
 
 ### API 엔드포인트 테스트
@@ -688,7 +710,7 @@ kubectl port-forward -n skald svc/rabbitmq-service 15672:15672
 
 # 브라우저에서 접속
 # URL: http://localhost:15672
-# 사용자명: skald_user (configmap.yaml에서 설정)
+# 사용자명: skald (configmap.yaml에서 설정)
 # 비밀번호: secret.yaml에서 설정한 값
 ```
 
@@ -736,11 +758,11 @@ kubectl rollout history deployment/api-server -n skald
 ```bash
 # 백업 생성
 kubectl exec -it deployment/postgres -n skald -- \
-  pg_dump -U skald_user -d skald > skald-backup-$(date +%Y%m%d).sql
+  pg_dump -U postgres -d skald2 > skald-backup-$(date +%Y%m%d).sql
 
 # 복원
 kubectl exec -i deployment/postgres -n skald -- \
-  psql -U skald_user -d skald < skald-backup-20231201.sql
+  psql -U postgres -d skald2 < skald-backup-20231201.sql
 ```
 
 #### PVC 백업
@@ -946,38 +968,35 @@ kubectl exec -it deployment/api-server -n skald -- \
 
 ### 파일 목록 및 설명
 
-| 파일명                              | 설명                          | 용도                 |
-| ----------------------------------- | ----------------------------- | -------------------- |
-| `namespace.yaml`                    | Skald 네임스페이스 정의       | 리소스 격리          |
-| `configmap.yaml`                    | 비민감 환경변수 설정          | 애플리케이션 설정    |
-| `secret.yaml.example`               | Secret 설정 예제              | 보안 정보 설정       |
-| `postgres-deployment.yaml`          | PostgreSQL StatefulSet        | 데이터베이스         |
-| `postgres-service.yaml`             | PostgreSQL 서비스             | 데이터베이스 접속    |
-| `postgres-pvc.yaml`                 | PostgreSQL 영구 볼륨          | 데이터 영속성        |
-| `rabbitmq-deployment.yaml`          | RabbitMQ StatefulSet          | 메시지 큐            |
-| `rabbitmq-service.yaml`             | RabbitMQ 서비스               | 메시지 큐 접속       |
-| `rabbitmq-pvc.yaml`                 | RabbitMQ 영구 볼륨            | 큐 데이터 영속성     |
-| `api-deployment.yaml`               | API 서버 Deployment           | 백엔드 API           |
-| `api-service.yaml`                  | API 서비스                    | API 접속             |
-| `memo-processing-deployment.yaml`   | 메모 처리 서버                | 백그라운드 처리      |
-| `worker-deployment.yaml`            | Skald Worker Deployment       | Jira/Docs 수집       |
-| `worker-service.yaml`               | Skald Worker 서비스           | Worker 접속          |
-| `worker-configmap.yaml`             | Worker ConfigMap              | Worker 설정          |
-| `worker-secret.yaml`                | Worker Secret (예제)          | Worker 자격증명      |
-| `worker-serviceaccount.yaml`        | Worker ServiceAccount         | Worker 권한          |
-| `embedding-service-deployment.yaml` | 임베딩 서비스                 | AI 임베딩            |
-| `embedding-service-service.yaml`    | 임베딩 서비스                 | 임베딩 접속          |
-| `docling-deployment.yaml`           | 문서 처리 서비스              | 문서 처리            |
-| `docling-service.yaml`              | 문서 처리 서비스              | 문서 처리 접속       |
-| `ui-deployment.yaml`                | 프론트엔드 UI Deployment      | 웹 인터페이스        |
-| `ui-service.yaml`                   | 프론트엔드 UI 서비스          | 웹 접속              |
-| `ui-nginx-configmap.yaml`           | UI Nginx 설정 ConfigMap       | API 프록시 설정      |
-| `ui-configmap.yaml`                 | UI 런타임 환경 변수 ConfigMap | 런타임 설정 (선택적) |
-| `ingress.yaml`                      | Ingress 리소스                | 외부 트래픽 라우팅   |
-| `ingress-nginx-values.yaml`         | NGINX Ingress Controller 설정 | Ingress Controller   |
-| `init-scripts-configmap.yaml`       | PostgreSQL 초기화 스크립트    | 데이터베이스 초기화  |
-| `api-url-architecture-design.md`    | API URL 아키텍처 설계 문서    | 기술 문서            |
-| `UI-API-FIX-SUMMARY.md`             | UI API 호출 문제 해결 요약    | 변경 사항 문서       |
+| 파일명                              | 설명                          | 용도                      |
+| ----------------------------------- | ----------------------------- | ------------------------- |
+| `namespace.yaml`                    | Skald 네임스페이스 정의       | 리소스 격리               |
+| `configmap.yaml`                    | 비민감 환경변수 설정          | 애플리케이션 설정         |
+| `secret.yaml.example`               | Secret 설정 예제              | 보안 정보 설정            |
+| `postgres-deployment.yaml`          | PostgreSQL StatefulSet        | 데이터베이스              |
+| `postgres-service.yaml`             | PostgreSQL 서비스             | 데이터베이스 접속         |
+| `rabbitmq-deployment.yaml`          | RabbitMQ StatefulSet          | 메시지 큐                 |
+| `rabbitmq-service.yaml`             | RabbitMQ 서비스               | 메시지 큐 접속            |
+| `api-deployment.yaml`               | API 서버 Deployment           | 백엔드 API                |
+| `api-service.yaml`                  | API 서비스                    | API 접속                  |
+| `memo-processing-deployment.yaml`   | 메모 처리 서버                | 백그라운드 처리           |
+| `worker-deployment.yaml`            | Skald Worker Deployment       | Jira/Docs 수집            |
+| `worker-service.yaml`               | Skald Worker 서비스           | Worker 접속               |
+| `../worker/k8s/configmap.yaml`      | Worker ConfigMap 원본         | `deploy.sh` fallback 입력 |
+| `../worker/k8s/secret.yaml`         | Worker Secret 원본            | `deploy.sh` fallback 입력 |
+| `worker-serviceaccount.yaml`        | Worker ServiceAccount         | Worker 권한               |
+| `embedding-service-deployment.yaml` | 임베딩 서비스                 | AI 임베딩                 |
+| `embedding-service-service.yaml`    | 임베딩 서비스                 | 임베딩 접속               |
+| `docling-deployment.yaml`           | 문서 처리 서비스              | 문서 처리                 |
+| `docling-service.yaml`              | 문서 처리 서비스              | 문서 처리 접속            |
+| `ui-deployment.yaml`                | 프론트엔드 UI Deployment      | 웹 인터페이스             |
+| `ui-service.yaml`                   | 프론트엔드 UI 서비스          | 웹 접속                   |
+| `ui-nginx-configmap.yaml`           | UI Nginx 설정 ConfigMap       | API 프록시 설정           |
+| `ingress.yaml`                      | Ingress 리소스                | 외부 트래픽 라우팅        |
+| `ingress-nginx-values.yaml`         | NGINX Ingress Controller 설정 | Ingress Controller        |
+| `init-scripts-configmap.yaml`       | PostgreSQL 초기화 스크립트    | 데이터베이스 초기화       |
+| `api-url-architecture-design.md`    | API URL 아키텍처 설계 문서    | 기술 문서                 |
+| `UI-API-FIX-SUMMARY.md`             | UI API 호출 문제 해결 요약    | 변경 사항 문서            |
 
 ### Kubernetes 공식 문서 링크
 
