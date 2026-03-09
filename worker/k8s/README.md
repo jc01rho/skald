@@ -17,6 +17,11 @@ The worker service has automated CI/CD via GitHub Actions:
 - `service.yaml` - Kubernetes service for internal access
 - `serviceaccount.yaml` - Service account for the worker
 
+When the root deployment script `../k8s/deploy.sh` runs from the repository `k8s/` directory, it uses these files as the fallback source for worker configuration:
+
+- `../worker/k8s/configmap.yaml`
+- `../worker/k8s/secret.yaml`
+
 ## Deployment
 
 ### 1. Create the namespace (if not exists)
@@ -45,7 +50,7 @@ Edit `configmap.yaml` as needed:
 
 ```yaml
 data:
-    SKALD_BASE_URL: 'http://skald-backend:3000'
+    SKALD_BASE_URL: 'http://api-service:8000'
     SKALD_PROJECT_ID: 'your-project-id'
     JIRA_JQL_FILTER: 'project = PROJ AND updated >= -1d ORDER BY updated DESC'
     JIRA_POLL_INTERVAL_MINUTES: '10'
@@ -70,6 +75,12 @@ image: your-registry/skald-worker:latest
 ```bash
 kubectl apply -f k8s/
 ```
+
+If you are deploying from the repository root `k8s/` directory instead of this directory, `k8s/deploy.sh` resolves worker config in this order:
+
+1. `worker-configmap.local.yaml` / `worker-secret.local.yaml`
+2. `worker-configmap.yaml` / `worker-secret.yaml`
+3. `../worker/k8s/configmap.yaml` / `../worker/k8s/secret.yaml`
 
 ### 6. Verify deployment
 
@@ -120,7 +131,7 @@ annotations:
 
 | Variable                     | Description               | Default                                |
 | ---------------------------- | ------------------------- | -------------------------------------- |
-| `SKALD_BASE_URL`             | Skald API base URL        | `http://localhost:3000`                |
+| `SKALD_BASE_URL`             | Skald API base URL        | `http://api-service:8000`              |
 | `SKALD_API_KEY`              | Skald API key             | (required)                             |
 | `SKALD_PROJECT_ID`           | Skald project ID          | (required)                             |
 | `JIRA_SERVER`                | Jira server URL           | (optional)                             |
