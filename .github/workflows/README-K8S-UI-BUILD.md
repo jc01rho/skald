@@ -8,12 +8,12 @@
 
 ### 일반 UI vs K8s UI
 
-| 항목 | 일반 UI | K8s UI |
-|------|---------|---------|
-| 빌드 인자 | `VITE_API_HOST=http://localhost:3000` | `VITE_API_HOST=""` |
-| API 호출 방식 | 절대 경로 (`http://localhost:3000/api`) | 상대 경로 (`/api`) |
-| 이미지 태그 | `latest` | `k8s-latest`, `k8s-{sha}` |
-| Nginx 프록시 | 불필요 | 필수 (`/api` → `api-service:8080`) |
+| 항목          | 일반 UI                                 | K8s UI                                                                             |
+| ------------- | --------------------------------------- | ---------------------------------------------------------------------------------- |
+| 빌드 인자     | `VITE_API_HOST=http://localhost:3000`   | GitHub Actions: `VITE_API_HOST=""`, local K8s build script: `VITE_API_HOST="/api"` |
+| API 호출 방식 | 절대 경로 (`http://localhost:3000/api`) | 상대 경로 (`/api`)                                                                 |
+| 이미지 태그   | `latest`                                | `k8s-latest`, `k8s-{sha}`                                                          |
+| Nginx 프록시  | 불필요                                  | 필수 (`/api` → `api-service:8000`)                                                 |
 
 ## 워크플로우 파일
 
@@ -22,23 +22,29 @@
 **목적**: K8s 전용 UI 이미지 빌드
 
 **트리거**:
+
 - Frontend 코드 변경 시 (`frontend/**`, `ui.Dockerfile` 등)
 - 수동 실행 (workflow_dispatch)
 
 **빌드 인자**:
+
 ```yaml
 build-args: |
-  VITE_API_HOST=
-  VITE_IS_SELF_HOSTED_DEPLOY=true
+    VITE_API_HOST=
+    VITE_IS_SELF_HOSTED_DEPLOY=true
 ```
 
+GitHub Actions는 빈 `VITE_API_HOST`와 Nginx `sub_filter` 조합을 사용하고, 로컬 K8s 빌드 스크립트(`k8s/build-ui-for-k8s.sh`)는 `VITE_API_HOST="/api"`로 빌드합니다.
+
 **생성되는 이미지 태그**:
+
 - `ghcr.io/jc01rho/skald-ui:k8s-latest` (메인)
 - `ghcr.io/jc01rho/skald-ui:k8s-{git-sha}` (추적용)
 
 ### 2. `deploy-to-k8s.yml` (수정됨)
 
 **변경 사항**:
+
 1. UI 이미지 태그를 `k8s-latest`로 고정
 2. `ui-nginx-configmap.yaml` 배포 단계 추가
 
@@ -57,6 +63,7 @@ git push origin main
 ### 수동 빌드
 
 GitHub Actions 페이지에서:
+
 1. "Build UI for Kubernetes" 워크플로우 선택
 2. "Run workflow" 클릭
 3. 원하는 이미지 태그 입력 (기본값: `k8s-latest`)
@@ -72,7 +79,7 @@ cd /home/sparrow/git/skald
 
 # 또는
 docker build \
-  --build-arg VITE_API_HOST="" \
+  --build-arg VITE_API_HOST="/api" \
   --file ui.Dockerfile \
   --tag ghcr.io/jc01rho/skald-ui:k8s-local \
   .
@@ -83,6 +90,7 @@ docker build \
 ### 1. GitHub Actions에서 확인
 
 워크플로우 실행 후 Summary 페이지에서:
+
 - 빌드된 이미지 태그 확인
 - 빌드 인자 확인
 
@@ -116,6 +124,7 @@ kubectl exec -it deployment/ui -n skald -- \
 **증상**: GitHub Actions 워크플로우 실패
 
 **해결**:
+
 1. 워크플로우 로그 확인
 2. `ui.Dockerfile` 문법 오류 확인
 3. `package.json` 의존성 확인
@@ -124,11 +133,13 @@ kubectl exec -it deployment/ui -n skald -- \
 
 **증상**: 브라우저에서 `localhost:8080` 요청 발생
 
-**원인**: 
+**원인**:
+
 - 잘못된 이미지 태그 사용
 - 이미지가 캐시되어 재빌드되지 않음
 
 **해결**:
+
 ```bash
 # 1. 이미지 태그 확인
 kubectl get deployment ui -n skald -o jsonpath='{.spec.template.spec.containers[0].image}'
@@ -147,6 +158,7 @@ kubectl delete pod -l component=ui -n skald
 **증상**: `/api` 요청이 404
 
 **확인**:
+
 ```bash
 # Nginx ConfigMap 확인
 kubectl get configmap ui-nginx-config -n skald -o yaml
