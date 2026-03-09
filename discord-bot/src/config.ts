@@ -14,6 +14,6 @@ export const config = {
     skaldApiKey: requireEnv('SKALD_API_KEY'),
     skaldProjectId: requireEnv('SKALD_PROJECT_ID'),
     spmsInfoBaseUrl: process.env.SPMS_INFO_BASE_URL || '',
-    jiraBaseUrl: process.env.JIRA_BASE_URL || 'https://jira.sparrowfasoo.com',
+    jiraBaseUrl: process.env.JIRA_BASE_URL || '',
     logLevel: process.env.LOG_LEVEL || 'info',
 }
