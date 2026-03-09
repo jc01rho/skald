@@ -76,12 +76,12 @@ function linkifyCitationsWithReferences(
 
         const reference = references[key]
         if (!reference) {
-            return match
+            return `[${key}]`
         }
 
         const sourceUrl = reference.source_url?.trim()
         if (!sourceUrl) {
-            return match
+            return `[${key}]`
         }
 
         return `[${key}](${sourceUrl})`
@@ -90,9 +90,10 @@ function linkifyCitationsWithReferences(
 
 function normalizeCitationSpacing(text: string): string {
     return text
-        .replace(/(\[\d+\]\([^\s)]+\))(?=\[\d+\]\([^\s)]+\))/g, '$1 ')
         .replace(/(\[\[\d+\]\])(?=\[\[\d+\]\])/g, '$1 ')
         .replace(/(\[\d+\])(?=\[\d+\])/g, '$1 ')
+        .replace(/([\p{L}\p{N}])(\[\[(\d+)\]\]|\[(\d+)\])/gu, '$1 $2')
+        .replace(/(\[\[(\d+)\]\]|\[(\d+)\])([\p{L}\p{N}])/gu, '$1 $4')
 }
 
 function splitForDiscord(content: string, maxLength: number = 1900): string[] {
@@ -326,7 +327,7 @@ export async function handleMention(message: Message, client: Client) {
             }
         }
 
-        const finalResponse = normalizeCitationSpacing(linkifyCitationsWithReferences(fullResponse, references))
+        const finalResponse = linkifyCitationsWithReferences(normalizeCitationSpacing(fullResponse), references)
 
         try {
             await editor.finalize(finalResponse)
