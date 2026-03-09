@@ -155,21 +155,17 @@ export class DiscordStreamEditor {
 
         this.isFinalized = true
 
-        // Wait for any pending edit to complete
         if (this.timer !== null) {
             clearTimeout(this.timer)
             this.timer = null
-            // Perform one final edit
-            try {
-                await this.performEdit()
-            } catch (error) {
-                logger.error({ error }, 'Failed to finalize message')
-                throw new Error('Failed to finalize streaming message')
-            }
-            return
         }
 
-        await this.performEdit()
+        try {
+            await this.performEdit()
+        } catch (error) {
+            logger.error({ error }, 'Failed to finalize message')
+            throw new Error('Failed to finalize streaming message')
+        }
     }
 
     async showError(error: string): Promise<void> {
