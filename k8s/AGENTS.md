@@ -81,8 +81,8 @@ spec:
 
 **Documentation**
 
-- `VALIDATION_REPORT.md`: Known issues
-- `FIX-SUMMARY.md`: Bug fixes
+- `README.md`: Canonical deployment and ops guide
+- `api-url-architecture-design.md`: Durable UI/API routing design reference
 
 ## ANTI-PATTERNS
 
