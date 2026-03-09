@@ -11,7 +11,7 @@
 
 ## 해결 방안: Nginx 프록시
 
-UI 컨테이너의 Nginx가 `/api` 경로 요청을 클러스터 내부 `api-service:8080`으로 프록시
+UI 컨테이너의 Nginx가 `/api` 경로 요청을 클러스터 내부 `api-service:8000`으로 프록시
 
 ### 아키텍처 흐름
 
@@ -23,7 +23,7 @@ Ingress (NGINX)
   ↓ 라우팅: ui.skald.sparrow.local → ui-service:80
   ↓
 UI Pod - Nginx
-  ↓ 프록시: /api/* → http://api-service:8080/api/*
+  ↓ 프록시: /api/* → http://api-service:8000/api/*
   ↓
 API Service → API Pod
 ```
@@ -33,56 +33,66 @@ API Service → API Pod
 ### 1. 신규 파일
 
 #### `/home/sparrow/git/skald/k8s/ui-nginx-configmap.yaml`
-- **목적**: Nginx 설정을 ConfigMap으로 관리
-- **핵심 내용**: `/api` 경로를 `http://api-service:8080/api/`로 프록시
-- **배포 명령**:
-  ```bash
-  kubectl apply -f k8s/ui-nginx-configmap.yaml
-  ```
 
-#### `/home/sparrow/git/skald/k8s/ui-configmap.yaml`
-- **목적**: 향후 런타임 환경 변수 주입 지원 (현재는 사용 안 함)
-- **참고**: 필요시 사용할 수 있는 대안 솔루션
+- **목적**: Nginx 설정을 ConfigMap으로 관리
+- **핵심 내용**: `/api` 경로를 `http://api-service:8000/api/`로 프록시
+- **배포 명령**:
+    ```bash
+    kubectl apply -f k8s/ui-nginx-configmap.yaml
+    ```
+
+#### `ui-configmap.yaml` (미사용 초안)
+
+- **상태**: 현재 저장소의 배포 경로에서는 사용하지 않음
+- **참고**: 실제 적용 파일은 `ui-nginx-configmap.yaml`과 `ui-deployment.yaml`
 
 ### 2. 수정된 파일
 
 #### `/home/sparrow/git/skald/k8s/ui-deployment.yaml`
+
 **변경 사항**:
-1. **환경 변수 변경**:
-   ```yaml
-   # 이전: ConfigMap에서 API_URL 참조
-   - name: VITE_API_URL
-     valueFrom:
-       configMapKeyRef:
-         name: skald-config
-         key: API_URL
-   
-   # 현재: 상대 경로로 변경
-   - name: VITE_API_URL
-     value: "/api"
-   ```
+
+1. **환경 변수/프록시 동작 변경**:
+
+    ```yaml
+    # 이전: ConfigMap에서 API_URL 참조
+    - name: VITE_API_URL
+      valueFrom:
+          configMapKeyRef:
+              name: skald-config
+              key: API_URL
+
+    # 현재: 런타임 env는 빈 값 유지, Nginx 프록시/sub_filter가 /api 경로를 보정
+    - name: VITE_API_URL
+      value: ''
+    - name: VITE_API_HOST
+      value: ''
+    ```
 
 2. **Nginx 설정 볼륨 마운트 추가**:
-   ```yaml
-   volumeMounts:
-   - name: nginx-config
-     mountPath: /etc/nginx/nginx.conf
-     subPath: nginx.conf
-     readOnly: true
-   
-   volumes:
-   - name: nginx-config
-     configMap:
-       name: ui-nginx-config
-   ```
+
+    ```yaml
+    volumeMounts:
+        - name: nginx-config
+          mountPath: /etc/nginx/nginx.conf
+          subPath: nginx.conf
+          readOnly: true
+
+    volumes:
+        - name: nginx-config
+          configMap:
+              name: ui-nginx-config
+    ```
 
 **배포 명령**:
+
 ```bash
 kubectl apply -f k8s/ui-deployment.yaml
 kubectl rollout restart deployment/ui -n skald
 ```
 
 #### `/home/sparrow/git/skald/k8s/api-url-architecture-design.md`
+
 - **변경 사항**: 전체 아키텍처 문서를 Nginx 프록시 방식으로 업데이트
 - **추가 내용**: 구현 단계, 검증 방법, 장점/고려사항 재작성
 
@@ -100,8 +110,8 @@ kubectl rollout restart deployment/ui -n skald
 kubectl get pods -n skald -l component=ui -w
 
 # 4. 환경 변수 확인
-kubectl exec -it deployment/ui -n skald -- env | grep VITE_API_URL
-# 예상 출력: VITE_API_URL=/api
+kubectl exec -it deployment/ui -n skald -- env | grep VITE_API_
+# 예상 출력: VITE_API_URL= 와 VITE_API_HOST= (빈 값)
 
 # 5. Nginx 설정 확인
 kubectl exec -it deployment/ui -n skald -- cat /etc/nginx/nginx.conf | grep -A 10 "location /api"
@@ -117,7 +127,7 @@ kubectl exec -it deployment/ui -n skald -- cat /etc/nginx/nginx.conf | grep -A 1
 - ✅ UI Nginx ConfigMap 생성 완료
 - ✅ UI Deployment 업데이트 완료
 - ✅ UI Pods 2/2 Running
-- ✅ 환경 변수 `VITE_API_URL=/api` 정상 설정
+- ✅ UI 환경 변수는 빈 값으로 유지되고 Nginx 프록시/sub_filter가 상대 경로(`/api`)를 보정함
 - ✅ Nginx 프록시 설정 정상 적용
 - ✅ API 프록시 테스트 성공 (HTTP 200)
 - ✅ `deploy.sh` 스크립트 업데이트 완료
@@ -139,17 +149,20 @@ ui-776f498fdb-qmxzd   1/1     Running   0          38s
 ## 검증 방법
 
 ### 1. Pod 내부에서 프록시 테스트
+
 ```bash
 kubectl exec -it deployment/ui -n skald -- curl -v http://localhost:80/api/health
 ```
 
 ### 2. 포트 포워딩으로 로컬 테스트
+
 ```bash
 kubectl port-forward -n skald svc/ui-service 8081:80
 curl http://localhost:8081/api/health
 ```
 
 ### 3. 브라우저에서 확인
+
 1. `https://ui.skald.sparrow.local` 접속
 2. 개발자 도구(F12) → Network 탭
 3. API 요청이 `/api/...` 경로로 발생하는지 확인
@@ -168,7 +181,7 @@ curl http://localhost:8081/api/health
 
 ⚠️ **readOnlyRootFilesystem**: UI Deployment에서 사용 중이므로 Nginx 설정을 볼륨으로 마운트  
 ⚠️ **ConfigMap 변경**: ConfigMap 수정 시 Pod 재시작 필요  
-⚠️ **프록시 헤더**: X-Forwarded-* 헤더가 올바르게 전달되는지 모니터링  
+⚠️ **프록시 헤더**: X-Forwarded-\* 헤더가 올바르게 전달되는지 모니터링
 
 ## 다음 단계 (필요시)
 
