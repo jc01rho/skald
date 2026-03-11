@@ -12,6 +12,7 @@ export class DiscordStreamEditor {
     private readonly THROTTLE_MS = 1000
     private readonly MAX_LENGTH = 1900
     private readonly STREAMING_INDICATOR = '⏳'
+    private readonly STREAMING_PREVIEW_SEPARATOR = '\n\n…\n\n'
 
     constructor(message: Message) {
         this.message = message
@@ -104,20 +105,40 @@ export class DiscordStreamEditor {
     }
 
     private formatChunks(): string[] {
-        const chunks = this.splitMessage(this.buffer)
-        if (chunks.length === 0) {
+        if (this.isFinalized) {
+            return this.splitMessage(this.buffer)
+        }
+
+        return this.formatStreamingPreviewChunks()
+    }
+
+    private formatStreamingPreviewChunks(): string[] {
+        const normalized = this.buffer.trim()
+        if (!normalized) {
             return []
         }
 
-        if (!this.isFinalized) {
-            chunks[0] = `${this.STREAMING_INDICATOR} ${chunks[0]}`
+        const prefix = `${this.STREAMING_INDICATOR} `
+        const maxContentLength = this.MAX_LENGTH - prefix.length
+        if (normalized.length <= maxContentLength) {
+            return [`${prefix}${normalized}`]
         }
 
-        return chunks
+        const separatorLength = this.STREAMING_PREVIEW_SEPARATOR.length
+        const headLength = Math.min(900, Math.max(0, Math.floor((maxContentLength - separatorLength) / 2)))
+        const tailLength = Math.max(0, maxContentLength - separatorLength - headLength)
+        const head = normalized.slice(0, headLength).trimEnd()
+        const tail = normalized.slice(-tailLength).trimStart()
+
+        return [`${prefix}${head}${this.STREAMING_PREVIEW_SEPARATOR}${tail}`]
     }
 
     private async syncMessages(chunks: string[]): Promise<void> {
         await this.message.edit(chunks[0])
+
+        if (!this.isFinalized) {
+            return
+        }
 
         for (let index = 1; index < chunks.length; index++) {
             const targetIndex = index - 1
