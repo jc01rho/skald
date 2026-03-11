@@ -23,6 +23,23 @@ DEFAULT_RETRY_MIN_WAIT = 1.0
 DEFAULT_RETRY_MAX_WAIT = 30.0
 
 
+def _legacy_reference_id_from_source(source: str | None, metadata: dict[str, Any] | None) -> str | None:
+    if not source or not metadata:
+        return None
+
+    if source in {"function", "functions"}:
+        function_id = metadata.get("api_function_id")
+        if function_id:
+            return f"{source}-{function_id}"
+        return None
+
+    spms_id = metadata.get("spms_id")
+    if not spms_id:
+        return None
+
+    return f"{source}-{spms_id}"
+
+
 class SkaldClient:
     """HTTP client for Skald API with automatic retry and circuit breaker."""
 
@@ -188,6 +205,7 @@ class SkaldClient:
         content: str | None = None,
         metadata: dict[str, Any] | None = None,
         tags: list[str] | None = None,
+        client_reference_id: str | None = None,
     ) -> dict[str, Any]:
         """Update an existing memo by reference ID.
 
@@ -211,6 +229,8 @@ class SkaldClient:
             payload["metadata"] = metadata
         if tags is not None:
             payload["tags"] = tags
+        if client_reference_id is not None:
+            payload["client_reference_id"] = client_reference_id
 
         response = await self._request_with_retry(
             "PATCH",
@@ -264,7 +284,14 @@ class SkaldClient:
         Returns:
             Memo data (created or updated)
         """
+        lookup_reference_id = reference_id
         existing = await self.get_memo(reference_id)
+        if not existing:
+            legacy_reference_id = _legacy_reference_id_from_source(source, metadata)
+            if legacy_reference_id and legacy_reference_id != reference_id:
+                existing = await self.get_memo(legacy_reference_id)
+                if existing:
+                    lookup_reference_id = legacy_reference_id
         content_hash = self.compute_content_hash(content, title, metadata, tags)
 
         if existing:
@@ -276,11 +303,12 @@ class SkaldClient:
 
             # Update existing memo
             return await self.update_memo(
-                reference_id=reference_id,
+                reference_id=lookup_reference_id,
                 title=title,
                 content=content,
                 metadata=metadata,
                 tags=tags,
+                client_reference_id=reference_id,
             )
 
         # Create new memo
