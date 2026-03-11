@@ -128,13 +128,22 @@ export class LLMService {
             const baseURL = normalizeOpenAIBaseUrl(
                 useGeminiEndpoint ? config.geminiApiBaseUrl : config.cliProxyApiBaseUrl
             )
+            const configuration =
+                !useGeminiEndpoint && apiKey
+                    ? {
+                          baseURL,
+                          defaultHeaders: {
+                              'api-key': apiKey,
+                          },
+                      }
+                    : {
+                          baseURL,
+                      }
 
             return new ChatOpenAI({
                 model: modelSlug,
                 apiKey,
-                configuration: {
-                    baseURL,
-                },
+                configuration,
                 temperature,
             })
         } else {
