@@ -7,8 +7,8 @@ metadata:
         app: skald-worker
 data:
     # Skald API Configuration
-    SKALD_BASE_URL: 'http://skald-backend:3000'
-    SKALD_PROJECT_ID: ''
+    SKALD_BASE_URL: 'http://api-service:8000'
+    SKALD_PROJECT_ID: '83dabf13-0c3e-41f0-8f6b-75a817cd1e25'
 
     # Jira Configuration
     JIRA_JQL_FILTER: 'TYPE IN (인시던트, 장애) AND updated >= -1d ORDER BY updated DESC'
