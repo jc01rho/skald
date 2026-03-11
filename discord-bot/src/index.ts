@@ -37,6 +37,18 @@ client.on(Events.MessageCreate, async (message) => {
     await handleMention(message, client)
 })
 
+client.on('error', (error) => {
+    logger.error({ error }, 'Discord client error')
+})
+
+client.on(Events.ShardError, (error) => {
+    logger.error({ error }, 'Discord shard error')
+})
+
+process.on('unhandledRejection', (error) => {
+    logger.error({ error }, 'Unhandled promise rejection')
+})
+
 process.on('SIGTERM', () => {
     logger.info('SIGTERM received, shutting down...')
     client.destroy()
