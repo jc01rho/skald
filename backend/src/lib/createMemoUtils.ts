@@ -26,6 +26,188 @@ import { EntityData } from '@mikro-orm/core'
 import { generateS3Key, uploadFileToS3 } from './s3Utils'
 import { publishMessage } from '@/lib/sqsClient'
 
+function buildLegacyReferenceId(
+    referenceId?: string | null,
+    source?: string | null,
+    metadata?: Record<string, any> | null
+) {
+    if (!referenceId || !source || !referenceId.startsWith(`spms:${source}:`)) {
+        return null
+    }
+
+    if (source === 'function' || source === 'functions') {
+        const functionId = metadata?.api_function_id
+        if (!functionId) {
+            return null
+        }
+
+        return `${source}-${functionId}`
+    }
+
+    const spmsId = metadata?.spms_id
+    if (!spmsId) {
+        return null
+    }
+
+    return `${source}-${spmsId}`
+}
+
+async function findExistingMemoByReferenceIds(referenceIds: string[], project: Project) {
+    if (referenceIds.length === 0) {
+        return null
+    }
+
+    const em = DI.em.fork()
+    const placeholders = referenceIds.map(() => '?').join(', ')
+    const rows = await em.getConnection().execute<{ uuid: string }[]>(
+        `SELECT uuid
+         FROM skald_memo
+         WHERE project_id = ?
+           AND client_reference_id IN (${placeholders})
+         ORDER BY updated_at DESC, created_at DESC, uuid DESC
+         LIMIT 1`,
+        [project.uuid, ...referenceIds]
+    )
+
+    const existingUuid = rows[0]?.uuid
+    if (!existingUuid) {
+        return null
+    }
+
+    return em.findOne(Memo, { uuid: existingUuid, project })
+}
+
+async function findExistingMemoBySourceUrl(memoData: MemoData, project: Project) {
+    const sourceUrl = memoData.metadata?.source_url
+    if (!sourceUrl || !memoData.source) {
+        return null
+    }
+
+    const em = DI.em.fork()
+    const rows = await em.getConnection().execute<{ uuid: string }[]>(
+        `SELECT uuid
+         FROM skald_memo
+         WHERE project_id = ?
+           AND source = ?
+           AND metadata->>'source_url' = ?
+         ORDER BY updated_at DESC, created_at DESC, uuid DESC
+         LIMIT 1`,
+        [project.uuid, memoData.source, sourceUrl]
+    )
+
+    const existingUuid = rows[0]?.uuid
+    if (!existingUuid) {
+        return null
+    }
+
+    return em.findOne(Memo, { uuid: existingUuid, project })
+}
+
+async function findExistingMemoForCreate(memoData: MemoData, project: Project) {
+    const referenceIds = new Set<string>()
+    if (memoData.reference_id) {
+        referenceIds.add(memoData.reference_id)
+    }
+
+    const legacyReferenceId = buildLegacyReferenceId(memoData.reference_id, memoData.source, memoData.metadata)
+    if (legacyReferenceId) {
+        referenceIds.add(legacyReferenceId)
+    }
+
+    const existingByReference = await findExistingMemoByReferenceIds(Array.from(referenceIds), project)
+    if (existingByReference) {
+        return existingByReference
+    }
+
+    return findExistingMemoBySourceUrl(memoData, project)
+}
+
+async function findExistingMemoAfterUniqueViolation(memoData: MemoData, project: Project) {
+    for (const delayMs of [0, 50, 150]) {
+        if (delayMs > 0) {
+            await new Promise((resolve) => setTimeout(resolve, delayMs))
+        }
+
+        const existingMemo = await findExistingMemoForCreate(memoData, project)
+        if (existingMemo) {
+            return existingMemo
+        }
+    }
+
+    return null
+}
+
+async function reuseExistingMemoForCreate(existingMemo: Memo, memoData: MemoData, project: Project): Promise<Memo> {
+    const em = DI.em.fork()
+    await em.begin()
+
+    try {
+        const memo = await em.findOneOrFail(Memo, { uuid: existingMemo.uuid, project })
+        memo.title = memoData.title
+        memo.metadata = memoData.metadata || {}
+        memo.client_reference_id = memoData.reference_id
+        memo.source = memoData.source
+        memo.expiration_date = memoData.expiration_date
+        memo.type = memoData.type
+        memo.updated_at = new Date()
+
+        if (memoData.content) {
+            memo.content_length = memoData.content.length
+            memo.content_hash = sha256(memoData.content)
+        }
+
+        if (memoData.content) {
+            const memoContent = await em.findOne(MemoContent, { memo })
+            if (memoContent) {
+                memoContent.content = memoData.content
+                em.persist(memoContent)
+            } else {
+                em.persist(
+                    em.create(MemoContent, {
+                        uuid: randomUUID(),
+                        memo,
+                        content: memoData.content,
+                        project,
+                    })
+                )
+            }
+        }
+
+        if (memoData.tags !== undefined && memoData.tags !== null) {
+            await em.nativeDelete(MemoTag, { memo: { $in: [memo.uuid] } })
+            const memoTags = memoData.tags.map((tag) =>
+                em.create(MemoTag, {
+                    uuid: randomUUID(),
+                    memo,
+                    tag,
+                    project,
+                })
+            )
+            if (memoTags.length > 0) {
+                em.persist(memoTags)
+            }
+        }
+
+        em.persist(memo)
+        await em.flush()
+        await em.commit()
+        return memo
+    } catch (error) {
+        await em.rollback()
+        throw error
+    }
+}
+
+function isUniqueConstraintError(error: unknown) {
+    if (!error || typeof error !== 'object') {
+        return false
+    }
+
+    const code = (error as { code?: string; cause?: { code?: string } }).code
+    const causeCode = (error as { code?: string; cause?: { code?: string } }).cause?.code
+    return code === '23505' || causeCode === '23505'
+}
+
 export interface MemoData {
     content?: string
     title: string
@@ -188,7 +370,24 @@ export async function sendMemoForAsyncProcessing(memo: Memo): Promise<void> {
 }
 
 export async function createNewMemo(memoData: MemoData, project: Project): Promise<Memo> {
-    const memo = await _createMemoObject(memoData, project)
+    let memo = await findExistingMemoForCreate(memoData, project)
+    if (memo) {
+        memo = await reuseExistingMemoForCreate(memo, memoData, project)
+    } else {
+        try {
+            memo = await _createMemoObject(memoData, project)
+        } catch (error) {
+            if (!isUniqueConstraintError(error)) {
+                throw error
+            }
+
+            const existingMemo = await findExistingMemoAfterUniqueViolation(memoData, project)
+            if (!existingMemo) {
+                throw error
+            }
+            memo = await reuseExistingMemoForCreate(existingMemo, memoData, project)
+        }
+    }
     await sendMemoForAsyncProcessing(memo)
     return memo
 }
@@ -198,7 +397,24 @@ export const createNewDocumentMemo = async (
     project: Project,
     file: Express.Multer.File
 ): Promise<Memo> => {
-    const memo = await _createMemoObject(memoData, project)
+    let memo = await findExistingMemoForCreate(memoData, project)
+    if (memo) {
+        memo = await reuseExistingMemoForCreate(memo, memoData, project)
+    } else {
+        try {
+            memo = await _createMemoObject(memoData, project)
+        } catch (error) {
+            if (!isUniqueConstraintError(error)) {
+                throw error
+            }
+
+            const existingMemo = await findExistingMemoAfterUniqueViolation(memoData, project)
+            if (!existingMemo) {
+                throw error
+            }
+            memo = await reuseExistingMemoForCreate(existingMemo, memoData, project)
+        }
+    }
 
     const s3Key = generateS3Key(project.uuid, memo.uuid)
     await uploadFileToS3(file.buffer, s3Key, file.mimetype, {

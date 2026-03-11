@@ -345,6 +345,9 @@ class DocsCollector:
             "spms_id": item.get("id", ""),
         }
 
+        if item_type in ("function", "functions"):
+            metadata["api_function_id"] = item.get("function_id", item.get("id", ""))
+
         # Add product_id for troubleshoots and techs only
         if item_type in ("troubleshoot", "troubleshoots", "tech", "techs") and product_id:
             metadata["product_id"] = product_id
@@ -379,6 +382,14 @@ class DocsCollector:
         content = "\n".join(sections)
         return title, content, metadata
 
+    def build_reference_id(self, item: dict[str, Any], item_type: str) -> str:
+        if item_type in ("function", "functions"):
+            item_identifier = item.get("function_id", item.get("id", ""))
+        else:
+            item_identifier = item.get("id", "")
+
+        return f"spms:{item_type}:{item_identifier}"
+
     async def sync_item(self, item: dict[str, Any], item_type: str) -> dict[str, Any]:
         """Sync a single SPMS item to Skald."""
         # Fetch full content if needed
@@ -402,11 +413,7 @@ class DocsCollector:
                 item = full_item
 
         title, content, metadata = self.item_to_markdown(item, item_type)
-        # Use function_id for functions, otherwise use id
-        if item_type in ("function", "functions"):
-            reference_id = f"{item_type}-{item.get('function_id', item.get('id', ''))}"
-        else:
-            reference_id = f"{item_type}-{item.get('id', '')}"
+        reference_id = self.build_reference_id(item, item_type)
 
         skald = get_skald_client()
         return await skald.upsert_memo(

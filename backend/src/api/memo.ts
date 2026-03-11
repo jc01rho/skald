@@ -206,6 +206,7 @@ export const getMemo = async (req: Request, res: Response) => {
 
     const memo = await DI.memos.findOne(whereClause, {
         populate: ['project'],
+        orderBy: { updated_at: 'desc', created_at: 'desc' },
     })
 
     if (!memo) {
@@ -256,6 +257,7 @@ export const updateMemo = async (req: Request, res: Response) => {
 
     const memo = await DI.memos.findOne(whereClause, {
         populate: ['project'],
+        orderBy: { updated_at: 'desc', created_at: 'desc' },
     })
 
     if (!memo) {
@@ -390,6 +392,7 @@ export const deleteMemo = async (req: Request, res: Response) => {
 
     const memo = await DI.memos.findOne(whereClause, {
         populate: ['project'],
+        orderBy: { updated_at: 'desc', created_at: 'desc' },
     })
 
     if (!memo) {
