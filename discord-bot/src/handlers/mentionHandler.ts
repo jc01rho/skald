@@ -9,6 +9,7 @@ const INFO_DOC_ID_REGEX = /\binfo-(\d+)\b/gi
 const JIRA_ISSUE_KEY_REGEX = /\b([A-Z][A-Z0-9]+-\d+)\b/g
 const INFO_DOC_ID_SINGLE_REGEX = /\binfo-(\d+)\b/i
 const JIRA_ISSUE_KEY_SINGLE_REGEX = /\b([A-Z][A-Z0-9]+-\d+)\b/
+const DEFAULT_JIRA_BASE_URL = 'https://jira.sparrowfasoo.com'
 
 function isHttpUrl(value: string | undefined): value is string {
     return Boolean(value && /^https?:\/\//i.test(value))
@@ -23,13 +24,10 @@ function buildInfoDocUrl(infoId: string): string {
 }
 
 function buildJiraIssueUrl(issueKey: string): string {
-    const base = config.jiraBaseUrl
+    const base = (config.jiraBaseUrl || DEFAULT_JIRA_BASE_URL)
         .trim()
         .replace(/\/$/, '')
         .replace(/\/browse$/i, '')
-    if (!base) {
-        return issueKey
-    }
     return `${base}/browse/${issueKey}`
 }
 
