@@ -13,16 +13,16 @@ interface RerankResult {
     source_url?: string
 }
 
-/**
- * Extract cited reference numbers from LLM response text.
- * Matches [[N]] citation format and returns unique, sorted reference numbers.
- */
 function extractCitedReferenceNumbers(text: string): number[] {
-    const citationPattern = /\[\[(\d+)\]\]/g
+    const citationPattern = /\[\[(\d+)\]\]|\[(\d+)\]/g
     const cited = new Set<number>()
     let match
     while ((match = citationPattern.exec(text)) !== null) {
-        cited.add(parseInt(match[1], 10))
+        const citationNumber = match[1] || match[2]
+        if (!citationNumber) {
+            continue
+        }
+        cited.add(parseInt(citationNumber, 10))
     }
     return Array.from(cited).sort((a, b) => a - b)
 }
