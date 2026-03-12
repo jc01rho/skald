@@ -496,7 +496,7 @@ class DocsCollector:
     async def sync_all(
         self,
         updated_since: str | None = None,
-        max_documents: int = 500,
+        max_documents: int = 5000,
     ) -> dict[str, dict[str, int]]:
         """Sync all SPMS document types to Skald."""
         logger.info("Starting SPMS docs sync", updated_since=updated_since, max_documents=max_documents)
