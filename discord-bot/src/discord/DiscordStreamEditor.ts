@@ -8,6 +8,7 @@ export class DiscordStreamEditor {
     private lastEditTime: number = 0
     private timer: NodeJS.Timeout | null = null
     private isFinalized: boolean = false
+    private editChain: Promise<void> = Promise.resolve()
 
     private readonly THROTTLE_MS = 1000
     private readonly MAX_LENGTH = 1900
@@ -51,14 +52,21 @@ export class DiscordStreamEditor {
     }
 
     private async performEdit(): Promise<void> {
-        const chunks = this.formatChunks()
+        const nextEdit = this.editChain
+            .catch(() => undefined)
+            .then(async () => {
+                const chunks = this.formatChunks()
 
-        if (chunks.length === 0) {
-            return
-        }
+                if (chunks.length === 0) {
+                    return
+                }
 
-        await this.syncMessages(chunks)
-        this.lastEditTime = Date.now()
+                await this.syncMessages(chunks)
+                this.lastEditTime = Date.now()
+            })
+
+        this.editChain = nextEdit
+        await nextEdit
     }
 
     private splitMessage(text: string): string[] {
@@ -201,18 +209,25 @@ export class DiscordStreamEditor {
         const errorMessage = `❌ Error: ${error.slice(0, 1800)}`
 
         try {
-            await this.message.edit(errorMessage)
+            const nextEdit = this.editChain
+                .catch(() => undefined)
+                .then(async () => {
+                    await this.message.edit(errorMessage)
 
-            if (this.extraMessages.length > 0) {
-                const staleMessages = this.extraMessages.splice(0)
-                for (const stale of staleMessages) {
-                    try {
-                        await stale.delete()
-                    } catch (deleteError) {
-                        logger.warn({ deleteError }, 'Failed to delete stale error message chunk')
+                    if (this.extraMessages.length > 0) {
+                        const staleMessages = this.extraMessages.splice(0)
+                        for (const stale of staleMessages) {
+                            try {
+                                await stale.delete()
+                            } catch (deleteError) {
+                                logger.warn({ deleteError }, 'Failed to delete stale error message chunk')
+                            }
+                        }
                     }
-                }
-            }
+                })
+
+            this.editChain = nextEdit
+            await nextEdit
         } catch (editError) {
             logger.error({ editError }, 'Failed to show error message')
         }
