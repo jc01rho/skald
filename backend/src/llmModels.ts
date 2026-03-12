@@ -6,6 +6,7 @@ export const SUPPORTED_LLM_MODELS = {
         // Available Models (28 working models)
         // Listed in priority order as specified
         // ========================================
+        parrot: { slug: 'parrot', name: 'Parrot' },
         'gpt-5.2': { slug: 'gpt-5.2', name: 'GPT 5.2' },
         step: { slug: 'step', name: 'Step' },
         'qwen-3.5': { slug: 'qwen-3.5', name: 'Qwen 3.5' },
