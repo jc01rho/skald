@@ -23,7 +23,6 @@ class TestAPIRoutes:
             mock_settings.jira_jql_filter = "project = TEST"
             mock_settings.jira_poll_interval_minutes = 60
             mock_settings.spms_base_url = "https://docs.test"
-            mock_settings.spms_api_key = "test"
             mock_settings.docs_poll_interval_minutes = 120
             mock_settings.worker_concurrency = 2
             mock_settings.host = "0.0.0.0"

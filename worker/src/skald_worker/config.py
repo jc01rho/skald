@@ -63,10 +63,6 @@ class Settings(BaseSettings):
         default="",
         description="Base URL for SPMS/tech docs API",
     )
-    spms_api_key: str = Field(
-        default="",
-        description="API key for SPMS authentication",
-    )
     docs_poll_interval_minutes: int = Field(
         default=30,
         description="Polling interval for technical docs in minutes (ignored if docs_sync_cron is set)",

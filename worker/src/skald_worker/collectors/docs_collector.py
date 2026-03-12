@@ -56,13 +56,11 @@ class DocsCollector:
     def __init__(
         self,
         base_url: str | None = None,
-        api_key: str | None = None,
         max_retries: int = DEFAULT_MAX_RETRIES,
         retry_min_wait: float = DEFAULT_RETRY_MIN_WAIT,
         retry_max_wait: float = DEFAULT_RETRY_MAX_WAIT,
     ):
         self.base_url = (base_url or settings.spms_base_url).rstrip("/")
-        self.api_key = api_key or settings.spms_api_key
         self.max_retries = max_retries
         self.retry_min_wait = retry_min_wait
         self.retry_max_wait = retry_max_wait
@@ -73,8 +71,6 @@ class DocsCollector:
         """Get or create HTTP client."""
         if self._client is None or self._client.is_closed:
             headers = {"Content-Type": "application/json"}
-            if self.api_key:
-                headers["Authorization"] = f"Bearer {self.api_key}"
 
             self._client = httpx.AsyncClient(
                 base_url=self.base_url,

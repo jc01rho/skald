@@ -41,7 +41,6 @@ stringData:
     JIRA_USER: 'your-jira-username'
     JIRA_PASSWORD: 'your-jira-password-or-token'
     SPMS_BASE_URL: 'https://docs.example.com'
-    SPMS_API_KEY: 'your-docs-api-key'
 ```
 
 ### 3. Configure settings
@@ -141,7 +140,6 @@ annotations:
 | `JIRA_POLL_INTERVAL_MINUTES` | Jira sync interval        | `10`                                   |
 | `JIRA_ENABLED`               | Enable Jira collector     | `true`                                 |
 | `SPMS_BASE_URL`              | SPMS/docs API URL         | (optional)                             |
-| `SPMS_API_KEY`               | SPMS API key              | (optional)                             |
 | `DOCS_POLL_INTERVAL_MINUTES` | Docs sync interval        | `30`                                   |
 | `DOCS_ENABLED`               | Enable docs collector     | `true`                                 |
 | `WORKER_CONCURRENCY`         | Parallel workers          | `4`                                    |
