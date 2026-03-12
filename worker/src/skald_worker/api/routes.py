@@ -283,7 +283,7 @@ async def trigger_sync(
             sync_state_manager.record_sync_start("docs")
             collector = get_docs_collector()
             updated_since = request.options.get("updated_since")
-            max_documents = request.options.get("max_documents", 500)
+            max_documents = request.options.get("max_documents", 5000)
 
             result = await collector.sync_all(
                 updated_since=updated_since,
