@@ -327,6 +327,28 @@ function detectProductId(query: string): ProductId | undefined {
 }
 
 const conversationHistory = new Map<string, Array<{ role: string; content: string }>>()
+const activeConversationOperations = new Map<string, Promise<void>>()
+
+async function runConversationSerially<T>(historyKey: string, operation: () => Promise<T>): Promise<T> {
+    const previous = activeConversationOperations.get(historyKey) ?? Promise.resolve()
+    let releaseCurrent!: () => void
+    const current = new Promise<void>((resolve) => {
+        releaseCurrent = resolve
+    })
+    const chain = previous.catch(() => undefined).then(() => current)
+    activeConversationOperations.set(historyKey, chain)
+
+    await previous.catch(() => undefined)
+
+    try {
+        return await operation()
+    } finally {
+        releaseCurrent()
+        if (activeConversationOperations.get(historyKey) === chain) {
+            activeConversationOperations.delete(historyKey)
+        }
+    }
+}
 
 function buildThreadName(query: string): string {
     const normalized = query.replace(/\s+/g, ' ').trim()
@@ -381,146 +403,151 @@ export async function handleMention(message: Message, client: Client) {
     }
 
     const historyKey = `${message.author.id}-${responseThread.id}`
-    const history = conversationHistory.get(historyKey) || []
 
-    const reply = await responseThread.send('⏳ 답변을 생성하고 있습니다...')
-    const editor = new DiscordStreamEditor(reply)
+    await runConversationSerially(historyKey, async () => {
+        const history = [...(conversationHistory.get(historyKey) || [])]
 
-    try {
-        const skaldClient = new SkaldClient({
-            baseUrl: config.skaldApiUrl,
-            apiKey: config.skaldApiKey,
-            projectId: config.skaldProjectId,
-        })
-
-        let fullResponse = ''
-        let references: Record<string, { memo_uuid: string; memo_title: string; source_url?: string }> = {}
-
-        // Detect product_id from query and build filter
-        const detectedProductId = detectProductId(query)
-        const filters: MemoFilter[] | undefined = detectedProductId
-            ? [
-                  {
-                      field: 'product_id',
-                      operator: 'eq',
-                      value: detectedProductId,
-                      filter_type: 'custom_metadata',
-                  },
-              ]
-            : undefined
-
-        if (detectedProductId) {
-            logger.info({ detectedProductId }, 'Product ID detected from query')
-        }
-
-        for await (const event of skaldClient.chatStream(query, {
-            history,
-            filters,
-            system_prompt: '제공된 프롬프트와 문맥 안에서만 답하고 그 외 없는 내용으로는 답변하지 말것.',
-            rag_config: {
-                llm_provider: 'cli-proxy-api',
-                query_rewrite: { enabled: true },
-                reranking: { enabled: true, top_k: 100 },
-                vector_search: { top_k: 100, similarity_threshold: 0.4 },
-                references: { enabled: true },
-            },
-        })) {
-            switch (event.type) {
-                case 'token':
-                    fullResponse += event.content
-                    editor.append(event.content)
-                    break
-                case 'references':
-                    // Backend sends references as JSON string, need to parse
-                    if (typeof event.content === 'string') {
-                        references = JSON.parse(event.content)
-                    } else {
-                        references = event.content
-                    }
-                    break
-                case 'done':
-                    break
-                case 'error':
-                    await editor.showError(event.content)
-                    return
-            }
-        }
-
-        const normalizedResponse = normalizeCitationSpacing(fullResponse)
-        const recoveredResponse = recoverPlainNumericCitations(normalizedResponse, references)
-        const finalResponse = linkifyCitationsWithReferences(recoveredResponse, references)
+        const reply = await responseThread.send('⏳ 답변을 생성하고 있습니다...')
+        const editor = new DiscordStreamEditor(reply)
 
         try {
-            await editor.finalize(finalResponse)
-        } catch (editError) {
-            logger.error({ editError }, 'Failed to stream final response, falling back to plain messages')
-            await sendFinalResponseFallback(responseThread, finalResponse)
-        }
+            const skaldClient = new SkaldClient({
+                baseUrl: config.skaldApiUrl,
+                apiKey: config.skaldApiKey,
+                projectId: config.skaldProjectId,
+            })
 
-        const citedReferenceKeys = extractCitedReferenceKeys(fullResponse)
-        const citedReferenceEntries = Object.entries(references).filter(([key]) => citedReferenceKeys.has(key))
+            let fullResponse = ''
+            let references: Record<string, { memo_uuid: string; memo_title: string; source_url?: string }> = {}
 
-        const inferredInfoDocUrls = extractInfoDocUrls(fullResponse)
-        const citedReferenceSourceUrls = citedReferenceEntries
-            .map(([, ref]) => ref.source_url?.trim())
-            .filter((url): url is string => Boolean(url))
-        const citedReferenceInfoDocUrls = citedReferenceEntries.flatMap(([, ref]) => extractInfoDocUrls(ref.memo_title))
+            // Detect product_id from query and build filter
+            const detectedProductId = detectProductId(query)
+            const filters: MemoFilter[] | undefined = detectedProductId
+                ? [
+                      {
+                          field: 'product_id',
+                          operator: 'eq',
+                          value: detectedProductId,
+                          filter_type: 'custom_metadata',
+                      },
+                  ]
+                : undefined
 
-        const allInfoDocUrls = Array.from(
-            new Set([...inferredInfoDocUrls, ...citedReferenceSourceUrls, ...citedReferenceInfoDocUrls])
-        )
-
-        // Send reference embed (non-fatal - don't fail if this errors)
-        if (citedReferenceEntries.length > 0) {
-            try {
-                const lines = citedReferenceEntries.map(([key, ref]) => {
-                    const sourceUrl =
-                        ref.source_url?.trim() ||
-                        extractFirstJiraIssueUrl(ref.memo_title) ||
-                        extractFirstInfoDocUrl(ref.memo_title)
-                    const titleWithJiraLinks = linkifyJiraIssueKeys(ref.memo_title)
-                    if (sourceUrl) {
-                        return `**[${key}]** ${titleWithJiraLinks}\n🔗 ${sourceUrl}`
-                    }
-                    return `**[${key}]** ${titleWithJiraLinks}`
-                })
-
-                // Discord embed description limit is 4096 chars
-                const description = lines.join('\n').slice(0, 4000)
-
-                const refEmbed = new EmbedBuilder()
-                    .setTitle('📚 참고 자료')
-                    .setColor(0x5865f2)
-                    .setDescription(description)
-                await responseThread.send({ embeds: [refEmbed] })
-            } catch (embedError) {
-                logger.warn({ embedError }, 'Failed to send reference embed (non-fatal)')
+            if (detectedProductId) {
+                logger.info({ detectedProductId }, 'Product ID detected from query')
             }
-        }
 
-        // Send info doc links (non-fatal - don't fail if this errors)
-        if (allInfoDocUrls.length > 0) {
-            try {
-                const description = allInfoDocUrls
-                    .map((url) => `- ${url}`)
-                    .join('\n')
-                    .slice(0, 4000)
-                const linkEmbed = new EmbedBuilder()
-                    .setTitle('🔗 문서 원문 링크')
-                    .setColor(0x2ecc71)
-                    .setDescription(description)
-                await responseThread.send({ embeds: [linkEmbed] })
-            } catch (embedError) {
-                logger.warn({ embedError }, 'Failed to send info doc links embed (non-fatal)')
+            for await (const event of skaldClient.chatStream(query, {
+                history,
+                filters,
+                system_prompt: '제공된 프롬프트와 문맥 안에서만 답하고 그 외 없는 내용으로는 답변하지 말것.',
+                rag_config: {
+                    llm_provider: 'cli-proxy-api',
+                    query_rewrite: { enabled: true },
+                    reranking: { enabled: true, top_k: 100 },
+                    vector_search: { top_k: 100, similarity_threshold: 0.4 },
+                    references: { enabled: true },
+                },
+            })) {
+                switch (event.type) {
+                    case 'token':
+                        fullResponse += event.content
+                        editor.append(event.content)
+                        break
+                    case 'references':
+                        // Backend sends references as JSON string, need to parse
+                        if (typeof event.content === 'string') {
+                            references = JSON.parse(event.content)
+                        } else {
+                            references = event.content
+                        }
+                        break
+                    case 'done':
+                        break
+                    case 'error':
+                        await editor.showError(event.content)
+                        return
+                }
             }
-        }
 
-        history.push({ role: 'user', content: query })
-        history.push({ role: 'assistant', content: fullResponse })
-        if (history.length > 20) history.splice(0, history.length - 20)
-        conversationHistory.set(historyKey, history)
-    } catch (error) {
-        logger.error({ error }, 'Failed to handle mention')
-        await editor.showError('요청 처리 중 오류가 발생했습니다.')
-    }
+            const normalizedResponse = normalizeCitationSpacing(fullResponse)
+            const recoveredResponse = recoverPlainNumericCitations(normalizedResponse, references)
+            const finalResponse = linkifyCitationsWithReferences(recoveredResponse, references)
+
+            try {
+                await editor.finalize(finalResponse)
+            } catch (editError) {
+                logger.error({ editError }, 'Failed to stream final response, falling back to plain messages')
+                await sendFinalResponseFallback(responseThread, finalResponse)
+            }
+
+            const citedReferenceKeys = extractCitedReferenceKeys(fullResponse)
+            const citedReferenceEntries = Object.entries(references).filter(([key]) => citedReferenceKeys.has(key))
+
+            const inferredInfoDocUrls = extractInfoDocUrls(fullResponse)
+            const citedReferenceSourceUrls = citedReferenceEntries
+                .map(([, ref]) => ref.source_url?.trim())
+                .filter((url): url is string => Boolean(url))
+            const citedReferenceInfoDocUrls = citedReferenceEntries.flatMap(([, ref]) =>
+                extractInfoDocUrls(ref.memo_title)
+            )
+
+            const allInfoDocUrls = Array.from(
+                new Set([...inferredInfoDocUrls, ...citedReferenceSourceUrls, ...citedReferenceInfoDocUrls])
+            )
+
+            // Send reference embed (non-fatal - don't fail if this errors)
+            if (citedReferenceEntries.length > 0) {
+                try {
+                    const lines = citedReferenceEntries.map(([key, ref]) => {
+                        const sourceUrl =
+                            ref.source_url?.trim() ||
+                            extractFirstJiraIssueUrl(ref.memo_title) ||
+                            extractFirstInfoDocUrl(ref.memo_title)
+                        const titleWithJiraLinks = linkifyJiraIssueKeys(ref.memo_title)
+                        if (sourceUrl) {
+                            return `**[${key}]** ${titleWithJiraLinks}\n🔗 ${sourceUrl}`
+                        }
+                        return `**[${key}]** ${titleWithJiraLinks}`
+                    })
+
+                    // Discord embed description limit is 4096 chars
+                    const description = lines.join('\n').slice(0, 4000)
+
+                    const refEmbed = new EmbedBuilder()
+                        .setTitle('📚 참고 자료')
+                        .setColor(0x5865f2)
+                        .setDescription(description)
+                    await responseThread.send({ embeds: [refEmbed] })
+                } catch (embedError) {
+                    logger.warn({ embedError }, 'Failed to send reference embed (non-fatal)')
+                }
+            }
+
+            // Send info doc links (non-fatal - don't fail if this errors)
+            if (allInfoDocUrls.length > 0) {
+                try {
+                    const description = allInfoDocUrls
+                        .map((url) => `- ${url}`)
+                        .join('\n')
+                        .slice(0, 4000)
+                    const linkEmbed = new EmbedBuilder()
+                        .setTitle('🔗 문서 원문 링크')
+                        .setColor(0x2ecc71)
+                        .setDescription(description)
+                    await responseThread.send({ embeds: [linkEmbed] })
+                } catch (embedError) {
+                    logger.warn({ embedError }, 'Failed to send info doc links embed (non-fatal)')
+                }
+            }
+
+            history.push({ role: 'user', content: query })
+            history.push({ role: 'assistant', content: fullResponse })
+            if (history.length > 20) history.splice(0, history.length - 20)
+            conversationHistory.set(historyKey, history)
+        } catch (error) {
+            logger.error({ error }, 'Failed to handle mention')
+            await editor.showError('요청 처리 중 오류가 발생했습니다.')
+        }
+    })
 }
