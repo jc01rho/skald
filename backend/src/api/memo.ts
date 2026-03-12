@@ -279,9 +279,11 @@ export const updateMemo = async (req: Request, res: Response) => {
         await em.begin()
 
         let contentUpdated = false
+        let memoUpdated = false
         for (const field of Object.keys(validatedData.data) as (keyof typeof validatedData.data)[]) {
             if (field === 'content') {
                 contentUpdated = true
+                memoUpdated = true
                 DI.memoContents.findOne({ memo })
                 const [memoSummary, memoTags, memoChunks] = await Promise.all([
                     DI.memoSummaries.findOne({ memo }),
@@ -304,7 +306,12 @@ export const updateMemo = async (req: Request, res: Response) => {
                 }
 
                 memo[field] = validatedData.data[field]
+                memoUpdated = true
             }
+        }
+
+        if (memoUpdated) {
+            memo.updated_at = new Date()
         }
 
         if (contentUpdated) {
