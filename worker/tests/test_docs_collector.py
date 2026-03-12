@@ -64,7 +64,6 @@ class TestDocsCollector:
         """Create a DocsCollector for testing."""
         with patch("skald_worker.collectors.docs_collector.settings") as mock_settings:
             mock_settings.spms_base_url = "https://docs.test.com"
-            mock_settings.spms_api_key = "test-api-key"
 
             return DocsCollector(
                 base_url="https://docs.test.com",
@@ -207,7 +206,6 @@ class TestDocsCollectorSingleton:
         """Test that get_docs_collector returns same instance."""
         with patch("skald_worker.collectors.docs_collector.settings") as mock_settings:
             mock_settings.spms_base_url = "https://docs.test.com"
-            mock_settings.spms_api_key = "test-key"
 
             # Reset singleton
             import skald_worker.collectors.docs_collector as docs_module
