@@ -109,7 +109,7 @@ const RAGState = Annotation.Root({
     prompt: Annotation<ChatPromptTemplate>,
     contextStr: Annotation<string | null>,
     exactLookupKeys: Annotation<ExtractedKey[] | null>,
-    exactLookupResults: Annotation<Array<{ key: string; title: string; content: string; source_url: string; found: boolean }> | null>,
+    exactLookupResults: Annotation<Array<{ key: string; title: string; content: string; source_url: string; found: boolean; status?: 'hit' | 'archived_only' | 'miss'; archivedContent?: string; contradiction?: { urlKey: string; inlineKey: string } }> | null>,
     lookupHit: Annotation<boolean | null>,
 })
 
@@ -142,18 +142,20 @@ async function exactLookupNode(state: typeof RAGState.State) {
         'exactLookup: extracted keys from query'
     )
 
-    const results: Array<{ key: string; title: string; content: string; source_url: string; found: boolean }> = []
+    // Task 12: Extended type to support archived_only and contradiction states
+    const results: Array<{ key: string; title: string; content: string; source_url: string; found: boolean; status?: 'hit' | 'archived_only' | 'miss'; archivedContent?: string; contradiction?: { urlKey: string; inlineKey: string } }> = []
     let anyHit = false
 
     for (const extractedKey of extractedKeys) {
         try {
-            // Query by client_reference_id first (indexed), then metadata fallback
+            // Task 12: Two-stage lookup — first try active (archived=false), then archived
             const rows = await DI.em.getConnection().execute<
-                Array<{ uuid: string; title: string; content: string | null; source_url: string | null }>
+                Array<{ uuid: string; title: string; content: string | null; source_url: string | null; archived: boolean }>
             >(
                 `SELECT skald_memo.uuid, skald_memo.title,
                         skald_memocontent.content,
-                        skald_memo.metadata->>'source_url' AS source_url
+                        skald_memo.metadata->>'source_url' AS source_url,
+                        COALESCE(skald_memo.archived, false) AS archived
                  FROM skald_memo
                  LEFT JOIN skald_memocontent ON skald_memo.uuid = skald_memocontent.memo_id
                  WHERE skald_memo.project_id = ?
@@ -164,26 +166,46 @@ async function exactLookupNode(state: typeof RAGState.State) {
 
             if (rows.length > 0) {
                 const row = rows[0]
-                results.push({
-                    key: extractedKey.value,
-                    title: row.title,
-                    content: row.content || row.title,
-                    source_url: row.source_url || '',
-                    found: true,
-                })
-                anyHit = true
-                logger.info(
-                    { key: extractedKey.value, type: extractedKey.type, memoUuid: row.uuid },
-                    'exactLookup: HIT on client_reference_id'
-                )
+                if (!row.archived) {
+                    // Normal hit
+                    results.push({
+                        key: extractedKey.value,
+                        title: row.title,
+                        content: row.content || row.title,
+                        source_url: row.source_url || '',
+                        found: true,
+                        status: 'hit',
+                    })
+                    anyHit = true
+                    logger.info(
+                        { key: extractedKey.value, type: extractedKey.type, memoUuid: row.uuid },
+                        'exactLookup: HIT on client_reference_id (active)'
+                    )
+                } else {
+                    // Task 12: Archived-only hit — surface as distinct state
+                    results.push({
+                        key: extractedKey.value,
+                        title: row.title,
+                        content: '',
+                        source_url: row.source_url || '',
+                        found: false,
+                        status: 'archived_only',
+                        archivedContent: row.content || row.title,
+                    })
+                    logger.info(
+                        { key: extractedKey.value, type: extractedKey.type, memoUuid: row.uuid },
+                        'exactLookup: ARCHIVED-ONLY hit on client_reference_id'
+                    )
+                }
             } else {
                 // Try metadata.issueKey fallback for Jira keys
                 const metaRows = await DI.em.getConnection().execute<
-                    Array<{ uuid: string; title: string; content: string | null; source_url: string | null }>
+                    Array<{ uuid: string; title: string; content: string | null; source_url: string | null; archived: boolean }>
                 >(
                     `SELECT skald_memo.uuid, skald_memo.title,
                             skald_memocontent.content,
-                            skald_memo.metadata->>'source_url' AS source_url
+                            skald_memo.metadata->>'source_url' AS source_url,
+                            COALESCE(skald_memo.archived, false) AS archived
                      FROM skald_memo
                      LEFT JOIN skald_memocontent ON skald_memo.uuid = skald_memocontent.memo_id
                      WHERE skald_memo.project_id = ?
@@ -194,25 +216,46 @@ async function exactLookupNode(state: typeof RAGState.State) {
 
                 if (metaRows.length > 0) {
                     const row = metaRows[0]
-                    results.push({
-                        key: extractedKey.value,
-                        title: row.title,
-                        content: row.content || row.title,
-                        source_url: row.source_url || '',
-                        found: true,
-                    })
-                    anyHit = true
-                    logger.info(
-                        { key: extractedKey.value, type: extractedKey.type, memoUuid: row.uuid },
-                        'exactLookup: HIT on metadata.issueKey'
-                    )
+                    if (!row.archived) {
+                        // Normal hit
+                        results.push({
+                            key: extractedKey.value,
+                            title: row.title,
+                            content: row.content || row.title,
+                            source_url: row.source_url || '',
+                            found: true,
+                            status: 'hit',
+                        })
+                        anyHit = true
+                        logger.info(
+                            { key: extractedKey.value, type: extractedKey.type, memoUuid: row.uuid },
+                            'exactLookup: HIT on metadata.issueKey (active)'
+                        )
+                    } else {
+                        // Task 12: Archived-only hit
+                        results.push({
+                            key: extractedKey.value,
+                            title: row.title,
+                            content: '',
+                            source_url: row.source_url || '',
+                            found: false,
+                            status: 'archived_only',
+                            archivedContent: row.content || row.title,
+                        })
+                        logger.info(
+                            { key: extractedKey.value, type: extractedKey.type, memoUuid: row.uuid },
+                            'exactLookup: ARCHIVED-ONLY hit on metadata.issueKey'
+                        )
+                    }
                 } else {
+                    // True miss
                     results.push({
                         key: extractedKey.value,
                         title: '',
                         content: '',
                         source_url: '',
                         found: false,
+                        status: 'miss',
                     })
                     logger.info(
                         { key: extractedKey.value, type: extractedKey.type },
@@ -231,6 +274,7 @@ async function exactLookupNode(state: typeof RAGState.State) {
                 content: '',
                 source_url: '',
                 found: false,
+                status: 'miss',
             })
         }
     }
@@ -966,12 +1010,14 @@ function buildLLMInputsNode(state: typeof RAGState.State) {
     // Found keys get their full content inserted first (highest priority evidence)
     // Missing keys get an explicit "not found" notice so the LLM can surface it
     if (exactLookupResults && exactLookupResults.length > 0) {
-        const foundKeys = exactLookupResults.filter(r => r.found)
-        const missingKeys = exactLookupResults.filter(r => !r.found)
+        // Task 12: Separate hit, archived_only, and miss statuses
+        const hitResults = exactLookupResults.filter(r => r.status === 'hit')
+        const archivedOnlyResults = exactLookupResults.filter(r => r.status === 'archived_only')
+        const missResults = exactLookupResults.filter(r => r.status === 'miss')
 
-        if (foundKeys.length > 0) {
+        if (hitResults.length > 0) {
             contextStr += '[Exact Lookup Results — use these as primary evidence]\n'
-            for (const result of foundKeys) {
+            for (const result of hitResults) {
                 contextStr += `Document: ${result.title}\n${result.content}\n`
                 if (result.source_url) contextStr += `Source: ${result.source_url}\n`
                 contextStr += '\n'
@@ -979,10 +1025,23 @@ function buildLLMInputsNode(state: typeof RAGState.State) {
             contextStr += '[End of Exact Lookup Results]\n\n'
         }
 
-        if (missingKeys.length > 0) {
+        // Task 12: Surface archived-only hits as distinct information
+        if (archivedOnlyResults.length > 0) {
+            contextStr += '[Archived Document Notice]\n'
+            for (const result of archivedOnlyResults) {
+                contextStr += `The document with key "${result.key}" exists but has been archived.\n`
+                if (result.archivedContent) {
+                    contextStr += `Archived content preview: ${result.archivedContent.substring(0, 200)}...\n`
+                }
+            }
+            contextStr += '[End of Archived Document Notice]\n\n'
+        }
+
+        // Task 12: Provide explicit missing key notice
+        if (missResults.length > 0) {
             contextStr += '[Key-Not-Found Notice]\n'
-            for (const result of missingKeys) {
-                contextStr += `The document with key "${result.key}" was NOT found in the knowledge base.\n`
+            for (const result of missResults) {
+                contextStr += `The document with key "${result.key}" was NOT found in the knowledge base (neither active nor archived).\n`
             }
             contextStr += '[End of Key-Not-Found Notice]\n\n'
         }

@@ -1,6 +1,12 @@
+// Set LLM environment variables before any module imports
+process.env.LLM_PROVIDER = 'cli-proxy-api'
+process.env.LLM_DEFAULT_CHAT_MODEL = 'free'
+process.env.LLM_DEFAULT_CLASSIFICATION_MODEL = 'free'
+
 // Mock API config to provide all LLM providers in tests
 jest.mock('@/api/config', () => {
     const AVAILABLE_LLM_PROVIDERS = [
+        { provider: 'cli-proxy-api', label: 'CLI Proxy API', model: 'free' },
         { provider: 'openai', label: 'OpenAI', model: 'gpt-4o-mini' },
         { provider: 'anthropic', label: 'Anthropic', model: 'claude-3-7-sonnet-20250219' },
         { provider: 'local', label: 'Local', model: 'llama-3.1-8b-instruct' },
