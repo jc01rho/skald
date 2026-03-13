@@ -19,6 +19,7 @@ import { reorderForLongContext, selectOptimalStrategy, ReorderStrategy } from '@
 import { validateRetrieval, getRetryStrategy, RetrievalValidation } from '@/lib/retrievalValidator'
 import { mapWithConcurrency } from '@/lib/asyncUtils'
 import { HNSWOptimizationService } from '@/lib/hnswOptimization'
+import { extractExplicitKeys, ExtractedKey } from '@/lib/keyExtractor'
 
 interface RerankResult {
     index: number
@@ -107,6 +108,9 @@ const RAGState = Annotation.Root({
     cragValidation: Annotation<RetrievalValidation | null>,
     prompt: Annotation<ChatPromptTemplate>,
     contextStr: Annotation<string | null>,
+    exactLookupKeys: Annotation<ExtractedKey[] | null>,
+    exactLookupResults: Annotation<Array<{ key: string; title: string; content: string; source_url: string; found: boolean }> | null>,
+    lookupHit: Annotation<boolean | null>,
 })
 
 async function getChatHistoryNode(state: typeof RAGState.State) {
@@ -116,6 +120,126 @@ async function getChatHistoryNode(state: typeof RAGState.State) {
     }
     const conversationHistory = await getOptimizedChatHistory(chatId, project)
     return { conversationHistory }
+}
+
+/**
+ * Exact key lookup node — runs before vector search.
+ * Extracts explicit Jira keys/document references from the query and performs
+ * a direct DB lookup on client_reference_id. If hit, sets lookupHit=true and
+ * exactLookupResults with the full content. If miss, marks found=false so that
+ * buildLLMInputs can surface a key-not-found message instead of a generic abstain.
+ */
+async function exactLookupNode(state: typeof RAGState.State) {
+    const { query, project } = state
+
+    const extractedKeys = extractExplicitKeys(query)
+    if (extractedKeys.length === 0) {
+        return { exactLookupKeys: null, exactLookupResults: null, lookupHit: null }
+    }
+
+    logger.info(
+        { extractedKeys: extractedKeys.map(k => ({ type: k.type, value: k.value, confidence: k.confidence })) },
+        'exactLookup: extracted keys from query'
+    )
+
+    const results: Array<{ key: string; title: string; content: string; source_url: string; found: boolean }> = []
+    let anyHit = false
+
+    for (const extractedKey of extractedKeys) {
+        try {
+            // Query by client_reference_id first (indexed), then metadata fallback
+            const rows = await DI.em.getConnection().execute<
+                Array<{ uuid: string; title: string; content: string | null; source_url: string | null }>
+            >(
+                `SELECT skald_memo.uuid, skald_memo.title,
+                        skald_memocontent.content,
+                        skald_memo.metadata->>'source_url' AS source_url
+                 FROM skald_memo
+                 LEFT JOIN skald_memocontent ON skald_memo.uuid = skald_memocontent.memo_id
+                 WHERE skald_memo.project_id = ?
+                   AND skald_memo.client_reference_id = ?
+                 LIMIT 1`,
+                [project.uuid, extractedKey.value]
+            )
+
+            if (rows.length > 0) {
+                const row = rows[0]
+                results.push({
+                    key: extractedKey.value,
+                    title: row.title,
+                    content: row.content || row.title,
+                    source_url: row.source_url || '',
+                    found: true,
+                })
+                anyHit = true
+                logger.info(
+                    { key: extractedKey.value, type: extractedKey.type, memoUuid: row.uuid },
+                    'exactLookup: HIT on client_reference_id'
+                )
+            } else {
+                // Try metadata.issueKey fallback for Jira keys
+                const metaRows = await DI.em.getConnection().execute<
+                    Array<{ uuid: string; title: string; content: string | null; source_url: string | null }>
+                >(
+                    `SELECT skald_memo.uuid, skald_memo.title,
+                            skald_memocontent.content,
+                            skald_memo.metadata->>'source_url' AS source_url
+                     FROM skald_memo
+                     LEFT JOIN skald_memocontent ON skald_memo.uuid = skald_memocontent.memo_id
+                     WHERE skald_memo.project_id = ?
+                       AND skald_memo.metadata->>'issueKey' = ?
+                     LIMIT 1`,
+                    [project.uuid, extractedKey.value]
+                )
+
+                if (metaRows.length > 0) {
+                    const row = metaRows[0]
+                    results.push({
+                        key: extractedKey.value,
+                        title: row.title,
+                        content: row.content || row.title,
+                        source_url: row.source_url || '',
+                        found: true,
+                    })
+                    anyHit = true
+                    logger.info(
+                        { key: extractedKey.value, type: extractedKey.type, memoUuid: row.uuid },
+                        'exactLookup: HIT on metadata.issueKey'
+                    )
+                } else {
+                    results.push({
+                        key: extractedKey.value,
+                        title: '',
+                        content: '',
+                        source_url: '',
+                        found: false,
+                    })
+                    logger.info(
+                        { key: extractedKey.value, type: extractedKey.type },
+                        'exactLookup: MISS — key not found in KB'
+                    )
+                }
+            }
+        } catch (err) {
+            logger.warn(
+                { key: extractedKey.value, err },
+                'exactLookup: error during lookup, skipping key'
+            )
+            results.push({
+                key: extractedKey.value,
+                title: '',
+                content: '',
+                source_url: '',
+                found: false,
+            })
+        }
+    }
+
+    return {
+        exactLookupKeys: extractedKeys,
+        exactLookupResults: results,
+        lookupHit: anyHit,
+    }
 }
 
 /**
@@ -811,7 +935,7 @@ async function fetchParentChunksNode(state: typeof RAGState.State) {
 }
 
 function buildLLMInputsNode(state: typeof RAGState.State) {
-    const { conversationHistory, ragConfig, rerankedResults, clientSystemPrompt, parentChunkMap, chunkResults } = state
+    const { conversationHistory, ragConfig, rerankedResults, clientSystemPrompt, parentChunkMap, chunkResults, exactLookupResults, lookupHit } = state
 
     // P0-4: Confidence-based abstain — compute average relevance score
     const baseConfidenceThreshold = ragConfig.confidence?.threshold ?? 0.35
@@ -837,6 +961,33 @@ function buildLLMInputsNode(state: typeof RAGState.State) {
     // Build context string using parent chunk content when available (better for LLM)
     // Falls back to child chunk content if no parent is available
     let contextStr = ''
+
+    // Task 7: Prepend exact lookup results to context string
+    // Found keys get their full content inserted first (highest priority evidence)
+    // Missing keys get an explicit "not found" notice so the LLM can surface it
+    if (exactLookupResults && exactLookupResults.length > 0) {
+        const foundKeys = exactLookupResults.filter(r => r.found)
+        const missingKeys = exactLookupResults.filter(r => !r.found)
+
+        if (foundKeys.length > 0) {
+            contextStr += '[Exact Lookup Results — use these as primary evidence]\n'
+            for (const result of foundKeys) {
+                contextStr += `Document: ${result.title}\n${result.content}\n`
+                if (result.source_url) contextStr += `Source: ${result.source_url}\n`
+                contextStr += '\n'
+            }
+            contextStr += '[End of Exact Lookup Results]\n\n'
+        }
+
+        if (missingKeys.length > 0) {
+            contextStr += '[Key-Not-Found Notice]\n'
+            for (const result of missingKeys) {
+                contextStr += `The document with key "${result.key}" was NOT found in the knowledge base.\n`
+            }
+            contextStr += '[End of Key-Not-Found Notice]\n\n'
+        }
+    }
+
     for (let i = 0; i < rerankedResults.length; i++) {
         const result = rerankedResults[i]
 
@@ -873,6 +1024,20 @@ function buildLLMInputsNode(state: typeof RAGState.State) {
         systemPrompt += abstainGuidance
     }
 
+    // Task 7: Inject key-not-found guidance if explicit keys were requested but not found
+    if (exactLookupResults && exactLookupResults.some(r => !r.found)) {
+        const missingKeys = exactLookupResults.filter(r => !r.found).map(r => r.key)
+        const keyNotFoundGuidance =
+            '\n\n[Key-Not-Found Guidance]\n' +
+            `The user requested specific document(s) with key(s): ${missingKeys.join(', ')}\n` +
+            'These documents were NOT found in the knowledge base.\n' +
+            'You MUST explicitly inform the user that the requested key(s) are not available.\n' +
+            'Do NOT provide a generic "no information found" response.\n' +
+            'Instead, clearly state: "The document with key [KEY] is not present in the knowledge base."\n' +
+            'If semantic search results are available, you may offer them as alternatives, but make it clear they are NOT the requested document.'
+        systemPrompt += keyNotFoundGuidance
+    }
+
     if (clientSystemPrompt) {
         // escape curly braces in clientSystemPrompt so they're treated as literal text
         // langchain uses {{ and }} to escape braces
@@ -902,6 +1067,7 @@ function buildLLMInputsNode(state: typeof RAGState.State) {
 // so we let the nodes themselves decide whether to run or not
 const ragGraphDefinition = new StateGraph(RAGState)
     .addNode('getChatHistory', getChatHistoryNode)
+    .addNode('exactLookup', exactLookupNode)
     .addNode('analyzeAndRewrite', analyzeAndRewriteNode)
     .addNode('vectorSearch', vectorSearchNode)
     .addNode('getMemoProperties', getMemoPropertiesNode)
@@ -912,8 +1078,11 @@ const ragGraphDefinition = new StateGraph(RAGState)
     .addNode('fetchParentChunks', fetchParentChunksNode)
     .addNode('buildLLMInputs', buildLLMInputsNode)
     .addEdge('__start__', 'getChatHistory')
+    // exactLookup and analyzeAndRewrite can run in parallel after chat history is loaded
+    .addEdge('getChatHistory', 'exactLookup')
     .addEdge('getChatHistory', 'analyzeAndRewrite')
-    .addEdge('analyzeAndRewrite', 'vectorSearch')
+    // Fan-in: vectorSearch waits for both exactLookup and analyzeAndRewrite
+    .addEdge(['exactLookup', 'analyzeAndRewrite'], 'vectorSearch')
     // Fan-out: getMemoProperties and fetchParentChunks run in parallel after vectorSearch
     .addEdge('vectorSearch', 'getMemoProperties')
     .addEdge('vectorSearch', 'fetchParentChunks')
