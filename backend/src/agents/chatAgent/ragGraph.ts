@@ -20,6 +20,7 @@ import { validateRetrieval, getRetryStrategy, RetrievalValidation } from '@/lib/
 import { mapWithConcurrency } from '@/lib/asyncUtils'
 import { HNSWOptimizationService } from '@/lib/hnswOptimization'
 import { extractExplicitKeys, ExtractedKey } from '@/lib/keyExtractor'
+import { expandTechnicalQueryVariants } from '@/lib/queryNormalization'
 
 interface RerankResult {
     index: number
@@ -109,7 +110,16 @@ const RAGState = Annotation.Root({
     prompt: Annotation<ChatPromptTemplate>,
     contextStr: Annotation<string | null>,
     exactLookupKeys: Annotation<ExtractedKey[] | null>,
-    exactLookupResults: Annotation<Array<{ key: string; title: string; content: string; source_url: string; found: boolean; status?: 'hit' | 'archived_only' | 'miss'; archivedContent?: string; contradiction?: { urlKey: string; inlineKey: string } }> | null>,
+    exactLookupResults: Annotation<Array<{
+        key: string
+        title: string
+        content: string
+        source_url: string
+        found: boolean
+        status?: 'hit' | 'archived_only' | 'miss'
+        archivedContent?: string
+        contradiction?: { urlKey: string; inlineKey: string }
+    }> | null>,
     lookupHit: Annotation<boolean | null>,
 })
 
@@ -138,19 +148,34 @@ async function exactLookupNode(state: typeof RAGState.State) {
     }
 
     logger.info(
-        { extractedKeys: extractedKeys.map(k => ({ type: k.type, value: k.value, confidence: k.confidence })) },
+        { extractedKeys: extractedKeys.map((k) => ({ type: k.type, value: k.value, confidence: k.confidence })) },
         'exactLookup: extracted keys from query'
     )
 
     // Task 12: Extended type to support archived_only and contradiction states
-    const results: Array<{ key: string; title: string; content: string; source_url: string; found: boolean; status?: 'hit' | 'archived_only' | 'miss'; archivedContent?: string; contradiction?: { urlKey: string; inlineKey: string } }> = []
+    const results: Array<{
+        key: string
+        title: string
+        content: string
+        source_url: string
+        found: boolean
+        status?: 'hit' | 'archived_only' | 'miss'
+        archivedContent?: string
+        contradiction?: { urlKey: string; inlineKey: string }
+    }> = []
     let anyHit = false
 
     for (const extractedKey of extractedKeys) {
         try {
             // Task 12: Two-stage lookup — first try active (archived=false), then archived
             const rows = await DI.em.getConnection().execute<
-                Array<{ uuid: string; title: string; content: string | null; source_url: string | null; archived: boolean }>
+                Array<{
+                    uuid: string
+                    title: string
+                    content: string | null
+                    source_url: string | null
+                    archived: boolean
+                }>
             >(
                 `SELECT skald_memo.uuid, skald_memo.title,
                         skald_memocontent.content,
@@ -200,7 +225,13 @@ async function exactLookupNode(state: typeof RAGState.State) {
             } else {
                 // Try metadata.issueKey fallback for Jira keys
                 const metaRows = await DI.em.getConnection().execute<
-                    Array<{ uuid: string; title: string; content: string | null; source_url: string | null; archived: boolean }>
+                    Array<{
+                        uuid: string
+                        title: string
+                        content: string | null
+                        source_url: string | null
+                        archived: boolean
+                    }>
                 >(
                     `SELECT skald_memo.uuid, skald_memo.title,
                             skald_memocontent.content,
@@ -264,10 +295,7 @@ async function exactLookupNode(state: typeof RAGState.State) {
                 }
             }
         } catch (err) {
-            logger.warn(
-                { key: extractedKey.value, err },
-                'exactLookup: error during lookup, skipping key'
-            )
+            logger.warn({ key: extractedKey.value, err }, 'exactLookup: error during lookup, skipping key')
             results.push({
                 key: extractedKey.value,
                 title: '',
@@ -383,6 +411,23 @@ function calculateDynamicConfidenceThreshold(results: RerankResult[], baseThresh
     return Math.max(0.18, Math.min(baseThreshold, averageScore * 0.9))
 }
 
+export function shouldInjectLowConfidenceGuidance({
+    lookupHit,
+    rerankedResults,
+    confidenceThreshold,
+}: {
+    lookupHit: boolean | null
+    rerankedResults: RerankResult[]
+    confidenceThreshold: number
+}): boolean {
+    const avgRelevanceScore =
+        rerankedResults.length > 0
+            ? rerankedResults.reduce((sum, r) => sum + r.relevance_score, 0) / rerankedResults.length
+            : 0
+
+    return !lookupHit && (rerankedResults.length === 0 || avgRelevanceScore < confidenceThreshold)
+}
+
 function checkFallbackCondition(results: MemoChunkWithDistance[], topK: number, threshold: number): boolean {
     if (results.length >= topK * 0.5) return false
     const avgScore = calculateAverageScore(results)
@@ -442,9 +487,9 @@ async function vectorSearchNode(state: typeof RAGState.State) {
     // P2-2: Dynamic HNSW ef_search based on topK
     await HNSWOptimizationService.applyRuntimeSearchTuning(DI.em, strategy.topK)
 
-    const searchQueries: string[] = [query]
+    const searchQueries = expandTechnicalQueryVariants(query)
     if (rewrittenQuery && rewrittenQuery !== query) {
-        searchQueries.push(rewrittenQuery)
+        searchQueries.push(...expandTechnicalQueryVariants(rewrittenQuery))
     }
 
     const [variants, hypothetical, jiraHypothetical] = await Promise.all([
@@ -979,7 +1024,16 @@ async function fetchParentChunksNode(state: typeof RAGState.State) {
 }
 
 function buildLLMInputsNode(state: typeof RAGState.State) {
-    const { conversationHistory, ragConfig, rerankedResults, clientSystemPrompt, parentChunkMap, chunkResults, exactLookupResults, lookupHit } = state
+    const {
+        conversationHistory,
+        ragConfig,
+        rerankedResults,
+        clientSystemPrompt,
+        parentChunkMap,
+        chunkResults,
+        exactLookupResults,
+        lookupHit,
+    } = state
 
     // P0-4: Confidence-based abstain — compute average relevance score
     const baseConfidenceThreshold = ragConfig.confidence?.threshold ?? 0.35
@@ -988,7 +1042,11 @@ function buildLLMInputsNode(state: typeof RAGState.State) {
             ? rerankedResults.reduce((sum, r) => sum + r.relevance_score, 0) / rerankedResults.length
             : 0
     const confidenceThreshold = calculateDynamicConfidenceThreshold(rerankedResults, baseConfidenceThreshold)
-    const isLowConfidence = rerankedResults.length === 0 || avgRelevanceScore < confidenceThreshold
+    const isLowConfidence = shouldInjectLowConfidenceGuidance({
+        lookupHit,
+        rerankedResults,
+        confidenceThreshold,
+    })
 
     if (isLowConfidence) {
         logger.info(
@@ -1011,9 +1069,9 @@ function buildLLMInputsNode(state: typeof RAGState.State) {
     // Missing keys get an explicit "not found" notice so the LLM can surface it
     if (exactLookupResults && exactLookupResults.length > 0) {
         // Task 12: Separate hit, archived_only, and miss statuses
-        const hitResults = exactLookupResults.filter(r => r.status === 'hit')
-        const archivedOnlyResults = exactLookupResults.filter(r => r.status === 'archived_only')
-        const missResults = exactLookupResults.filter(r => r.status === 'miss')
+        const hitResults = exactLookupResults.filter((r) => r.status === 'hit')
+        const archivedOnlyResults = exactLookupResults.filter((r) => r.status === 'archived_only')
+        const missResults = exactLookupResults.filter((r) => r.status === 'miss')
 
         if (hitResults.length > 0) {
             contextStr += '[Exact Lookup Results — use these as primary evidence]\n'
@@ -1084,8 +1142,8 @@ function buildLLMInputsNode(state: typeof RAGState.State) {
     }
 
     // Task 7: Inject key-not-found guidance if explicit keys were requested but not found
-    if (exactLookupResults && exactLookupResults.some(r => !r.found)) {
-        const missingKeys = exactLookupResults.filter(r => !r.found).map(r => r.key)
+    if (exactLookupResults && exactLookupResults.some((r) => !r.found)) {
+        const missingKeys = exactLookupResults.filter((r) => !r.found).map((r) => r.key)
         const keyNotFoundGuidance =
             '\n\n[Key-Not-Found Guidance]\n' +
             `The user requested specific document(s) with key(s): ${missingKeys.join(', ')}\n` +

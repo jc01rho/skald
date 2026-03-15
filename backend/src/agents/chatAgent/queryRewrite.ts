@@ -1,5 +1,6 @@
 import { QUERY_REWRITE_PROMPT, MULTI_QUERY_PROMPT, HYDE_PROMPT, JIRA_HYDE_PROMPT } from '@/agents/chatAgent/prompts'
 import { logger } from '@/lib/logger'
+import { expandTechnicalQueryVariants } from '@/lib/queryNormalization'
 import { LLMService } from '@/services/llmService'
 import * as Sentry from '@sentry/node'
 
@@ -35,8 +36,11 @@ export const rewrite = async (query: string, conversationHistory: ConversationMe
             return query
         }
 
-        logger.info({ originalQuery: query, rewrittenQuery }, 'Query rewrite completed')
-        return rewrittenQuery
+        const expandedQueries = expandTechnicalQueryVariants(rewrittenQuery)
+        const finalQuery = expandedQueries.join(' ')
+
+        logger.info({ originalQuery: query, rewrittenQuery, finalQuery }, 'Query rewrite completed')
+        return finalQuery
     } catch (error) {
         logger.error({ err: error, query }, 'Error rewriting query')
         Sentry.captureException(error, {
@@ -70,6 +74,7 @@ export const rewriteMultiQuery = async (query: string): Promise<string[]> => {
             .map((q: string) => q.trim())
             .filter((q: string) => q.length > 0)
             .slice(0, 3)
+            .flatMap((q: string) => expandTechnicalQueryVariants(q))
 
         return queries.length > 0 ? queries : [query]
     } catch (error) {
