@@ -292,8 +292,12 @@ const SPARROW_COMBINE_KEYWORDS = ['sast', 'sca'] as const
  * Supports Korean aliases and compound keywords
  * Returns the matched product_id or undefined if not found
  */
-function detectProductId(query: string): ProductId | undefined {
+export function detectProductId(query: string): ProductId | undefined {
     const lowerQuery = query.toLowerCase()
+
+    if (/\b[A-Z][A-Z0-9_]+-\d+\b/.test(query)) {
+        return undefined
+    }
 
     // 1. Check for explicit compound keywords first (longer matches take precedence)
     for (const keyword of ['sparrow-sca', 'sparrow-sast']) {
