@@ -10,7 +10,6 @@ import { DI } from '@/di'
 import { ragGraph } from '@/agents/chatAgent/ragGraph'
 import { parseRagConfig } from '@/lib/ragUtils'
 import { routeQuery } from '@/lib/queryRouter'
-import { ChatPromptTemplate } from '@langchain/core/prompts'
 import { Project } from '@/entities/Project'
 import { chatRateLimiter } from '@/middleware/rateLimitMiddleware'
 import { trackChatUsage } from '@/middleware/trackChatUsageMiddleware'
@@ -25,12 +24,79 @@ import {
 import { cacheResponse, getCachedResponse } from '@/lib/ragCache'
 import crypto from 'crypto'
 
+type AnswerMode = 'detailed' | 'partial' | 'rejected'
+type SufficiencyClass = 'high' | 'medium' | 'low' | 'empty'
+
+const getChatDistinctId = (req: Request | undefined, project: Project): string => {
+    return req?.context?.requestUser?.userInstance?.email || `project:${project.uuid}`
+}
+
+const classifyAnswerMode = (response: string): AnswerMode => {
+    return response.length < 50 ? 'rejected' : response.length < 200 ? 'partial' : 'detailed'
+}
+
+const classifySufficiencyClass = (contextLength: number, rerankedCount: number): SufficiencyClass => {
+    return contextLength === 0 ? 'empty' : rerankedCount >= 5 ? 'high' : rerankedCount >= 2 ? 'medium' : 'low'
+}
+
+const captureChatTelemetry = ({
+    req,
+    distinctId,
+    project,
+    routeMode,
+    stream,
+    filterCount,
+    answerMode,
+    contextLength,
+    rerankedCount,
+    lookupHit,
+    usedUserContext,
+    decompositionUsed,
+    sufficiencyClass,
+}: {
+    req?: Request
+    distinctId?: string
+    project: Project
+    routeMode: string
+    stream: boolean
+    filterCount: number
+    answerMode: AnswerMode
+    contextLength: number
+    rerankedCount: number
+    lookupHit: boolean
+    usedUserContext: boolean
+    decompositionUsed: boolean
+    sufficiencyClass: SufficiencyClass
+}) => {
+    posthogCapture({
+        event: 'chat_api_call',
+        distinctId: distinctId || getChatDistinctId(req, project),
+        groups: {
+            organization: project.organization.uuid,
+        },
+        properties: {
+            route_mode: routeMode,
+            answer_mode: answerMode,
+            filter_count: filterCount,
+            has_context: contextLength > 0,
+            context_length: contextLength,
+            reranked_count: rerankedCount,
+            lookup_hit: lookupHit,
+            sufficiency_class: sufficiencyClass,
+            used_user_context: usedUserContext,
+            decomposition_used: decompositionUsed,
+            stream,
+        },
+    })
+}
+
 export const chat = async (req: Request, res: Response) => {
     const query = req.body.query
     const stream = req.body.stream || false
     const filters = req.body.filters || []
     const chatId = req.body.chat_id
     const clientSystemPrompt = req.body.system_prompt || null
+    const usedUserContext = false
     const ragConfig = req.body.rag_config || {}
 
     if (!query) {
@@ -99,6 +165,20 @@ export const chat = async (req: Request, res: Response) => {
         const cachedResponse = await getCachedResponse(responseCacheKey)
         if (cachedResponse) {
             const finalChatId = await createChatMessagePair(project, query, cachedResponse, chatId, clientSystemPrompt)
+            captureChatTelemetry({
+                req,
+                project,
+                routeMode: routeResult.route,
+                stream: false,
+                filterCount: filters.length,
+                answerMode: classifyAnswerMode(cachedResponse),
+                contextLength: 0,
+                rerankedCount: 0,
+                lookupHit: true,
+                usedUserContext,
+                decompositionUsed: false,
+                sufficiencyClass: 'empty',
+            })
             return res.status(200).json({
                 ok: true,
                 chat_id: finalChatId,
@@ -113,6 +193,21 @@ export const chat = async (req: Request, res: Response) => {
         const finalChatId = await createChatMessagePair(project, query, directResponse, chatId, clientSystemPrompt)
 
         await cacheResponse(responseCacheKey, directResponse)
+
+        captureChatTelemetry({
+            req,
+            project,
+            routeMode: routeResult.route,
+            stream,
+            filterCount: filters.length,
+            answerMode: classifyAnswerMode(directResponse),
+            contextLength: 0,
+            rerankedCount: 0,
+            lookupHit: false,
+            usedUserContext,
+            decompositionUsed: false,
+            sufficiencyClass: 'empty',
+        })
 
         if (stream) {
             _setStreamingResponseHeaders(res)
@@ -146,6 +241,7 @@ export const chat = async (req: Request, res: Response) => {
             chatId,
             filters,
             clientSystemPrompt,
+            distinctId: getChatDistinctId(req, project),
             parsedRagConfig,
         })
     }
@@ -172,18 +268,10 @@ export const chat = async (req: Request, res: Response) => {
 
     const { query: finalQuery, contextStr, prompt, rerankedResults } = ragResultState
 
-    posthogCapture({
-        event: 'chat_api_call',
-        distinctId: req.context?.requestUser?.userInstance?.email || `project:${project.uuid}`,
-        groups: {
-            organization: project.organization.uuid,
-        },
-        properties: {
-            query: query,
-            filters: filters,
-            ragConfig: parsedRagConfig,
-        },
-    })
+    const contextLength = contextStr?.length || 0
+    const rerankedCount = rerankedResults?.length || 0
+    const sufficiencyClass = classifySufficiencyClass(contextLength, rerankedCount)
+    const decompositionUsed = !!ragResultState.queryUnderstanding
 
     try {
         // non-streaming response - compose full response from stream
@@ -203,22 +291,6 @@ export const chat = async (req: Request, res: Response) => {
                 references = JSON.parse(chunk.content)
             }
         }
-
-        const contextLength = contextStr?.length || 0
-        const rerankedCount = rerankedResults?.length || 0
-        const hasContext = contextLength > 0
-        const responseType = fullResponse.length < 50 ? 'rejected' : fullResponse.length < 200 ? 'partial' : 'detailed'
-
-        logger.info(
-            {
-                contextLength,
-                rerankedCount,
-                hasContext,
-                responseType,
-                responseLength: fullResponse.length,
-            },
-            'RAG result metrics'
-        )
 
         let finalResponse = fullResponse
 
@@ -318,6 +390,34 @@ export const chat = async (req: Request, res: Response) => {
             }
         }
 
+        const answerMode = classifyAnswerMode(finalResponse)
+
+        logger.info(
+            {
+                contextLength,
+                rerankedCount,
+                hasContext: contextLength > 0,
+                responseType: answerMode,
+                responseLength: finalResponse.length,
+            },
+            'RAG result metrics'
+        )
+
+        captureChatTelemetry({
+            req,
+            project,
+            routeMode: routeResult.route,
+            stream: false,
+            filterCount: filters.length,
+            answerMode,
+            contextLength,
+            rerankedCount,
+            lookupHit: ragResultState.lookupHit || false,
+            usedUserContext,
+            decompositionUsed,
+            sufficiencyClass,
+        })
+
         const finalChatId = await createChatMessagePair(project, query, finalResponse, chatId, clientSystemPrompt)
 
         await cacheResponse(responseCacheKey, finalResponse)
@@ -347,6 +447,20 @@ export const chat = async (req: Request, res: Response) => {
     } catch (error) {
         logger.error({ err: error }, 'Chat agent error')
         Sentry.captureException(error)
+        captureChatTelemetry({
+            req,
+            project,
+            routeMode: routeResult.route,
+            stream: false,
+            filterCount: filters.length,
+            answerMode: 'rejected',
+            contextLength,
+            rerankedCount,
+            lookupHit: ragResultState.lookupHit || false,
+            usedUserContext,
+            decompositionUsed,
+            sufficiencyClass,
+        })
         return res.status(503).json({ error: 'Chat agent unavailable' })
     }
 }
@@ -358,12 +472,6 @@ export const _setStreamingResponseHeaders = (res: Response) => {
     res.setHeader('X-Accel-Buffering', 'no')
 }
 
-interface RerankResult {
-    memo_uuid?: string
-    memo_title?: string
-    source_url?: string
-}
-
 export const _generateStreamingResponse = async ({
     res,
     query,
@@ -371,6 +479,7 @@ export const _generateStreamingResponse = async ({
     chatId,
     filters,
     clientSystemPrompt,
+    distinctId,
     parsedRagConfig,
 }: {
     res: Response
@@ -379,6 +488,7 @@ export const _generateStreamingResponse = async ({
     chatId?: string
     filters: any[]
     clientSystemPrompt: string | null
+    distinctId: string
     parsedRagConfig: any
 }): Promise<void> => {
     _setStreamingResponseHeaders(res)
@@ -390,6 +500,11 @@ export const _generateStreamingResponse = async ({
 
     let fullResponse = ''
     let streamingRerankedResults: Array<{ memo_uuid?: string }> = []
+    let streamingContextLength = 0
+    let streamingRerankedCount = 0
+    let streamingLookupHit = false
+    let streamingDecompositionUsed = false
+    const usedUserContext = false
     try {
         // Run RAG graph *after* headers are sent
         const ragResultState = await ragGraph.invoke({
@@ -403,6 +518,11 @@ export const _generateStreamingResponse = async ({
 
         const { query: finalQuery, contextStr, prompt, rerankedResults } = ragResultState
         streamingRerankedResults = rerankedResults || []
+
+        streamingContextLength = contextStr?.length || 0
+        streamingRerankedCount = rerankedResults?.length || 0
+        streamingLookupHit = ragResultState.lookupHit || false
+        streamingDecompositionUsed = !!ragResultState.queryUnderstanding
 
         logger.info('RAG process completed, starting generation')
 
@@ -423,6 +543,22 @@ export const _generateStreamingResponse = async ({
             }
         }
 
+        captureChatTelemetry({
+            distinctId,
+            req: undefined,
+            project,
+            routeMode: 'rag',
+            stream: true,
+            filterCount: filters.length,
+            answerMode: classifyAnswerMode(fullResponse),
+            contextLength: streamingContextLength,
+            rerankedCount: streamingRerankedCount,
+            lookupHit: streamingLookupHit,
+            usedUserContext,
+            decompositionUsed: streamingDecompositionUsed,
+            sufficiencyClass: classifySufficiencyClass(streamingContextLength, streamingRerankedCount),
+        })
+
         // Save chat to DB
         const finalChatId = await createChatMessagePair(project, query, fullResponse, chatId, clientSystemPrompt)
         res.write(`data: ${JSON.stringify({ type: 'done', chat_id: finalChatId })}\n\n`)
@@ -432,6 +568,21 @@ export const _generateStreamingResponse = async ({
             { err: error, llmProvider: parsedRagConfig?.llmProvider, errorMessage: (error as Error)?.message },
             'Streaming chat agent error - check if model is supported by CLI Proxy'
         )
+        captureChatTelemetry({
+            distinctId,
+            req: undefined,
+            project,
+            routeMode: 'rag',
+            stream: true,
+            filterCount: filters.length,
+            answerMode: 'rejected',
+            contextLength: streamingContextLength,
+            rerankedCount: streamingRerankedCount,
+            lookupHit: streamingLookupHit,
+            usedUserContext,
+            decompositionUsed: streamingDecompositionUsed,
+            sufficiencyClass: classifySufficiencyClass(streamingContextLength, streamingRerankedCount),
+        })
         const errorMsg =
             IS_DEVELOPMENT && error instanceof Error ? `${error.message}\n${error.stack}` : 'An error occurred'
         const errorData = JSON.stringify({ type: 'error', content: errorMsg })
