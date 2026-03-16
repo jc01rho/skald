@@ -1,3 +1,5 @@
+import { MemoSubmission } from '@/entities/MemoSubmission'
+
 import http from 'http'
 import { EntityManager, EntityRepository, MikroORM } from '@mikro-orm/postgresql'
 import config from '@/mikro-orm.config'
@@ -54,6 +56,7 @@ export const DI = {} as {
     evaluationDatasetQuestions: EntityRepository<EvaluationDatasetQuestion>
     experiments: EntityRepository<Experiment>
     experimentResults: EntityRepository<ExperimentResult>
+    memoSubmissions: EntityRepository<MemoSubmission>
 }
 
 export const initDI = async (): Promise<typeof DI> => {
@@ -83,6 +86,7 @@ export const initDI = async (): Promise<typeof DI> => {
     DI.evaluationDatasetQuestions = DI.orm.em.getRepository(EvaluationDatasetQuestion)
     DI.experiments = DI.orm.em.getRepository(Experiment)
     DI.experimentResults = DI.orm.em.getRepository(ExperimentResult)
+    DI.memoSubmissions = DI.orm.em.getRepository(MemoSubmission)
 
     return DI
 }

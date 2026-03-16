@@ -22,6 +22,7 @@ import { projectRouter } from '@/api/project'
 import { stripeWebhook } from '@/api/stripe_webhook'
 import { subscriptionRouter } from '@/api/subscription'
 import { userRouter } from '@/api/user'
+import { publicMemoSubmissionRouter, authMemoSubmissionRouter } from '@/api/memoSubmission'
 import { logger } from '@/lib/logger'
 import { posthog } from '@/lib/posthogUtils'
 import { authRateLimiter, generalRateLimiter } from '@/middleware/rateLimitMiddleware'
@@ -94,6 +95,9 @@ export const startExpressServer = async (
         }
     }
 
+    // Public memo submission routes
+    app.use('/api/public/memo-submissions', publicMemoSubmissionRouter)
+
     app.use('/api/auth', authRateLimiter, authRouter)
     app.use('/api/user', authRateLimiter, userRouter)
     privateRoutesRouter.use('/email_verification', emailVerificationRouter)
@@ -109,6 +113,7 @@ export const startExpressServer = async (
     privateRoutesRouter.use('/project/:uuid/experiments', experimentRouter)
     privateRoutesRouter.use('/onboarding', onboardingRouter)
     privateRoutesRouter.use('/v1/config', configRouter)
+    privateRoutesRouter.use('/v1/memo-submissions', [requireProjectAccess()], authMemoSubmissionRouter)
 
     // register extra private routes (e.g., enterprise features)
     for (const [route, middleware, router] of extraPrivateRoutes) {
