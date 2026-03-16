@@ -13,8 +13,22 @@ describe('queryNormalization', () => {
             expect.arrayContaining([
                 'sast 레거시에서 매트릭 을 켜는 옵션을 알려줘',
                 'sast 레거시에서 metric 을 켜는 옵션을 알려줘',
+                'sast 레거시에서 metric 을 켜는 옵션을 알려줘 sparrow.properties',
                 'sast 레거시에서 metric 을 켜는 옵션을 알려줘 property sparrow.properties',
                 'sast 레거시에서 metric 을 켜는 옵션을 알려줘 legacy sparrow.properties option property',
+                'sast 레거시에서 metric 을 켜는 옵션을 알려줘 legacy metric enable option sparrow.properties',
+            ])
+        )
+    })
+
+    it('adds option and sparrow.properties variants for metric/property lookups', () => {
+        const variants = expandTechnicalQueryVariants('sast metric 관련 옵션이나 property 를 찾아줘')
+
+        expect(variants).toEqual(
+            expect.arrayContaining([
+                'sast metric 관련 옵션이나 property 를 찾아줘',
+                'sast metric 관련 옵션이나 property 를 찾아줘 sparrow.properties',
+                'sast metric 관련 옵션이나 property 를 찾아줘 메트릭 property 설정',
             ])
         )
     })
