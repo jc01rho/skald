@@ -48,7 +48,7 @@ data:
                    application/vnd.ms-fontobject image/svg+xml;
 
         server {
-            listen 80;
+            listen 8080;
             server_name _;
             root /usr/share/nginx/html;
             index index.html;
