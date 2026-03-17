@@ -28,7 +28,18 @@ import { Button } from '@/components/ui/button'
 import { isSelfHostedDeploy } from '@/config'
 import { useAuthStore, UserDetails } from '@/stores/authStore'
 import { useProjectStore } from '@/stores/projectStore'
-import { BookOpen, File, FlaskConical, List, MessageSquare, Search, Settings, Zap, GraduationCap } from 'lucide-react'
+import {
+    BookOpen,
+    File,
+    FlaskConical,
+    GraduationCap,
+    List,
+    MessageSquare,
+    Search,
+    Send,
+    Settings,
+    Zap,
+} from 'lucide-react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { useState } from 'react'
 
@@ -61,6 +72,12 @@ export const Sider = () => {
                 key: `/projects/${currentProject?.uuid}/memos`,
                 icon: <File className="h-4 w-4" />,
                 label: 'Ingestion',
+                hasAccess: () => true,
+            },
+            {
+                key: `/public/memos/${currentProject?.uuid}/submit`,
+                icon: <Send className="h-4 w-4" />,
+                label: 'Submit Memo',
                 hasAccess: () => true,
             },
             {
