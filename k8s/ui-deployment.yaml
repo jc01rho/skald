@@ -43,7 +43,7 @@ spec:
                   image: ghcr.io/jc01rho/skald/ui:latest
                   imagePullPolicy: Always
                   ports:
-                      - containerPort: 80
+                      - containerPort: 8080
                         name: http
                         protocol: TCP
                   env:
@@ -84,7 +84,7 @@ spec:
                   readinessProbe:
                       httpGet:
                           path: /
-                          port: 80
+                          port: 8080
                       initialDelaySeconds: 10
                       periodSeconds: 10
                       timeoutSeconds: 5
@@ -92,7 +92,7 @@ spec:
                   livenessProbe:
                       httpGet:
                           path: /
-                          port: 80
+                          port: 8080
                       initialDelaySeconds: 30
                       periodSeconds: 30
                       timeoutSeconds: 5
