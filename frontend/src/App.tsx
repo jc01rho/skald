@@ -89,6 +89,8 @@ function App() {
                 />
                 <Route path="/public/memos/:projectUuid" element={<PublicMemosPage />} />
                 <Route path="/public/memos/:projectUuid/submit" element={<PublicSubmitMemoPage />} />
+                <Route path="/projects/memos/:projectUuid" element={<PublicMemosPage />} />
+                <Route path="/projects/memos/:projectUuid/submit" element={<PublicSubmitMemoPage />} />
                 {isLicensedDeploy && <Route path="/public_chat/:slug" element={<PublicChatPage />} />}
                 {privateRoutes.map((route) => (
                     <Route
