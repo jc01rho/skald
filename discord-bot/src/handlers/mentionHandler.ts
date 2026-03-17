@@ -9,10 +9,17 @@ const INFO_DOC_ID_REGEX = /\binfo-(\d+)\b/gi
 const JIRA_ISSUE_KEY_REGEX = /\b([A-Z][A-Z0-9]+-\d+)\b/g
 const INFO_DOC_ID_SINGLE_REGEX = /\binfo-(\d+)\b/i
 const JIRA_ISSUE_KEY_SINGLE_REGEX = /\b([A-Z][A-Z0-9]+-\d+)\b/
+const HTTP_URL_IN_TEXT_REGEX = /https?:\/\//i
 const DEFAULT_JIRA_BASE_URL = 'https://jira.sparrowfasoo.com'
+const URL_ACCESS_NOTICE =
+    '참고로 저는 질문에 포함된 URL에 직접 접속하거나 그 내용을 읽을 수 없습니다. URL 본문이 필요하면 관련 내용을 함께 보내 주세요.\n\n'
 
 function isHttpUrl(value: string | undefined): value is string {
     return Boolean(value && /^https?:\/\//i.test(value))
+}
+
+function containsHttpUrl(text: string): boolean {
+    return HTTP_URL_IN_TEXT_REGEX.test(text)
 }
 
 function buildInfoDocUrl(infoId: string): string {
@@ -444,7 +451,8 @@ export async function handleMention(message: Message, client: Client) {
             for await (const event of skaldClient.chatStream(query, {
                 history,
                 filters,
-                system_prompt: '제공된 프롬프트와 문맥 안에서만 답하고 그 외 없는 내용으로는 답변하지 말것.',
+                system_prompt:
+                    '제공된 프롬프트와 문맥 안에서만 답하고 그 외 없는 내용으로는 답변하지 말것. 항상 한국어로 답변할 것.',
                 rag_config: {
                     llm_provider: 'cli-proxy-api',
                     query_rewrite: { enabled: true },
@@ -477,12 +485,15 @@ export async function handleMention(message: Message, client: Client) {
             const normalizedResponse = normalizeCitationSpacing(fullResponse)
             const recoveredResponse = recoverPlainNumericCitations(normalizedResponse, references)
             const finalResponse = linkifyCitationsWithReferences(recoveredResponse, references)
+            const finalResponseWithNotice = containsHttpUrl(query)
+                ? `${URL_ACCESS_NOTICE}${finalResponse}`
+                : finalResponse
 
             try {
-                await editor.finalize(finalResponse)
+                await editor.finalize(finalResponseWithNotice)
             } catch (editError) {
                 logger.error({ editError }, 'Failed to stream final response, falling back to plain messages')
-                await sendFinalResponseFallback(responseThread, finalResponse)
+                await sendFinalResponseFallback(responseThread, finalResponseWithNotice)
             }
 
             const citedReferenceKeys = extractCitedReferenceKeys(fullResponse)
@@ -546,7 +557,7 @@ export async function handleMention(message: Message, client: Client) {
             }
 
             history.push({ role: 'user', content: query })
-            history.push({ role: 'assistant', content: fullResponse })
+            history.push({ role: 'assistant', content: finalResponseWithNotice })
             if (history.length > 20) history.splice(0, history.length - 20)
             conversationHistory.set(historyKey, history)
         } catch (error) {
