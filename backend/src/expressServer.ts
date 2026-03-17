@@ -22,7 +22,7 @@ import { projectRouter } from '@/api/project'
 import { stripeWebhook } from '@/api/stripe_webhook'
 import { subscriptionRouter } from '@/api/subscription'
 import { userRouter } from '@/api/user'
-import { publicMemoSubmissionRouter, authMemoSubmissionRouter } from '@/api/memoSubmission'
+import { publicMemoSubmissionRouter, authMemoSubmissionRouter, publicMemosRouter } from '@/api/memoSubmission'
 import { logger } from '@/lib/logger'
 import { posthog } from '@/lib/posthogUtils'
 import { authRateLimiter, generalRateLimiter } from '@/middleware/rateLimitMiddleware'
@@ -95,7 +95,7 @@ export const startExpressServer = async (
         }
     }
 
-    // Public memo submission routes
+    app.use('/api/public/memos', publicMemosRouter)
     app.use('/api/public/memo-submissions', publicMemoSubmissionRouter)
 
     app.use('/api/auth', authRateLimiter, authRouter)

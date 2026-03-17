@@ -325,6 +325,89 @@ export const rejectMemoSubmission = async (req: Request, res: Response) => {
     return res.status(200).json({ ok: true })
 }
 
+// List public memos (is_public = true in metadata)
+export const listPublicMemos = async (req: Request, res: Response) => {
+    const projectId = req.query.project_id as string
+    if (!projectId) {
+        return res.status(400).json({ error: 'Project ID is required' })
+    }
+
+    const page = parseInt(req.query.page as string) || 1
+    const pageSize = parseInt(req.query.page_size as string) || 20
+    const maxPageSize = 100
+
+    if (pageSize > maxPageSize) {
+        return res.status(400).json({ error: `page_size must be less than or equal to ${maxPageSize}` })
+    }
+
+    if (page < 1) {
+        return res.status(400).json({ error: 'page must be greater than or equal to 1' })
+    }
+
+    const project = await DI.projects.findOne({ uuid: projectId })
+    if (!project) {
+        return res.status(404).json({ error: 'Project not found' })
+    }
+
+    const offset = (page - 1) * pageSize
+
+    const [countRow] = await DI.em.getConnection().execute<{ count: string }[]>(
+        `
+            SELECT COUNT(*)::text AS count
+            FROM skald_memo
+            WHERE project_id = ?
+              AND processing_status = 'processed'
+              AND archived = false
+              AND COALESCE(metadata->>'is_public', 'false') = 'true'
+        `,
+        [projectId]
+    )
+
+    const rows = await DI.em.getConnection().execute<
+        {
+            uuid: string
+            title: string
+            summary: string | null
+            source: string | null
+            created_at: Date
+            approved_at: Date | null
+        }[]
+    >(
+        `
+            SELECT
+                skald_memo.uuid,
+                skald_memo.title,
+                skald_memosummary.summary,
+                skald_memo.source,
+                skald_memo.created_at,
+                COALESCE(skald_memo.processing_completed_at, skald_memo.updated_at, skald_memo.created_at) AS approved_at
+            FROM skald_memo
+            LEFT JOIN skald_memosummary ON skald_memo.uuid = skald_memosummary.memo_id
+            WHERE skald_memo.project_id = ?
+              AND skald_memo.processing_status = 'processed'
+              AND skald_memo.archived = false
+              AND COALESCE(skald_memo.metadata->>'is_public', 'false') = 'true'
+            ORDER BY skald_memo.created_at DESC
+            LIMIT ? OFFSET ?
+        `,
+        [projectId, pageSize, offset]
+    )
+
+    const totalCount = Number(countRow?.count || 0)
+
+    return res.status(200).json({
+        results: rows,
+        count: totalCount,
+        page,
+        page_size: pageSize,
+        total_pages: Math.ceil(totalCount / pageSize),
+    })
+}
+
+// Public memos router (no auth)
+export const publicMemosRouter = express.Router({ mergeParams: true })
+publicMemosRouter.get('/', listPublicMemos)
+
 // Public router (no auth)
 export const publicMemoSubmissionRouter = express.Router({ mergeParams: true })
 publicMemoSubmissionRouter.post('/', createMemoSubmission)
