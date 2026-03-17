@@ -5,6 +5,9 @@
 **Branch:** main
 
 ## OVERVIEW
+작업이 끝나면 빌드가 가능한지 빌드 테스트를 하고, 성공했다면 커밋하고 푸쉬해줘
+그리고 devcenter에 PROJECT-147 에서  적절한 story를 찾아 create task 및 그의 진행 상황 등록 으로   보고 해줘.
+이 프로젝트의 배포는 commit > push > gh action build wait > deploy with k8s/deploy.sh -y
 
 Skald는 프로덕션 RAG 플랫폼입니다. 루트는 React/Vite 프론트엔드이고, `backend/`(TS API), `worker/`(Python 수집기), `embedding-service/`(Python 임베딩), `k8s/`(배포)로 분리된 **inverted monorepo** 구조입니다.
 

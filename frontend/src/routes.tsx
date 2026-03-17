@@ -10,6 +10,7 @@ import { ExperimentsPage } from '@/pages/ExperimentsPage'
 import { DatasetsPage } from '@/pages/DatasetsPage'
 import { SubscriptionPage } from '@/pages/SubscriptionPage'
 import { AdminPage } from '@/pages/AdminPage'
+import { MemoSubmissionsPage } from '@/pages/MemoSubmissionsPage'
 import { isSelfHostedDeploy } from '@/config'
 import { OnboardingWizard } from './components/GettingStarted/OnboardingWizard'
 
@@ -26,6 +27,7 @@ const defaultRoutes = [
     { path: '/projects/:uuid/settings', component: () => <ProjectSettingsPage /> },
     { path: '/projects/:uuid/memos', component: () => <MemosPage /> },
     { path: '/projects/:uuid/memos/:memoUuid', component: () => <MemosPage /> },
+    { path: '/projects/:uuid/memo-submissions', component: () => <MemoSubmissionsPage /> },
     { path: '/projects/:uuid/chats', component: () => <ChatsPage /> },
     { path: '/projects/:uuid/playground/chat', component: () => <PlaygroundChatPage /> },
     { path: '/projects/:uuid/playground/search', component: () => <PlaygroundSearchPage /> },

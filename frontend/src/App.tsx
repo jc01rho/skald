@@ -10,6 +10,8 @@ import { UpgradePromptDialog } from '@/components/Subscription/UpgradePromptDial
 import { useUpgradePromptStore } from '@/stores/upgradePromptStore'
 import { isLicensedDeploy } from '@/config'
 import { PublicChatPage } from '@/pages/PublicChatPage'
+import { PublicMemosPage } from '@/pages/PublicMemosPage'
+import { PublicSubmitMemoPage } from '@/pages/PublicSubmitMemoPage'
 import '@/index.css'
 
 const PrivateRoute = ({ children }: { children: React.ReactNode }) => {
@@ -85,6 +87,8 @@ function App() {
                     path="/self-hosted-welcome"
                     element={<SignupFlow currentStep={SignupFlowStep.SelfHostedWelcome} />}
                 />
+                <Route path="/public/memos/:projectUuid" element={<PublicMemosPage />} />
+                <Route path="/public/memos/:projectUuid/submit" element={<PublicSubmitMemoPage />} />
                 {isLicensedDeploy && <Route path="/public_chat/:slug" element={<PublicChatPage />} />}
                 {privateRoutes.map((route) => (
                     <Route
