@@ -146,12 +146,21 @@ export const LoginForm = () => {
                                 <p className="text-sm text-black/70 dark:text-muted-foreground">
                                     Need to submit a public memo without signing in?
                                 </p>
-                                <Link
-                                    to="/public/memos/83dabf13-0c3e-41f0-8f6b-75a817cd1e25/submit"
-                                    className="mt-2 inline-flex text-sm font-medium text-black underline underline-offset-4 hover:text-black/80 dark:text-foreground dark:hover:text-foreground/80"
-                                >
-                                    Submit Memo
-                                </Link>
+                                <div className="mt-3 flex flex-col items-center gap-2 sm:flex-row sm:justify-center">
+                                    <Link
+                                        to="/public/memos/83dabf13-0c3e-41f0-8f6b-75a817cd1e25/submit"
+                                        className="inline-flex text-sm font-medium text-black underline underline-offset-4 hover:text-black/80 dark:text-foreground dark:hover:text-foreground/80"
+                                    >
+                                        Submit Memo
+                                    </Link>
+                                    <span className="hidden text-muted-foreground sm:inline">•</span>
+                                    <Link
+                                        to="/public/memos/83dabf13-0c3e-41f0-8f6b-75a817cd1e25"
+                                        className="inline-flex text-sm font-medium text-black underline underline-offset-4 hover:text-black/80 dark:text-foreground dark:hover:text-foreground/80"
+                                    >
+                                        Browse Public Memos
+                                    </Link>
+                                </div>
                             </div>
                         </form>
                     </Form>
