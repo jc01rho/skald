@@ -141,6 +141,18 @@ export const LoginForm = () => {
                             >
                                 {loading ? 'Logging in...' : 'Login'}
                             </Button>
+
+                            <div className="rounded-lg border border-dashed border-gray-200 bg-gray-50/70 p-4 text-center dark:border-[#252525] dark:bg-muted/20">
+                                <p className="text-sm text-black/70 dark:text-muted-foreground">
+                                    Need to submit a public memo without signing in?
+                                </p>
+                                <Link
+                                    to="/public/memos/83dabf13-0c3e-41f0-8f6b-75a817cd1e25/submit"
+                                    className="mt-2 inline-flex text-sm font-medium text-black underline underline-offset-4 hover:text-black/80 dark:text-foreground dark:hover:text-foreground/80"
+                                >
+                                    Submit Memo
+                                </Link>
+                            </div>
                         </form>
                     </Form>
 
