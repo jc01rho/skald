@@ -64,6 +64,44 @@ export interface MemoChunk {
     chunk_index: number
 }
 
+export interface PublicMemo {
+    uuid: string
+    title: string
+    summary: string | null
+    source: string | null
+    created_at: string
+    approved_at: string | null
+}
+
+export type MemoSubmissionStatus = 'pending' | 'approved' | 'rejected'
+
+export interface MemoSubmission {
+    uuid: string
+    title: string
+    summary: string | null
+    source: string | null
+    type: string | null
+    created_at: string
+    updated_at: string
+    status: MemoSubmissionStatus
+    submitter_name: string | null
+    submitter_email: string | null
+    reviewed_at: string | null
+    approved_at?: string | null
+    review_note: string | null
+    rejection_reason?: string | null
+    reviewer_name?: string | null
+}
+
+export interface DetailedMemoSubmission extends MemoSubmission {
+    content: string | null
+    metadata: Record<string, unknown>
+    client_reference_id: string | null
+    expiration_date: string | null
+    tags: string[]
+    file_name: string | null
+}
+
 export interface SearchResult {
     memo_title: string
     memo_uuid: string
