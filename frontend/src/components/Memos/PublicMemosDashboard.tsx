@@ -50,7 +50,7 @@ export const PublicMemosDashboard = () => {
 
     return (
         <div className="container mx-auto py-6 space-y-6">
-            <PageHeader title="Public memos">
+            <PageHeader title="Public memos" showSidebarTrigger={false}>
                 <div className="flex gap-2">
                     <Button asChild size="sm">
                         <Link to={`/public/memos/${projectUuid}/submit`}>Submit memo</Link>
