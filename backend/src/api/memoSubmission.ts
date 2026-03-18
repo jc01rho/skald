@@ -264,7 +264,7 @@ export const approveMemoSubmission = async (req: Request, res: Response) => {
                 content: submission.content,
                 type: 'plaintext',
                 source: 'public-submission',
-                metadata: { submission_id: submission.uuid },
+                metadata: { submission_id: submission.uuid, is_public: true },
             },
             project
         )
@@ -377,12 +377,13 @@ export const listPublicMemos = async (req: Request, res: Response) => {
             SELECT
                 skald_memo.uuid,
                 skald_memo.title,
-                skald_memosummary.summary,
+                COALESCE(skald_memosummary.summary, LEFT(skald_memocontent.content, 280)) AS summary,
                 skald_memo.source,
                 skald_memo.created_at,
                 COALESCE(skald_memo.processing_completed_at, skald_memo.updated_at, skald_memo.created_at) AS approved_at
             FROM skald_memo
             LEFT JOIN skald_memosummary ON skald_memo.uuid = skald_memosummary.memo_id
+            LEFT JOIN skald_memocontent ON skald_memo.uuid = skald_memocontent.memo_id
             WHERE skald_memo.project_id = ?
               AND skald_memo.processing_status = 'processed'
               AND skald_memo.archived = false
@@ -404,9 +405,68 @@ export const listPublicMemos = async (req: Request, res: Response) => {
     })
 }
 
+export const getPublicMemo = async (req: Request, res: Response) => {
+    const { id } = req.params
+
+    const validatedQuery = GetMemoSubmissionQuery.safeParse(req.query)
+    if (!validatedQuery.success) {
+        const errorMessages = validatedQuery.error.errors.map((err) => err.message)
+        return res.status(400).json({ error: errorMessages.join(', ') })
+    }
+
+    const { project_id } = validatedQuery.data
+
+    const project = await DI.projects.findOne({ uuid: project_id })
+    if (!project) {
+        return res.status(404).json({ error: 'Project not found' })
+    }
+
+    const memo = await DI.memos.findOne(
+        { uuid: id, project },
+        {
+            populate: ['project'],
+            orderBy: { updated_at: 'desc', created_at: 'desc' },
+        }
+    )
+
+    if (!memo || memo.archived || memo.processing_status !== 'processed' || memo.metadata?.is_public !== true) {
+        return res.status(404).json({ error: 'Memo not found' })
+    }
+
+    const [memoContent, memoSummary, memoTags, memoChunks] = await Promise.all([
+        DI.memoContents.findOne({ memo }),
+        DI.memoSummaries.findOne({ memo }),
+        DI.memoTags.find({ memo }),
+        DI.memoChunks.find({ memo }, { orderBy: { chunk_index: 'asc' } }),
+    ])
+
+    return res.status(200).json({
+        uuid: memo.uuid,
+        created_at: memo.created_at,
+        updated_at: memo.updated_at,
+        title: memo.title,
+        content: memoContent?.content || null,
+        summary: memoSummary?.summary || memoContent?.content?.slice(0, 280) || null,
+        metadata: memo.metadata,
+        client_reference_id: memo.client_reference_id,
+        source: memo.source,
+        type: memo.type,
+        expiration_date: memo.expiration_date,
+        archived: memo.archived,
+        processing_status: memo.processing_status,
+        tags: memoTags.map((tag) => ({ uuid: tag.uuid, tag: tag.tag })),
+        chunks: memoChunks.map((chunk) => ({
+            uuid: chunk.uuid,
+            chunk_content: chunk.chunk_content,
+            chunk_index: chunk.chunk_index,
+        })),
+    })
+}
+
 // Public memos router (no auth)
 export const publicMemosRouter = express.Router({ mergeParams: true })
 publicMemosRouter.get('/', listPublicMemos)
+publicMemosRouter.get('/:id', getPublicMemo)
 
 // Public router (no auth)
 export const publicMemoSubmissionRouter = express.Router({ mergeParams: true })

@@ -11,6 +11,7 @@ interface PublicMemosTableProps {
     emptyTitle: string
     emptyDescription: string
     onCreateMemo?: () => void
+    onSelectItem?: (item: PublicMemo | MemoSubmission) => void | Promise<void>
 }
 
 const isPendingSubmission = (item: PublicMemo | MemoSubmission): item is MemoSubmission => {
@@ -38,6 +39,7 @@ export const PublicMemosTable = ({
     emptyTitle,
     emptyDescription,
     onCreateMemo,
+    onSelectItem,
 }: PublicMemosTableProps) => {
     if (loading) {
         return (
@@ -95,10 +97,17 @@ export const PublicMemosTable = ({
                         const updatedAt = pending ? item.updated_at : item.approved_at || item.created_at
 
                         return (
-                            <TableRow key={item.uuid}>
+                            <TableRow
+                                key={item.uuid}
+                                className={onSelectItem ? 'cursor-pointer hover:bg-muted/50' : undefined}
+                                onClick={onSelectItem ? () => onSelectItem(item) : undefined}
+                            >
                                 <TableCell className="font-medium align-top">
                                     <div className="space-y-1 min-w-0">
-                                        <p className="truncate" title={item.title}>
+                                        <p
+                                            className="truncate underline-offset-4 group-hover:underline"
+                                            title={item.title}
+                                        >
                                             {item.title}
                                         </p>
                                         {pending && item.submitter_name && (
