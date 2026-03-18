@@ -81,6 +81,12 @@ export const Sider = () => {
                 hasAccess: () => true,
             },
             {
+                key: `/projects/${currentProject?.uuid}/memo-submissions`,
+                icon: <List className="h-4 w-4" />,
+                label: 'Review Memos',
+                hasAccess: () => true,
+            },
+            {
                 key: 'retrieval',
                 icon: <Zap className="h-4 w-4" />,
                 label: 'Retrieval',
