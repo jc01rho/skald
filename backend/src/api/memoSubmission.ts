@@ -41,8 +41,10 @@ const buildSubmissionResponse = (
         status: string
         reviewed_at?: Date | null
         rejection_reason?: string | null
+        metadata?: Record<string, unknown>
     },
-    includeContent = false
+    includeContent = false,
+    memoUuid: string | null = null
 ) => ({
     uuid: submission.uuid,
     created_at: submission.created_at,
@@ -58,11 +60,12 @@ const buildSubmissionResponse = (
     reviewed_at: submission.reviewed_at || null,
     review_note: submission.rejection_reason || null,
     rejection_reason: submission.rejection_reason || null,
-    metadata: {},
+    metadata: submission.metadata || {},
     client_reference_id: null,
     expiration_date: null,
     tags: [],
     file_name: null,
+    memo_uuid: memoUuid,
 })
 
 export const createMemoSubmission = async (req: Request, res: Response) => {
@@ -134,7 +137,23 @@ export const listMemoSubmissions = async (req: Request, res: Response) => {
         offset,
     })
 
-    const results = submissions.map((submission) => buildSubmissionResponse(submission, false))
+    const submissionIds = submissions.map((submission) => submission.uuid)
+    const memoRows = submissionIds.length
+        ? await DI.em.getConnection().execute<{ submission_id: string; memo_uuid: string }[]>(
+              `
+                SELECT metadata->>'submission_id' AS submission_id, uuid AS memo_uuid
+                FROM skald_memo
+                WHERE project_id = ?
+                  AND metadata->>'submission_id' IN (?)
+              `,
+              [project_id, submissionIds]
+          )
+        : []
+    const memoUuidBySubmissionId = new Map(memoRows.map((row) => [row.submission_id, row.memo_uuid]))
+
+    const results = submissions.map((submission) =>
+        buildSubmissionResponse(submission, false, memoUuidBySubmissionId.get(submission.uuid) || null)
+    )
 
     return res.status(200).json({
         results,
@@ -192,6 +211,90 @@ export const listAuthMemoSubmissions = async (req: Request, res: Response) => {
 
     const offset = (page - 1) * pageSize
 
+    if (status === 'approved') {
+        const [countRow] = await DI.em.getConnection().execute<{ count: string }[]>(
+            `
+                SELECT COUNT(*)::text AS count
+                FROM skald_memo_submission submission
+                INNER JOIN skald_memo memo
+                    ON memo.project_id = ?
+                   AND memo.metadata->>'submission_id' = submission.uuid
+                WHERE submission.project_id = ?
+                  AND submission.status = 'approved'
+            `,
+            [project.uuid, project.uuid]
+        )
+
+        const rows = await DI.em.getConnection().execute<
+            {
+                uuid: string
+                created_at: Date
+                updated_at: Date
+                title: string
+                status: string
+                reviewed_at: Date | null
+                rejection_reason: string | null
+                memo_uuid: string
+                source: string | null
+                summary: string | null
+            }[]
+        >(
+            `
+                SELECT
+                    submission.uuid,
+                    submission.created_at,
+                    submission.updated_at,
+                    submission.title,
+                    submission.status,
+                    submission.reviewed_at,
+                    submission.rejection_reason,
+                    memo.uuid AS memo_uuid,
+                    memo.source,
+                    COALESCE(summary.summary, LEFT(content.content, 280)) AS summary
+                FROM skald_memo_submission submission
+                INNER JOIN skald_memo memo
+                    ON memo.project_id = ?
+                   AND memo.metadata->>'submission_id' = submission.uuid
+                LEFT JOIN skald_memosummary summary ON memo.uuid = summary.memo_id
+                LEFT JOIN skald_memocontent content ON memo.uuid = content.memo_id
+                WHERE submission.project_id = ?
+                  AND submission.status = 'approved'
+                ORDER BY submission.created_at DESC
+                LIMIT ? OFFSET ?
+            `,
+            [project.uuid, project.uuid, pageSize, offset]
+        )
+
+        return res.status(200).json({
+            results: rows.map((row) => ({
+                uuid: row.uuid,
+                created_at: row.created_at,
+                updated_at: row.updated_at,
+                title: row.title,
+                content: undefined,
+                status: row.status,
+                summary: row.summary,
+                source: row.source,
+                type: null,
+                submitter_name: null,
+                submitter_email: null,
+                reviewed_at: row.reviewed_at || null,
+                review_note: row.rejection_reason || null,
+                rejection_reason: row.rejection_reason || null,
+                metadata: {},
+                client_reference_id: null,
+                expiration_date: null,
+                tags: [],
+                file_name: null,
+                memo_uuid: row.memo_uuid,
+            })),
+            count: Number(countRow?.count || 0),
+            page,
+            page_size: pageSize,
+            total_pages: Math.ceil(Number(countRow?.count || 0) / pageSize),
+        })
+    }
+
     const whereClause: Record<string, unknown> = { project }
     if (status) {
         whereClause.status = status
@@ -203,7 +306,23 @@ export const listAuthMemoSubmissions = async (req: Request, res: Response) => {
         offset,
     })
 
-    const results = submissions.map((submission) => buildSubmissionResponse(submission, false))
+    const submissionIds = submissions.map((submission) => submission.uuid)
+    const memoRows = submissionIds.length
+        ? await DI.em.getConnection().execute<{ submission_id: string; memo_uuid: string }[]>(
+              `
+                SELECT metadata->>'submission_id' AS submission_id, uuid AS memo_uuid
+                FROM skald_memo
+                WHERE project_id = ?
+                  AND metadata->>'submission_id' IN (?)
+              `,
+              [project.uuid, submissionIds]
+          )
+        : []
+    const memoUuidBySubmissionId = new Map(memoRows.map((row) => [row.submission_id, row.memo_uuid]))
+
+    const results = submissions.map((submission) =>
+        buildSubmissionResponse(submission, false, memoUuidBySubmissionId.get(submission.uuid) || null)
+    )
 
     return res.status(200).json({
         results,
@@ -228,7 +347,19 @@ export const getAuthMemoSubmission = async (req: Request, res: Response) => {
         return res.status(404).json({ error: 'Memo submission not found' })
     }
 
-    return res.status(200).json(buildSubmissionResponse(submission, true))
+    const [memoRow] = await DI.em.getConnection().execute<{ memo_uuid: string }[]>(
+        `
+            SELECT uuid AS memo_uuid
+            FROM skald_memo
+            WHERE project_id = ?
+              AND metadata->>'submission_id' = ?
+            ORDER BY created_at DESC
+            LIMIT 1
+        `,
+        [project.uuid, submission.uuid]
+    )
+
+    return res.status(200).json(buildSubmissionResponse(submission, true, memoRow?.memo_uuid || null))
 }
 
 export const approveMemoSubmission = async (req: Request, res: Response) => {

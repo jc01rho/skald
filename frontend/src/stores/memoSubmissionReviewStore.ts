@@ -12,13 +12,19 @@ interface PaginatedResponse<T> {
 
 interface MemoSubmissionReviewState {
     submissions: MemoSubmission[]
+    approvedSubmissions: MemoSubmission[]
     submissionsLoading: boolean
+    approvedSubmissionsLoading: boolean
     submissionsError: string | null
     submissionsTotalCount: number
+    approvedSubmissionsTotalCount: number
     submissionsCurrentPage: number
+    approvedSubmissionsCurrentPage: number
     submissionsPageSize: number
+    approvedSubmissionsPageSize: number
     reviewActionLoading: boolean
     fetchMemoSubmissions: (projectUuid: string, page?: number, pageSize?: number) => Promise<void>
+    fetchApprovedMemoSubmissions: (projectUuid: string, page?: number, pageSize?: number) => Promise<void>
     getMemoSubmissionDetails: (projectUuid: string, submissionUuid: string) => Promise<DetailedMemoSubmission | null>
     approveMemoSubmission: (projectUuid: string, submissionUuid: string, reviewNote?: string) => Promise<boolean>
     rejectMemoSubmission: (projectUuid: string, submissionUuid: string, reviewNote?: string) => Promise<boolean>
@@ -26,11 +32,16 @@ interface MemoSubmissionReviewState {
 
 export const useMemoSubmissionReviewStore = create<MemoSubmissionReviewState>((set, get) => ({
     submissions: [],
+    approvedSubmissions: [],
     submissionsLoading: false,
+    approvedSubmissionsLoading: false,
     submissionsError: null,
     submissionsTotalCount: 0,
+    approvedSubmissionsTotalCount: 0,
     submissionsCurrentPage: 1,
+    approvedSubmissionsCurrentPage: 1,
     submissionsPageSize: 20,
+    approvedSubmissionsPageSize: 20,
     reviewActionLoading: false,
 
     fetchMemoSubmissions: async (projectUuid, page = 1, pageSize = 20) => {
@@ -60,6 +71,36 @@ export const useMemoSubmissionReviewStore = create<MemoSubmissionReviewState>((s
             const errorMsg = error instanceof Error ? error.message : 'Failed to fetch memo submissions'
             set({ submissionsLoading: false, submissionsError: errorMsg })
             toast.error(`Failed to fetch memo submissions: ${errorMsg}`)
+        }
+    },
+
+    fetchApprovedMemoSubmissions: async (projectUuid, page = 1, pageSize = 20) => {
+        set({ approvedSubmissionsLoading: true, submissionsError: null })
+
+        try {
+            const response = await api.get<PaginatedResponse<MemoSubmission>>(
+                `/v1/memo-submissions?project_id=${projectUuid}&status=approved&page=${page}&page_size=${pageSize}`
+            )
+
+            if (response.error || !response.data) {
+                const errorMsg = response.error || 'Failed to fetch approved memo submissions'
+                set({ approvedSubmissionsLoading: false, submissionsError: errorMsg })
+                toast.error(`Failed to fetch approved memo submissions: ${errorMsg}`)
+                return
+            }
+
+            set({
+                approvedSubmissions: response.data.results,
+                approvedSubmissionsLoading: false,
+                submissionsError: null,
+                approvedSubmissionsTotalCount: response.data.count,
+                approvedSubmissionsCurrentPage: page,
+                approvedSubmissionsPageSize: pageSize,
+            })
+        } catch (error) {
+            const errorMsg = error instanceof Error ? error.message : 'Failed to fetch approved memo submissions'
+            set({ approvedSubmissionsLoading: false, submissionsError: errorMsg })
+            toast.error(`Failed to fetch approved memo submissions: ${errorMsg}`)
         }
     },
 
@@ -98,6 +139,11 @@ export const useMemoSubmissionReviewStore = create<MemoSubmissionReviewState>((s
             }
 
             await get().fetchMemoSubmissions(projectUuid, get().submissionsCurrentPage, get().submissionsPageSize)
+            await get().fetchApprovedMemoSubmissions(
+                projectUuid,
+                get().approvedSubmissionsCurrentPage,
+                get().approvedSubmissionsPageSize
+            )
             toast.success('Submission approved successfully')
             set({ reviewActionLoading: false })
             return true
@@ -125,6 +171,11 @@ export const useMemoSubmissionReviewStore = create<MemoSubmissionReviewState>((s
             }
 
             await get().fetchMemoSubmissions(projectUuid, get().submissionsCurrentPage, get().submissionsPageSize)
+            await get().fetchApprovedMemoSubmissions(
+                projectUuid,
+                get().approvedSubmissionsCurrentPage,
+                get().approvedSubmissionsPageSize
+            )
             toast.success('Submission rejected successfully')
             set({ reviewActionLoading: false })
             return true

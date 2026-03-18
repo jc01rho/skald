@@ -2,7 +2,7 @@ import type { MemoSubmission } from '@/lib/types'
 import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
-import { Eye, ThumbsDown, ThumbsUp } from 'lucide-react'
+import { Eye, ThumbsDown, ThumbsUp, Trash2 } from 'lucide-react'
 import { MemoSubmissionStatusBadge } from '@/components/Memos/MemoSubmissionStatusBadge'
 
 interface MemoSubmissionsTableProps {
@@ -11,6 +11,9 @@ interface MemoSubmissionsTableProps {
     onView: (submission: MemoSubmission) => void
     onApprove: (submission: MemoSubmission) => void
     onReject: (submission: MemoSubmission) => void
+    onDeleteApproved?: (submission: MemoSubmission) => void
+    emptyTitle?: string
+    emptyDescription?: string
 }
 
 const formatDate = (dateString: string) => {
@@ -32,6 +35,9 @@ export const MemoSubmissionsTable = ({
     onView,
     onApprove,
     onReject,
+    onDeleteApproved,
+    emptyTitle = 'No pending submissions',
+    emptyDescription = 'New public memo submissions awaiting approval will appear here.',
 }: MemoSubmissionsTableProps) => {
     if (loading) {
         return (
@@ -46,10 +52,8 @@ export const MemoSubmissionsTable = ({
     if (submissions.length === 0) {
         return (
             <div className="flex flex-col items-center justify-center py-16 px-4 text-center">
-                <h3 className="text-xl font-semibold text-foreground mb-2">No pending submissions</h3>
-                <p className="text-muted-foreground max-w-md">
-                    New public memo submissions awaiting approval will appear here.
-                </p>
+                <h3 className="text-xl font-semibold text-foreground mb-2">{emptyTitle}</h3>
+                <p className="text-muted-foreground max-w-md">{emptyDescription}</p>
             </div>
         )
     }
@@ -125,6 +129,7 @@ export const MemoSubmissionsTable = ({
                                         size="icon"
                                         onClick={() => onApprove(submission)}
                                         title="Approve submission"
+                                        disabled={submission.status !== 'pending'}
                                     >
                                         <ThumbsUp className="h-4 w-4 text-primary" />
                                     </Button>
@@ -133,9 +138,20 @@ export const MemoSubmissionsTable = ({
                                         size="icon"
                                         onClick={() => onReject(submission)}
                                         title="Reject submission"
+                                        disabled={submission.status !== 'pending'}
                                     >
                                         <ThumbsDown className="h-4 w-4 text-destructive" />
                                     </Button>
+                                    {submission.status === 'approved' && onDeleteApproved && submission.memo_uuid ? (
+                                        <Button
+                                            variant="ghost"
+                                            size="icon"
+                                            onClick={() => onDeleteApproved(submission)}
+                                            title="Delete approved memo"
+                                        >
+                                            <Trash2 className="h-4 w-4 text-destructive" />
+                                        </Button>
+                                    ) : null}
                                 </div>
                             </TableCell>
                         </TableRow>
