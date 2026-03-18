@@ -109,6 +109,7 @@ export interface MemoSubmission {
     review_note: string | null
     rejection_reason?: string | null
     reviewer_name?: string | null
+    memo_uuid?: string | null
 }
 
 export interface DetailedMemoSubmission extends MemoSubmission {
