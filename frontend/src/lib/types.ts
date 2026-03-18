@@ -73,6 +73,24 @@ export interface PublicMemo {
     approved_at: string | null
 }
 
+export interface DetailedPublicMemo {
+    uuid: string
+    created_at: string
+    updated_at: string
+    title: string
+    content: string | null
+    summary: string | null
+    metadata: Record<string, unknown>
+    client_reference_id: string | null
+    source: string | null
+    type: string | null
+    expiration_date: string | null
+    archived: boolean
+    processing_status: 'processing' | 'processed' | 'error'
+    tags: MemoTag[]
+    chunks: MemoChunk[]
+}
+
 export type MemoSubmissionStatus = 'pending' | 'approved' | 'rejected'
 
 export interface MemoSubmission {

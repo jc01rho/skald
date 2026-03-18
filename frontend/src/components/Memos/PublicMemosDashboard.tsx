@@ -1,12 +1,15 @@
 import { useEffect, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { RefreshCw, Send } from 'lucide-react'
+import type { DetailedMemoSubmission, DetailedPublicMemo, MemoSubmission, PublicMemo } from '@/lib/types'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Button } from '@/components/ui/button'
 import { PageHeader } from '@/components/AppLayout/PageHeader'
 import { MemosPagination } from '@/components/Memos/MemosPagination'
 import { PublicMemosTable } from '@/components/Memos/PublicMemosTable'
+import { ViewMemoDialog } from '@/components/Memos/ViewMemoDialog'
+import { PublicMemoSubmissionDetailDialog } from '@/components/Memos/PublicMemoSubmissionDetailDialog'
 import { usePublicMemoSubmissionStore } from '@/stores/publicMemoSubmissionStore'
 
 export const PublicMemosDashboard = () => {
@@ -25,6 +28,10 @@ export const PublicMemosDashboard = () => {
     const pendingPageSize = usePublicMemoSubmissionStore((state) => state.pendingSubmissionsPageSize)
     const fetchApprovedMemos = usePublicMemoSubmissionStore((state) => state.fetchApprovedMemos)
     const fetchPendingSubmissions = usePublicMemoSubmissionStore((state) => state.fetchPendingSubmissions)
+    const getPublicMemoDetails = usePublicMemoSubmissionStore((state) => state.getPublicMemoDetails)
+    const getPublicSubmissionDetails = usePublicMemoSubmissionStore((state) => state.getPublicSubmissionDetails)
+    const [selectedApprovedMemo, setSelectedApprovedMemo] = useState<DetailedPublicMemo | null>(null)
+    const [selectedPendingSubmission, setSelectedPendingSubmission] = useState<DetailedMemoSubmission | null>(null)
 
     useEffect(() => {
         if (!projectUuid) {
@@ -46,6 +53,21 @@ export const PublicMemosDashboard = () => {
         }
 
         fetchPendingSubmissions(projectUuid, pendingCurrentPage, pendingPageSize)
+    }
+
+    const handleSelectItem = async (item: PublicMemo | MemoSubmission) => {
+        if ('status' in item) {
+            const submission = await getPublicSubmissionDetails(projectUuid, item.uuid)
+            if (submission) {
+                setSelectedPendingSubmission(submission)
+            }
+            return
+        }
+
+        const memo = await getPublicMemoDetails(projectUuid, item.uuid)
+        if (memo) {
+            setSelectedApprovedMemo(memo)
+        }
     }
 
     return (
@@ -94,6 +116,7 @@ export const PublicMemosDashboard = () => {
                                 loading={approvedLoading}
                                 emptyTitle="No approved memos yet"
                                 emptyDescription="Approved public memos will appear here after review."
+                                onSelectItem={handleSelectItem}
                             />
                             <MemosPagination
                                 currentPage={approvedCurrentPage}
@@ -110,6 +133,7 @@ export const PublicMemosDashboard = () => {
                                 loading={pendingLoading}
                                 emptyTitle="No pending submissions"
                                 emptyDescription="New submissions will appear here while they wait for review."
+                                onSelectItem={handleSelectItem}
                             />
                             <MemosPagination
                                 currentPage={pendingCurrentPage}
@@ -122,6 +146,12 @@ export const PublicMemosDashboard = () => {
                     </Tabs>
                 </CardContent>
             </Card>
+
+            <ViewMemoDialog memo={selectedApprovedMemo} onClose={() => setSelectedApprovedMemo(null)} />
+            <PublicMemoSubmissionDetailDialog
+                submission={selectedPendingSubmission}
+                onClose={() => setSelectedPendingSubmission(null)}
+            />
         </div>
     )
 }

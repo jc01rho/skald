@@ -1,7 +1,7 @@
 import { create } from 'zustand'
 import { api } from '@/lib/api'
 import { toast } from 'sonner'
-import type { DetailedMemoSubmission, MemoSubmission, PublicMemo } from '@/lib/types'
+import type { DetailedMemoSubmission, DetailedPublicMemo, MemoSubmission, PublicMemo } from '@/lib/types'
 
 interface PaginatedResponse<T> {
     count: number
@@ -40,6 +40,7 @@ interface PublicMemoSubmissionState {
     fetchPendingSubmissions: (projectUuid: string, page?: number, pageSize?: number) => Promise<void>
     submitPublicMemo: (payload: PublicMemoSubmissionPayload) => Promise<boolean>
     getPublicSubmissionDetails: (projectUuid: string, submissionUuid: string) => Promise<DetailedMemoSubmission | null>
+    getPublicMemoDetails: (projectUuid: string, memoUuid: string) => Promise<DetailedPublicMemo | null>
 }
 
 export const usePublicMemoSubmissionStore = create<PublicMemoSubmissionState>((set) => ({
@@ -167,6 +168,23 @@ export const usePublicMemoSubmissionStore = create<PublicMemoSubmissionState>((s
         } catch (error) {
             const errorMsg = error instanceof Error ? error.message : 'Failed to fetch submission details'
             toast.error(`Failed to fetch submission details: ${errorMsg}`)
+            return null
+        }
+    },
+
+    getPublicMemoDetails: async (projectUuid, memoUuid) => {
+        try {
+            const response = await api.get<DetailedPublicMemo>(`/public/memos/${memoUuid}?project_id=${projectUuid}`)
+
+            if (response.error || !response.data) {
+                toast.error(`Failed to fetch public memo details: ${response.error || 'Unknown error'}`)
+                return null
+            }
+
+            return response.data
+        } catch (error) {
+            const errorMsg = error instanceof Error ? error.message : 'Failed to fetch public memo details'
+            toast.error(`Failed to fetch public memo details: ${errorMsg}`)
             return null
         }
     },
