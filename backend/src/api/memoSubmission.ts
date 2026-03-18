@@ -218,7 +218,7 @@ export const listAuthMemoSubmissions = async (req: Request, res: Response) => {
                 FROM skald_memo_submission submission
                 INNER JOIN skald_memo memo
                     ON memo.project_id = ?
-                   AND memo.metadata->>'submission_id' = submission.uuid
+                   AND memo.metadata->>'submission_id' = submission.uuid::text
                 WHERE submission.project_id = ?
                   AND submission.status = 'approved'
             `,
@@ -254,7 +254,7 @@ export const listAuthMemoSubmissions = async (req: Request, res: Response) => {
                 FROM skald_memo_submission submission
                 INNER JOIN skald_memo memo
                     ON memo.project_id = ?
-                   AND memo.metadata->>'submission_id' = submission.uuid
+                   AND memo.metadata->>'submission_id' = submission.uuid::text
                 LEFT JOIN skald_memosummary summary ON memo.uuid = summary.memo_id
                 LEFT JOIN skald_memocontent content ON memo.uuid = content.memo_id
                 WHERE submission.project_id = ?
