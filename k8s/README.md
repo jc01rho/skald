@@ -174,62 +174,33 @@ kubectl create secret docker-registry registry-secret \
 cd backend
 
 # 이미지 빌드
-docker build -t skald-backend:latest .
+docker build -t backend:latest .
 
 # 태그 지정 (레지스트리에 푸시할 경우)
-docker tag skald-backend:latest <REGISTRY_URL>/skald-backend:latest
+docker tag backend:latest <REGISTRY_URL>/backend:latest
 
 # 레지스트리에 푸시
-docker push <REGISTRY_URL>/skald-backend:latest
+docker push <REGISTRY_URL>/backend:latest
 ```
 
 ### Frontend UI 이미지 빌드
 
-Frontend용 Dockerfile이 없으므로 생성해야 합니다:
+현재 저장소는 루트의 `ui.Dockerfile`과 `k8s/build-ui-for-k8s.sh`를 사용합니다.
 
 ```bash
-# frontend/Dockerfile 생성
-cat > frontend/Dockerfile << 'EOF'
-# Build stage
-FROM node:18-alpine AS builder
+# 루트에서 직접 빌드
+docker build \
+  --build-arg VITE_API_HOST= \
+  --build-arg VITE_IS_SELF_HOSTED_DEPLOY=true \
+  --file ui.Dockerfile \
+  --tag <REGISTRY_URL>/ui:latest \
+  .
 
-WORKDIR /app
-
-# Copy package files
-COPY package.json pnpm-lock.yaml ./
-
-# Install pnpm and dependencies
-RUN npm install -g pnpm
-RUN pnpm install --frozen-lockfile
-
-# Copy source code
-COPY . .
-
-# Build application
-RUN pnpm build
-
-# Production stage
-FROM nginx:alpine
-
-# Copy built files
-COPY --from=builder /app/dist /usr/share/nginx/html
-
-# Copy nginx configuration
-COPY nginx.conf /etc/nginx/nginx.conf
-
-EXPOSE 80
-
-CMD ["nginx", "-g", "daemon off;"]
-EOF
-
-# 이미지 빌드
-cd frontend
-docker build -t skald-frontend:latest .
-
-# 태그 지정 및 푸시
-docker tag skald-frontend:latest <REGISTRY_URL>/skald-frontend:latest
-docker push <REGISTRY_URL>/skald-frontend:latest
+# 또는 K8s 전용 로컬 빌드 스크립트 사용
+./k8s/build-ui-for-k8s.sh
 ```
+
+배포 매니페스트는 현재 `ghcr.io/jc01rho/skald/ui:latest`를 참조합니다.
 
 ### Embedding Service 이미지 빌드
 
@@ -238,11 +209,11 @@ docker push <REGISTRY_URL>/skald-frontend:latest
 cd embedding-service
 
 # 이미지 빌드
-docker build -t skald-embedding-service:latest .
+docker build -t embedding-service:latest .
 
 # 태그 지정 및 푸시
-docker tag skald-embedding-service:latest <REGISTRY_URL>/skald-embedding-service:latest
-docker push <REGISTRY_URL>/skald-embedding-service:latest
+docker tag embedding-service:latest <REGISTRY_URL>/embedding-service:latest
+docker push <REGISTRY_URL>/embedding-service:latest
 ```
 
 ### 이미지 태그 관리
@@ -252,9 +223,9 @@ docker push <REGISTRY_URL>/skald-embedding-service:latest
 VERSION=v1.0.0
 
 # 모든 이미지에 동일한 버전 태그 적용
-docker tag skald-backend:latest <REGISTRY_URL>/skald-backend:${VERSION}
-docker tag skald-frontend:latest <REGISTRY_URL>/skald-frontend:${VERSION}
-docker tag skald-embedding-service:latest <REGISTRY_URL>/skald-embedding-service:${VERSION}
+docker tag backend:latest <REGISTRY_URL>/backend:${VERSION}
+docker tag ui:latest <REGISTRY_URL>/ui:${VERSION}
+docker tag embedding-service:latest <REGISTRY_URL>/embedding-service:${VERSION}
 
 # 배포 시 환경변수 설정
 export IMAGE_TAG=${VERSION}
@@ -347,6 +318,8 @@ kubectl wait --for=condition=ready pod -l component=memo-processing -n skald --t
 ```
 
 ### Step 6: AI 서비스 배포
+
+> 참고: `embedding-service`는 현재 `k8s/embedding-service-deployment.yaml`에서 GPU 노드 `ml.node.k8s.sparrow.local`로 고정 배치됩니다.
 
 ```bash
 # Embedding Service 배포
@@ -638,7 +611,7 @@ kubectl describe ingress skald-ingress -n skald
 # 특정 Pod 로그 확인
 kubectl logs -f deployment/api-server -n skald
 kubectl logs -f deployment/ui -n skald
-kubectl logs -f deployment/postgres -n skald
+kubectl logs -f postgres-0 -n skald
 
 # 여러 Pod 로그 동시 확인
 kubectl logs -f -l component=api -n skald
@@ -655,8 +628,8 @@ kubectl logs -p deployment/api-server -n skald
 kubectl describe pod <pod-name> -n skald
 
 # 특정 서비스 헬스체크
-kubectl exec -it deployment/api-server -n skald -- curl http://localhost:8000/health
-kubectl exec -it deployment/ui -n skald -- curl http://localhost:80/
+kubectl exec -it deployment/api-server -n skald -- curl http://localhost:8000/api/health
+kubectl exec -it deployment/ui -n skald -- curl http://localhost:8080/health
 ```
 
 ---
@@ -684,10 +657,7 @@ kubectl get ingress skald-ingress -n skald -o wide
 # 헬스체크 엔드포인트
 curl https://your-domain.com/api/health
 
-# API 버전 확인
-curl https://your-domain.com/api/version
-
-# 인증이 필요한 엔드포인트 테스트
+# 인증이 필요한 엔드포인트 테스트 예시
 curl -H "Authorization: Bearer <your-token>" \
      https://your-domain.com/api/user/profile
 ```
@@ -718,10 +688,10 @@ export IMAGE_TAG=v1.1.0
 
 # Deployment 업데이트
 kubectl set image deployment/api-server \
-  api-server=<REGISTRY_URL>/skald-backend:${IMAGE_TAG} -n skald
+  api-server=<REGISTRY_URL>/backend:${IMAGE_TAG} -n skald
 
 kubectl set image deployment/ui \
-  ui=<REGISTRY_URL>/skald-frontend:${IMAGE_TAG} -n skald
+  ui=<REGISTRY_URL>/ui:${IMAGE_TAG} -n skald
 
 # 롤아웃 상태 확인
 kubectl rollout status deployment/api-server -n skald
@@ -747,11 +717,11 @@ kubectl rollout history deployment/api-server -n skald
 
 ```bash
 # 백업 생성
-kubectl exec -it deployment/postgres -n skald -- \
+kubectl exec -it postgres-0 -n skald -- \
   pg_dump -U postgres -d skald2 > skald-backup-$(date +%Y%m%d).sql
 
 # 복원
-kubectl exec -i deployment/postgres -n skald -- \
+kubectl exec -i postgres-0 -n skald -- \
   psql -U postgres -d skald2 < skald-backup-20231201.sql
 ```
 
@@ -764,7 +734,7 @@ kubectl create snapshot postgres-snapshot \
   --namespace=skald
 
 # 온프레미스 환경에서는 파일 시스템 백업 사용
-kubectl exec -it deployment/postgres -n skald -- tar czf /tmp/backup.tar.gz /var/lib/postgresql/data
+kubectl exec -it postgres-0 -n skald -- tar czf /tmp/backup.tar.gz /var/lib/postgresql/data
 ```
 
 ### 스케일링 방법
@@ -895,9 +865,9 @@ kubectl get secret registry-secret -n skald -o yaml
 # 서비스 엔드포인트 확인
 kubectl get endpoints -n skald
 
-# Pod 간 연결 테스트
-kubectl exec -it deployment/api-server -n skald -- \
-  curl http://postgres-service:5432
+# PostgreSQL readiness 확인
+kubectl exec -it postgres-0 -n skald -- \
+  pg_isready -U postgres -d skald2
 
 # DNS 확인
 kubectl exec -it deployment/api-server -n skald -- \
@@ -947,9 +917,9 @@ kubectl exec -it deployment/api-server -n skald -- \
 kubectl exec -it deployment/api-server -n skald -- \
   curl -v https://google.com
 
-# 서비스 디스커버리 테스트
+# API 헬스체크 재확인
 kubectl exec -it deployment/api-server -n skald -- \
-  wget -qO- http://postgres-service:5432
+  curl http://localhost:8000/api/health
 ```
 
 ---

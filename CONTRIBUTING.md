@@ -22,7 +22,7 @@ If you run Postgres locally, make sure you follow the [pgvector installation ins
 ```sh
 createdb skald
 psql -d skald
-skald2=# CREATE EXTENSION vector;
+skald=# CREATE EXTENSION vector;
 ```
 
 You can also run just Postgres via Docker Compose with:
@@ -41,7 +41,7 @@ To use Redis, just ensure you have a Redis server running. It should run on `loc
 
 ### Environment variables
 
-Your `.env` should have the following vars:
+Your `.env` should have at least the following vars:
 
 ```sh
 # -------- general config --------
@@ -56,29 +56,22 @@ DATABASE_URL=<url_of_local_postgres_db>
 
 
 # -------- llm config --------
-LLM_PROVIDER=<openai|anthropic|gemini>
-
-# if LLM_PROVIDER=openai
-OPENAI_API_KEY=<your_openai_key>
-
-# if LLM_PROVIDER=anthropic
-ANTHROPIC_API_KEY=<your_anthropic_key>
-
-# if LLM_PROVIDER=gemini
-GEMINI_API_KEY=<your_gemini_key>
+LLM_PROVIDER=cli-proxy-api
+CLI_PROXY_API_KEY=<your_cli_proxy_key>
+CLI_PROXY_API_BASE_URL=<your_cli_proxy_base_url>
+GEMINI_API_BASE_URL=<same_value_as_cli_proxy_api_base_url>
+LLM_DEFAULT_CHAT_MODEL=<default_chat_model>
+LLM_DEFAULT_CLASSIFICATION_MODEL=<default_classification_model>
+# or provide a comma-separated fallback chain instead
+LLM_FALLBACK_CHAIN=<model-a,model-b,model-c>
 
 
-# -------- embeddings config --------
-EMBEDDING_PROVIDER=<openai|voyage>
-
-# if EMBEDDING_PROVIDER=openai (same as above)
-OPENAI_API_KEY=<your_openai_key>
-
-# if EMBEDDING_PROVIDER=voyage
-VOYAGE_API_KEY=<your_voyage_key> # https://www.voyageai.com/
+# -------- local embedding bridge --------
+# backend/src/settings.ts defaults this to http://localhost:8001
+EMBEDDING_SERVICE_URL=http://localhost:8001
 ```
 
-> **Note 1:** You can technically run a fully local stack with `LLM_PROVIDER=local` and `EMBEDDING_PROVIDER=local` but this is not at all recommended for contributors. It requires running an LLM locally and in most cases the small LLMs that one can run in their own environment are slow and prone to hallucinations, making Skald unusable. If you're keen to learn more about this, check out [this doc](https://docs.useskald.com/docs/self-host/full-local).
+> **Note 1:** The backend currently supports `LLM_PROVIDER=cli-proxy-api`. `CLI_PROXY_API_BASE_URL` and `GEMINI_API_BASE_URL` should point to the same base URL.
 
 ### API
 
