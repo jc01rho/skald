@@ -9,6 +9,21 @@ interface ConversationMessage {
     content: string
 }
 
+function combineRewriteSignals(originalQuery: string, rewrittenQuery: string): string {
+    const normalizedOriginal = originalQuery.trim()
+    const normalizedRewritten = rewrittenQuery.trim()
+
+    if (!normalizedRewritten) {
+        return normalizedOriginal
+    }
+
+    if (normalizedRewritten === normalizedOriginal) {
+        return normalizedOriginal
+    }
+
+    return `${normalizedOriginal} ${normalizedRewritten}`.trim()
+}
+
 export const rewrite = async (query: string, conversationHistory: ConversationMessage[] = []): Promise<string> => {
     try {
         const recentHistory = conversationHistory.slice(-3)
@@ -36,10 +51,14 @@ export const rewrite = async (query: string, conversationHistory: ConversationMe
             return query
         }
 
-        const expandedQueries = expandTechnicalQueryVariants(rewrittenQuery)
+        const rewriteWithOriginalSignal = combineRewriteSignals(query, rewrittenQuery)
+        const expandedQueries = expandTechnicalQueryVariants(rewriteWithOriginalSignal)
         const finalQuery = expandedQueries.join(' ')
 
-        logger.info({ originalQuery: query, rewrittenQuery, finalQuery }, 'Query rewrite completed')
+        logger.info(
+            { originalQuery: query, rewrittenQuery, rewriteWithOriginalSignal, finalQuery },
+            'Query rewrite completed'
+        )
         return finalQuery
     } catch (error) {
         logger.error({ err: error, query }, 'Error rewriting query')

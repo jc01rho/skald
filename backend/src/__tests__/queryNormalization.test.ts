@@ -33,6 +33,19 @@ describe('queryNormalization', () => {
         )
     })
 
+    it('expands Korean feature-definition queries with explanation-oriented variants', () => {
+        const variants = expandTechnicalQueryVariants('이행 진단이라는 기능이 뭐야?')
+
+        expect(variants).toEqual(
+            expect.arrayContaining([
+                '이행 진단이라는 기능이 뭐야?',
+                '이행 진단 기능 정의 개요 목적 동작 방식',
+                '이행 진단 기능 설명 사용 방법',
+                '이행 진단 정의',
+            ])
+        )
+    })
+
     it('suppresses low-confidence guidance when exact lookup already hit', () => {
         const shouldInject = shouldInjectLowConfidenceGuidance({
             lookupHit: true,

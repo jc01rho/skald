@@ -18,19 +18,42 @@ interface RerankMetadata {
     source_url?: string
 }
 
+interface RerankOptions {
+    originalQuery?: string
+}
+
+function buildRerankQuery(query: string, options?: RerankOptions): string {
+    const normalizedQuery = query.trim()
+    const normalizedOriginal = options?.originalQuery?.trim()
+
+    if (!normalizedOriginal || normalizedOriginal === normalizedQuery) {
+        return normalizedQuery
+    }
+
+    return `${normalizedOriginal}\n\nRewritten retrieval query: ${normalizedQuery}`
+}
+
 export class RerankService {
-    static async rerank(query: string, results: any[], metadata?: RerankMetadata[]): Promise<RerankResult[]> {
-        return this.rerankInternal(query, results, metadata)
+    static async rerank(
+        query: string,
+        results: any[],
+        metadata?: RerankMetadata[],
+        options?: RerankOptions
+    ): Promise<RerankResult[]> {
+        return this.rerankInternal(query, results, metadata, options)
     }
 
     private static async rerankInternal(
         query: string,
         results: any[],
-        metadata?: RerankMetadata[]
+        metadata?: RerankMetadata[],
+        options?: RerankOptions
     ): Promise<RerankResult[]> {
         if (!results || results.length === 0) {
             return []
         }
+
+        const rerankQuery = buildRerankQuery(query, options)
 
         const response = await fetch(INTERNAL_RERANK_URL, {
             method: 'POST',
@@ -38,7 +61,7 @@ export class RerankService {
                 'Content-Type': 'application/json',
             },
             body: JSON.stringify({
-                query,
+                query: rerankQuery,
                 documents: results.map((r) => (typeof r === 'string' ? r : JSON.stringify(r))),
                 top_n: POST_RERANK_TOP_K,
                 model: 'rerank-model', // Model name for compatibility
