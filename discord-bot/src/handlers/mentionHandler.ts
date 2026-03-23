@@ -84,6 +84,21 @@ function extractCitedReferenceKeys(text: string): Set<string> {
     return citedKeys
 }
 
+function selectReferenceEntries(
+    fullResponse: string,
+    references: Record<string, { memo_uuid: string; memo_title: string; source_url?: string }>
+): Array<[string, { memo_uuid: string; memo_title: string; source_url?: string }]> {
+    const citedReferenceKeys = extractCitedReferenceKeys(fullResponse)
+    const allReferenceEntries = Object.entries(references)
+
+    if (citedReferenceKeys.size === 0) {
+        return allReferenceEntries
+    }
+
+    const citedReferenceEntries = allReferenceEntries.filter(([key]) => citedReferenceKeys.has(key))
+    return citedReferenceEntries.length > 0 ? citedReferenceEntries : allReferenceEntries
+}
+
 type CitationMatch = {
     start: number
     end: number
@@ -496,8 +511,7 @@ export async function handleMention(message: Message, client: Client) {
                 await sendFinalResponseFallback(responseThread, finalResponseWithNotice)
             }
 
-            const citedReferenceKeys = extractCitedReferenceKeys(fullResponse)
-            const citedReferenceEntries = Object.entries(references).filter(([key]) => citedReferenceKeys.has(key))
+            const citedReferenceEntries = selectReferenceEntries(fullResponse, references)
 
             const inferredInfoDocUrls = extractInfoDocUrls(fullResponse)
             const citedReferenceSourceUrls = citedReferenceEntries
@@ -565,4 +579,10 @@ export async function handleMention(message: Message, client: Client) {
             await editor.showError('요청 처리 중 오류가 발생했습니다.')
         }
     })
+}
+
+export const __testables__ = {
+    extractCitedReferenceKeys,
+    selectReferenceEntries,
+    extractInfoDocUrls,
 }
