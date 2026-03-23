@@ -1,14 +1,14 @@
 # Skald Worker
 
-Data collection worker for Skald - collects Jira issues and technical documentation, provides RAG endpoints.
+Data collection worker for Skald. It syncs Jira issues and technical documents, exposes search/chat helper APIs, and runs background schedulers for ingestion.
 
 ## Features
 
-- **Jira Issue Collector**: Periodically syncs Jira issues to Skald
-- **Technical Docs Collector**: Periodically syncs technical documentation to Skald
-- **RAG Search Endpoint**: Search documents using vector similarity
-- **Similar Issues Finder**: Find similar Jira issues for a given issue key
-- **RAG Chat Endpoint**: Chat with the RAG system
+- **Jira issue sync** via scheduled polling and manual `/sync`
+- **Technical docs sync** via scheduled daily sync and manual `/sync`
+- **Search proxy** to the main Skald API
+- **Similar issues lookup** based on Jira issue content
+- **RAG chat proxy** to the main Skald API
 
 ## Quick Start
 
@@ -20,17 +20,18 @@ Data collection worker for Skald - collects Jira issues and technical documentat
     cp .env.example .env
     ```
 
-2. Edit `.env` with your credentials
+2. Edit `.env` with your credentials and base URLs.
 
 3. Install dependencies:
 
     ```bash
-    pip install -e .
+    uv sync --extra dev
     ```
 
-4. Run the server:
+4. Run the server on port `8080`:
+
     ```bash
-    python -m skald_worker.main
+    uv run python -m skald_worker.main
     ```
 
 ### Docker
@@ -42,18 +43,26 @@ docker run -p 8080:8080 --env-file .env skald-worker
 
 ### Kubernetes
 
-See [k8s/README.md](k8s/README.md) for deployment instructions.
+See [k8s/README.md](k8s/README.md) for worker-only manifests and [../k8s/README.md](../k8s/README.md) for the root deployment flow.
+
+## Runtime Behavior
+
+- Jira sync runs every `JIRA_POLL_INTERVAL_MINUTES` when `JIRA_ENABLED=true` and `JIRA_SERVER` is set.
+- Docs sync runs daily at `DOCS_SYNC_CRON_HOUR:DOCS_SYNC_CRON_MINUTE` and fetches documents updated within the last `DOCS_SYNC_DAYS` days when `DOCS_ENABLED=true` and `SPMS_BASE_URL` is set.
+- The service listens on `HOST` / `PORT` and defaults to `0.0.0.0:8080`.
 
 ## API Endpoints
 
-| Endpoint          | Method | Description                        |
-| ----------------- | ------ | ---------------------------------- |
-| `/health`         | GET    | Health check with scheduler status |
-| `/metrics`        | GET    | Prometheus metrics                 |
-| `/search`         | POST   | RAG search                         |
-| `/similar-issues` | POST   | Find similar Jira issues           |
-| `/chat`           | POST   | RAG chat                           |
-| `/sync`           | POST   | Manual sync trigger                |
+All endpoints are served from the worker process on port `8080`.
+
+| Endpoint          | Method | Description                                      |
+| ----------------- | ------ | ------------------------------------------------ |
+| `/health`         | GET    | Health check with collector/scheduler/sync state |
+| `/metrics`        | GET    | Prometheus metrics                               |
+| `/search`         | POST   | Search via Skald backend                         |
+| `/similar-issues` | POST   | Find similar Jira issues                         |
+| `/chat`           | POST   | Chat via Skald backend                           |
+| `/sync`           | POST   | Manual sync trigger for `jira` or `docs`         |
 
 ### Example: Search
 
@@ -93,22 +102,38 @@ curl -X POST http://localhost:8080/sync \
   -d '{"source": "docs", "options": {"max_documents": 500}}'
 ```
 
-## Configuration
+## Configuration Highlights
 
-See [.env.example](.env.example) for all available environment variables.
+See `src/skald_worker/config.py` for the full settings model.
+
+| Variable                     | Purpose                                | Default                                                             |
+| ---------------------------- | -------------------------------------- | ------------------------------------------------------------------- |
+| `SKALD_BASE_URL`             | Base URL for Skald backend API         | `http://localhost:3000`                                             |
+| `SKALD_API_KEY`              | API key used by worker API client      | empty                                                               |
+| `SKALD_PROJECT_ID`           | Target project for ingested memos      | empty                                                               |
+| `JIRA_SERVER`                | Jira server URL used for API access    | empty                                                               |
+| `JIRA_URL`                   | Jira browser URL used for issue links  | empty                                                               |
+| `JIRA_JQL_FILTER`            | Default Jira sync filter               | `TYPE IN (인시던트, 장애) AND updated >= -1d ORDER BY updated DESC` |
+| `JIRA_POLL_INTERVAL_MINUTES` | Jira sync interval                     | `10`                                                                |
+| `SPMS_BASE_URL`              | Technical docs API base URL            | empty                                                               |
+| `DOCS_SYNC_CRON_HOUR`        | Daily docs sync hour                   | `3`                                                                 |
+| `DOCS_SYNC_CRON_MINUTE`      | Daily docs sync minute                 | `0`                                                                 |
+| `DOCS_SYNC_DAYS`             | Docs lookback window in days           | `7`                                                                 |
+| `WORKER_API_KEY`             | Optional auth key for worker endpoints | empty                                                               |
+| `SYNC_STATE_FILE`            | Local sync state persistence file      | `/tmp/skald-worker-sync-state.json`                                 |
 
 ## Architecture
 
-```
-skald-worker/
+```text
+worker/
 ├── src/skald_worker/
 │   ├── api/              # FastAPI routes and schemas
 │   ├── clients/          # HTTP clients (Skald API)
 │   ├── collectors/       # Data collectors (Jira, Docs)
 │   ├── config.py         # Settings from environment
-│   ├── scheduler.py      # Background job scheduler
+│   ├── scheduler.py      # Background scheduler
 │   └── main.py           # Application entry point
-├── k8s/                  # Kubernetes manifests
+├── k8s/                  # Worker-only Kubernetes manifests
 ├── Dockerfile
 └── pyproject.toml
 ```

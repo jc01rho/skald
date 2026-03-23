@@ -2,31 +2,18 @@
 
 ## 개요
 
-이 워크플로우는 Kubernetes 배포에 최적화된 UI 이미지를 자동으로 빌드합니다.
+이 워크플로우는 Kubernetes 배포용 UI 이미지를 빌드합니다. 핵심 목표는 브라우저가 API를 절대 URL이 아니라 상대 경로 `/api`로 호출하도록 만드는 것입니다.
 
-## 핵심 차이점
+## 현재 구현 기준
 
-### 일반 UI vs K8s UI
+### GitHub Actions 워크플로우
 
-| 항목          | 일반 UI                                 | K8s UI                                                                             |
-| ------------- | --------------------------------------- | ---------------------------------------------------------------------------------- |
-| 빌드 인자     | `VITE_API_HOST=http://localhost:3000`   | GitHub Actions: `VITE_API_HOST=""`, local K8s build script: `VITE_API_HOST="/api"` |
-| API 호출 방식 | 절대 경로 (`http://localhost:3000/api`) | 상대 경로 (`/api`)                                                                 |
-| 이미지 태그   | `latest`                                | `k8s-latest`, `k8s-{sha}`                                                          |
-| Nginx 프록시  | 불필요                                  | 필수 (`/api` → `api-service:8000`)                                                 |
+파일: `.github/workflows/build-ui-for-k8s.yml`
 
-## 워크플로우 파일
-
-### 1. `build-ui-for-k8s.yml` (신규)
-
-**목적**: K8s 전용 UI 이미지 빌드
-
-**트리거**:
-
-- Frontend 코드 변경 시 (`frontend/**`, `ui.Dockerfile` 등)
-- 수동 실행 (workflow_dispatch)
-
-**빌드 인자**:
+- 이미지 이름: `ghcr.io/${{ github.repository }}/ui`
+- 기본 태그: `latest`
+- 추가 태그: `${{ github.sha }}`
+- 빌드 인자:
 
 ```yaml
 build-args: |
@@ -34,149 +21,111 @@ build-args: |
     VITE_IS_SELF_HOSTED_DEPLOY=true
 ```
 
-GitHub Actions는 빈 `VITE_API_HOST`와 Nginx `sub_filter` 조합을 사용하고, 로컬 K8s 빌드 스크립트(`k8s/build-ui-for-k8s.sh`)는 `VITE_API_HOST="/api"`로 빌드합니다.
+즉, GitHub Actions 빌드는 `VITE_API_HOST`를 빈 값으로 두고, 런타임에 `k8s/ui-nginx-configmap.yaml`의 Nginx 프록시와 `sub_filter` 조합으로 `/api` 경로를 보정합니다.
 
-**생성되는 이미지 태그**:
+### 로컬 K8s 빌드 스크립트
 
-- `ghcr.io/jc01rho/skald-ui:k8s-latest` (메인)
-- `ghcr.io/jc01rho/skald-ui:k8s-{git-sha}` (추적용)
+파일: `k8s/build-ui-for-k8s.sh`
 
-### 2. `deploy-to-k8s.yml` (수정됨)
+- 기본 이미지 이름: `ghcr.io/jc01rho/skald-ui`
+- 기본 태그: `k8s-proxy`
+- 로컬 스크립트는 `VITE_API_HOST="/api"`로 빌드합니다.
 
-**변경 사항**:
+이 차이는 의도된 것입니다. GitHub Actions는 빈 값 + Nginx 런타임 보정, 로컬 스크립트는 `/api`를 직접 주입합니다.
 
-1. UI 이미지 태그를 `k8s-latest`로 고정
-2. `ui-nginx-configmap.yaml` 배포 단계 추가
+## 생성되는 이미지 태그
+
+GitHub Actions 기준:
+
+- `ghcr.io/jc01rho/skald/ui:latest`
+- `ghcr.io/jc01rho/skald/ui:<git-sha>`
+
+현재 `k8s/ui-deployment.yaml`은 `ghcr.io/jc01rho/skald/ui:latest`를 사용합니다.
 
 ## 사용 방법
 
 ### 자동 빌드
 
-프론트엔드 코드를 main 브랜치에 푸시하면 자동으로 빌드됩니다:
+`main` 브랜치에 다음 경로 변경이 푸시되면 자동으로 실행됩니다.
 
-```bash
-git add frontend/
-git commit -m "Update frontend"
-git push origin main
-```
+- `frontend/**`
+- `ui.Dockerfile`
+- `vite.config.ts`
+- `package.json`
+- `pnpm-lock.yaml`
 
-### 수동 빌드
+### 수동 실행
 
-GitHub Actions 페이지에서:
-
-1. "Build UI for Kubernetes" 워크플로우 선택
-2. "Run workflow" 클릭
-3. 원하는 이미지 태그 입력 (기본값: `k8s-latest`)
-4. "Run workflow" 실행
+GitHub Actions 페이지에서 **Build UI for Kubernetes** 워크플로우를 선택한 뒤, 필요하면 `image_tag` 입력값을 넘겨 실행합니다.
 
 ### 로컬 빌드
 
-긴급한 경우 로컬에서도 빌드 가능:
-
 ```bash
-cd /home/sparrow/git/skald
+cd /home/jc01rho/git/skald
 ./k8s/build-ui-for-k8s.sh
 
-# 또는
-docker build \
-  --build-arg VITE_API_HOST="/api" \
-  --file ui.Dockerfile \
-  --tag ghcr.io/jc01rho/skald-ui:k8s-local \
-  .
+# 또는 태그를 직접 지정
+IMAGE_TAG=k8s-local ./k8s/build-ui-for-k8s.sh
 ```
 
 ## 검증
 
-### 1. GitHub Actions에서 확인
+### 1. GitHub Actions Summary 확인
 
-워크플로우 실행 후 Summary 페이지에서:
-
-- 빌드된 이미지 태그 확인
-- 빌드 인자 확인
+- 빌드된 이미지 태그
+- 빌드 인자
+- localhost 문자열 검증 결과
 
 ### 2. 이미지 pull 테스트
 
 ```bash
-docker pull ghcr.io/jc01rho/skald-ui:k8s-latest
+docker pull ghcr.io/jc01rho/skald/ui:latest
 ```
 
 ### 3. K8s 배포 후 확인
 
 ```bash
-# Pod에서 빌드된 코드 확인
 kubectl exec -it deployment/ui -n skald -- \
-  find /usr/share/nginx/html -name "*.js" -exec grep -l "localhost:8080" {} \;
-
-# 결과가 없으면 성공 (상대 경로 사용 중)
+  find /usr/share/nginx/html -name "*.js" -exec grep -l "localhost" {} \;
 ```
+
+결과가 없거나, 의도한 치환 대상만 남아 있으면 정상입니다.
 
 ### 4. 브라우저 테스트
 
-1. https://ui.skald.sparrow.local 접속
-2. 개발자 도구 → Network 탭
-3. API 요청이 `/api/...`로 발생하는지 확인
-4. `localhost:8080` 요청이 **없어야** 함
+1. UI 도메인에 접속
+2. 개발자 도구 → Network 탭 열기
+3. API 요청이 `/api/...`로 나가는지 확인
+4. `localhost:8080`, `localhost:3000`, `localhost:8000`으로 직접 호출되지 않는지 확인
 
 ## 트러블슈팅
 
-### 이미지 빌드 실패
-
-**증상**: GitHub Actions 워크플로우 실패
-
-**해결**:
-
-1. 워크플로우 로그 확인
-2. `ui.Dockerfile` 문법 오류 확인
-3. `package.json` 의존성 확인
-
-### 여전히 localhost:8080으로 요청
-
-**증상**: 브라우저에서 `localhost:8080` 요청 발생
-
-**원인**:
-
-- 잘못된 이미지 태그 사용
-- 이미지가 캐시되어 재빌드되지 않음
-
-**해결**:
+### 여전히 localhost로 요청하는 경우
 
 ```bash
-# 1. 이미지 태그 확인
+# 1. 현재 배포 이미지 확인
 kubectl get deployment ui -n skald -o jsonpath='{.spec.template.spec.containers[0].image}'
 
-# 예상 출력: ghcr.io/jc01rho/skald-ui:k8s-latest
-
-# 2. Pod 재시작
-kubectl rollout restart deployment/ui -n skald
-
-# 3. 이미지 강제 재pull
-kubectl delete pod -l component=ui -n skald
-```
-
-### Nginx 프록시가 작동하지 않음
-
-**증상**: `/api` 요청이 404
-
-**확인**:
-
-```bash
-# Nginx ConfigMap 확인
+# 2. Nginx ConfigMap 확인
 kubectl get configmap ui-nginx-config -n skald -o yaml
 
+# 3. UI 재시작
+kubectl rollout restart deployment/ui -n skald
+```
+
+### `/api` 요청이 404인 경우
+
+```bash
 # Nginx 설정 확인
 kubectl exec -it deployment/ui -n skald -- cat /etc/nginx/nginx.conf
+
+# UI Pod의 health 확인
+kubectl exec -it deployment/ui -n skald -- curl http://localhost:8080/health
 ```
 
 ## 관련 파일
 
 - `.github/workflows/build-ui-for-k8s.yml` - K8s UI 빌드 워크플로우
-- `.github/workflows/deploy-to-k8s.yml` - K8s 배포 워크플로우
 - `k8s/ui-nginx-configmap.yaml` - Nginx 프록시 설정
 - `k8s/ui-deployment.yaml` - UI Deployment 정의
 - `k8s/build-ui-for-k8s.sh` - 로컬 빌드 스크립트
-
-## 참고
-
-- [Vite Environment Variables](https://vitejs.dev/guide/env-and-mode.html)
-- [Docker Build Arguments](https://docs.docker.com/engine/reference/commandline/build/#set-build-time-variables---build-arg)
-- [GitHub Actions - docker/build-push-action](https://github.com/docker/build-push-action)
