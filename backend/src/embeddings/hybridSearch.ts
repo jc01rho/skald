@@ -25,6 +25,49 @@ export interface HybridSearchConfig {
     filters?: MemoFilter
 }
 
+export interface HybridSearchTuningProfile {
+    isCJK: boolean
+    isShortDefinitionQuery: boolean
+    vectorWeight: number
+    bm25Weight: number
+    similarityThreshold: number
+}
+
+function getNormalizedQueryLength(queryText: string): number {
+    return queryText.replace(/\s+/g, '')?.length ?? 0
+}
+
+function isShortCJKFeatureDefinitionQuery(queryText: string, isCJK: boolean): boolean {
+    if (!isCJK) {
+        return false
+    }
+
+    const normalized = queryText.trim()
+    const compactLength = getNormalizedQueryLength(normalized)
+    const definitionLike = /(기능|정의|개요|설명|소개|뭐야|이란|란\?|란$)/iu.test(normalized)
+
+    return compactLength > 0 && compactLength <= 24 && definitionLike
+}
+
+export function resolveHybridSearchTuningProfile(
+    queryText: string,
+    config: HybridSearchConfig = {}
+): HybridSearchTuningProfile {
+    const similarityThreshold = config.similarityThreshold ?? 1.2
+    const detectedLang = detectLanguage(queryText)
+    const isCJK =
+        detectedLang === Language.KOREAN || detectedLang === Language.JAPANESE || detectedLang === Language.CHINESE
+    const isShortDefinitionQuery = isShortCJKFeatureDefinitionQuery(queryText, isCJK)
+
+    return {
+        isCJK,
+        isShortDefinitionQuery,
+        vectorWeight: config.vectorWeight ?? (isShortDefinitionQuery ? 0.35 : isCJK ? 0.5 : 0.7),
+        bm25Weight: config.bm25Weight ?? (isShortDefinitionQuery ? 0.65 : isCJK ? 0.5 : 0.3),
+        similarityThreshold: isShortDefinitionQuery ? Math.max(0.35, similarityThreshold - 0.1) : similarityThreshold,
+    }
+}
+
 export class HybridSearchService {
     /**
      * Perform hybrid search combining vector similarity and BM25 keyword search
@@ -36,24 +79,25 @@ export class HybridSearchService {
         queryText: string,
         config: HybridSearchConfig = {}
     ): Promise<HybridSearchResult[]> {
-        const { topK = 10, similarityThreshold = 1.2, filters } = config
-
-        // Dynamically adjust RRF weights based on query language.
-        // CJK (Korean/Japanese/Chinese) benefits from stronger BM25 (trigram) signal.
-        // English/Latin scripts benefit more from semantic vector search.
+        const { topK = 10, filters } = config
+        const tuningProfile = resolveHybridSearchTuningProfile(queryText, config)
         const detectedLang = detectLanguage(queryText)
-        const isCJK =
-            detectedLang === Language.KOREAN || detectedLang === Language.JAPANESE || detectedLang === Language.CHINESE
-        const vectorWeight = config.vectorWeight ?? (isCJK ? 0.5 : 0.7)
-        const bm25Weight = config.bm25Weight ?? (isCJK ? 0.5 : 0.3)
+        const {
+            isCJK,
+            isShortDefinitionQuery,
+            vectorWeight,
+            bm25Weight,
+            similarityThreshold: adjustedSimilarityThreshold,
+        } = tuningProfile
 
         const cacheScope = {
             projectUuid: project.uuid,
             topK,
-            similarityThreshold,
+            similarityThreshold: adjustedSimilarityThreshold,
             vectorWeight,
             bm25Weight,
             detectedLang,
+            isShortDefinitionQuery,
             filters: filters ?? null,
         }
 
@@ -63,12 +107,26 @@ export class HybridSearchService {
         }
 
         logger.debug(
-            { detectedLang, isCJK, vectorWeight, bm25Weight, query: queryText.slice(0, 50) },
+            {
+                detectedLang,
+                isCJK,
+                isShortDefinitionQuery,
+                vectorWeight,
+                bm25Weight,
+                similarityThreshold: adjustedSimilarityThreshold,
+                query: queryText.slice(0, 50),
+            },
             'Hybrid search: dynamic RRF weights applied'
         )
         const searchBudget = topK + Math.min(topK, 20)
         const [vectorResults, bm25Results] = await Promise.all([
-            this.vectorSearch(project, queryEmbedding, searchBudget, similarityThreshold, filters ? [filters] : undefined),
+            this.vectorSearch(
+                project,
+                queryEmbedding,
+                searchBudget,
+                adjustedSimilarityThreshold,
+                filters ? [filters] : undefined
+            ),
             this.bm25Search(project, queryText, searchBudget, filters ? [filters] : undefined),
         ])
         // Vector and BM25 results are already sorted by their respective scores

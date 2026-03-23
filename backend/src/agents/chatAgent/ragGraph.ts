@@ -657,6 +657,7 @@ async function rerankNode(state: typeof RAGState.State) {
             inputChunksCount: chunkResults.length,
             rerankingEnabled: ragConfig.reranking.enabled,
             searchQuery: rewrittenQuery || query,
+            originalQuery: query,
             topK: ragConfig.reranking.topK,
         },
         'RAG rerankNode starting'
@@ -727,7 +728,9 @@ async function rerankNode(state: typeof RAGState.State) {
 
     const results = (
         await mapWithConcurrency(truncatedDataBatches, 3, async (batch, idx) =>
-            RerankService.rerank(searchQuery, batch, truncatedMetadataBatches[idx])
+            RerankService.rerank(searchQuery, batch, truncatedMetadataBatches[idx], {
+                originalQuery: query,
+            })
         )
     ).flat()
 

@@ -1,8 +1,50 @@
 const METRIC_ALIAS_PATTERN = /매트릭스?|메트릭스?/giu
 const LEGACY_PATTERN = /레거시/iu
+const KOREAN_DEFINITION_PATTERN =
+    /(?:^|\s)(.+?)(?:이라는|라는|이란|란)?\s*(?:기능)?\s*(?:이 뭐야\??|가 뭐야\??|뭐야\??|무엇(?:인가요|이야|인가)?\??|설명해줘\??|자세히 설명해줘\??|소개해줘\??)$/iu
+const KOREAN_DEFINITION_SUFFIX_PATTERN = /(정의|개요|목적|동작 방식|사용 방법|설명)/iu
 
 function unique(values: string[]): string[] {
     return Array.from(new Set(values.map((value) => value.trim()).filter(Boolean)))
+}
+
+function normalizeWhitespace(value: string): string {
+    return value.replace(/\s+/g, ' ').trim()
+}
+
+function extractDefinitionSubject(query: string): string | null {
+    const normalizedQuery = normalizeWhitespace(query)
+    const match = normalizedQuery.match(KOREAN_DEFINITION_PATTERN)
+    if (!match?.[1]) {
+        return null
+    }
+
+    const subject = normalizeWhitespace(match[1])
+        .replace(/^(이|그|저)\s+/u, '')
+        .replace(/\s*(기능|기능에 대해)$/u, '')
+        .trim()
+
+    return subject.length > 0 ? subject : null
+}
+
+function buildDefinitionVariants(query: string): string[] {
+    const subject = extractDefinitionSubject(query)
+    if (!subject) {
+        return []
+    }
+
+    const normalizedQuery = normalizeWhitespace(query)
+    const variants: string[] = []
+    const alreadyContainsDefinitionSuffix = KOREAN_DEFINITION_SUFFIX_PATTERN.test(normalizedQuery)
+
+    variants.push(`${subject} 기능 정의 개요 목적 동작 방식`)
+    variants.push(`${subject} 기능 설명 사용 방법`)
+
+    if (!alreadyContainsDefinitionSuffix) {
+        variants.push(`${subject} 정의`)
+    }
+
+    return variants
 }
 
 export function normalizeTechnicalAliases(query: string): string {
@@ -45,6 +87,8 @@ export function expandTechnicalQueryVariants(query: string): string[] {
             variants.push(`${normalized} metric option property setting`)
         }
     }
+
+    variants.push(...buildDefinitionVariants(normalized))
 
     return unique(variants)
 }
