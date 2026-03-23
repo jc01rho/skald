@@ -452,7 +452,7 @@ export async function handleMention(message: Message, client: Client) {
                 history,
                 filters,
                 system_prompt:
-                    '제공된 프롬프트와 문맥 안에서만 답하고 그 외 없는 내용으로는 답변하지 말것. 항상 한국어로 답변할 것.',
+                    '제공된 프롬프트와 문맥 안에서만 답하고 그 외 없는 내용으로는 답변하지 말것. 항상 한국어로 답변할 것. 사용자 질문에 대해 최대한 자세히 설명할 것.',
                 rag_config: {
                     llm_provider: 'cli-proxy-api',
                     query_rewrite: { enabled: true },
