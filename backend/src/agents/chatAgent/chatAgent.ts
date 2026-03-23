@@ -13,6 +13,64 @@ interface RerankResult {
     source_url?: string
 }
 
+function buildReferencesPayload(
+    fullResponseText: string,
+    rerankResults: RerankResult[]
+): Record<number, { memo_uuid: string; memo_title: string; source_url?: string }> {
+    const citedNumbers = extractCitedReferenceNumbers(fullResponseText)
+    const allReferences: Record<number, { memo_uuid: string; memo_title: string; source_url?: string }> = {}
+
+    for (let i = 0; i < rerankResults.length; i++) {
+        const rerankResult = rerankResults[i]
+        if (rerankResult.memo_uuid && rerankResult.memo_title) {
+            allReferences[i + 1] = {
+                memo_uuid: rerankResult.memo_uuid,
+                memo_title: rerankResult.memo_title,
+                source_url: rerankResult.source_url,
+            }
+        }
+    }
+
+    if (citedNumbers.length === 0) {
+        logger.info(
+            { totalAvailable: Object.keys(allReferences).length },
+            'Citation post-processing: no citations found, using fallback references payload'
+        )
+        return allReferences
+    }
+
+    const filteredReferences: Record<number, { memo_uuid: string; memo_title: string; source_url?: string }> = {}
+    for (const num of citedNumbers) {
+        if (allReferences[num]) {
+            filteredReferences[num] = allReferences[num]
+        }
+    }
+
+    const totalAvailable = Object.keys(allReferences).length
+    const totalCited = Object.keys(filteredReferences).length
+    if (totalCited < totalAvailable) {
+        logger.info(
+            {
+                totalAvailable,
+                totalCited,
+                citedNumbers,
+                droppedCount: totalAvailable - totalCited,
+            },
+            'Citation post-processing: filtered uncited references'
+        )
+    }
+
+    if (totalCited === 0 && totalAvailable > 0) {
+        logger.warn(
+            { totalAvailable, citedNumbers },
+            'Citation post-processing: cited references missing from payload, falling back to all references'
+        )
+        return allReferences
+    }
+
+    return filteredReferences
+}
+
 function extractCitedReferenceNumbers(text: string): number[] {
     const citationPattern = /\[\[(\d+)\]\]|\[(\d+)\]/g
     const cited = new Set<number>()
@@ -77,44 +135,7 @@ export async function* streamChatAgent({
     }
 
     if (enableReferences && rerankResults.length > 0) {
-        // P1-1: Cross-validate citations — only include references actually cited by the LLM
-        const citedNumbers = extractCitedReferenceNumbers(fullResponseText)
-        const allReferences: Record<number, { memo_uuid: string; memo_title: string; source_url?: string }> = {}
-        for (let i = 0; i < rerankResults.length; i++) {
-            const rerankResult = rerankResults[i]
-            if (rerankResult.memo_uuid && rerankResult.memo_title) {
-                allReferences[i + 1] = {
-                    memo_uuid: rerankResult.memo_uuid,
-                    memo_title: rerankResult.memo_title,
-                    source_url: rerankResult.source_url,
-                }
-            }
-        }
-
-        // Filter to only cited references if citations exist in the response
-        let filteredReferences = allReferences
-        if (citedNumbers.length > 0) {
-            filteredReferences = {}
-            for (const num of citedNumbers) {
-                if (allReferences[num]) {
-                    filteredReferences[num] = allReferences[num]
-                }
-            }
-
-            const totalAvailable = Object.keys(allReferences).length
-            const totalCited = Object.keys(filteredReferences).length
-            if (totalCited < totalAvailable) {
-                logger.info(
-                    {
-                        totalAvailable,
-                        totalCited,
-                        citedNumbers,
-                        droppedCount: totalAvailable - totalCited,
-                    },
-                    'Citation post-processing: filtered uncited references'
-                )
-            }
-        }
+        const filteredReferences = buildReferencesPayload(fullResponseText, rerankResults)
 
         if (Object.keys(filteredReferences).length > 0) {
             yield {
@@ -123,4 +144,9 @@ export async function* streamChatAgent({
             }
         }
     }
+}
+
+export const __testables__ = {
+    extractCitedReferenceNumbers,
+    buildReferencesPayload,
 }
