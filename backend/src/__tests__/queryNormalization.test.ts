@@ -46,6 +46,20 @@ describe('queryNormalization', () => {
         )
     })
 
+    it('adds enterprise error code alias variants for natural-language queries', () => {
+        const variants = expandTechnicalQueryVariants('엔터프라이즈 에러코드 알려줘')
+
+        expect(variants).toEqual(
+            expect.arrayContaining([
+                'enterprise error codes',
+                'sparrow enterprise error codes',
+                'sparrow enterprise backend error codes',
+                'sparrow-enterprise-backend-error-codes',
+                '엔터프라이즈 에러코드 알려줘 sparrow-enterprise-backend-error-codes',
+            ])
+        )
+    })
+
     it('suppresses low-confidence guidance when exact lookup already hit', () => {
         const shouldInject = shouldInjectLowConfidenceGuidance({
             lookupHit: true,

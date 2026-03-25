@@ -3,6 +3,7 @@ import { z } from 'zod'
 import { randomUUID } from 'crypto'
 import { DI } from '@/di'
 import { logger } from '@/lib/logger'
+import { memoTagsAgent } from '@/agents/memoTagsAgent'
 
 const CreateMemoSubmissionRequest = z.object({
     project_id: z.string().uuid('Project ID must be a valid UUID').optional(),
@@ -29,6 +30,93 @@ const ListMemoSubmissionQuery = z.object({
 const GetMemoSubmissionQuery = z.object({
     project_id: z.string().uuid('Project ID must be a valid UUID'),
 })
+
+function uniqueStrings(values: Array<string | null | undefined>): string[] {
+    return Array.from(new Set(values.map((value) => value?.trim()).filter((value): value is string => Boolean(value))))
+}
+
+function tokenizeManualSubmissionTitle(title: string): string[] {
+    return uniqueStrings(
+        title
+            .toLowerCase()
+            .split(/[^a-z0-9가-힣]+/iu)
+            .map((token) => token.trim())
+            .filter((token) => token.length >= 2)
+    )
+}
+
+function buildManualSubmissionAliases(title: string): string[] {
+    const slugWords = title
+        .toLowerCase()
+        .split(/[^a-z0-9가-힣]+/iu)
+        .map((token) => token.trim())
+        .filter(Boolean)
+
+    const normalizedTitle = title.replace(/[_-]+/g, ' ').replace(/\s+/g, ' ').trim().toLowerCase()
+    const aliases = new Set<string>(normalizedTitle ? [normalizedTitle] : [])
+
+    const hasEnterprise = slugWords.includes('enterprise')
+    const hasSparrow = slugWords.includes('sparrow')
+    const hasBackend = slugWords.includes('backend')
+    const hasError = slugWords.includes('error')
+    const hasCode = slugWords.includes('code') || slugWords.includes('codes')
+
+    if (hasEnterprise) {
+        aliases.add('enterprise')
+        aliases.add('엔터프라이즈')
+        aliases.add('엔터')
+    }
+
+    if (hasError && hasCode) {
+        aliases.add('error code')
+        aliases.add('error codes')
+        aliases.add('에러코드')
+        aliases.add('오류코드')
+    }
+
+    if (hasEnterprise && hasError && hasCode) {
+        aliases.add('enterprise error code')
+        aliases.add('enterprise error codes')
+        aliases.add('엔터프라이즈 에러코드')
+        aliases.add('엔터프라이즈 오류코드')
+    }
+
+    if (hasSparrow && hasEnterprise && hasError && hasCode) {
+        aliases.add('sparrow enterprise error codes')
+        aliases.add('sparrow enterprise backend error codes')
+        aliases.add('sparrow-enterprise-backend-error-codes')
+    }
+
+    if (hasBackend && hasError && hasCode) {
+        aliases.add('backend error code')
+        aliases.add('backend error codes')
+    }
+
+    return Array.from(aliases)
+}
+
+async function buildApprovedSubmissionEnrichment(title: string, content: string) {
+    const titleTokens = tokenizeManualSubmissionTitle(title)
+    const aliases = buildManualSubmissionAliases(title)
+
+    let extractedTags: string[] = []
+    try {
+        const result = await memoTagsAgent.extractTags(`${title}\n\n${content}`)
+        extractedTags = result.tags
+    } catch (error) {
+        logger.warn({ err: error, title }, 'Failed to auto-extract tags for approved manual memo submission')
+    }
+
+    return {
+        tags: uniqueStrings([...titleTokens, ...aliases, ...extractedTags]),
+        metadata: {
+            search_aliases: aliases,
+            search_text: aliases.join(' '),
+            title_tokens: titleTokens,
+            enrichment_source: 'submission-approval',
+        },
+    }
+}
 
 // Helper to build response with all frontend-expected fields
 const buildSubmissionResponse = (
@@ -389,13 +477,19 @@ export const approveMemoSubmission = async (req: Request, res: Response) => {
     const { createNewMemo } = await import('@/lib/createMemoUtils')
 
     try {
+        const enrichment = await buildApprovedSubmissionEnrichment(submission.title, submission.content)
         const memo = await createNewMemo(
             {
                 title: submission.title,
                 content: submission.content,
                 type: 'plaintext',
                 source: 'public-submission',
-                metadata: { submission_id: submission.uuid, is_public: true },
+                metadata: {
+                    submission_id: submission.uuid,
+                    is_public: true,
+                    ...enrichment.metadata,
+                },
+                tags: enrichment.tags,
             },
             project
         )
@@ -611,3 +705,9 @@ authMemoSubmissionRouter.get('/', listAuthMemoSubmissions)
 authMemoSubmissionRouter.get('/:id', getAuthMemoSubmission)
 authMemoSubmissionRouter.post('/:id/approve', approveMemoSubmission)
 authMemoSubmissionRouter.post('/:id/reject', rejectMemoSubmission)
+
+export const __testables__ = {
+    tokenizeManualSubmissionTitle,
+    buildManualSubmissionAliases,
+    buildApprovedSubmissionEnrichment,
+}
