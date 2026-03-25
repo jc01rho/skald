@@ -7,6 +7,10 @@ interface PaginationProps {
     loading: boolean
     onPageChange: (page: number) => void
     itemLabel?: string
+    rangeLabel?: string
+    ofLabel?: string
+    previousLabel?: string
+    nextLabel?: string
 }
 
 export const Pagination = ({
@@ -16,6 +20,10 @@ export const Pagination = ({
     loading,
     onPageChange,
     itemLabel = 'items',
+    rangeLabel = 'Showing',
+    ofLabel = 'of',
+    previousLabel = 'Previous',
+    nextLabel = 'Next',
 }: PaginationProps) => {
     const totalPages = Math.ceil(totalCount / pageSize)
 
@@ -26,8 +34,8 @@ export const Pagination = ({
     return (
         <div className="flex items-center justify-between px-4 py-4 border-t">
             <p className="text-sm text-muted-foreground">
-                Showing {(currentPage - 1) * pageSize + 1} to {Math.min(currentPage * pageSize, totalCount)} of{' '}
-                {totalCount} {itemLabel}
+                {rangeLabel} {(currentPage - 1) * pageSize + 1} ~ {Math.min(currentPage * pageSize, totalCount)}{' '}
+                {ofLabel} {totalCount} {itemLabel}
             </p>
             <div className="flex gap-2">
                 <Button
@@ -36,7 +44,7 @@ export const Pagination = ({
                     onClick={() => onPageChange(currentPage - 1)}
                     disabled={currentPage === 1 || loading}
                 >
-                    Previous
+                    {previousLabel}
                 </Button>
                 <div className="flex items-center gap-1">
                     {[...Array(totalPages)].map((_, i) => {
@@ -71,7 +79,7 @@ export const Pagination = ({
                     onClick={() => onPageChange(currentPage + 1)}
                     disabled={currentPage === totalPages || loading}
                 >
-                    Next
+                    {nextLabel}
                 </Button>
             </div>
         </div>
