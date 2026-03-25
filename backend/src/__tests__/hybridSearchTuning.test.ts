@@ -24,4 +24,15 @@ describe('HybridSearch tuning profile', () => {
         expect(profile.bm25Weight).toBe(0.5)
         expect(profile.similarityThreshold).toBe(0.4)
     })
+
+    it('keeps lexical-heavy tuning for short enterprise error-code queries', () => {
+        const profile = resolveHybridSearchTuningProfile('엔터프라이즈 에러코드', {
+            similarityThreshold: 0.4,
+        })
+
+        expect(profile.isCJK).toBe(true)
+        expect(profile.vectorWeight).toBe(0.5)
+        expect(profile.bm25Weight).toBe(0.5)
+        expect(profile.similarityThreshold).toBe(0.4)
+    })
 })

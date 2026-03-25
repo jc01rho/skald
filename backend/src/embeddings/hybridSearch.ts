@@ -12,6 +12,7 @@ export interface HybridSearchResult {
     uuid: string
     chunk_content: string
     memo_uuid: string
+    memo_title?: string
     vector_score: number
     bm25_score: number
     hybrid_score: number
@@ -146,7 +147,9 @@ export class HybridSearchService {
         topK: number,
         similarityThreshold: number,
         filters?: MemoFilter[]
-    ): Promise<Array<{ uuid: string; chunk_content: string; memo_uuid: string; vector_score: number }>> {
+    ): Promise<
+        Array<{ uuid: string; chunk_content: string; memo_uuid: string; memo_title?: string; vector_score: number }>
+    > {
         const { whereConditions, params } = buildFilterConditions(filters || [])
         const allParams = [
             JSON.stringify(embeddingVector),
@@ -171,6 +174,7 @@ export class HybridSearchService {
                 skald_memochunk.uuid,
                 skald_memochunk.chunk_content,
                 skald_memochunk.memo_uuid,
+                skald_memo.title AS memo_title,
                 (1 - (skald_memochunk.embedding::halfvec(2048) <=> ?::halfvec(2048))) as vector_score
             FROM skald_memochunk
             JOIN skald_memo ON skald_memochunk.memo_id = skald_memo.uuid
@@ -186,6 +190,7 @@ export class HybridSearchService {
                 uuid: row.uuid,
                 chunk_content: row.chunk_content,
                 memo_uuid: row.memo_uuid,
+                memo_title: row.memo_title,
                 vector_score: Math.max(0, Math.min(1, row.vector_score)),
             }))
         } catch (error) {
@@ -202,7 +207,9 @@ export class HybridSearchService {
         queryText: string,
         topK: number,
         filters?: MemoFilter[]
-    ): Promise<Array<{ uuid: string; chunk_content: string; memo_uuid: string; bm25_score: number }>> {
+    ): Promise<
+        Array<{ uuid: string; chunk_content: string; memo_uuid: string; memo_title?: string; bm25_score: number }>
+    > {
         const detectedLanguage = detectLanguage(queryText)
         const isCJK =
             detectedLanguage === Language.KOREAN ||
@@ -224,13 +231,18 @@ export class HybridSearchService {
         queryText: string,
         topK: number,
         filters?: MemoFilter[]
-    ): Promise<Array<{ uuid: string; chunk_content: string; memo_uuid: string; bm25_score: number }>> {
+    ): Promise<
+        Array<{ uuid: string; chunk_content: string; memo_uuid: string; memo_title?: string; bm25_score: number }>
+    > {
         const { whereConditions, params } = buildFilterConditions(filters || [])
-        const allParams = [project.uuid, queryText, ...params, queryText, topK]
+        const allParams = [queryText, queryText, project.uuid, queryText, queryText, ...params, topK]
 
         let whereClause = `
             WHERE skald_memochunk.project_id = ?
-            AND skald_memochunk.content_tsvector @@ plainto_tsquery('english', ?)
+            AND (
+                skald_memochunk.content_tsvector @@ plainto_tsquery('english', ?)
+                OR to_tsvector('english', COALESCE(skald_memo.title, '')) @@ plainto_tsquery('english', ?)
+            )
         `
 
         if (whereConditions.length > 0) {
@@ -242,8 +254,11 @@ export class HybridSearchService {
                 skald_memochunk.uuid,
                 skald_memochunk.chunk_content,
                 skald_memochunk.memo_uuid,
-                ts_rank(skald_memochunk.content_tsvector,
-                        plainto_tsquery('english', ?)) as bm25_score
+                skald_memo.title AS memo_title,
+                GREATEST(
+                    ts_rank(skald_memochunk.content_tsvector, plainto_tsquery('english', ?)),
+                    ts_rank(to_tsvector('english', COALESCE(skald_memo.title, '')), plainto_tsquery('english', ?))
+                ) as bm25_score
             FROM skald_memochunk
             JOIN skald_memo ON skald_memochunk.memo_id = skald_memo.uuid
             ${whereClause}
@@ -258,6 +273,7 @@ export class HybridSearchService {
                 uuid: row.uuid,
                 chunk_content: row.chunk_content,
                 memo_uuid: row.memo_uuid,
+                memo_title: row.memo_title,
                 bm25_score: Math.max(0, Math.min(1, row.bm25_score)),
             }))
         } catch (error) {
@@ -274,13 +290,28 @@ export class HybridSearchService {
         queryText: string,
         topK: number,
         filters?: MemoFilter[]
-    ): Promise<Array<{ uuid: string; chunk_content: string; memo_uuid: string; bm25_score: number }>> {
+    ): Promise<
+        Array<{ uuid: string; chunk_content: string; memo_uuid: string; memo_title?: string; bm25_score: number }>
+    > {
         const { whereConditions, params } = buildFilterConditions(filters || [])
-        const allParams = [queryText, project.uuid, queryText, ...params, queryText, topK]
+        const allParams = [
+            queryText,
+            queryText,
+            project.uuid,
+            queryText,
+            queryText,
+            ...params,
+            queryText,
+            queryText,
+            topK,
+        ]
 
         let whereClause = `
             WHERE skald_memochunk.project_id = ?
-            AND skald_memochunk.chunk_content % ?
+            AND (
+                skald_memochunk.chunk_content % ?
+                OR COALESCE(skald_memo.title, '') % ?
+            )
         `
 
         if (whereConditions.length > 0) {
@@ -292,11 +323,15 @@ export class HybridSearchService {
                 skald_memochunk.uuid,
                 skald_memochunk.chunk_content,
                 skald_memochunk.memo_uuid,
-                similarity(skald_memochunk.chunk_content, ?) as bm25_score
+                skald_memo.title AS memo_title,
+                GREATEST(
+                    similarity(skald_memochunk.chunk_content, ?),
+                    similarity(COALESCE(skald_memo.title, ''), ?) * 1.15
+                ) as bm25_score
             FROM skald_memochunk
             JOIN skald_memo ON skald_memochunk.memo_id = skald_memo.uuid
             ${whereClause}
-            ORDER BY skald_memochunk.chunk_content <-> ?
+            ORDER BY LEAST(skald_memochunk.chunk_content <-> ?, COALESCE(skald_memo.title, '') <-> ?)
             LIMIT ?
         `
 
@@ -307,6 +342,7 @@ export class HybridSearchService {
                 uuid: row.uuid,
                 chunk_content: row.chunk_content,
                 memo_uuid: row.memo_uuid,
+                memo_title: row.memo_title,
                 bm25_score: Math.max(0, Math.min(1, row.bm25_score)),
             }))
         } catch (error) {
@@ -321,15 +357,27 @@ export class HybridSearchService {
      * More robust than weighted linear fusion as it's based on rank, not score magnitude
      */
     private static combineScoresRRF(
-        vectorResults: Array<{ uuid: string; chunk_content: string; memo_uuid: string; vector_score: number }>,
-        bm25Results: Array<{ uuid: string; chunk_content: string; memo_uuid: string; bm25_score: number }>,
+        vectorResults: Array<{
+            uuid: string
+            chunk_content: string
+            memo_uuid: string
+            memo_title?: string
+            vector_score: number
+        }>,
+        bm25Results: Array<{
+            uuid: string
+            chunk_content: string
+            memo_uuid: string
+            memo_title?: string
+            bm25_score: number
+        }>,
         vectorWeight: number,
         bm25Weight: number
     ): HybridSearchResult[] {
         const rrfScores = new Map<string, number>()
         const docInfo = new Map<
             string,
-            { chunk_content: string; memo_uuid: string; vector_score: number; bm25_score: number }
+            { chunk_content: string; memo_uuid: string; memo_title?: string; vector_score: number; bm25_score: number }
         >()
 
         // Vector results RRF scores (already sorted by vector_score DESC)
@@ -341,6 +389,7 @@ export class HybridSearchService {
                 docInfo.set(doc.uuid, {
                     chunk_content: doc.chunk_content,
                     memo_uuid: doc.memo_uuid,
+                    memo_title: doc.memo_title,
                     vector_score: doc.vector_score,
                     bm25_score: 0,
                 })
@@ -356,6 +405,7 @@ export class HybridSearchService {
                 docInfo.set(doc.uuid, {
                     chunk_content: doc.chunk_content,
                     memo_uuid: doc.memo_uuid,
+                    memo_title: doc.memo_title,
                     vector_score: 0,
                     bm25_score: doc.bm25_score,
                 })
@@ -363,6 +413,9 @@ export class HybridSearchService {
                 // Update BM25 score for docs that appear in both
                 const info = docInfo.get(doc.uuid)!
                 info.bm25_score = doc.bm25_score
+                if (!info.memo_title && doc.memo_title) {
+                    info.memo_title = doc.memo_title
+                }
             }
         }
 
@@ -374,6 +427,7 @@ export class HybridSearchService {
                 uuid,
                 chunk_content: info.chunk_content,
                 memo_uuid: info.memo_uuid,
+                memo_title: info.memo_title,
                 vector_score: info.vector_score,
                 bm25_score: info.bm25_score,
                 hybrid_score: rrfScore,

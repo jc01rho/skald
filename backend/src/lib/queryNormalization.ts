@@ -1,5 +1,7 @@
 const METRIC_ALIAS_PATTERN = /매트릭스?|메트릭스?/giu
 const LEGACY_PATTERN = /레거시/iu
+const ENTERPRISE_ALIAS_PATTERN = /(엔터프라이즈|엔터|enterprise)/iu
+const ERROR_CODE_ALIAS_PATTERN = /(에러코드|오류코드|error\s*codes?)/iu
 const KOREAN_DEFINITION_PATTERN =
     /(?:^|\s)(.+?)(?:이라는|라는|이란|란)?\s*(?:기능)?\s*(?:이 뭐야\??|가 뭐야\??|뭐야\??|무엇(?:인가요|이야|인가)?\??|설명해줘\??|자세히 설명해줘\??|소개해줘\??)$/iu
 const KOREAN_DEFINITION_SUFFIX_PATTERN = /(정의|개요|목적|동작 방식|사용 방법|설명)/iu
@@ -64,6 +66,8 @@ export function expandTechnicalQueryVariants(query: string): string[] {
     const mentionsSast = lowerNormalized.includes('sast')
     const mentionsProperty = lowerNormalized.includes('property')
     const mentionsSparrowProperties = lowerNormalized.includes('sparrow.properties')
+    const mentionsEnterprise = ENTERPRISE_ALIAS_PATTERN.test(normalized)
+    const mentionsErrorCode = ERROR_CODE_ALIAS_PATTERN.test(normalized)
     const mentionsOptionLike =
         lowerNormalized.includes('option') || lowerNormalized.includes('옵션') || lowerNormalized.includes('설정')
 
@@ -86,6 +90,19 @@ export function expandTechnicalQueryVariants(query: string): string[] {
         if (!mentionsOptionLike) {
             variants.push(`${normalized} metric option property setting`)
         }
+    }
+
+    if (mentionsEnterprise && mentionsErrorCode) {
+        variants.push('enterprise error codes')
+        variants.push('sparrow enterprise error codes')
+        variants.push('sparrow enterprise backend error codes')
+        variants.push('backend error codes')
+        variants.push('sparrow-enterprise-backend-error-codes')
+        variants.push(`${normalized} enterprise error codes`)
+        variants.push(`${normalized} sparrow enterprise error codes`)
+        variants.push(`${normalized} sparrow enterprise backend error codes`)
+        variants.push(`${normalized} backend error codes`)
+        variants.push(`${normalized} sparrow-enterprise-backend-error-codes`)
     }
 
     variants.push(...buildDefinitionVariants(normalized))
