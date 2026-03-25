@@ -67,9 +67,9 @@ export const usePublicMemoSubmissionStore = create<PublicMemoSubmissionState>((s
             )
 
             if (response.error || !response.data) {
-                const errorMsg = response.error || 'Failed to fetch approved memos'
+                const errorMsg = response.error || '공개 메모를 불러오지 못했습니다.'
                 set({ approvedMemosLoading: false, approvedMemosError: errorMsg })
-                toast.error(`Failed to fetch approved memos: ${errorMsg}`)
+                toast.error(`공개 메모를 불러오지 못했습니다: ${errorMsg}`)
                 return
             }
 
@@ -82,9 +82,9 @@ export const usePublicMemoSubmissionStore = create<PublicMemoSubmissionState>((s
                 approvedMemosPageSize: pageSize,
             })
         } catch (error) {
-            const errorMsg = error instanceof Error ? error.message : 'Failed to fetch approved memos'
+            const errorMsg = error instanceof Error ? error.message : '공개 메모를 불러오지 못했습니다.'
             set({ approvedMemosLoading: false, approvedMemosError: errorMsg })
-            toast.error(`Failed to fetch approved memos: ${errorMsg}`)
+            toast.error(`공개 메모를 불러오지 못했습니다: ${errorMsg}`)
         }
     },
 
@@ -97,9 +97,9 @@ export const usePublicMemoSubmissionStore = create<PublicMemoSubmissionState>((s
             )
 
             if (response.error || !response.data) {
-                const errorMsg = response.error || 'Failed to fetch pending submissions'
+                const errorMsg = response.error || '검토 대기 제출을 불러오지 못했습니다.'
                 set({ pendingSubmissionsLoading: false, pendingSubmissionsError: errorMsg })
-                toast.error(`Failed to fetch pending submissions: ${errorMsg}`)
+                toast.error(`검토 대기 제출을 불러오지 못했습니다: ${errorMsg}`)
                 return
             }
 
@@ -112,9 +112,9 @@ export const usePublicMemoSubmissionStore = create<PublicMemoSubmissionState>((s
                 pendingSubmissionsPageSize: pageSize,
             })
         } catch (error) {
-            const errorMsg = error instanceof Error ? error.message : 'Failed to fetch pending submissions'
+            const errorMsg = error instanceof Error ? error.message : '검토 대기 제출을 불러오지 못했습니다.'
             set({ pendingSubmissionsLoading: false, pendingSubmissionsError: errorMsg })
-            toast.error(`Failed to fetch pending submissions: ${errorMsg}`)
+            toast.error(`검토 대기 제출을 불러오지 못했습니다: ${errorMsg}`)
         }
     },
 
@@ -137,17 +137,17 @@ export const usePublicMemoSubmissionStore = create<PublicMemoSubmissionState>((s
             )
 
             if (response.error) {
-                toast.error(`Failed to submit memo: ${response.error}`)
+                toast.error(`메모를 제출하지 못했습니다: ${response.error}`)
                 set({ submitting: false })
                 return false
             }
 
-            toast.success('Memo submitted successfully')
+            toast.success('메모가 제출되었습니다.')
             set({ submitting: false })
             return true
         } catch (error) {
-            const errorMsg = error instanceof Error ? error.message : 'Failed to submit memo'
-            toast.error(`Failed to submit memo: ${errorMsg}`)
+            const errorMsg = error instanceof Error ? error.message : '메모를 제출하지 못했습니다.'
+            toast.error(`메모를 제출하지 못했습니다: ${errorMsg}`)
             set({ submitting: false })
             return false
         }
@@ -160,14 +160,14 @@ export const usePublicMemoSubmissionStore = create<PublicMemoSubmissionState>((s
             )
 
             if (response.error || !response.data) {
-                toast.error(`Failed to fetch submission details: ${response.error || 'Unknown error'}`)
+                toast.error(`제출 상세 정보를 불러오지 못했습니다: ${response.error || '알 수 없는 오류'}`)
                 return null
             }
 
             return response.data
         } catch (error) {
-            const errorMsg = error instanceof Error ? error.message : 'Failed to fetch submission details'
-            toast.error(`Failed to fetch submission details: ${errorMsg}`)
+            const errorMsg = error instanceof Error ? error.message : '제출 상세 정보를 불러오지 못했습니다.'
+            toast.error(`제출 상세 정보를 불러오지 못했습니다: ${errorMsg}`)
             return null
         }
     },
@@ -177,14 +177,14 @@ export const usePublicMemoSubmissionStore = create<PublicMemoSubmissionState>((s
             const response = await api.get<DetailedPublicMemo>(`/public/memos/${memoUuid}?project_id=${projectUuid}`)
 
             if (response.error || !response.data) {
-                toast.error(`Failed to fetch public memo details: ${response.error || 'Unknown error'}`)
+                toast.error(`공개 메모 상세 정보를 불러오지 못했습니다: ${response.error || '알 수 없는 오류'}`)
                 return null
             }
 
             return response.data
         } catch (error) {
-            const errorMsg = error instanceof Error ? error.message : 'Failed to fetch public memo details'
-            toast.error(`Failed to fetch public memo details: ${errorMsg}`)
+            const errorMsg = error instanceof Error ? error.message : '공개 메모 상세 정보를 불러오지 못했습니다.'
+            toast.error(`공개 메모 상세 정보를 불러오지 못했습니다: ${errorMsg}`)
             return null
         }
     },

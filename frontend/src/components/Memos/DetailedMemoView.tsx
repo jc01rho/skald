@@ -24,6 +24,17 @@ interface DetailedMemoViewProps {
 }
 
 export const DetailedMemoView = ({ memo }: DetailedMemoViewProps) => {
+    const getMemoTypeLabel = (type: string | null | undefined) => {
+        if (!type) return null
+
+        const normalizedType = type.toLowerCase()
+
+        if (normalizedType === 'code') return '코드'
+        if (normalizedType === 'document') return '문서'
+
+        return type
+    }
+
     const getExpirationStyles = (dateString: string) => {
         const expirationDate = new Date(dateString)
         const now = new Date()
@@ -54,9 +65,9 @@ export const DetailedMemoView = ({ memo }: DetailedMemoViewProps) => {
         const now = new Date()
 
         if (isBefore(expirationDate, now)) {
-            return 'Expired:'
+            return '만료일'
         }
-        return 'Expires:'
+        return '만료 예정일'
     }
 
     const expirationStyles = memo.expiration_date ? getExpirationStyles(memo.expiration_date) : null
@@ -67,7 +78,7 @@ export const DetailedMemoView = ({ memo }: DetailedMemoViewProps) => {
             return (
                 <Badge variant="secondary" className="flex items-center gap-1">
                     <Archive className="h-3 w-3" />
-                    Archived
+                    보관됨
                 </Badge>
             )
         }
@@ -75,7 +86,7 @@ export const DetailedMemoView = ({ memo }: DetailedMemoViewProps) => {
             return (
                 <Badge variant="outline" className="flex items-center gap-1">
                     <Clock className="h-3 w-3" />
-                    Processing
+                    처리 중
                 </Badge>
             )
         }
@@ -83,7 +94,7 @@ export const DetailedMemoView = ({ memo }: DetailedMemoViewProps) => {
             return (
                 <Badge variant="default" className="flex items-center gap-1">
                     <CheckCircle className="h-3 w-3" />
-                    Processed
+                    처리 완료
                 </Badge>
             )
         }
@@ -91,7 +102,7 @@ export const DetailedMemoView = ({ memo }: DetailedMemoViewProps) => {
             return (
                 <Badge variant="destructive" className="flex items-center gap-1">
                     <AlertCircle className="h-3 w-3" />
-                    Error
+                    오류
                 </Badge>
             )
         }
@@ -110,64 +121,62 @@ export const DetailedMemoView = ({ memo }: DetailedMemoViewProps) => {
 
     return (
         <div className="space-y-6">
-            {/* Header Section */}
-            <div className="space-y-4">
+            <div className="space-y-5 rounded-2xl border bg-muted/20 p-5 sm:p-6">
                 <div className="flex items-start justify-between gap-4">
-                    <div className="space-y-2">
-                        <div className="flex items-center gap-2">
+                    <div className="space-y-3">
+                        <div className="flex flex-wrap items-center gap-3">
                             {getTypeIcon()}
-                            <h1 className="text-2xl font-bold">{memo.title}</h1>
+                            <h1 className="text-2xl font-bold leading-tight sm:text-[2rem]">{memo.title}</h1>
                         </div>
-                        <div className="flex items-center gap-4">
+                        <div className="flex flex-wrap items-center gap-3">
                             {getStatusBadge()}
                             {memo.type && (
                                 <Badge variant="outline" className="flex items-center gap-1">
                                     {getTypeIcon()}
-                                    {memo.type}
+                                    {getMemoTypeLabel(memo.type)}
                                 </Badge>
                             )}
                             {memo.source && (
                                 <div className="flex items-center gap-2 text-sm text-muted-foreground">
                                     <ExternalLink className="h-4 w-4" />
-                                    <span>Source: {memo.source}</span>
+                                    <span>출처: {memo.source}</span>
                                 </div>
                             )}
                         </div>
                     </div>
                 </div>
 
-                {/* Metadata Row */}
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm pt-2">
-                    <div className="flex items-center gap-2">
+                <div className="grid grid-cols-1 gap-4 pt-1 text-sm md:grid-cols-2">
+                    <div className="flex items-start gap-3 rounded-xl border bg-background/70 p-4">
                         <Calendar className="h-4 w-4 text-muted-foreground" />
                         <div>
-                            <div className="font-medium">Created</div>
+                            <div className="font-medium">생성일</div>
                             <div className="text-muted-foreground">{formatDate(memo.created_at)}</div>
                         </div>
                     </div>
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-start gap-3 rounded-xl border bg-background/70 p-4">
                         <Clock className="h-4 w-4 text-muted-foreground" />
                         <div>
-                            <div className="font-medium">Updated</div>
+                            <div className="font-medium">수정일</div>
                             <div className="text-muted-foreground">{formatDate(memo.updated_at)}</div>
                         </div>
                     </div>
                 </div>
 
                 {(memo.client_reference_id || memo.expiration_date) && (
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm pt-2">
+                    <div className="grid grid-cols-1 gap-4 pt-1 text-sm md:grid-cols-2">
                         {memo.client_reference_id && (
-                            <div className="flex items-center gap-2 text-sm">
+                            <div className="flex items-start gap-3 rounded-xl border bg-background/70 p-4 text-sm">
                                 <Hash className="h-4 w-4 text-muted-foreground" />
                                 <div>
-                                    <div className="font-medium">Reference ID:</div>
+                                    <div className="font-medium">참조 ID</div>
                                     <span className="text-muted-foreground font-mono">{memo.client_reference_id}</span>
                                 </div>
                             </div>
                         )}
 
                         {memo.expiration_date && expirationStyles && expirationLabel && (
-                            <div className="flex items-center gap-2 text-sm">
+                            <div className="flex items-start gap-3 rounded-xl border bg-background/70 p-4 text-sm">
                                 <AlertCircle className={`h-4 w-4 ${expirationStyles.valueStyles}`} />
                                 <div>
                                     <div className={`font-medium ${expirationStyles.labelStyles}`}>
@@ -185,17 +194,16 @@ export const DetailedMemoView = ({ memo }: DetailedMemoViewProps) => {
 
             <Separator />
 
-            {/* Content Section */}
             {memo.content && (
                 <Card>
-                    <CardHeader>
+                    <CardHeader className="border-b">
                         <CardTitle className="flex items-center gap-2">
                             <FileText className="h-5 w-5" />
-                            Content
+                            내용
                         </CardTitle>
                     </CardHeader>
                     <CardContent>
-                        <div className="h-64 w-full overflow-y-auto">
+                        <div className="max-h-[420px] w-full overflow-y-auto rounded-lg bg-background/50">
                             <div className="prose prose-sm max-w-none">
                                 <pre className="whitespace-pre-wrap font-sans text-sm leading-relaxed react-markdown">
                                     <ReactMarkdown>{memo.content}</ReactMarkdown>
@@ -206,13 +214,12 @@ export const DetailedMemoView = ({ memo }: DetailedMemoViewProps) => {
                 </Card>
             )}
 
-            {/* Summary Section */}
             {memo.summary && (
                 <Card>
-                    <CardHeader>
+                    <CardHeader className="border-b">
                         <CardTitle className="flex items-center gap-2">
                             <FileText className="h-5 w-5" />
-                            Summary
+                            요약
                         </CardTitle>
                     </CardHeader>
                     <CardContent>
@@ -221,13 +228,12 @@ export const DetailedMemoView = ({ memo }: DetailedMemoViewProps) => {
                 </Card>
             )}
 
-            {/* Tags Section */}
             {memo.tags && memo.tags.length > 0 && (
                 <Card>
-                    <CardHeader>
+                    <CardHeader className="border-b">
                         <CardTitle className="flex items-center gap-2">
                             <Tag className="h-5 w-5" />
-                            Tags ({memo.tags.length})
+                            태그 ({memo.tags.length})
                         </CardTitle>
                     </CardHeader>
                     <CardContent>
@@ -243,18 +249,17 @@ export const DetailedMemoView = ({ memo }: DetailedMemoViewProps) => {
                 </Card>
             )}
 
-            {/* Metadata Section */}
             {memo.metadata && Object.keys(memo.metadata).length > 0 && (
                 <Card>
-                    <CardHeader>
+                    <CardHeader className="border-b">
                         <CardTitle className="flex items-center gap-2">
                             <Database className="h-5 w-5" />
-                            Metadata
+                            메타데이터
                         </CardTitle>
                     </CardHeader>
                     <CardContent>
-                        <div className="h-48 w-full overflow-y-auto">
-                            <pre className="text-xs bg-muted p-4 rounded-md overflow-x-auto">
+                        <div className="max-h-48 w-full overflow-y-auto rounded-lg bg-muted/60">
+                            <pre className="overflow-x-auto rounded-md bg-muted p-4 text-xs">
                                 {JSON.stringify(memo.metadata, null, 2)}
                             </pre>
                         </div>

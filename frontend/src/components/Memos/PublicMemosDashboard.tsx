@@ -71,11 +71,11 @@ export const PublicMemosDashboard = () => {
     }
 
     return (
-        <div className="container mx-auto py-6 space-y-6">
-            <PageHeader title="Public memos" showSidebarTrigger={false}>
-                <div className="flex gap-2">
+        <div className="mx-auto flex w-full max-w-6xl flex-col gap-8 px-4 py-8 sm:px-6 lg:px-8">
+            <PageHeader title="공개 메모" showSidebarTrigger={false}>
+                <div className="flex flex-wrap items-center gap-2">
                     <Button asChild size="sm">
-                        <Link to={`/public/memos/${projectUuid}/submit`}>Submit memo</Link>
+                        <Link to={`/public/memos/${projectUuid}/submit`}>공개 메모 제출</Link>
                     </Button>
                     <Button
                         variant="outline"
@@ -86,36 +86,52 @@ export const PublicMemosDashboard = () => {
                         <RefreshCw
                             className={`h-4 w-4 mr-2 ${(activeTab === 'approved' ? approvedLoading : pendingLoading) ? 'animate-spin' : ''}`}
                         />
-                        Refresh
+                        새로고침
                     </Button>
                 </div>
             </PageHeader>
 
-            <Card>
-                <CardHeader className="gap-3">
-                    <div className="flex items-center gap-2 text-muted-foreground">
-                        <Send className="h-5 w-5" />
-                        <span className="text-sm font-medium">Public knowledge base</span>
+            <Card className="mx-auto w-full max-w-6xl">
+                <CardHeader className="gap-5 border-b pb-6">
+                    <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+                        <div className="space-y-3">
+                            <div className="flex items-center gap-2 text-muted-foreground">
+                                <Send className="h-5 w-5" />
+                                <span className="text-sm font-medium">공개 메모 공간</span>
+                            </div>
+                            <div className="space-y-2">
+                                <CardTitle className="text-2xl sm:text-3xl">
+                                    검토가 끝난 메모와 대기 중인 제출을 한곳에서 확인하세요
+                                </CardTitle>
+                                <CardDescription className="max-w-3xl leading-6">
+                                    승인된 메모는 누구나 볼 수 있고, 검토 대기 중인 제출은 별도 탭에서 현재 상태를
+                                    확인할 수 있습니다.
+                                </CardDescription>
+                            </div>
+                        </div>
+
+                        <Button asChild variant="outline" size="sm" className="shrink-0">
+                            <Link to={`/public/memos/${projectUuid}/submit`}>새 메모 제출하기</Link>
+                        </Button>
                     </div>
-                    <CardTitle className="text-3xl">Browse public memos</CardTitle>
-                    <CardDescription>
-                        Approved memos are publicly visible. Pending submissions stay visible in a separate tab while
-                        they wait for review.
-                    </CardDescription>
                 </CardHeader>
-                <CardContent className="space-y-6">
+                <CardContent className="space-y-6 pt-6">
                     <Tabs value={activeTab} onValueChange={(value) => setActiveTab(value as 'approved' | 'pending')}>
-                        <TabsList className="grid w-full grid-cols-2 md:w-[360px]">
-                            <TabsTrigger value="approved">Approved</TabsTrigger>
-                            <TabsTrigger value="pending">Pending</TabsTrigger>
+                        <TabsList className="grid h-auto w-full grid-cols-2 rounded-xl p-1 sm:w-[360px]">
+                            <TabsTrigger value="approved" className="py-2">
+                                공개된 메모
+                            </TabsTrigger>
+                            <TabsTrigger value="pending" className="py-2">
+                                검토 대기 제출
+                            </TabsTrigger>
                         </TabsList>
 
-                        <TabsContent value="approved" className="space-y-4">
+                        <TabsContent value="approved" className="mt-6 space-y-4">
                             <PublicMemosTable
                                 items={approvedMemos}
                                 loading={approvedLoading}
-                                emptyTitle="No approved memos yet"
-                                emptyDescription="Approved public memos will appear here after review."
+                                emptyTitle="아직 승인된 메모가 없습니다"
+                                emptyDescription="검토를 통과한 공개 메모가 이곳에 표시됩니다. 새로운 메모를 제출하면 검토 후 공개될 수 있습니다."
                                 onSelectItem={handleSelectItem}
                             />
                             <MemosPagination
@@ -123,16 +139,21 @@ export const PublicMemosDashboard = () => {
                                 pageSize={approvedPageSize}
                                 totalCount={approvedTotalCount}
                                 loading={approvedLoading}
+                                itemLabel="메모"
+                                rangeLabel="표시 중"
+                                ofLabel="전체"
+                                previousLabel="이전"
+                                nextLabel="다음"
                                 onPageChange={(page) => fetchApprovedMemos(projectUuid, page, approvedPageSize)}
                             />
                         </TabsContent>
 
-                        <TabsContent value="pending" className="space-y-4">
+                        <TabsContent value="pending" className="mt-6 space-y-4">
                             <PublicMemosTable
                                 items={pendingSubmissions}
                                 loading={pendingLoading}
-                                emptyTitle="No pending submissions"
-                                emptyDescription="New submissions will appear here while they wait for review."
+                                emptyTitle="검토 대기 중인 제출이 없습니다"
+                                emptyDescription="새로 제출된 메모는 검토가 끝날 때까지 이곳에 표시됩니다. 상태를 눌러 제출 내용을 자세히 확인할 수 있습니다."
                                 onSelectItem={handleSelectItem}
                             />
                             <MemosPagination
@@ -140,6 +161,11 @@ export const PublicMemosDashboard = () => {
                                 pageSize={pendingPageSize}
                                 totalCount={pendingTotalCount}
                                 loading={pendingLoading}
+                                itemLabel="제출"
+                                rangeLabel="표시 중"
+                                ofLabel="전체"
+                                previousLabel="이전"
+                                nextLabel="다음"
                                 onPageChange={(page) => fetchPendingSubmissions(projectUuid, page, pendingPageSize)}
                             />
                         </TabsContent>

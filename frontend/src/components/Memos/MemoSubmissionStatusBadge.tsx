@@ -11,7 +11,7 @@ export const MemoSubmissionStatusBadge = ({ status }: MemoSubmissionStatusBadgeP
         return (
             <Badge variant="default" className="flex items-center gap-1">
                 <CheckCircle className="h-3 w-3" />
-                Approved
+                승인됨
             </Badge>
         )
     }
@@ -20,7 +20,7 @@ export const MemoSubmissionStatusBadge = ({ status }: MemoSubmissionStatusBadgeP
         return (
             <Badge variant="destructive" className="flex items-center gap-1">
                 <XCircle className="h-3 w-3" />
-                Rejected
+                반려됨
             </Badge>
         )
     }
@@ -28,7 +28,7 @@ export const MemoSubmissionStatusBadge = ({ status }: MemoSubmissionStatusBadgeP
     return (
         <Badge variant="outline" className="flex items-center gap-1">
             <Clock3 className="h-3 w-3" />
-            Pending
+            대기 중
         </Badge>
     )
 }

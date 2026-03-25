@@ -12,8 +12,8 @@ import { usePublicMemoSubmissionStore } from '@/stores/publicMemoSubmissionStore
 import { CheckCircle2, Send } from 'lucide-react'
 
 const memoFormSchema = z.object({
-    title: z.string().min(1, 'Title is required').max(255, 'Title must be 255 characters or less'),
-    content: z.string().min(1, 'Content is required'),
+    title: z.string().min(1, '제목을 입력해주세요').max(255, '제목은 255자 이하로 입력해주세요'),
+    content: z.string().min(1, '내용을 입력해주세요'),
 })
 
 type MemoFormValues = z.infer<typeof memoFormSchema>
@@ -54,43 +54,47 @@ export const MemoSubmissionForm = ({ projectUuid }: MemoSubmissionFormProps) => 
     }
 
     return (
-        <Card>
-            <CardHeader className="gap-3">
+        <Card className="overflow-hidden">
+            <CardHeader className="gap-4 border-b pb-6">
                 <div className="flex items-center gap-2 text-muted-foreground">
                     <Send className="h-5 w-5" />
-                    <span className="text-sm font-medium">Public memo intake</span>
+                    <span className="text-sm font-medium">공개 메모 접수</span>
                 </div>
-                <CardTitle className="text-2xl">Submit public memo</CardTitle>
-                <CardDescription>
-                    Text-only submission. Share a title and the memo content for review without signing in.
+                <CardTitle className="text-2xl">검토용 메모를 제출하세요</CardTitle>
+                <CardDescription className="leading-6">
+                    로그인 없이 제목과 메모 내용을 남길 수 있습니다. 제출된 내용은 검토 후 공개 여부가 결정되며,
+                    승인되면 공개 메모 목록에 표시됩니다.
                 </CardDescription>
             </CardHeader>
 
-            <CardContent className="space-y-6">
+            <CardContent className="space-y-8 pt-6">
                 {isSubmitted && (
-                    <Alert>
+                    <Alert className="border-primary/20 bg-primary/5">
                         <CheckCircle2 className="h-4 w-4" />
-                        <AlertTitle>Submission received</AlertTitle>
+                        <AlertTitle>제출이 접수되었습니다</AlertTitle>
                         <AlertDescription>
-                            Your memo is now waiting for review. Once approved, it will appear in the public memo list.
+                            메모가 검토 대기 상태로 등록되었습니다. 승인되면 공개 메모 목록에 표시됩니다.
                         </AlertDescription>
                     </Alert>
                 )}
 
                 <Form {...form}>
                     <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
-                        <div className="space-y-4">
+                        <div className="space-y-5">
                             <FormField
                                 control={form.control}
                                 name="title"
                                 render={({ field }) => (
                                     <FormItem>
                                         <FormLabel>
-                                            Title <span className="text-destructive">*</span>
+                                            제목 <span className="text-destructive">*</span>
                                         </FormLabel>
                                         <FormControl>
-                                            <Input placeholder="Enter memo title" {...field} />
+                                            <Input placeholder="예: 3월 고객 인터뷰 요약" {...field} />
                                         </FormControl>
+                                        <FormDescription>
+                                            목록에서 한눈에 이해할 수 있는 제목으로 작성해 주세요.
+                                        </FormDescription>
                                         <FormMessage />
                                     </FormItem>
                                 )}
@@ -102,17 +106,18 @@ export const MemoSubmissionForm = ({ projectUuid }: MemoSubmissionFormProps) => 
                                 render={({ field }) => (
                                     <FormItem>
                                         <FormLabel>
-                                            Content <span className="text-destructive">*</span>
+                                            내용 <span className="text-destructive">*</span>
                                         </FormLabel>
                                         <FormControl>
                                             <Textarea
-                                                placeholder="Paste the memo content you want reviewed"
-                                                className="min-h-[220px] resize-y"
+                                                placeholder="검토받을 메모 내용을 그대로 붙여넣거나 직접 입력해 주세요."
+                                                className="min-h-[260px] resize-y"
                                                 {...field}
                                             />
                                         </FormControl>
                                         <FormDescription>
-                                            Reviewers use this content to decide whether the memo should be published.
+                                            검토자는 이 내용을 바탕으로 공개 여부를 판단합니다. 민감한 정보는 제출 전에
+                                            제거해 주세요.
                                         </FormDescription>
                                         <FormMessage />
                                     </FormItem>
@@ -120,12 +125,12 @@ export const MemoSubmissionForm = ({ projectUuid }: MemoSubmissionFormProps) => 
                             />
                         </div>
 
-                        <div className="flex justify-end gap-3 pt-4">
+                        <div className="flex flex-col-reverse gap-3 border-t pt-6 sm:flex-row sm:justify-end">
                             <Button type="button" variant="outline" onClick={resetFormState} disabled={isSubmitting}>
-                                Reset
+                                입력 초기화
                             </Button>
                             <Button type="submit" disabled={isSubmitting}>
-                                Submit memo
+                                메모 제출
                             </Button>
                         </div>
                     </form>
