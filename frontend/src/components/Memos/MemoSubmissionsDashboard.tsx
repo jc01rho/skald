@@ -34,6 +34,14 @@ export const MemoSubmissionsDashboard = () => {
     const approveMemoSubmission = useMemoSubmissionReviewStore((state) => state.approveMemoSubmission)
     const rejectMemoSubmission = useMemoSubmissionReviewStore((state) => state.rejectMemoSubmission)
     const reviewActionLoading = useMemoSubmissionReviewStore((state) => state.reviewActionLoading)
+    const previewActionLoading = useMemoSubmissionReviewStore((state) => state.previewActionLoading)
+    const backfillLoading = useMemoSubmissionReviewStore((state) => state.backfillLoading)
+    const regenerateMemoSubmissionPreview = useMemoSubmissionReviewStore(
+        (state) => state.regenerateMemoSubmissionPreview
+    )
+    const backfillPendingSubmissionPreviews = useMemoSubmissionReviewStore(
+        (state) => state.backfillPendingSubmissionPreviews
+    )
     const deleteMemo = useMemoStore((state) => state.deleteMemo)
 
     const [selectedSubmission, setSelectedSubmission] = useState<DetailedMemoSubmission | null>(null)
@@ -98,6 +106,15 @@ export const MemoSubmissionsDashboard = () => {
         }
     }
 
+    const handleRegeneratePreview = async (submission: DetailedMemoSubmission) => {
+        if (!projectUuid) return
+
+        const refreshed = await regenerateMemoSubmissionPreview(projectUuid, submission.uuid)
+        if (refreshed) {
+            setSelectedSubmission(refreshed)
+        }
+    }
+
     if (!projectUuid) {
         return (
             <div className="container mx-auto py-6 space-y-6">
@@ -124,6 +141,15 @@ export const MemoSubmissionsDashboard = () => {
                 >
                     <RefreshCw className={`h-4 w-4 mr-2 ${loading || approvedLoading ? 'animate-spin' : ''}`} />
                     Refresh
+                </Button>
+                <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => backfillPendingSubmissionPreviews(projectUuid)}
+                    disabled={loading || backfillLoading}
+                >
+                    <RefreshCw className={`h-4 w-4 mr-2 ${backfillLoading ? 'animate-spin' : ''}`} />
+                    Pending preview backfill
                 </Button>
             </PageHeader>
 
@@ -189,6 +215,8 @@ export const MemoSubmissionsDashboard = () => {
                 onClose={() => setSelectedSubmission(null)}
                 onApprove={(submission) => openDecisionDialog('approve', submission)}
                 onReject={(submission) => openDecisionDialog('reject', submission)}
+                onRegeneratePreview={handleRegeneratePreview}
+                previewActionLoading={previewActionLoading}
             />
 
             <MemoSubmissionDecisionDialog
