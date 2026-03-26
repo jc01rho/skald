@@ -32,6 +32,7 @@ log_error() {
 # 설정 변수
 NAMESPACE="skald"
 IMAGE_TAG="${IMAGE_TAG:-latest}"
+UI_IMAGE_TAG="${UI_IMAGE_TAG:-$IMAGE_TAG}"
 DOCKER_REGISTRY="${DOCKER_REGISTRY:-ghcr.io/jc01rho}"
 echo "DOCKER_REGISTRY : $DOCKER_REGISTRY"
 SKIP_INGRESS="${SKIP_INGRESS:-false}"
@@ -644,7 +645,7 @@ deploy_frontend() {
     fi
     
     # 이미지 태그 치환
-    sed "s|\${IMAGE_TAG:-latest}|$IMAGE_TAG|g" ui-deployment.yaml > /tmp/ui-deployment.yaml
+    sed "s|\${IMAGE_TAG:-latest}|$UI_IMAGE_TAG|g" ui-deployment.yaml > /tmp/ui-deployment.yaml
     echo "UI Deployment 임시 파일 생성 완료: /tmp/ui-deployment.yaml"
     echo "Image in temp file: $(grep 'ghcr.io/jc01rho/skald/ui:' /tmp/ui-deployment.yaml)"
     
@@ -1572,6 +1573,7 @@ main() {
         log_info "배포 설정:"
         echo "  네임스페이스: $NAMESPACE"
         echo "  이미지 태그: $IMAGE_TAG"
+        echo "  UI 이미지 태그: $UI_IMAGE_TAG"
         echo "  도커 레지스트리: $DOCKER_REGISTRY"
         echo "  Ingress 건너뛰기: $SKIP_INGRESS"
         echo
@@ -1633,7 +1635,8 @@ show_help() {
     echo "  --force                 확인 없이 강제 삭제"
     echo
     echo "환경변수:"
-    echo "  IMAGE_TAG              이미지 태그 (기본값: latest)"
+    echo "  IMAGE_TAG              공통 이미지 태그 (기본값: latest)"
+    echo "  UI_IMAGE_TAG           UI 전용 이미지 태그 (기본값: IMAGE_TAG 값)"
     echo "  DOCKER_REGISTRY        도커 레지스트리 (기본값: ghcr.io/skaldlabs)"
     echo "  SKIP_INGRESS           Ingress 건너뛰기 (기본값: false)"
     echo "  ENV_FILE              환경 변수 파일 경로 (기본값: .env.prod)"
