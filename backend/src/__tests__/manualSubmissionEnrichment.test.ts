@@ -6,6 +6,12 @@ jest.mock('../agents/memoTagsAgent', () => ({
     },
 }))
 
+jest.mock('../agents/memoSummaryAgent', () => ({
+    memoSummaryAgent: {
+        summarize: jest.fn().mockResolvedValue({ summary: '미리보기 요약입니다.' }),
+    },
+}))
+
 describe('manual submission enrichment', () => {
     it('builds aliases and metadata for enterprise error code memo titles', async () => {
         const aliases = __testables__.buildManualSubmissionAliases('sparrow-enterprise-backend-error-codes')
@@ -34,10 +40,37 @@ describe('manual submission enrichment', () => {
             ])
         )
 
+        expect(enrichment.summary).toBeTruthy()
         expect(enrichment.metadata).toMatchObject({
-            enrichment_source: 'submission-approval',
+            enrichment_source: 'submission-preview',
         })
         expect(enrichment.metadata.search_aliases).toEqual(expect.arrayContaining(['엔터프라이즈 에러코드']))
         expect(enrichment.metadata.search_text).toContain('sparrow-enterprise-backend-error-codes')
+    })
+
+    it('validates required submission enrichment fields before approval', () => {
+        expect(
+            __testables__.getSubmissionEnrichmentValidationError({
+                summary: '요약',
+                tags: ['a'],
+                metadata: {
+                    search_aliases: ['alias'],
+                    search_text: 'alias',
+                    title_tokens: ['token'],
+                },
+            })
+        ).toBeNull()
+
+        expect(
+            __testables__.getSubmissionEnrichmentValidationError({
+                summary: '',
+                tags: ['a'],
+                metadata: {
+                    search_aliases: ['alias'],
+                    search_text: 'alias',
+                    title_tokens: ['token'],
+                },
+            })
+        ).toContain('summary')
     })
 })
