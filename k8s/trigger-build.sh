@@ -33,6 +33,8 @@ echo "    GitHub Actions 워크플로우 트리거"
 echo "========================================="
 echo ""
 
+IMAGE_TAG="${IMAGE_TAG:-$(git rev-parse HEAD 2>/dev/null || echo latest)}"
+
 # GitHub CLI 확인
 if ! command -v gh &> /dev/null; then
     log_error "GitHub CLI (gh)가 설치되어 있지 않습니다."
@@ -57,12 +59,12 @@ fi
 log_info "GitHub Actions 워크플로우를 트리거합니다..."
 log_info "워크플로우: build-ui-for-k8s.yml"
 log_info "브랜치: main"
-log_info "이미지 태그: k8s-latest"
+log_info "이미지 태그: $IMAGE_TAG"
 echo ""
 
 if gh workflow run build-ui-for-k8s.yml \
     --ref main \
-    --field image_tag=k8s-latest; then
+    --field image_tag="$IMAGE_TAG"; then
     log_success "워크플로우 트리거 완료"
 else
     log_error "워크플로우 트리거 실패"
@@ -100,11 +102,11 @@ if gh run watch $RUN_ID; then
     log_success "워크플로우가 성공적으로 완료되었습니다!"
     echo ""
     log_info "빌드된 이미지:"
-    log_success "  ghcr.io/jc01rho/skald-ui:k8s-latest"
+    log_success "  ghcr.io/jc01rho/skald/ui:$IMAGE_TAG"
     echo ""
     log_info "다음 단계:"
     echo "  1. cd /home/sparrow/git/skald/k8s"
-    echo "  2. IMAGE_TAG=k8s-latest ./deploy.sh"
+    echo "  2. IMAGE_TAG=$IMAGE_TAG ./deploy.sh"
     echo ""
 else
     log_error "워크플로우가 실패했습니다."

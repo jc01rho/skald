@@ -30,8 +30,8 @@ log_error() {
 }
 
 # 설정
-IMAGE_NAME="${IMAGE_NAME:-ghcr.io/jc01rho/skald-ui}"
-IMAGE_TAG="${IMAGE_TAG:-k8s-proxy}"
+IMAGE_NAME="${IMAGE_NAME:-ghcr.io/jc01rho/skald/ui}"
+IMAGE_TAG="${IMAGE_TAG:-$(git rev-parse HEAD 2>/dev/null || echo latest)}"
 PUSH_IMAGE="${PUSH_IMAGE:-false}"
 
 echo "========================================="
@@ -90,7 +90,7 @@ echo ""
 log_success "빌드 완료!"
 echo ""
 log_info "다음 단계:"
-echo "  1. k8s/ui-deployment.yaml의 이미지 태그를 '$IMAGE_TAG'로 변경"
+echo "  1. IMAGE_TAG=$IMAGE_TAG 를 사용해 배포 실행"
 echo "  2. kubectl apply -f k8s/ui-nginx-configmap.yaml"
 echo "  3. kubectl apply -f k8s/ui-deployment.yaml"
 echo "  4. kubectl rollout restart deployment/ui -n skald"
