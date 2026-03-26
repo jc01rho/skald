@@ -32,6 +32,64 @@ interface RerankResult {
     embedding?: number[] // Optional embedding for MMR diversity calculation
 }
 
+const ENTERPRISE_IDENTIFIER_PATTERN = /(엔터프라이즈|enterprise|sparrow)/iu
+const ERROR_CODE_IDENTIFIER_PATTERN = /(에러\s*코드|에러코드|오류\s*코드|오류코드|error\s*codes?)/iu
+const EXPLICIT_EXCEPTION_CODE_PATTERN = /\bexception\.(\d{4,6})\b/giu
+const NUMERIC_IDENTIFIER_PATTERN = /\b(\d{4,6})\b/g
+
+function uniqueQueries(values: string[]): string[] {
+    return Array.from(new Set(values.map((value) => value.trim()).filter(Boolean)))
+}
+
+function extractIdentifierSearchCodes(query: string): string[] {
+    const extracted = new Set<string>()
+
+    for (const match of query.matchAll(EXPLICIT_EXCEPTION_CODE_PATTERN)) {
+        if (match[1]) {
+            extracted.add(match[1])
+        }
+    }
+
+    if (!ENTERPRISE_IDENTIFIER_PATTERN.test(query) || !ERROR_CODE_IDENTIFIER_PATTERN.test(query)) {
+        return Array.from(extracted)
+    }
+
+    for (const match of query.matchAll(NUMERIC_IDENTIFIER_PATTERN)) {
+        if (match[1]) {
+            extracted.add(match[1])
+        }
+    }
+
+    return Array.from(extracted)
+}
+
+export function buildIdentifierFallbackQueries(query: string): string[] {
+    const codes = extractIdentifierSearchCodes(query)
+    if (codes.length === 0) {
+        return []
+    }
+
+    const variants: string[] = []
+
+    for (const code of codes) {
+        variants.push(code)
+        variants.push(`error code ${code}`)
+        variants.push(`enterprise error code ${code}`)
+        variants.push(`enterprise error codes ${code}`)
+        variants.push(`backend error code ${code}`)
+        variants.push(`backend error codes ${code}`)
+        variants.push(`sparrow enterprise error code ${code}`)
+        variants.push(`sparrow enterprise backend error codes ${code}`)
+        variants.push(`sparrow-enterprise-backend-error-codes ${code}`)
+        variants.push(`에러코드 ${code}`)
+        variants.push(`오류코드 ${code}`)
+        variants.push(`엔터프라이즈 에러코드 ${code}`)
+        variants.push(`엔터프라이즈 오류코드 ${code}`)
+    }
+
+    return uniqueQueries(variants)
+}
+
 export interface RAGConfig {
     llmProvider: 'cli-proxy-api'
     references: {
@@ -442,7 +500,7 @@ async function executeFallbackSearch(
     threshold: number
 ): Promise<MemoChunkWithDistance[]> {
     const variants = await rewriteMultiQuery(query)
-    const searchQueries = [query, ...variants]
+    const searchQueries = uniqueQueries([query, ...buildIdentifierFallbackQueries(query), ...variants])
 
     const expandedTopK = Math.ceil(topK * 3)
 
@@ -487,7 +545,10 @@ async function vectorSearchNode(state: typeof RAGState.State) {
     // P2-2: Dynamic HNSW ef_search based on topK
     await HNSWOptimizationService.applyRuntimeSearchTuning(DI.em, strategy.topK)
 
-    const searchQueries = expandTechnicalQueryVariants(query)
+    const searchQueries = uniqueQueries([
+        ...expandTechnicalQueryVariants(query),
+        ...buildIdentifierFallbackQueries(query),
+    ])
     if (rewrittenQuery && rewrittenQuery !== query) {
         searchQueries.push(...expandTechnicalQueryVariants(rewrittenQuery))
     }
@@ -509,6 +570,8 @@ async function vectorSearchNode(state: typeof RAGState.State) {
     if (jiraHypothetical) {
         searchQueries.push(jiraHypothetical)
     }
+
+    const uniqueSearchQueries = uniqueQueries(searchQueries)
 
     // Check if hybrid search is enabled (default: true for Korean optimization)
     const useHybridSearch = ragConfig.hybridSearch?.enabled ?? true
@@ -533,7 +596,7 @@ async function vectorSearchNode(state: typeof RAGState.State) {
         // P0-2 + P1-6: Use precomputed embedding for original query, batch the rest
         try {
             // Separate original query (already embedded in analyzeAndRewrite) from remaining queries
-            const remainingQueries = searchQueries.slice(1)
+            const remainingQueries = uniqueSearchQueries.slice(1)
             const remainingEmbeddings =
                 remainingQueries.length > 0
                     ? await EmbeddingService.generateEmbeddingsBatch(remainingQueries, 'search')
@@ -543,7 +606,7 @@ async function vectorSearchNode(state: typeof RAGState.State) {
                 ...remainingEmbeddings,
             ]
             const allHybridResults = await mapWithConcurrency(
-                searchQueries.map((sq, i) => ({ query: sq, embedding: allEmbeddings[i] })),
+                uniqueSearchQueries.map((sq, i) => ({ query: sq, embedding: allEmbeddings[i] })),
                 4,
                 async ({ query: searchQuery, embedding: embeddingVector }) => {
                     return HybridSearchService.hybridSearch(project, embeddingVector, searchQuery, {
@@ -565,7 +628,7 @@ async function vectorSearchNode(state: typeof RAGState.State) {
                 {
                     searchQueriesUsed: searchQueries.length,
                     perQueryCounts: allHybridResults.map((r, i) => ({
-                        query: searchQueries[i].slice(0, 50),
+                        query: uniqueSearchQueries[i].slice(0, 50),
                         count: r.length,
                     })),
                     mergedResultsCount: mergedResults.length,
@@ -586,7 +649,7 @@ async function vectorSearchNode(state: typeof RAGState.State) {
     }
 
     // P0-2 + P1-6: Batch embedding for vector-only search path (reuse precomputed embedding)
-    const remainingQueriesFallback = searchQueries.slice(1)
+    const remainingQueriesFallback = uniqueSearchQueries.slice(1)
     const remainingEmbeddingsFallback =
         remainingQueriesFallback.length > 0
             ? await EmbeddingService.generateEmbeddingsBatch(remainingQueriesFallback, 'search')
@@ -596,7 +659,7 @@ async function vectorSearchNode(state: typeof RAGState.State) {
         ...remainingEmbeddingsFallback,
     ]
     const allResults = await mapWithConcurrency(
-        searchQueries.map((sq, i) => ({ query: sq, embedding: allEmbeddings[i] })),
+        uniqueSearchQueries.map((sq, i) => ({ query: sq, embedding: allEmbeddings[i] })),
         4,
         async ({ embedding: embeddingVector }) => {
             return memoChunkVectorSearch(
@@ -623,7 +686,7 @@ async function vectorSearchNode(state: typeof RAGState.State) {
             'Triggering fallback search'
         )
 
-        const fallbackBaseQuery = searchQueries[0] || query
+        const fallbackBaseQuery = uniqueSearchQueries[0] || query
         const fallbackResults = await executeFallbackSearch(fallbackBaseQuery, project, filters, strategy.topK, 0.45)
 
         return { chunkResults: mergeSearchResults(uniqueResults, fallbackResults) }
