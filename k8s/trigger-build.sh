@@ -106,7 +106,7 @@ if gh run watch $RUN_ID; then
     echo ""
     log_info "다음 단계:"
     echo "  1. cd /home/sparrow/git/skald/k8s"
-    echo "  2. IMAGE_TAG=$IMAGE_TAG ./deploy.sh"
+    echo "  2. UI_IMAGE_TAG=$IMAGE_TAG ./deploy.sh"
     echo ""
 else
     log_error "워크플로우가 실패했습니다."
