@@ -13,6 +13,7 @@ export const createTestDatabase = async () => {
     }
 
     const orm = await MikroORM.init(testConfig)
+    await orm.em.getConnection().execute('CREATE EXTENSION IF NOT EXISTS vector;')
 
     const generator = orm.getSchemaGenerator()
     await generator.dropSchema()
