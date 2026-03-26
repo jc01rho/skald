@@ -18,6 +18,8 @@ interface MemoSubmissionDetailDialogProps {
     onClose: () => void
     onApprove: (submission: DetailedMemoSubmission) => void
     onReject: (submission: DetailedMemoSubmission) => void
+    onRegeneratePreview: (submission: DetailedMemoSubmission) => void
+    previewActionLoading: boolean
 }
 
 const formatDate = (dateString: string | null) => {
@@ -37,7 +39,13 @@ export const MemoSubmissionDetailDialog = ({
     onClose,
     onApprove,
     onReject,
+    onRegeneratePreview,
+    previewActionLoading,
 }: MemoSubmissionDetailDialogProps) => {
+    const previewReady = Boolean(
+        submission?.summary && submission.tags.length > 0 && Object.keys(submission.metadata).length > 0
+    )
+
     return (
         <Dialog open={!!submission} onOpenChange={onClose}>
             <DialogContent className="max-w-5xl max-h-[90vh] overflow-hidden">
@@ -59,6 +67,9 @@ export const MemoSubmissionDetailDialog = ({
                                             {submission.file_name && (
                                                 <Badge variant="secondary">{submission.file_name}</Badge>
                                             )}
+                                            <Badge variant={previewReady ? 'secondary' : 'outline'}>
+                                                {previewReady ? 'Preview ready' : 'Preview incomplete'}
+                                            </Badge>
                                         </div>
                                     </div>
                                 </div>
@@ -182,7 +193,19 @@ export const MemoSubmissionDetailDialog = ({
                             <Button variant="outline" onClick={() => onReject(submission)}>
                                 Reject
                             </Button>
-                            <Button onClick={() => onApprove(submission)}>Approve</Button>
+                            <Button
+                                variant="outline"
+                                onClick={() => onRegeneratePreview(submission)}
+                                disabled={previewActionLoading || submission.status !== 'pending'}
+                            >
+                                {previewActionLoading ? 'Regenerating...' : 'Preview 재생성'}
+                            </Button>
+                            <Button
+                                onClick={() => onApprove(submission)}
+                                disabled={!previewReady || previewActionLoading}
+                            >
+                                Approve
+                            </Button>
                         </div>
                     </DialogFooter>
                 )}
