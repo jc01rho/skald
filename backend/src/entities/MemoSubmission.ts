@@ -23,6 +23,36 @@ export class MemoSubmission {
     @Property({ type: 'text' })
     content!: string
 
+    @Property({ nullable: true, type: 'text' })
+    summary?: string | null
+
+    @Property({ nullable: true, type: 'json' })
+    metadata?: Record<string, unknown> | null
+
+    @Property({ nullable: true, type: 'json' })
+    tags?: string[] | null
+
+    @Property({ nullable: true })
+    source?: string | null
+
+    @Property({ nullable: true })
+    type?: string | null
+
+    @Property({ nullable: true })
+    reference_id?: string | null
+
+    @Property({ nullable: true })
+    submitter_name?: string | null
+
+    @Property({ nullable: true })
+    submitter_email?: string | null
+
+    @Property({ nullable: true })
+    file_name?: string | null
+
+    @Property({ nullable: true })
+    expiration_date?: Date | null
+
     @Property({ default: 'pending' })
     status!: MemoSubmissionStatus
 
