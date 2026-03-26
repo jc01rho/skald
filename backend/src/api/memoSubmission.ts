@@ -4,6 +4,7 @@ import { randomUUID } from 'crypto'
 import { DI } from '@/di'
 import { logger } from '@/lib/logger'
 import { memoTagsAgent } from '@/agents/memoTagsAgent'
+import { memoSummaryAgent } from '@/agents/memoSummaryAgent'
 
 const CreateMemoSubmissionRequest = z.object({
     project_id: z.string().uuid('Project ID must be a valid UUID').optional(),
@@ -98,6 +99,15 @@ function buildManualSubmissionAliases(title: string): string[] {
 async function buildApprovedSubmissionEnrichment(title: string, content: string) {
     const titleTokens = tokenizeManualSubmissionTitle(title)
     const aliases = buildManualSubmissionAliases(title)
+    const fallbackSummary = content.trim().slice(0, 280)
+
+    let summary = fallbackSummary
+    try {
+        const result = await memoSummaryAgent.summarize(content)
+        summary = result.summary.trim() || fallbackSummary
+    } catch (error) {
+        logger.warn({ err: error, title }, 'Failed to auto-generate summary for manual memo submission')
+    }
 
     let extractedTags: string[] = []
     try {
@@ -108,14 +118,94 @@ async function buildApprovedSubmissionEnrichment(title: string, content: string)
     }
 
     return {
+        summary,
         tags: uniqueStrings([...titleTokens, ...aliases, ...extractedTags]),
         metadata: {
             search_aliases: aliases,
             search_text: aliases.join(' '),
             title_tokens: titleTokens,
-            enrichment_source: 'submission-approval',
+            enrichment_source: 'submission-preview',
         },
     }
+}
+
+function getSubmissionEnrichmentValidationError(submission: {
+    summary?: string | null
+    tags?: unknown
+    metadata?: unknown
+}): string | null {
+    if (!submission.summary || !submission.summary.trim()) {
+        return 'Submission summary has not been generated yet'
+    }
+
+    if (!Array.isArray(submission.tags) || submission.tags.length === 0) {
+        return 'Submission tags have not been generated yet'
+    }
+
+    if (submission.tags.some((tag) => typeof tag !== 'string' || !tag.trim())) {
+        return 'Submission tags are invalid'
+    }
+
+    if (!submission.metadata || typeof submission.metadata !== 'object' || Array.isArray(submission.metadata)) {
+        return 'Submission metadata has not been generated yet'
+    }
+
+    const metadata = submission.metadata as Record<string, unknown>
+    if (!Array.isArray(metadata.search_aliases) || metadata.search_aliases.length === 0) {
+        return 'Submission metadata search_aliases is missing'
+    }
+
+    if (typeof metadata.search_text !== 'string' || !metadata.search_text.trim()) {
+        return 'Submission metadata search_text is missing'
+    }
+
+    if (!Array.isArray(metadata.title_tokens) || metadata.title_tokens.length === 0) {
+        return 'Submission metadata title_tokens is missing'
+    }
+
+    return null
+}
+
+async function regenerateSubmissionPreview(submission: {
+    title: string
+    content: string
+    tags?: string[] | null
+    metadata?: Record<string, unknown> | null
+}) {
+    const enrichment = await buildApprovedSubmissionEnrichment(submission.title, submission.content)
+
+    return {
+        summary: enrichment.summary,
+        tags: uniqueStrings([...(submission.tags || []), ...enrichment.tags]),
+        metadata: {
+            ...(submission.metadata || {}),
+            ...enrichment.metadata,
+        },
+    }
+}
+
+async function applySubmissionPreviewRegeneration(
+    submission: {
+        title: string
+        content: string
+        tags?: string[] | null
+        metadata?: Record<string, unknown> | null
+        summary?: string | null
+        updated_at: Date
+    },
+    persist = true
+) {
+    const regenerated = await regenerateSubmissionPreview(submission)
+    submission.summary = regenerated.summary
+    submission.tags = regenerated.tags
+    submission.metadata = regenerated.metadata
+    submission.updated_at = new Date()
+
+    if (persist) {
+        await DI.em.persistAndFlush(submission)
+    }
+
+    return regenerated
 }
 
 // Helper to build response with all frontend-expected fields
@@ -126,10 +216,19 @@ const buildSubmissionResponse = (
         updated_at: Date
         title: string
         content?: string
+        summary?: string | null
         status: string
         reviewed_at?: Date | null
         rejection_reason?: string | null
-        metadata?: Record<string, unknown>
+        source?: string | null
+        type?: string | null
+        submitter_name?: string | null
+        submitter_email?: string | null
+        metadata?: Record<string, unknown> | null
+        reference_id?: string | null
+        expiration_date?: Date | null
+        tags?: string[] | null
+        file_name?: string | null
     },
     includeContent = false,
     memoUuid: string | null = null
@@ -140,19 +239,19 @@ const buildSubmissionResponse = (
     title: submission.title,
     content: includeContent ? submission.content : undefined,
     status: submission.status,
-    summary: null,
-    source: null,
-    type: null,
-    submitter_name: null,
-    submitter_email: null,
+    summary: submission.summary || null,
+    source: submission.source || null,
+    type: submission.type || null,
+    submitter_name: submission.submitter_name || null,
+    submitter_email: submission.submitter_email || null,
     reviewed_at: submission.reviewed_at || null,
     review_note: submission.rejection_reason || null,
     rejection_reason: submission.rejection_reason || null,
     metadata: submission.metadata || {},
-    client_reference_id: null,
-    expiration_date: null,
-    tags: [],
-    file_name: null,
+    client_reference_id: submission.reference_id || null,
+    expiration_date: submission.expiration_date || null,
+    tags: submission.tags || [],
+    file_name: submission.file_name || null,
     memo_uuid: memoUuid,
 })
 
@@ -170,7 +269,19 @@ export const createMemoSubmission = async (req: Request, res: Response) => {
         return res.status(400).json({ error: errorMessages.join(', ') })
     }
 
-    const { title, content } = validatedData.data
+    const {
+        title,
+        content,
+        source,
+        type,
+        reference_id,
+        tags,
+        metadata,
+        submitter_name,
+        submitter_email,
+        file_name,
+        expiration_date,
+    } = validatedData.data
     const project_id = projectId
 
     const project = await DI.projects.findOne({ uuid: project_id })
@@ -184,12 +295,23 @@ export const createMemoSubmission = async (req: Request, res: Response) => {
             project,
             title,
             content,
+            summary: null,
+            metadata: metadata || null,
+            tags: tags || null,
+            source: source || null,
+            type: type || null,
+            reference_id: reference_id || null,
+            submitter_name: submitter_name || null,
+            submitter_email: submitter_email || null,
+            file_name: file_name || null,
+            expiration_date: expiration_date || null,
             status: 'pending',
             created_at: new Date(),
             updated_at: new Date(),
         })
 
         await DI.em.persistAndFlush(submission)
+        await applySubmissionPreviewRegeneration(submission)
 
         return res.status(201).json({ submission_uuid: submission.uuid })
     } catch (error) {
@@ -474,22 +596,28 @@ export const approveMemoSubmission = async (req: Request, res: Response) => {
         return res.status(400).json({ error: 'Only pending submissions can be approved' })
     }
 
+    const enrichmentError = getSubmissionEnrichmentValidationError(submission)
+    if (enrichmentError) {
+        return res.status(400).json({ error: enrichmentError })
+    }
+
     const { createNewMemo } = await import('@/lib/createMemoUtils')
 
     try {
-        const enrichment = await buildApprovedSubmissionEnrichment(submission.title, submission.content)
         const memo = await createNewMemo(
             {
                 title: submission.title,
                 content: submission.content,
-                type: 'plaintext',
-                source: 'public-submission',
+                type: submission.type || 'plaintext',
+                source: submission.source || 'public-submission',
+                reference_id: submission.reference_id || null,
+                expiration_date: submission.expiration_date || null,
                 metadata: {
+                    ...(submission.metadata || {}),
                     submission_id: submission.uuid,
                     is_public: true,
-                    ...enrichment.metadata,
                 },
-                tags: enrichment.tags,
+                tags: submission.tags || [],
             },
             project
         )
@@ -509,6 +637,62 @@ export const approveMemoSubmission = async (req: Request, res: Response) => {
         logger.error({ err: error }, 'Error approving memo submission')
         return res.status(500).json({ error: 'Failed to approve memo submission' })
     }
+}
+
+export const regenerateMemoSubmissionPreview = async (req: Request, res: Response) => {
+    const project = req.context?.requestUser?.project
+    if (!project) {
+        return res.status(404).json({ error: 'Project not found' })
+    }
+
+    const user = req.context?.requestUser?.userInstance
+    if (!user) {
+        return res.status(401).json({ error: 'Unauthorized' })
+    }
+
+    const { id } = req.params
+    const submission = await DI.memoSubmissions.findOne({ uuid: id, project })
+
+    if (!submission) {
+        return res.status(404).json({ error: 'Memo submission not found' })
+    }
+
+    if (submission.status !== 'pending') {
+        return res.status(400).json({ error: 'Only pending submissions can regenerate preview' })
+    }
+
+    try {
+        await applySubmissionPreviewRegeneration(submission)
+        return res.status(200).json(buildSubmissionResponse(submission, true))
+    } catch (error) {
+        logger.error({ err: error, submissionUuid: submission.uuid }, 'Error regenerating memo submission preview')
+        return res.status(500).json({ error: 'Failed to regenerate memo submission preview' })
+    }
+}
+
+export const backfillPendingMemoSubmissionPreviews = async (req: Request, res: Response) => {
+    const project = req.context?.requestUser?.project
+    if (!project) {
+        return res.status(404).json({ error: 'Project not found' })
+    }
+
+    const user = req.context?.requestUser?.userInstance
+    if (!user) {
+        return res.status(401).json({ error: 'Unauthorized' })
+    }
+
+    const submissions = await DI.memoSubmissions.find(
+        { project, status: 'pending' },
+        { orderBy: { created_at: 'ASC' } }
+    )
+
+    let updated = 0
+    for (const submission of submissions) {
+        await applySubmissionPreviewRegeneration(submission)
+        updated += 1
+    }
+
+    return res.status(200).json({ updated_count: updated })
 }
 
 export const rejectMemoSubmission = async (req: Request, res: Response) => {
@@ -703,6 +887,8 @@ publicMemoSubmissionRouter.get('/:id', getMemoSubmission)
 export const authMemoSubmissionRouter = express.Router({ mergeParams: true })
 authMemoSubmissionRouter.get('/', listAuthMemoSubmissions)
 authMemoSubmissionRouter.get('/:id', getAuthMemoSubmission)
+authMemoSubmissionRouter.post('/backfill-preview', backfillPendingMemoSubmissionPreviews)
+authMemoSubmissionRouter.post('/:id/regenerate-preview', regenerateMemoSubmissionPreview)
 authMemoSubmissionRouter.post('/:id/approve', approveMemoSubmission)
 authMemoSubmissionRouter.post('/:id/reject', rejectMemoSubmission)
 
@@ -710,4 +896,6 @@ export const __testables__ = {
     tokenizeManualSubmissionTitle,
     buildManualSubmissionAliases,
     buildApprovedSubmissionEnrichment,
+    getSubmissionEnrichmentValidationError,
+    regenerateSubmissionPreview,
 }

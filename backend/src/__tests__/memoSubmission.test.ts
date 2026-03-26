@@ -31,6 +31,20 @@ jest.mock('../lib/createMemoUtils', () => ({
     })),
 }))
 
+jest.mock('../agents/memoTagsAgent', () => ({
+    memoTagsAgent: {
+        extractTags: jest.fn().mockResolvedValue({ tags: ['submission', 'preview'] }),
+    },
+}))
+
+jest.mock('../agents/memoSummaryAgent', () => ({
+    memoSummaryAgent: {
+        summarize: jest.fn().mockResolvedValue({ summary: 'Preview summary for approval.' }),
+    },
+}))
+
+jest.setTimeout(30000)
+
 describe('Memo submission API', () => {
     let app: Express
     let orm: MikroORM
@@ -94,8 +108,10 @@ describe('Memo submission API', () => {
         expect(listResponse.body.results[0]).toMatchObject({
             title: 'Public memo title',
             status: 'pending',
-            summary: null,
+            summary: 'Preview summary for approval.',
+            tags: expect.arrayContaining(['submission', 'preview']),
         })
+        expect(listResponse.body.results[0].metadata.search_aliases.length).toBeGreaterThan(0)
     })
 
     it('approves a pending submission and exposes it in approved public list', async () => {
@@ -149,5 +165,119 @@ describe('Memo submission API', () => {
             status: 'approved',
             review_note: 'Approved in test',
         })
+    })
+
+    it('blocks approval when submission enrichment is incomplete', async () => {
+        const user = await createTestUser(orm, 'owner@example.com', 'password123')
+        const organization = await createTestOrganization(orm, 'Test Org', user)
+        await createTestOrganizationMembership(orm, user, organization)
+        const project = await createTestProject(orm, 'Test Project', organization, user)
+        const token = generateAccessToken('owner@example.com')
+
+        const em = orm.em.fork()
+        const submission = em.create(MemoSubmission, {
+            uuid: '11111111-1111-1111-1111-111111111111',
+            project,
+            title: 'Incomplete preview',
+            content: 'No enrichment attached yet',
+            status: 'pending',
+            created_at: new Date(),
+            updated_at: new Date(),
+            summary: null,
+            metadata: null,
+            tags: null,
+        })
+        await em.persistAndFlush(submission)
+
+        const approveResponse = await request(app)
+            .post(`/api/v1/memo-submissions/${submission.uuid}/approve`)
+            .set('Cookie', [`accessToken=${token}`])
+            .query({ project_id: project.uuid })
+            .send({ review_note: 'Approved in test' })
+
+        expect(approveResponse.status).toBe(400)
+        expect(approveResponse.body.error).toContain('summary')
+    })
+
+    it('regenerates preview enrichment for a pending submission', async () => {
+        const user = await createTestUser(orm, 'owner@example.com', 'password123')
+        const organization = await createTestOrganization(orm, 'Test Org', user)
+        await createTestOrganizationMembership(orm, user, organization)
+        const project = await createTestProject(orm, 'Test Project', organization, user)
+        const token = generateAccessToken('owner@example.com')
+
+        const em = orm.em.fork()
+        const submission = em.create(MemoSubmission, {
+            uuid: '22222222-2222-2222-2222-222222222222',
+            project,
+            title: 'Regenerate preview',
+            content: 'Need regenerated preview',
+            status: 'pending',
+            created_at: new Date(),
+            updated_at: new Date(),
+            summary: null,
+            metadata: null,
+            tags: null,
+        })
+        await em.persistAndFlush(submission)
+
+        const response = await request(app)
+            .post(`/api/v1/memo-submissions/${submission.uuid}/regenerate-preview`)
+            .set('Cookie', [`accessToken=${token}`])
+            .query({ project_id: project.uuid })
+            .send({})
+
+        expect(response.status).toBe(200)
+        expect(response.body.summary).toBe('Preview summary for approval.')
+        expect(response.body.tags).toEqual(expect.arrayContaining(['submission', 'preview']))
+        expect(response.body.metadata.search_aliases.length).toBeGreaterThan(0)
+    })
+
+    it('backfills preview enrichment for all pending submissions', async () => {
+        const user = await createTestUser(orm, 'owner@example.com', 'password123')
+        const organization = await createTestOrganization(orm, 'Test Org', user)
+        await createTestOrganizationMembership(orm, user, organization)
+        const project = await createTestProject(orm, 'Test Project', organization, user)
+        const token = generateAccessToken('owner@example.com')
+
+        const em = orm.em.fork()
+        const first = em.create(MemoSubmission, {
+            uuid: '33333333-3333-3333-3333-333333333333',
+            project,
+            title: 'First pending preview',
+            content: 'Need first regenerated preview',
+            status: 'pending',
+            created_at: new Date(),
+            updated_at: new Date(),
+            summary: null,
+            metadata: null,
+            tags: null,
+        })
+        const second = em.create(MemoSubmission, {
+            uuid: '44444444-4444-4444-4444-444444444444',
+            project,
+            title: 'Second pending preview',
+            content: 'Need second regenerated preview',
+            status: 'pending',
+            created_at: new Date(),
+            updated_at: new Date(),
+            summary: null,
+            metadata: null,
+            tags: null,
+        })
+        await em.persistAndFlush([first, second])
+
+        const response = await request(app)
+            .post('/api/v1/memo-submissions/backfill-preview')
+            .set('Cookie', [`accessToken=${token}`])
+            .query({ project_id: project.uuid })
+            .send({})
+
+        expect(response.status).toBe(200)
+        expect(response.body.updated_count).toBe(2)
+
+        const refreshed = await orm.em.fork().find(MemoSubmission, { project, status: 'pending' })
+        expect(refreshed.every((item) => item.summary === 'Preview summary for approval.')).toBe(true)
+        expect(refreshed.every((item) => Array.isArray(item.tags) && item.tags.length > 0)).toBe(true)
     })
 })
