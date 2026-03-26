@@ -186,16 +186,22 @@ wait_for_pods() {
             continue
         fi
         
-        # 모든 파드가 Running 상태이고 Ready=true인지 확인
         local all_ready=true
         local total_pods=0
         local ready_pods=0
+        local active_pods=0
         
         while IFS= read -r line; do
             if [ -n "$line" ]; then
-                total_pods=$((total_pods + 1))
                 local phase=$(echo "$line" | awk '{print $1}')
                 local ready=$(echo "$line" | awk '{print $2}')
+
+                if [ "$phase" = "Succeeded" ] || [ "$phase" = "Failed" ]; then
+                    continue
+                fi
+
+                total_pods=$((total_pods + 1))
+                active_pods=$((active_pods + 1))
                 
                 if [ "$phase" = "Running" ] && [ "$ready" = "true" ]; then
                     ready_pods=$((ready_pods + 1))
@@ -205,12 +211,18 @@ wait_for_pods() {
             fi
         done <<< "$pod_status"
         
-        if [ $all_ready = true ] && [ $total_pods -gt 0 ]; then
-            log_success "All $total_pods pods with label '$label' are ready (${elapsed}s elapsed)"
+        if [ $active_pods -eq 0 ]; then
+            log_info "No active pods found with label '$label', waiting..."
+            sleep 2
+            continue
+        fi
+
+        if [ $all_ready = true ] && [ $active_pods -gt 0 ]; then
+            log_success "All $active_pods active pods with label '$label' are ready (${elapsed}s elapsed)"
             return 0
         fi
         
-        log_info "Waiting for pods... ($ready_pods/$total_pods ready, ${elapsed}s elapsed)"
+        log_info "Waiting for pods... ($ready_pods/$active_pods active pods ready, ${elapsed}s elapsed)"
         sleep 5
     done
 }
