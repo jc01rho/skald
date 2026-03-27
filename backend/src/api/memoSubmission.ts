@@ -32,6 +32,27 @@ const GetMemoSubmissionQuery = z.object({
     project_id: z.string().uuid('Project ID must be a valid UUID'),
 })
 
+const PRODUCT_ID_VALUES = [
+    'sast',
+    'dast',
+    'sparrow',
+    'cloud',
+    'rasp',
+    'sca',
+    'sparrow-sca',
+    'sparrow-sast',
+    'saqt',
+    'ihub',
+] as const
+
+const ApproveMemoSubmissionRequest = z.object({
+    review_note: z.string().max(5000).optional(),
+    product_id: z.enum(PRODUCT_ID_VALUES, {
+        required_error: 'Product ID is required',
+        invalid_type_error: 'Product ID is required',
+    }),
+})
+
 function uniqueStrings(values: Array<string | null | undefined>): string[] {
     return Array.from(new Set(values.map((value) => value?.trim()).filter((value): value is string => Boolean(value))))
 }
@@ -583,8 +604,14 @@ export const approveMemoSubmission = async (req: Request, res: Response) => {
         return res.status(401).json({ error: 'Unauthorized' })
     }
 
+    const validatedBody = ApproveMemoSubmissionRequest.safeParse(req.body)
+    if (!validatedBody.success) {
+        const errorMessages = validatedBody.error.errors.map((err) => err.message)
+        return res.status(400).json({ error: errorMessages.join(', ') })
+    }
+
     const { id } = req.params
-    const { review_note } = req.body
+    const { review_note, product_id } = validatedBody.data
 
     const submission = await DI.memoSubmissions.findOne({ uuid: id, project })
 
@@ -599,6 +626,13 @@ export const approveMemoSubmission = async (req: Request, res: Response) => {
     const enrichmentError = getSubmissionEnrichmentValidationError(submission)
     if (enrichmentError) {
         return res.status(400).json({ error: enrichmentError })
+    }
+
+    if (product_id) {
+        submission.metadata = {
+            ...(submission.metadata || {}),
+            product_id,
+        }
     }
 
     const { createNewMemo } = await import('@/lib/createMemoUtils')

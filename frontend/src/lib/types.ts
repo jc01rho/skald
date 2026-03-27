@@ -112,9 +112,13 @@ export interface MemoSubmission {
     memo_uuid?: string | null
 }
 
+export interface MemoSubmissionMetadata extends Record<string, unknown> {
+    product_id?: string
+}
+
 export interface DetailedMemoSubmission extends MemoSubmission {
     content: string | null
-    metadata: Record<string, unknown>
+    metadata: MemoSubmissionMetadata
     client_reference_id: string | null
     expiration_date: string | null
     tags: string[]

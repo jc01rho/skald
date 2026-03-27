@@ -136,7 +136,7 @@ describe('Memo submission API', () => {
             .post(`/api/v1/memo-submissions/${submissionUuid}/approve`)
             .set('Cookie', [`accessToken=${token}`])
             .query({ project_id: project.uuid })
-            .send({ review_note: 'Approved in test' })
+            .send({ review_note: 'Approved in test', product_id: 'sparrow' })
 
         expect(approveResponse.status).toBe(200)
         expect(approveResponse.body.memo_uuid).toBeDefined()
@@ -165,6 +165,50 @@ describe('Memo submission API', () => {
             status: 'approved',
             review_note: 'Approved in test',
         })
+
+        const approvedSubmission = await orm.em.fork().findOneOrFail(MemoSubmission, { uuid: submissionUuid })
+        expect(approvedSubmission.metadata).toMatchObject({ product_id: 'sparrow' })
+    })
+
+    it('stores product_id in memo creation payload during approval', async () => {
+        const user = await createTestUser(orm, 'owner@example.com', 'password123')
+        const organization = await createTestOrganization(orm, 'Test Org', user)
+        await createTestOrganizationMembership(orm, user, organization)
+        const project = await createTestProject(orm, 'Test Project', organization, user)
+        const token = generateAccessToken('owner@example.com')
+
+        const createResponse = await request(app)
+            .post('/api/public/memo-submissions')
+            .query({ project_id: project.uuid })
+            .send({
+                title: 'Product classified memo',
+                content: 'Approval should persist the selected product id.',
+            })
+
+        const submissionUuid = createResponse.body.submission_uuid
+        expect(submissionUuid).toBeDefined()
+
+        const approveResponse = await request(app)
+            .post(`/api/v1/memo-submissions/${submissionUuid}/approve`)
+            .set('Cookie', [`accessToken=${token}`])
+            .query({ project_id: project.uuid })
+            .send({ review_note: 'Approved with product id', product_id: 'sparrow' })
+
+        expect(approveResponse.status).toBe(200)
+
+        const { createNewMemo } = jest.requireMock('../lib/createMemoUtils') as {
+            createNewMemo: jest.Mock
+        }
+        expect(createNewMemo).toHaveBeenCalledWith(
+            expect.objectContaining({
+                metadata: expect.objectContaining({
+                    product_id: 'sparrow',
+                    submission_id: submissionUuid,
+                    is_public: true,
+                }),
+            }),
+            expect.anything()
+        )
     })
 
     it('blocks approval when submission enrichment is incomplete', async () => {
@@ -193,10 +237,38 @@ describe('Memo submission API', () => {
             .post(`/api/v1/memo-submissions/${submission.uuid}/approve`)
             .set('Cookie', [`accessToken=${token}`])
             .query({ project_id: project.uuid })
-            .send({ review_note: 'Approved in test' })
+            .send({ review_note: 'Approved in test', product_id: 'sparrow' })
 
         expect(approveResponse.status).toBe(400)
         expect(approveResponse.body.error).toContain('summary')
+    })
+
+    it('requires product_id when approving a pending submission', async () => {
+        const user = await createTestUser(orm, 'owner@example.com', 'password123')
+        const organization = await createTestOrganization(orm, 'Test Org', user)
+        await createTestOrganizationMembership(orm, user, organization)
+        const project = await createTestProject(orm, 'Test Project', organization, user)
+        const token = generateAccessToken('owner@example.com')
+
+        const createResponse = await request(app)
+            .post('/api/public/memo-submissions')
+            .query({ project_id: project.uuid })
+            .send({
+                title: 'Requires product id',
+                content: 'Approval should fail without a product id.',
+            })
+
+        const submissionUuid = createResponse.body.submission_uuid
+        expect(submissionUuid).toBeDefined()
+
+        const approveResponse = await request(app)
+            .post(`/api/v1/memo-submissions/${submissionUuid}/approve`)
+            .set('Cookie', [`accessToken=${token}`])
+            .query({ project_id: project.uuid })
+            .send({ review_note: 'Approved in test' })
+
+        expect(approveResponse.status).toBe(400)
+        expect(approveResponse.body.error).toContain('Product ID is required')
     })
 
     it('regenerates preview enrichment for a pending submission', async () => {
