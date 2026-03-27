@@ -34,13 +34,179 @@ interface RerankResult {
 
 const ENTERPRISE_IDENTIFIER_PATTERN = /(엔터프라이즈|enterprise|sparrow)/iu
 const ERROR_CODE_IDENTIFIER_PATTERN = /(에러\s*코드|에러코드|오류\s*코드|오류코드|error\s*codes?)/iu
+const GENERIC_ANCHOR_CUE_PATTERN =
+    /(코드|번호|아이디|\bid\b|issue|ticket|reference|참조|키|version|버전|error|errors|exception|path|경로|file|파일|class|함수|method|api|endpoint)/iu
+const PURE_NUMERIC_ANCHOR_PATTERN = /\b\d{4,}\b/g
+const STRUCTURED_ANCHOR_PATTERN = /\b[a-zA-Z0-9]+(?:[._:/-][a-zA-Z0-9]+)+\b/g
+const MIXED_ALPHANUMERIC_ANCHOR_PATTERN = /\b(?=[A-Za-z0-9_-]{4,}\b)(?=\w*[A-Za-z])(?=\w*\d)[A-Za-z0-9_-]+\b/g
+const CAMEL_CASE_ANCHOR_PATTERN = /\b[A-Z][a-z0-9]+(?:[A-Z][A-Za-z0-9]+)+\b/g
+
+function normalizeInlineWhitespace(value: string): string {
+    return value.replace(/\s+/g, ' ').trim()
+}
+
+function escapeRegExp(value: string): string {
+    return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+}
+
+function collectUniqueAnchors(target: Map<string, string>, values: string[]) {
+    for (const value of values) {
+        const normalized = normalizeInlineWhitespace(value)
+        if (!normalized) continue
+        const key = normalized.toLowerCase()
+        if (!target.has(key)) {
+            target.set(key, normalized)
+        }
+    }
+}
+
+function extractQueryAnchors(query: string): string[] {
+    const normalizedQuery = normalizeInlineWhitespace(query)
+    const anchors = new Map<string, string>()
+    const explicitKeys = extractExplicitKeys(query)
+    const hasGenericAnchorCue = GENERIC_ANCHOR_CUE_PATTERN.test(normalizedQuery)
+
+    collectUniqueAnchors(
+        anchors,
+        explicitKeys.flatMap((key) => [key.original, key.value])
+    )
+    collectUniqueAnchors(
+        anchors,
+        Array.from(normalizedQuery.matchAll(STRUCTURED_ANCHOR_PATTERN), (match) => match[0])
+    )
+    collectUniqueAnchors(
+        anchors,
+        Array.from(normalizedQuery.matchAll(MIXED_ALPHANUMERIC_ANCHOR_PATTERN), (match) => match[0])
+    )
+    collectUniqueAnchors(
+        anchors,
+        Array.from(normalizedQuery.matchAll(CAMEL_CASE_ANCHOR_PATTERN), (match) => match[0])
+    )
+
+    if (hasGenericAnchorCue) {
+        collectUniqueAnchors(
+            anchors,
+            Array.from(normalizedQuery.matchAll(PURE_NUMERIC_ANCHOR_PATTERN), (match) => match[0])
+        )
+    }
+
+    return Array.from(anchors.values()).sort((left, right) => right.length - left.length)
+}
+
+function anchorMatchesText(anchor: string, text: string): boolean {
+    if (!anchor || !text) {
+        return false
+    }
+
+    if (/^[\p{L}\p{N}]+$/u.test(anchor)) {
+        const boundaryPattern = new RegExp(`(^|[^\\p{L}\\p{N}])${escapeRegExp(anchor)}([^\\p{L}\\p{N}]|$)`, 'iu')
+        return boundaryPattern.test(text)
+    }
+
+    return text.toLowerCase().includes(anchor.toLowerCase())
+}
+
+function buildLiteralQueryAnchorBlock(query: string): string {
+    const queryAnchors = extractQueryAnchors(query)
+    if (queryAnchors.length === 0) {
+        return ''
+    }
+
+    return (
+        '[Literal Query Anchors — prioritize evidence containing these exact strings]\n' +
+        `${queryAnchors.join(', ')}\n` +
+        '[End of Literal Query Anchors]\n\n'
+    )
+}
+
+function preserveAnchorMatches({
+    query,
+    rerankedResults,
+    chunkResults,
+    memoPropertiesMap,
+    topK,
+}: {
+    query: string
+    rerankedResults: RerankResult[]
+    chunkResults: MemoChunkWithDistance[]
+    memoPropertiesMap: Map<string, { title: string; summary: string; content: string; source_url: string }> | null
+    topK: number
+}): RerankResult[] {
+    const anchors = extractQueryAnchors(query)
+    if (anchors.length === 0 || chunkResults.length === 0) {
+        return rerankedResults
+    }
+
+    const existingByIndex = new Map(rerankedResults.map((result) => [result.index, result]))
+    const anchorCandidates = chunkResults
+        .map((chunkResult, index) => {
+            const memo = memoPropertiesMap?.get(chunkResult.chunk.memo_uuid)
+            const searchableText = [memo?.title, memo?.summary, chunkResult.chunk.chunk_content]
+                .filter(Boolean)
+                .join('\n')
+            const matchedAnchors = anchors.filter((anchor) => anchorMatchesText(anchor, searchableText))
+            if (matchedAnchors.length === 0) {
+                return null
+            }
+
+            const result = existingByIndex.get(index) || {
+                index,
+                document: chunkResult.chunk.chunk_content,
+                relevance_score: Math.max(0, Math.min(1, 1 - chunkResult.distance / 2)),
+                memo_uuid: chunkResult.chunk.memo_uuid,
+                memo_title: memo?.title || '',
+                source_url: memo?.source_url || '',
+                embedding: chunkResult.chunk.embedding as number[],
+            }
+
+            return {
+                result,
+                matchedAnchors,
+                anchorScore: matchedAnchors.reduce((sum, anchor) => sum + anchor.length, 0),
+                distance: chunkResult.distance,
+            }
+        })
+        .filter((candidate): candidate is NonNullable<typeof candidate> => candidate !== null)
+        .sort((left, right) => {
+            if (right.matchedAnchors.length !== left.matchedAnchors.length) {
+                return right.matchedAnchors.length - left.matchedAnchors.length
+            }
+            if (right.anchorScore !== left.anchorScore) {
+                return right.anchorScore - left.anchorScore
+            }
+            return left.distance - right.distance
+        })
+        .slice(0, Math.min(3, topK))
+
+    if (anchorCandidates.length === 0) {
+        return rerankedResults
+    }
+
+    const pinnedIndices = new Set(anchorCandidates.map((candidate) => candidate.result.index))
+    const pinnedResults = anchorCandidates.map((candidate) => candidate.result)
+    const remainingResults = rerankedResults.filter((result) => !pinnedIndices.has(result.index))
+    return [...pinnedResults, ...remainingResults].slice(0, Math.max(topK, pinnedResults.length))
+}
 
 function uniqueQueries(values: string[]): string[] {
     return Array.from(new Set(values.map((value) => value.trim()).filter(Boolean)))
 }
 
 export function buildIdentifierFallbackQueries(query: string): string[] {
-    return []
+    const anchors = extractQueryAnchors(query)
+    if (anchors.length === 0) {
+        return []
+    }
+
+    return uniqueQueries(
+        anchors.slice(0, 3).flatMap((anchor) => {
+            if (anchor.includes(' ')) {
+                return [anchor, `"${anchor}"`]
+            }
+
+            return [anchor, `"${anchor}"`]
+        })
+    )
 }
 
 export interface RAGConfig {
@@ -696,7 +862,15 @@ async function rerankNode(state: typeof RAGState.State) {
                 embedding: chunk.chunk.embedding as number[], // Pass embedding for MMR
             })
         }
-        return { rerankedResults }
+        return {
+            rerankedResults: preserveAnchorMatches({
+                query,
+                rerankedResults,
+                chunkResults,
+                memoPropertiesMap,
+                topK: ragConfig.reranking.topK,
+            }),
+        }
     }
 
     const searchQuery = rewrittenQuery || query
@@ -773,7 +947,15 @@ async function rerankNode(state: typeof RAGState.State) {
         'RAG rerankNode completed'
     )
 
-    return { rerankedResults: finalReranked }
+    return {
+        rerankedResults: preserveAnchorMatches({
+            query,
+            rerankedResults: finalReranked,
+            chunkResults,
+            memoPropertiesMap,
+            topK: ragConfig.reranking.topK,
+        }),
+    }
 }
 
 async function cragValidationNode(state: typeof RAGState.State) {
@@ -1045,6 +1227,7 @@ async function fetchParentChunksNode(state: typeof RAGState.State) {
 function buildLLMInputsNode(state: typeof RAGState.State) {
     const {
         conversationHistory,
+        query,
         ragConfig,
         rerankedResults,
         clientSystemPrompt,
@@ -1123,6 +1306,8 @@ function buildLLMInputsNode(state: typeof RAGState.State) {
             contextStr += '[End of Key-Not-Found Notice]\n\n'
         }
     }
+
+    contextStr += buildLiteralQueryAnchorBlock(query)
 
     for (let i = 0; i < rerankedResults.length; i++) {
         const result = rerankedResults[i]
@@ -1231,3 +1416,10 @@ const ragGraphDefinition = new StateGraph(RAGState)
     .addEdge('buildLLMInputs', END)
 
 export const ragGraph = ragGraphDefinition.compile()
+
+export const __testables__ = {
+    extractQueryAnchors,
+    preserveAnchorMatches,
+    buildLLMInputsNode,
+    buildLiteralQueryAnchorBlock,
+}
