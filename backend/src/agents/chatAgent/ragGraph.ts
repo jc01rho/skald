@@ -34,60 +34,13 @@ interface RerankResult {
 
 const ENTERPRISE_IDENTIFIER_PATTERN = /(엔터프라이즈|enterprise|sparrow)/iu
 const ERROR_CODE_IDENTIFIER_PATTERN = /(에러\s*코드|에러코드|오류\s*코드|오류코드|error\s*codes?)/iu
-const EXPLICIT_EXCEPTION_CODE_PATTERN = /\bexception\.(\d{4,6})\b/giu
-const NUMERIC_IDENTIFIER_PATTERN = /\b(\d{4,6})\b/g
 
 function uniqueQueries(values: string[]): string[] {
     return Array.from(new Set(values.map((value) => value.trim()).filter(Boolean)))
 }
 
-function extractIdentifierSearchCodes(query: string): string[] {
-    const extracted = new Set<string>()
-
-    for (const match of query.matchAll(EXPLICIT_EXCEPTION_CODE_PATTERN)) {
-        if (match[1]) {
-            extracted.add(match[1])
-        }
-    }
-
-    if (!ENTERPRISE_IDENTIFIER_PATTERN.test(query) || !ERROR_CODE_IDENTIFIER_PATTERN.test(query)) {
-        return Array.from(extracted)
-    }
-
-    for (const match of query.matchAll(NUMERIC_IDENTIFIER_PATTERN)) {
-        if (match[1]) {
-            extracted.add(match[1])
-        }
-    }
-
-    return Array.from(extracted)
-}
-
 export function buildIdentifierFallbackQueries(query: string): string[] {
-    const codes = extractIdentifierSearchCodes(query)
-    if (codes.length === 0) {
-        return []
-    }
-
-    const variants: string[] = []
-
-    for (const code of codes) {
-        variants.push(code)
-        variants.push(`error code ${code}`)
-        variants.push(`enterprise error code ${code}`)
-        variants.push(`enterprise error codes ${code}`)
-        variants.push(`backend error code ${code}`)
-        variants.push(`backend error codes ${code}`)
-        variants.push(`sparrow enterprise error code ${code}`)
-        variants.push(`sparrow enterprise backend error codes ${code}`)
-        variants.push(`sparrow-enterprise-backend-error-codes ${code}`)
-        variants.push(`에러코드 ${code}`)
-        variants.push(`오류코드 ${code}`)
-        variants.push(`엔터프라이즈 에러코드 ${code}`)
-        variants.push(`엔터프라이즈 오류코드 ${code}`)
-    }
-
-    return uniqueQueries(variants)
+    return []
 }
 
 export interface RAGConfig {

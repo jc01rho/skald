@@ -79,12 +79,12 @@ export const MemoSubmissionsDashboard = () => {
         setDecisionSubmission(detail)
     }
 
-    const handleDecisionConfirm = async (reviewNote: string) => {
+    const handleDecisionConfirm = async (reviewNote: string, productId?: string) => {
         if (!projectUuid || !decisionMode || !decisionSubmission) return
 
         const success =
             decisionMode === 'approve'
-                ? await approveMemoSubmission(projectUuid, decisionSubmission.uuid, reviewNote || undefined)
+                ? await approveMemoSubmission(projectUuid, decisionSubmission.uuid, reviewNote || undefined, productId)
                 : await rejectMemoSubmission(projectUuid, decisionSubmission.uuid, reviewNote || undefined)
 
         if (success) {

@@ -9,14 +9,28 @@ import {
     DialogTitle,
 } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Textarea } from '@/components/ui/textarea'
+
+const PRODUCT_OPTIONS = [
+    { value: 'sparrow', label: 'Sparrow' },
+    { value: 'sparrow-sast', label: 'Sparrow SAST' },
+    { value: 'sparrow-sca', label: 'Sparrow SCA' },
+    { value: 'sast', label: 'SAST' },
+    { value: 'dast', label: 'DAST' },
+    { value: 'cloud', label: 'Cloud' },
+    { value: 'rasp', label: 'RASP' },
+    { value: 'sca', label: 'SCA' },
+    { value: 'saqt', label: 'SAQT' },
+    { value: 'ihub', label: 'iHub' },
+] as const
 
 interface MemoSubmissionDecisionDialogProps {
     mode: 'approve' | 'reject'
     submission: DetailedMemoSubmission | null
     submitting: boolean
     onClose: () => void
-    onConfirm: (reviewNote: string) => Promise<void>
+    onConfirm: (reviewNote: string, productId?: string) => Promise<void>
 }
 
 export const MemoSubmissionDecisionDialog = ({
@@ -27,16 +41,20 @@ export const MemoSubmissionDecisionDialog = ({
     onConfirm,
 }: MemoSubmissionDecisionDialogProps) => {
     const [reviewNote, setReviewNote] = useState('')
+    const [productId, setProductId] = useState('')
 
     useEffect(() => {
         if (submission) {
             setReviewNote(submission.review_note || '')
+            setProductId(typeof submission.metadata?.product_id === 'string' ? submission.metadata.product_id : '')
         } else {
             setReviewNote('')
+            setProductId('')
         }
     }, [submission])
 
     const actionLabel = mode === 'approve' ? 'Approve' : 'Reject'
+    const confirmDisabled = submitting || (mode === 'approve' && !productId)
 
     return (
         <Dialog open={!!submission} onOpenChange={onClose}>
@@ -51,6 +69,26 @@ export const MemoSubmissionDecisionDialog = ({
                 </DialogHeader>
 
                 <div className="space-y-2">
+                    {mode === 'approve' && (
+                        <div className="space-y-2">
+                            <label htmlFor="memo-submission-product-id" className="text-sm font-medium">
+                                Product
+                            </label>
+                            <Select value={productId} onValueChange={setProductId} disabled={submitting}>
+                                <SelectTrigger id="memo-submission-product-id">
+                                    <SelectValue placeholder="Select a product" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    {PRODUCT_OPTIONS.map((option) => (
+                                        <SelectItem key={option.value} value={option.value}>
+                                            {option.label}
+                                        </SelectItem>
+                                    ))}
+                                </SelectContent>
+                            </Select>
+                        </div>
+                    )}
+
                     <label htmlFor="memo-submission-review-note" className="text-sm font-medium">
                         Review note
                     </label>
@@ -74,8 +112,8 @@ export const MemoSubmissionDecisionDialog = ({
                     </Button>
                     <Button
                         variant={mode === 'approve' ? 'default' : 'destructive'}
-                        onClick={() => onConfirm(reviewNote.trim())}
-                        disabled={submitting}
+                        onClick={() => onConfirm(reviewNote.trim(), productId || undefined)}
+                        disabled={confirmDisabled}
                     >
                         {submitting ? `${actionLabel}ing...` : actionLabel}
                     </Button>

@@ -28,7 +28,12 @@ interface MemoSubmissionReviewState {
     fetchMemoSubmissions: (projectUuid: string, page?: number, pageSize?: number) => Promise<void>
     fetchApprovedMemoSubmissions: (projectUuid: string, page?: number, pageSize?: number) => Promise<void>
     getMemoSubmissionDetails: (projectUuid: string, submissionUuid: string) => Promise<DetailedMemoSubmission | null>
-    approveMemoSubmission: (projectUuid: string, submissionUuid: string, reviewNote?: string) => Promise<boolean>
+    approveMemoSubmission: (
+        projectUuid: string,
+        submissionUuid: string,
+        reviewNote?: string,
+        productId?: string
+    ) => Promise<boolean>
     rejectMemoSubmission: (projectUuid: string, submissionUuid: string, reviewNote?: string) => Promise<boolean>
     regenerateMemoSubmissionPreview: (
         projectUuid: string,
@@ -132,13 +137,21 @@ export const useMemoSubmissionReviewStore = create<MemoSubmissionReviewState>((s
         }
     },
 
-    approveMemoSubmission: async (projectUuid, submissionUuid, reviewNote) => {
+    approveMemoSubmission: async (projectUuid, submissionUuid, reviewNote, productId) => {
         set({ reviewActionLoading: true })
 
         try {
+            const payload: Record<string, unknown> = {}
+            if (reviewNote) {
+                payload.review_note = reviewNote
+            }
+            if (productId) {
+                payload.product_id = productId
+            }
+
             const response = await api.post(
                 `/v1/memo-submissions/${submissionUuid}/approve?project_id=${projectUuid}`,
-                reviewNote ? { review_note: reviewNote } : {}
+                payload
             )
 
             if (response.error) {
