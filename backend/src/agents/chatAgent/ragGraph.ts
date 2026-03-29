@@ -342,8 +342,137 @@ async function exactLookupNode(state: typeof RAGState.State) {
     }> = []
     let anyHit = false
 
+    type ErrorCodeLookupRow = {
+        uuid: string
+        title: string
+        content: string | null
+        chunk_content: string | null
+        source_url: string | null
+        archived: boolean
+    }
+
+    const extractErrorCodeSnippet = (text: string, code: string): string => {
+        const idx = text.indexOf(code)
+        if (idx === -1) {
+            return text.slice(0, 500).trim()
+        }
+
+        const start = Math.max(0, idx - 240)
+        const end = Math.min(text.length, idx + code.length + 240)
+        return text.slice(start, end).trim()
+    }
+
+    const scoreErrorCodeLookupRow = (row: ErrorCodeLookupRow, code: string): number => {
+        const title = row.title || ''
+        const chunkContent = row.chunk_content || ''
+        const content = row.content || ''
+        const combined = `${title}\n${chunkContent}\n${content}`
+        const lowerTitle = title.toLowerCase()
+        const lowerCombined = combined.toLowerCase()
+
+        let score = 0
+
+        if (/(error codes?|오류\s*코드|에러\s*코드|레거시 오류 코드)/iu.test(title)) {
+            score += 50
+        }
+        if (lowerTitle.includes('backend')) {
+            score += 10
+        }
+        if (lowerTitle.includes('legacy') || title.includes('레거시')) {
+            score += 10
+        }
+        if ((row.chunk_content || '').includes(code)) {
+            score += 25
+        }
+        if (content.includes(code)) {
+            score += 10
+        }
+
+        const codeIdx = lowerCombined.indexOf(code.toLowerCase())
+        if (codeIdx >= 0) {
+            const surrounding = lowerCombined.slice(Math.max(0, codeIdx - 80), codeIdx + code.length + 80)
+            if (/(error|오류|에러|message|원인|명칭|작업)/iu.test(surrounding)) {
+                score += 20
+            }
+            if (/(미존재|존재하지|분석중|분석 중)/iu.test(surrounding)) {
+                score += 20
+            }
+        }
+
+        return score
+    }
+
+    const findErrorCodeLookupRow = async (code: string): Promise<ErrorCodeLookupRow | null> => {
+        const rows = await DI.em.getConnection().execute<ErrorCodeLookupRow[]>(
+            `SELECT skald_memo.uuid,
+                    skald_memo.title,
+                    skald_memocontent.content,
+                    skald_memochunk.chunk_content,
+                    skald_memo.metadata->>'source_url' AS source_url,
+                    COALESCE(skald_memo.archived, false) AS archived
+             FROM skald_memochunk
+             JOIN skald_memo ON skald_memo.uuid = skald_memochunk.memo_uuid
+             LEFT JOIN skald_memocontent ON skald_memo.uuid = skald_memocontent.memo_id
+             WHERE skald_memo.project_id = ?
+               AND skald_memochunk.chunk_content ILIKE ?
+             ORDER BY skald_memochunk.chunk_index ASC
+             LIMIT 50`,
+            [project.uuid, `%${code}%`]
+        )
+
+        if (rows.length === 0) {
+            return null
+        }
+
+        return (
+            rows.map((row) => ({ row, score: scoreErrorCodeLookupRow(row, code) })).sort((a, b) => b.score - a.score)[0]
+                ?.row ?? null
+        )
+    }
+
     for (const extractedKey of extractedKeys) {
         try {
+            if (extractedKey.type === 'error_code') {
+                const row = await findErrorCodeLookupRow(extractedKey.value)
+
+                if (row) {
+                    const sourceText = row.chunk_content || row.content || row.title
+                    results.push({
+                        key: extractedKey.value,
+                        title: row.title,
+                        content: extractErrorCodeSnippet(sourceText, extractedKey.value),
+                        source_url: row.source_url || '',
+                        found: !row.archived,
+                        status: row.archived ? 'archived_only' : 'hit',
+                        archivedContent: row.archived
+                            ? extractErrorCodeSnippet(sourceText, extractedKey.value)
+                            : undefined,
+                    })
+                    if (!row.archived) {
+                        anyHit = true
+                    }
+                    logger.info(
+                        { key: extractedKey.value, type: extractedKey.type, memoUuid: row.uuid },
+                        'exactLookup: HIT on error code content search'
+                    )
+                    continue
+                }
+
+                results.push({
+                    key: extractedKey.value,
+                    title: '',
+                    content: '',
+                    source_url: '',
+                    found: false,
+                    status: 'miss',
+                })
+                logger.info(
+                    { key: extractedKey.value, type: extractedKey.type },
+                    'exactLookup: MISS — error code not found in KB content'
+                )
+                continue
+            }
+
             // Task 12: Two-stage lookup — first try active (archived=false), then archived
             const rows = await DI.em.getConnection().execute<
                 Array<{
