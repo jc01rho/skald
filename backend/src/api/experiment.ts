@@ -7,6 +7,7 @@ import { randomUUID } from 'crypto'
 import { ragGraph } from '@/agents/chatAgent/ragGraph'
 import { parseRagConfig } from '@/lib/ragUtils'
 import { streamChatAgent } from '@/agents/chatAgent/chatAgent'
+import { buildReferenceResults } from '@/lib/referenceResults'
 import { logger } from '@/lib/logger'
 import * as Sentry from '@sentry/node'
 import { llmJudgeAgent } from '@/agents/llmJudgeAgent'
@@ -333,7 +334,7 @@ const run = async (req: Request, res: Response) => {
             ragConfig: parsedRagConfig,
         })
 
-        const { query: finalQuery, contextStr, prompt, rerankedResults } = ragResultState
+        const { query: finalQuery, contextStr, prompt, rerankedResults, exactLookupResults } = ragResultState
 
         // Generate the answer without streaming
         let fullResponse = ''
@@ -343,7 +344,7 @@ const run = async (req: Request, res: Response) => {
             query: finalQuery,
             prompt,
             contextStr: contextStr || '',
-            rerankResults: rerankedResults || [],
+            rerankResults: buildReferenceResults(rerankedResults || [], exactLookupResults || []),
             enableReferences: parsedRagConfig.references.enabled,
         })) {
             if (chunk.type === 'token') {

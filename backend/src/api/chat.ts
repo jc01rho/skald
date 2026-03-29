@@ -23,6 +23,7 @@ import {
 } from '@/lib/lazyReprocessService'
 import { cacheResponse, getCachedResponse } from '@/lib/ragCache'
 import crypto from 'crypto'
+import { buildReferenceResults } from '@/lib/referenceResults'
 
 type AnswerMode = 'detailed' | 'partial' | 'rejected'
 type SufficiencyClass = 'high' | 'medium' | 'low' | 'empty'
@@ -266,7 +267,8 @@ export const chat = async (req: Request, res: Response) => {
         ragConfig: parsedRagConfig,
     })
 
-    const { query: finalQuery, contextStr, prompt, rerankedResults } = ragResultState
+    const { query: finalQuery, contextStr, prompt, rerankedResults, exactLookupResults } = ragResultState
+    const referenceResults = buildReferenceResults(rerankedResults || [], exactLookupResults || [])
 
     const contextLength = contextStr?.length || 0
     const rerankedCount = rerankedResults?.length || 0
@@ -282,7 +284,7 @@ export const chat = async (req: Request, res: Response) => {
             query: finalQuery,
             prompt,
             contextStr: contextStr || '',
-            rerankResults: rerankedResults || [],
+            rerankResults: referenceResults,
             enableReferences: parsedRagConfig.references.enabled,
         })) {
             if (chunk.type === 'token') {
@@ -341,7 +343,10 @@ export const chat = async (req: Request, res: Response) => {
                             query: retryState.query,
                             prompt: retryState.prompt,
                             contextStr: retryState.contextStr || '',
-                            rerankResults: retryState.rerankedResults || [],
+                            rerankResults: buildReferenceResults(
+                                retryState.rerankedResults || [],
+                                retryState.exactLookupResults || []
+                            ),
                             enableReferences: retryRagConfig.references.enabled,
                         })) {
                             if (chunk.type === 'token') retryResponse += chunk.content || ''
@@ -516,7 +521,8 @@ export const _generateStreamingResponse = async ({
             ragConfig: parsedRagConfig,
         })
 
-        const { query: finalQuery, contextStr, prompt, rerankedResults } = ragResultState
+        const { query: finalQuery, contextStr, prompt, rerankedResults, exactLookupResults } = ragResultState
+        const referenceResults = buildReferenceResults(rerankedResults || [], exactLookupResults || [])
         streamingRerankedResults = rerankedResults || []
 
         streamingContextLength = contextStr?.length || 0
@@ -530,7 +536,7 @@ export const _generateStreamingResponse = async ({
             query: finalQuery,
             prompt,
             contextStr: contextStr || '',
-            rerankResults: rerankedResults || [],
+            rerankResults: referenceResults,
             enableReferences: parsedRagConfig.references.enabled,
         })) {
             // format as Server-Sent Event
