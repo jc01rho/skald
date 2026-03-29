@@ -113,4 +113,15 @@ describe('queryNormalization', () => {
 
         expect(shouldInject).toBe(true)
     })
+
+    it('suppresses low-confidence guidance when strong literal anchor evidence exists', () => {
+        const shouldInject = shouldInjectLowConfidenceGuidance({
+            lookupHit: false,
+            rerankedResults: [{ index: 0, document: '오류 코드 450002', relevance_score: 0.05 }],
+            confidenceThreshold: 0.35,
+            hasStrongLiteralAnchorEvidence: true,
+        })
+
+        expect(shouldInject).toBe(false)
+    })
 })

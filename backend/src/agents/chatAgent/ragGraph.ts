@@ -592,17 +592,58 @@ export function shouldInjectLowConfidenceGuidance({
     lookupHit,
     rerankedResults,
     confidenceThreshold,
+    hasStrongLiteralAnchorEvidence = false,
 }: {
     lookupHit: boolean | null
     rerankedResults: RerankResult[]
     confidenceThreshold: number
+    hasStrongLiteralAnchorEvidence?: boolean
 }): boolean {
+    if (hasStrongLiteralAnchorEvidence) {
+        return false
+    }
+
     const avgRelevanceScore =
         rerankedResults.length > 0
             ? rerankedResults.reduce((sum, r) => sum + r.relevance_score, 0) / rerankedResults.length
             : 0
 
     return !lookupHit && (rerankedResults.length === 0 || avgRelevanceScore < confidenceThreshold)
+}
+
+function hasStrongLiteralAnchorEvidence({
+    query,
+    rerankedResults,
+    chunkResults,
+    memoPropertiesMap,
+}: {
+    query: string
+    rerankedResults: RerankResult[]
+    chunkResults: MemoChunkWithDistance[] | null
+    memoPropertiesMap: Map<string, { title: string; summary: string; content: string; source_url: string }> | null
+}): boolean {
+    if (!chunkResults || rerankedResults.length === 0) {
+        return false
+    }
+
+    const anchors = extractQueryAnchors(query)
+    if (anchors.length === 0) {
+        return false
+    }
+
+    return rerankedResults.some((result) => {
+        const chunk = chunkResults[result.index]?.chunk
+        if (!chunk) {
+            return false
+        }
+
+        const memo = memoPropertiesMap?.get(chunk.memo_uuid)
+        const searchableText = [result.document, chunk.chunk_content, memo?.title, memo?.summary, memo?.content]
+            .filter(Boolean)
+            .join('\n')
+
+        return anchors.some((anchor) => anchorMatchesText(anchor, searchableText))
+    })
 }
 
 function checkFallbackCondition(results: MemoChunkWithDistance[], topK: number, threshold: number): boolean {
@@ -1231,11 +1272,20 @@ function buildLLMInputsNode(state: typeof RAGState.State) {
         ragConfig,
         rerankedResults,
         clientSystemPrompt,
+        memoPropertiesMap,
         parentChunkMap,
         chunkResults,
         exactLookupResults,
         lookupHit,
     } = state
+
+    const queryAnchors = extractQueryAnchors(query)
+    const hasAnchorEvidence = hasStrongLiteralAnchorEvidence({
+        query,
+        rerankedResults,
+        chunkResults,
+        memoPropertiesMap,
+    })
 
     // P0-4: Confidence-based abstain — compute average relevance score
     const baseConfidenceThreshold = ragConfig.confidence?.threshold ?? 0.35
@@ -1248,6 +1298,7 @@ function buildLLMInputsNode(state: typeof RAGState.State) {
         lookupHit,
         rerankedResults,
         confidenceThreshold,
+        hasStrongLiteralAnchorEvidence: hasAnchorEvidence,
     })
 
     if (isLowConfidence) {
@@ -1314,14 +1365,20 @@ function buildLLMInputsNode(state: typeof RAGState.State) {
 
         // Try to get parent chunk content for richer context
         let documentContent = result.document
+        const childChunkContent = chunkResults?.[result.index]?.chunk.chunk_content || result.document
 
         // Find the corresponding chunk UUID to look up parent content
         if (parentChunkMap && chunkResults) {
             // Match by index since rerankedResults preserves chunk order
             const chunkUuid = chunkResults[result.index]?.chunk.uuid
             if (chunkUuid && parentChunkMap.has(chunkUuid)) {
-                // Use parent chunk content (larger, more context)
-                documentContent = parentChunkMap.get(chunkUuid)!
+                const parentContent = parentChunkMap.get(chunkUuid)!
+                const childHasAnchor = queryAnchors.some((anchor) => anchorMatchesText(anchor, childChunkContent))
+
+                // Preserve exact child evidence for literal-anchor queries before expanded parent context.
+                documentContent = childHasAnchor
+                    ? `${childChunkContent}\n\n[Expanded Parent Context]\n${parentContent}`
+                    : parentContent
             }
         }
 
@@ -1422,4 +1479,5 @@ export const __testables__ = {
     preserveAnchorMatches,
     buildLLMInputsNode,
     buildLiteralQueryAnchorBlock,
+    hasStrongLiteralAnchorEvidence,
 }

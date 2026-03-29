@@ -95,4 +95,45 @@ describe('ragGraph generic anchor preservation', () => {
         expect(anchorBlock).toContain('exception.20210, PROJ-123, 20210')
         expect(anchorBlock).toContain('[End of Literal Query Anchors]')
     })
+
+    it('detects strong literal anchor evidence from reranked error-code snippets', () => {
+        const hasEvidence = __testables__.hasStrongLiteralAnchorEvidence({
+            query: '레거시 sast 오류코드 450002 에 대해 모두 알려줘',
+            rerankedResults: [
+                {
+                    index: 0,
+                    document: '오류 코드: 450002 (NEST)\n오류 명칭: 해당 리파지토리가 분석중임',
+                    relevance_score: 0.08,
+                    memo_uuid: 'memo-450002',
+                    memo_title: 'Sparrow legacy 레거시 오류 코드',
+                },
+            ],
+            chunkResults: [
+                {
+                    chunk: {
+                        uuid: 'chunk-450002',
+                        chunk_content: '오류 코드: 450002 (NEST)\n오류 명칭: 해당 리파지토리가 분석중임',
+                        chunk_index: 0,
+                        embedding: [],
+                        memo_uuid: 'memo-450002',
+                        project_uuid: 'project-1',
+                    },
+                    distance: 0.9,
+                },
+            ] as MemoChunkWithDistance[],
+            memoPropertiesMap: new Map([
+                [
+                    'memo-450002',
+                    {
+                        title: 'Sparrow legacy 레거시 오류 코드',
+                        summary: '450002 오류 요약',
+                        content: '상세 설명',
+                        source_url: '',
+                    },
+                ],
+            ]),
+        })
+
+        expect(hasEvidence).toBe(true)
+    })
 })
