@@ -21,6 +21,7 @@ import { mapWithConcurrency } from '@/lib/asyncUtils'
 import { HNSWOptimizationService } from '@/lib/hnswOptimization'
 import { extractExplicitKeys, ExtractedKey } from '@/lib/keyExtractor'
 import { expandTechnicalQueryVariants } from '@/lib/queryNormalization'
+import { buildMemoSourceUrl } from '@/lib/memoSourceUrl'
 
 interface RerankResult {
     index: number
@@ -288,6 +289,7 @@ const RAGState = Annotation.Root({
     contextStr: Annotation<string | null>,
     exactLookupKeys: Annotation<ExtractedKey[] | null>,
     exactLookupResults: Annotation<Array<{
+        memo_uuid?: string
         key: string
         title: string
         content: string
@@ -331,6 +333,7 @@ async function exactLookupNode(state: typeof RAGState.State) {
 
     // Task 12: Extended type to support archived_only and contradiction states
     const results: Array<{
+        memo_uuid?: string
         key: string
         title: string
         content: string
@@ -348,6 +351,8 @@ async function exactLookupNode(state: typeof RAGState.State) {
         content: string | null
         chunk_content: string | null
         source_url: string | null
+        source: string | null
+        submission_id: string | null
         archived: boolean
     }
 
@@ -409,6 +414,8 @@ async function exactLookupNode(state: typeof RAGState.State) {
                     skald_memocontent.content,
                     skald_memochunk.chunk_content,
                     skald_memo.metadata->>'source_url' AS source_url,
+                    skald_memo.source,
+                    skald_memo.metadata->>'submission_id' AS submission_id,
                     COALESCE(skald_memo.archived, false) AS archived
              FROM skald_memochunk
              JOIN skald_memo ON skald_memo.uuid = skald_memochunk.memo_uuid
@@ -438,10 +445,17 @@ async function exactLookupNode(state: typeof RAGState.State) {
                 if (row) {
                     const sourceText = row.chunk_content || row.content || row.title
                     results.push({
+                        memo_uuid: row.uuid,
                         key: extractedKey.value,
                         title: row.title,
                         content: extractErrorCodeSnippet(sourceText, extractedKey.value),
-                        source_url: row.source_url || '',
+                        source_url: buildMemoSourceUrl({
+                            projectUuid: project.uuid,
+                            memoUuid: row.uuid,
+                            sourceUrl: row.source_url,
+                            source: row.source,
+                            submissionId: row.submission_id,
+                        }),
                         found: !row.archived,
                         status: row.archived ? 'archived_only' : 'hit',
                         archivedContent: row.archived
@@ -480,12 +494,16 @@ async function exactLookupNode(state: typeof RAGState.State) {
                     title: string
                     content: string | null
                     source_url: string | null
+                    source: string | null
+                    submission_id: string | null
                     archived: boolean
                 }>
             >(
                 `SELECT skald_memo.uuid, skald_memo.title,
                         skald_memocontent.content,
                         skald_memo.metadata->>'source_url' AS source_url,
+                        skald_memo.source,
+                        skald_memo.metadata->>'submission_id' AS submission_id,
                         COALESCE(skald_memo.archived, false) AS archived
                  FROM skald_memo
                  LEFT JOIN skald_memocontent ON skald_memo.uuid = skald_memocontent.memo_id
@@ -500,10 +518,17 @@ async function exactLookupNode(state: typeof RAGState.State) {
                 if (!row.archived) {
                     // Normal hit
                     results.push({
+                        memo_uuid: row.uuid,
                         key: extractedKey.value,
                         title: row.title,
                         content: row.content || row.title,
-                        source_url: row.source_url || '',
+                        source_url: buildMemoSourceUrl({
+                            projectUuid: project.uuid,
+                            memoUuid: row.uuid,
+                            sourceUrl: row.source_url,
+                            source: row.source,
+                            submissionId: row.submission_id,
+                        }),
                         found: true,
                         status: 'hit',
                     })
@@ -515,10 +540,17 @@ async function exactLookupNode(state: typeof RAGState.State) {
                 } else {
                     // Task 12: Archived-only hit — surface as distinct state
                     results.push({
+                        memo_uuid: row.uuid,
                         key: extractedKey.value,
                         title: row.title,
                         content: '',
-                        source_url: row.source_url || '',
+                        source_url: buildMemoSourceUrl({
+                            projectUuid: project.uuid,
+                            memoUuid: row.uuid,
+                            sourceUrl: row.source_url,
+                            source: row.source,
+                            submissionId: row.submission_id,
+                        }),
                         found: false,
                         status: 'archived_only',
                         archivedContent: row.content || row.title,
@@ -536,12 +568,16 @@ async function exactLookupNode(state: typeof RAGState.State) {
                         title: string
                         content: string | null
                         source_url: string | null
+                        source: string | null
+                        submission_id: string | null
                         archived: boolean
                     }>
                 >(
                     `SELECT skald_memo.uuid, skald_memo.title,
                             skald_memocontent.content,
                             skald_memo.metadata->>'source_url' AS source_url,
+                            skald_memo.source,
+                            skald_memo.metadata->>'submission_id' AS submission_id,
                             COALESCE(skald_memo.archived, false) AS archived
                      FROM skald_memo
                      LEFT JOIN skald_memocontent ON skald_memo.uuid = skald_memocontent.memo_id
@@ -556,10 +592,17 @@ async function exactLookupNode(state: typeof RAGState.State) {
                     if (!row.archived) {
                         // Normal hit
                         results.push({
+                            memo_uuid: row.uuid,
                             key: extractedKey.value,
                             title: row.title,
                             content: row.content || row.title,
-                            source_url: row.source_url || '',
+                            source_url: buildMemoSourceUrl({
+                                projectUuid: project.uuid,
+                                memoUuid: row.uuid,
+                                sourceUrl: row.source_url,
+                                source: row.source,
+                                submissionId: row.submission_id,
+                            }),
                             found: true,
                             status: 'hit',
                         })
@@ -571,10 +614,17 @@ async function exactLookupNode(state: typeof RAGState.State) {
                     } else {
                         // Task 12: Archived-only hit
                         results.push({
+                            memo_uuid: row.uuid,
                             key: extractedKey.value,
                             title: row.title,
                             content: '',
-                            source_url: row.source_url || '',
+                            source_url: buildMemoSourceUrl({
+                                projectUuid: project.uuid,
+                                memoUuid: row.uuid,
+                                sourceUrl: row.source_url,
+                                source: row.source,
+                                submissionId: row.submission_id,
+                            }),
                             found: false,
                             status: 'archived_only',
                             archivedContent: row.content || row.title,
@@ -1456,13 +1506,13 @@ function buildLLMInputsNode(state: typeof RAGState.State) {
         const missResults = exactLookupResults.filter((r) => r.status === 'miss')
 
         if (hitResults.length > 0) {
-            contextStr += '[Exact Lookup Results — use these as primary evidence]\n'
+            contextStr += 'Primary exact-match evidence:\n'
             for (const result of hitResults) {
                 contextStr += `Document: ${result.title}\n${result.content}\n`
                 if (result.source_url) contextStr += `Source: ${result.source_url}\n`
                 contextStr += '\n'
             }
-            contextStr += '[End of Exact Lookup Results]\n\n'
+            contextStr += 'End of primary exact-match evidence.\n\n'
         }
 
         // Task 12: Surface archived-only hits as distinct information
