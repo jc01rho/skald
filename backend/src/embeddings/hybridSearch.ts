@@ -235,13 +235,24 @@ export class HybridSearchService {
         Array<{ uuid: string; chunk_content: string; memo_uuid: string; memo_title?: string; bm25_score: number }>
     > {
         const { whereConditions, params } = buildFilterConditions(filters || [])
-        const allParams = [queryText, queryText, project.uuid, queryText, queryText, ...params, topK]
+        const allParams = [
+            queryText,
+            queryText,
+            queryText,
+            project.uuid,
+            queryText,
+            queryText,
+            queryText,
+            ...params,
+            topK,
+        ]
 
         let whereClause = `
             WHERE skald_memochunk.project_id = ?
             AND (
                 skald_memochunk.content_tsvector @@ plainto_tsquery('english', ?)
                 OR to_tsvector('english', COALESCE(skald_memo.title, '')) @@ plainto_tsquery('english', ?)
+                OR to_tsvector('english', COALESCE(skald_memo.metadata->>'search_text', '')) @@ plainto_tsquery('english', ?)
             )
         `
 
@@ -257,7 +268,11 @@ export class HybridSearchService {
                 skald_memo.title AS memo_title,
                 GREATEST(
                     ts_rank(skald_memochunk.content_tsvector, plainto_tsquery('english', ?)),
-                    ts_rank(to_tsvector('english', COALESCE(skald_memo.title, '')), plainto_tsquery('english', ?))
+                    ts_rank(to_tsvector('english', COALESCE(skald_memo.title, '')), plainto_tsquery('english', ?)),
+                    ts_rank(
+                        to_tsvector('english', COALESCE(skald_memo.metadata->>'search_text', '')),
+                        plainto_tsquery('english', ?)
+                    ) * 1.1
                 ) as bm25_score
             FROM skald_memochunk
             JOIN skald_memo ON skald_memochunk.memo_id = skald_memo.uuid
@@ -297,10 +312,13 @@ export class HybridSearchService {
         const allParams = [
             queryText,
             queryText,
+            queryText,
             project.uuid,
             queryText,
             queryText,
+            queryText,
             ...params,
+            queryText,
             queryText,
             queryText,
             topK,
@@ -311,6 +329,7 @@ export class HybridSearchService {
             AND (
                 skald_memochunk.chunk_content % ?
                 OR COALESCE(skald_memo.title, '') % ?
+                OR COALESCE(skald_memo.metadata->>'search_text', '') % ?
             )
         `
 
@@ -326,12 +345,17 @@ export class HybridSearchService {
                 skald_memo.title AS memo_title,
                 GREATEST(
                     similarity(skald_memochunk.chunk_content, ?),
-                    similarity(COALESCE(skald_memo.title, ''), ?) * 1.15
+                    similarity(COALESCE(skald_memo.title, ''), ?) * 1.15,
+                    similarity(COALESCE(skald_memo.metadata->>'search_text', ''), ?) * 1.25
                 ) as bm25_score
             FROM skald_memochunk
             JOIN skald_memo ON skald_memochunk.memo_id = skald_memo.uuid
             ${whereClause}
-            ORDER BY LEAST(skald_memochunk.chunk_content <-> ?, COALESCE(skald_memo.title, '') <-> ?)
+            ORDER BY LEAST(
+                skald_memochunk.chunk_content <-> ?,
+                COALESCE(skald_memo.title, '') <-> ?,
+                COALESCE(skald_memo.metadata->>'search_text', '') <-> ?
+            )
             LIMIT ?
         `
 
