@@ -162,7 +162,9 @@ export const chat = async (req: Request, res: Response) => {
         )
         .digest('hex')
 
-    if (!stream) {
+    const canUseResponseCache = !stream && !parsedRagConfig.references.enabled
+
+    if (canUseResponseCache) {
         const cachedResponse = await getCachedResponse(responseCacheKey)
         if (cachedResponse) {
             const finalChatId = await createChatMessagePair(project, query, cachedResponse, chatId, clientSystemPrompt)
@@ -193,7 +195,9 @@ export const chat = async (req: Request, res: Response) => {
         const directResponse = routeResult.response
         const finalChatId = await createChatMessagePair(project, query, directResponse, chatId, clientSystemPrompt)
 
-        await cacheResponse(responseCacheKey, directResponse)
+        if (canUseResponseCache) {
+            await cacheResponse(responseCacheKey, directResponse)
+        }
 
         captureChatTelemetry({
             req,
@@ -425,7 +429,9 @@ export const chat = async (req: Request, res: Response) => {
 
         const finalChatId = await createChatMessagePair(project, query, finalResponse, chatId, clientSystemPrompt)
 
-        await cacheResponse(responseCacheKey, finalResponse)
+        if (canUseResponseCache) {
+            await cacheResponse(responseCacheKey, finalResponse)
+        }
 
         const response: any = {
             ok: true,
