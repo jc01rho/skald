@@ -10,11 +10,14 @@
  */
 
 export interface ExtractedKey {
-    type: 'jira_key' | 'doc_reference' | 'cattower_url' | 'jira_url'
+    type: 'jira_key' | 'doc_reference' | 'cattower_url' | 'jira_url' | 'error_code'
     value: string // normalized value for lookup
     original: string // original matched string
     confidence: number // 0-1, extraction confidence
 }
+
+const ERROR_CODE_QUERY_CUE_PATTERN = /(에러\s*코드|에러코드|오류\s*코드|오류코드|error\s*codes?)/iu
+const PURE_NUMERIC_ERROR_CODE_PATTERN = /\b(\d{4,})\b/g
 
 /**
  * Pattern 1: Jira Issue Key
@@ -99,6 +102,21 @@ function extractCattowerUrls(query: string): ExtractedKey[] {
     })
 }
 
+function extractErrorCodes(query: string): ExtractedKey[] {
+    if (!ERROR_CODE_QUERY_CUE_PATTERN.test(query)) {
+        return []
+    }
+
+    const matches = Array.from(query.matchAll(PURE_NUMERIC_ERROR_CODE_PATTERN))
+
+    return matches.map((match) => ({
+        type: 'error_code',
+        value: match[1],
+        original: match[1],
+        confidence: 0.92,
+    }))
+}
+
 /**
  * Main extraction function
  * Returns all extracted keys sorted by confidence (highest first)
@@ -109,6 +127,7 @@ export function extractExplicitKeys(query: string): ExtractedKey[] {
         ...extractJiraUrls(query),
         ...extractDocReferences(query),
         ...extractCattowerUrls(query),
+        ...extractErrorCodes(query),
     ]
 
     // Sort by confidence (highest first), then by type priority
@@ -117,6 +136,7 @@ export function extractExplicitKeys(query: string): ExtractedKey[] {
         jira_url: 2,
         doc_reference: 3,
         cattower_url: 4,
+        error_code: 5,
     }
 
     return allKeys.sort((a, b) => {
