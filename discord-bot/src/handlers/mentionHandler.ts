@@ -308,6 +308,12 @@ const SPARROW_ALIASES = ['엔터프라이즈', '엔터'] as const
 
 // Product keywords that can combine with sparrow alias
 const SPARROW_COMBINE_KEYWORDS = ['sast', 'sca'] as const
+const ERROR_CODE_QUERY_PATTERN = /(에러\s*코드|에러코드|오류\s*코드|오류코드|error\s*codes?)/iu
+const NUMERIC_ERROR_CODE_PATTERN = /\b\d{4,}\b/u
+
+function shouldSkipProductFilter(query: string): boolean {
+    return ERROR_CODE_QUERY_PATTERN.test(query) && NUMERIC_ERROR_CODE_PATTERN.test(query)
+}
 
 /**
  * Detect product_id keyword from user query
@@ -316,6 +322,10 @@ const SPARROW_COMBINE_KEYWORDS = ['sast', 'sca'] as const
  */
 export function detectProductId(query: string): ProductId | undefined {
     const lowerQuery = query.toLowerCase()
+
+    if (shouldSkipProductFilter(query)) {
+        return undefined
+    }
 
     if (/\b[A-Z][A-Z0-9_]+-\d+\b/.test(query)) {
         return undefined
@@ -585,4 +595,6 @@ export const __testables__ = {
     extractCitedReferenceKeys,
     selectReferenceEntries,
     extractInfoDocUrls,
+    detectProductId,
+    shouldSkipProductFilter,
 }

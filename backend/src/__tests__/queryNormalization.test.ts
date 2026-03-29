@@ -60,6 +60,40 @@ describe('queryNormalization', () => {
         )
     })
 
+    it('adds numeric enterprise error code variants for numeric error code queries', () => {
+        const variants = expandTechnicalQueryVariants('엔터프라이즈 에러코드 27000 에 대해 모두 알려줘')
+
+        expect(variants).toEqual(
+            expect.arrayContaining([
+                '27000',
+                '"27000"',
+                'enterprise error code 27000',
+                'sparrow enterprise error code 27000',
+                'backend error code 27000',
+                '엔터프라이즈 에러코드 27000',
+            ])
+        )
+    })
+
+    it('adds legacy sast error code variants for numeric error code queries', () => {
+        const variants = expandTechnicalQueryVariants('레거시 sast 오류코드 450002 에 대해 모두 알려줘')
+
+        expect(variants).toEqual(
+            expect.arrayContaining([
+                'sast error codes',
+                'sparrow sast error codes',
+                'sparrow-sast error codes',
+                'legacy sast error codes',
+                '레거시 sast 오류코드',
+                '450002',
+                '"450002"',
+                'sast error code 450002',
+                'legacy sast error code 450002',
+                '레거시 sast 오류코드 450002',
+            ])
+        )
+    })
+
     it('suppresses low-confidence guidance when exact lookup already hit', () => {
         const shouldInject = shouldInjectLowConfidenceGuidance({
             lookupHit: true,

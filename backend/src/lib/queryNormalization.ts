@@ -2,6 +2,7 @@ const METRIC_ALIAS_PATTERN = /매트릭스?|메트릭스?/giu
 const LEGACY_PATTERN = /레거시/iu
 const ENTERPRISE_ALIAS_PATTERN = /(엔터프라이즈|엔터|enterprise)/iu
 const ERROR_CODE_ALIAS_PATTERN = /(에러코드|오류코드|error\s*codes?)/iu
+const NUMERIC_ERROR_CODE_PATTERN = /\b\d{4,}\b/gu
 const KOREAN_DEFINITION_PATTERN =
     /(?:^|\s)(.+?)(?:이라는|라는|이란|란)?\s*(?:기능)?\s*(?:이 뭐야\??|가 뭐야\??|뭐야\??|무엇(?:인가요|이야|인가)?\??|설명해줘\??|자세히 설명해줘\??|소개해줘\??)$/iu
 const KOREAN_DEFINITION_SUFFIX_PATTERN = /(정의|개요|목적|동작 방식|사용 방법|설명)/iu
@@ -68,6 +69,8 @@ export function expandTechnicalQueryVariants(query: string): string[] {
     const mentionsSparrowProperties = lowerNormalized.includes('sparrow.properties')
     const mentionsEnterprise = ENTERPRISE_ALIAS_PATTERN.test(normalized)
     const mentionsErrorCode = ERROR_CODE_ALIAS_PATTERN.test(normalized)
+    const mentionsLegacy = LEGACY_PATTERN.test(normalized)
+    const hasNumericErrorCodes = Array.from(normalized.matchAll(NUMERIC_ERROR_CODE_PATTERN), (match) => match[0])
     const mentionsOptionLike =
         lowerNormalized.includes('option') || lowerNormalized.includes('옵션') || lowerNormalized.includes('설정')
 
@@ -103,6 +106,43 @@ export function expandTechnicalQueryVariants(query: string): string[] {
         variants.push(`${normalized} sparrow enterprise backend error codes`)
         variants.push(`${normalized} backend error codes`)
         variants.push(`${normalized} sparrow-enterprise-backend-error-codes`)
+
+        for (const code of hasNumericErrorCodes) {
+            variants.push(code)
+            variants.push(`"${code}"`)
+            variants.push(`enterprise error code ${code}`)
+            variants.push(`sparrow enterprise error code ${code}`)
+            variants.push(`backend error code ${code}`)
+            variants.push(`엔터프라이즈 에러코드 ${code}`)
+        }
+    }
+
+    if (mentionsSast && mentionsErrorCode) {
+        variants.push('sast error codes')
+        variants.push('sparrow sast error codes')
+        variants.push('sparrow-sast error codes')
+        variants.push('sast 오류코드')
+        variants.push('sast 에러코드')
+        variants.push(`${normalized} sast error codes`)
+
+        if (mentionsLegacy) {
+            variants.push('legacy sast error codes')
+            variants.push('legacy sparrow sast error codes')
+            variants.push('레거시 sast 오류코드')
+            variants.push(`${normalized} legacy sast error codes`)
+        }
+
+        for (const code of hasNumericErrorCodes) {
+            variants.push(code)
+            variants.push(`"${code}"`)
+            variants.push(`sast error code ${code}`)
+            variants.push(`sparrow sast error code ${code}`)
+
+            if (mentionsLegacy) {
+                variants.push(`legacy sast error code ${code}`)
+                variants.push(`레거시 sast 오류코드 ${code}`)
+            }
+        }
     }
 
     variants.push(...buildDefinitionVariants(normalized))
