@@ -83,6 +83,14 @@ class Settings(BaseSettings):
         default=True,
         description="Enable technical docs collection",
     )
+    release_enabled: bool = Field(
+        default=True,
+        description="Enable release status collection",
+    )
+    userdata_enabled: bool = Field(
+        default=True,
+        description="Enable customer userdata collection",
+    )
 
     # Worker Configuration
     worker_concurrency: int = Field(

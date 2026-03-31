@@ -11,6 +11,8 @@ from apscheduler.triggers.interval import IntervalTrigger
 
 from skald_worker.collectors.docs_collector import get_docs_collector
 from skald_worker.collectors.jira_collector import get_jira_collector
+from skald_worker.collectors.release_collector import get_release_collector
+from skald_worker.collectors.userdata_collector import get_userdata_collector
 from skald_worker.config import settings
 
 logger = structlog.get_logger(__name__)
@@ -67,6 +69,38 @@ async def docs_sync_job() -> None:
         logger.error("Scheduled docs sync failed", error=str(e))
 
 
+async def release_sync_job() -> None:
+    """Scheduled job to sync release status documents."""
+    logger.info("Starting scheduled release sync")
+    try:
+        collector = get_release_collector()
+        result = await collector.sync_all()
+        _last_runs["release"] = datetime.now()
+        logger.info(
+            "Scheduled release sync completed",
+            processed=result["processed"],
+            failed=result["failed"],
+        )
+    except Exception as e:
+        logger.error("Scheduled release sync failed", error=str(e))
+
+
+async def userdata_sync_job() -> None:
+    """Scheduled job to sync customer userdata documents."""
+    logger.info("Starting scheduled userdata sync")
+    try:
+        collector = get_userdata_collector()
+        result = await collector.sync_all()
+        _last_runs["userdata"] = datetime.now()
+        logger.info(
+            "Scheduled userdata sync completed",
+            processed=result["processed"],
+            failed=result["failed"],
+        )
+    except Exception as e:
+        logger.error("Scheduled userdata sync failed", error=str(e))
+
+
 def start_scheduler() -> AsyncIOScheduler:
     """Start the background scheduler with configured jobs."""
     global _scheduler
@@ -107,6 +141,40 @@ def start_scheduler() -> AsyncIOScheduler:
             cron_hour=settings.docs_sync_cron_hour,
             cron_minute=settings.docs_sync_cron_minute,
             sync_days=settings.docs_sync_days,
+        )
+
+    if settings.release_enabled and settings.spms_base_url:
+        _scheduler.add_job(
+            release_sync_job,
+            trigger=CronTrigger(
+                hour=settings.docs_sync_cron_hour,
+                minute=settings.docs_sync_cron_minute,
+            ),
+            id="release_sync",
+            name="Release Sync",
+            replace_existing=True,
+        )
+        logger.info(
+            "Scheduled release sync job",
+            cron_hour=settings.docs_sync_cron_hour,
+            cron_minute=settings.docs_sync_cron_minute,
+        )
+
+    if settings.userdata_enabled and settings.spms_base_url:
+        _scheduler.add_job(
+            userdata_sync_job,
+            trigger=CronTrigger(
+                hour=settings.docs_sync_cron_hour,
+                minute=settings.docs_sync_cron_minute,
+            ),
+            id="userdata_sync",
+            name="Userdata Sync",
+            replace_existing=True,
+        )
+        logger.info(
+            "Scheduled userdata sync job",
+            cron_hour=settings.docs_sync_cron_hour,
+            cron_minute=settings.docs_sync_cron_minute,
         )
 
     _scheduler.start()
