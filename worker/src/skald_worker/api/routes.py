@@ -67,6 +67,8 @@ async def health_check() -> HealthResponse:
         collectors={
             "jira": settings.jira_enabled and bool(settings.jira_server),
             "docs": settings.docs_enabled and bool(settings.spms_base_url),
+            "release": settings.release_enabled and bool(settings.spms_base_url),
+            "userdata": settings.userdata_enabled and bool(settings.spms_base_url),
         },
         scheduler=get_scheduler_status(),
         circuit_breakers=circuit_breakers,

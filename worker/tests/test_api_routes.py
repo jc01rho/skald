@@ -17,13 +17,18 @@ class TestAPIRoutes:
             mock_settings.skald_base_url = "https://api.skald.test"
             mock_settings.skald_api_key = "test-key"
             mock_settings.skald_project_id = "test-project"
+            mock_settings.worker_api_key = ""
             mock_settings.jira_server = "https://jira.test"
             mock_settings.jira_user = "test"
             mock_settings.jira_password = "test"
             mock_settings.jira_jql_filter = "project = TEST"
             mock_settings.jira_poll_interval_minutes = 60
+            mock_settings.jira_enabled = True
             mock_settings.spms_base_url = "https://docs.test"
             mock_settings.docs_poll_interval_minutes = 120
+            mock_settings.docs_enabled = True
+            mock_settings.release_enabled = True
+            mock_settings.userdata_enabled = True
             mock_settings.worker_concurrency = 2
             mock_settings.host = "0.0.0.0"
             mock_settings.port = 8080
@@ -74,7 +79,7 @@ class TestAPIRoutes:
     def test_chat_endpoint(self, client):
         """Test chat endpoint."""
         mock_chat_result = {
-            "response": "This is the AI response",
+            "message": "This is the AI response",
             "sources": [],
         }
 
@@ -90,7 +95,7 @@ class TestAPIRoutes:
 
             assert response.status_code == 200
             data = response.json()
-            assert "response" in data
+            assert data["message"] == "This is the AI response"
 
     def test_similar_issues_endpoint(self, client):
         """Test similar issues endpoint."""
@@ -136,13 +141,17 @@ class TestAPIRoutes:
             assert response.status_code == 200
             data = response.json()
             assert data["source"] == "jira"
-            assert data["result"]["processed"] == 9
+            assert data["processed"] == 9
 
     def test_sync_docs_endpoint(self, client):
         """Test sync endpoint for docs."""
         mock_result = {
-            "processed": 50,
-            "failed": 2,
+            "total": {
+                "processed": 50,
+                "failed": 2,
+                "skipped": 0,
+            },
+            "by_type": {},
         }
 
         with patch("skald_worker.api.routes.get_docs_collector") as mock_get_collector:
@@ -158,7 +167,7 @@ class TestAPIRoutes:
             assert response.status_code == 200
             data = response.json()
             assert data["source"] == "docs"
-            assert data["result"]["processed"] == 50
+            assert data["processed"] == 50
 
     def test_sync_invalid_source(self, client):
         """Test sync endpoint with invalid source."""
@@ -167,4 +176,4 @@ class TestAPIRoutes:
             json={"source": "invalid"},
         )
 
-        assert response.status_code == 422  # Validation error
+        assert response.status_code == 400
