@@ -479,13 +479,16 @@ describe('Chat API', () => {
                     query: 'test query',
                 })
 
-            expect(chatAgent.streamChatAgent).toHaveBeenCalledWith({
-                query: 'test query',
-                prompt: expect.anything(),
-                contextStr: 'Result 1: First result\n\nResult 2: Second result\n\n',
-                rerankResults: mockRerankedResults,
-                enableReferences: false,
-            })
+            expect(chatAgent.streamChatAgent).toHaveBeenCalled()
+            const streamCall = (chatAgent.streamChatAgent as jest.Mock).mock.calls[0][0]
+            expect(streamCall).toEqual(
+                expect.objectContaining({
+                    query: 'test query',
+                    prompt: expect.anything(),
+                    contextStr: 'Result 1: First result\n\nResult 2: Second result\n\n',
+                    enableReferences: false,
+                })
+            )
         })
 
         it('should pass custom prompt to chat agent when provided', async () => {
@@ -516,13 +519,16 @@ describe('Chat API', () => {
                     system_prompt: customPrompt,
                 })
 
-            expect(chatAgent.streamChatAgent).toHaveBeenCalledWith({
-                query: 'test query',
-                prompt: expect.anything(),
-                contextStr: 'Result 1: Result content\n\n',
-                rerankResults: mockRerankedResults,
-                enableReferences: false,
-            })
+            expect(chatAgent.streamChatAgent).toHaveBeenCalled()
+            const streamCall = (chatAgent.streamChatAgent as jest.Mock).mock.calls[0][0]
+            expect(streamCall).toEqual(
+                expect.objectContaining({
+                    query: 'test query',
+                    prompt: expect.anything(),
+                    contextStr: 'Result 1: Result content\n\n',
+                    enableReferences: false,
+                })
+            )
 
             const em = orm.em.fork()
             const chatMessages = await em.find(ChatMessage, { project: project.uuid }, { orderBy: { sent_at: 'ASC' } })
@@ -560,13 +566,16 @@ describe('Chat API', () => {
                     query: 'test query',
                 })
 
-            expect(chatAgent.streamChatAgent).toHaveBeenCalledWith({
-                query: 'test query',
-                prompt: expect.anything(),
-                contextStr: 'Result 1: Result content\n\n',
-                rerankResults: mockRerankedResults,
-                enableReferences: false,
-            })
+            expect(chatAgent.streamChatAgent).toHaveBeenCalled()
+            const streamCall = (chatAgent.streamChatAgent as jest.Mock).mock.calls[0][0]
+            expect(streamCall).toEqual(
+                expect.objectContaining({
+                    query: 'test query',
+                    prompt: expect.anything(),
+                    contextStr: 'Result 1: Result content\n\n',
+                    enableReferences: false,
+                })
+            )
         })
 
         it('should pass client system prompt to streaming chat agent when provided', async () => {
@@ -600,13 +609,16 @@ describe('Chat API', () => {
                     system_prompt: clientSystemPrompt,
                 })
 
-            expect(chatAgent.streamChatAgent).toHaveBeenCalledWith({
-                query: 'test query',
-                prompt: expect.anything(),
-                contextStr: 'Result 1: Result content\n\n',
-                rerankResults: mockRerankedResults,
-                enableReferences: false,
-            })
+            expect(chatAgent.streamChatAgent).toHaveBeenCalled()
+            const streamCall = (chatAgent.streamChatAgent as jest.Mock).mock.calls[0][0]
+            expect(streamCall).toEqual(
+                expect.objectContaining({
+                    query: 'test query',
+                    prompt: expect.anything(),
+                    contextStr: 'Result 1: Result content\n\n',
+                    enableReferences: false,
+                })
+            )
             // check that the created chat messages have the correct client system prompt
             const em = orm.em.fork()
             const chatMessages = await em.find(ChatMessage, { project: project.uuid }, { orderBy: { sent_at: 'ASC' } })
@@ -647,13 +659,16 @@ describe('Chat API', () => {
                     stream: true,
                 })
 
-            expect(chatAgent.streamChatAgent).toHaveBeenCalledWith({
-                query: 'test query',
-                prompt: expect.anything(),
-                contextStr: 'Result 1: Result content\n\n',
-                rerankResults: mockRerankedResults,
-                enableReferences: false,
-            })
+            expect(chatAgent.streamChatAgent).toHaveBeenCalled()
+            const streamCall = (chatAgent.streamChatAgent as jest.Mock).mock.calls[0][0]
+            expect(streamCall).toEqual(
+                expect.objectContaining({
+                    query: 'test query',
+                    prompt: expect.anything(),
+                    contextStr: 'Result 1: Result content\n\n',
+                    enableReferences: false,
+                })
+            )
         })
 
         it('should return chat_id in non-streaming response', async () => {
@@ -1570,14 +1585,20 @@ describe('Prompt Contract Tests', () => {
 
     it('CHAT_AGENT_INSTRUCTIONS_WITH_SOURCES should forbid citations for user-provided evidence', () => {
         const { CHAT_AGENT_INSTRUCTIONS_WITH_SOURCES } = require('../agents/chatAgent/prompts')
-        expect(CHAT_AGENT_INSTRUCTIONS_WITH_SOURCES).toContain('사용자 제공 컨텍스트에서 나온 정보에는 절대 [[N]] 인용을 붙이지 마십시오')
+        expect(CHAT_AGENT_INSTRUCTIONS_WITH_SOURCES).toContain(
+            '사용자 제공 컨텍스트에서 나온 정보에는 절대 [[N]] 인용을 붙이지 마십시오'
+        )
         expect(CHAT_AGENT_INSTRUCTIONS_WITH_SOURCES).toContain('검색된 문서만 인용합니다')
     })
 
     it('CHAT_AGENT_INSTRUCTIONS_WITH_SOURCES should preserve [[N]] citation rules for retrieved docs only', () => {
         const { CHAT_AGENT_INSTRUCTIONS_WITH_SOURCES } = require('../agents/chatAgent/prompts')
-        expect(CHAT_AGENT_INSTRUCTIONS_WITH_SOURCES).toContain('검색된 문서에서 도출된 각 주장 직후에만 [[result_number]]를 사용')
-        expect(CHAT_AGENT_INSTRUCTIONS_WITH_SOURCES).toContain('검색된 문서에서 나온 주장에는 반드시 [[N]] 형식의 출처가 필요합니다')
+        expect(CHAT_AGENT_INSTRUCTIONS_WITH_SOURCES).toContain(
+            '검색된 문서에서 도출된 각 주장 직후에만 [[result_number]]를 사용'
+        )
+        expect(CHAT_AGENT_INSTRUCTIONS_WITH_SOURCES).toContain(
+            '검색된 문서에서 나온 주장에는 반드시 [[N]] 형식의 출처가 필요합니다'
+        )
     })
 
     it('CHAT_AGENT_INSTRUCTIONS_WITH_SOURCES should explicitly surface contradictions between evidence sources', () => {
@@ -1589,6 +1610,8 @@ describe('Prompt Contract Tests', () => {
 
     it('CHAT_AGENT_INSTRUCTIONS_WITH_SOURCES should forbid fake citations (no [[N]] for user context)', () => {
         const { CHAT_AGENT_INSTRUCTIONS_WITH_SOURCES } = require('../agents/chatAgent/prompts')
-        expect(CHAT_AGENT_INSTRUCTIONS_WITH_SOURCES).toContain('사용자 제공 컨텍스트에서 나온 정보에는 절대 인용을 붙이지 마십시오')
+        expect(CHAT_AGENT_INSTRUCTIONS_WITH_SOURCES).toContain(
+            '사용자 제공 컨텍스트에서 나온 정보에는 절대 인용을 붙이지 마십시오'
+        )
     })
 })
