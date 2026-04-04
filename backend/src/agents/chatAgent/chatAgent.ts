@@ -34,9 +34,9 @@ function buildReferencesPayload(
     if (citedNumbers.length === 0) {
         logger.info(
             { totalAvailable: Object.keys(allReferences).length },
-            'Citation post-processing: no citations found, using fallback references payload'
+            'Citation post-processing: no citations found, omitting references payload'
         )
-        return allReferences
+        return {}
     }
 
     const filteredReferences: Record<number, { memo_uuid: string; memo_title: string; source_url?: string }> = {}
@@ -63,9 +63,9 @@ function buildReferencesPayload(
     if (totalCited === 0 && totalAvailable > 0) {
         logger.warn(
             { totalAvailable, citedNumbers },
-            'Citation post-processing: cited references missing from payload, falling back to all references'
+            'Citation post-processing: cited references missing from payload, omitting references payload'
         )
-        return allReferences
+        return {}
     }
 
     return filteredReferences
