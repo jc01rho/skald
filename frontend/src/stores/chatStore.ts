@@ -33,6 +33,7 @@ interface ChatState {
     ragConfig: RagConfig
     filters: MemoFilter[]
     chatSessionId: string | null
+    userContext: string
     setSystemPrompt: (prompt: string) => void
     setLlmProvider: (provider: string) => void
     setRagConfig: (config: Partial<RagConfig>) => void
@@ -40,6 +41,7 @@ interface ChatState {
     addFilter: (filter: Omit<MemoFilter, 'id'>) => void
     updateFilter: (id: string, filter: Partial<Omit<MemoFilter, 'id'>>) => void
     removeFilter: (id: string) => void
+    setUserContext: (context: string) => void
     sendMessage: (query: string) => Promise<void>
     clearMessages: () => void
     addMessage: (message: Omit<ChatMessage, 'id' | 'timestamp'> & { id?: string }) => void
@@ -49,6 +51,10 @@ interface ChatState {
         references: Record<number, { memo_uuid: string; memo_title: string }>
     ) => void
     finishStreaming: (messageId: string) => void
+}
+
+function isPersistedChatSettings(value: unknown): value is Record<string, unknown> {
+    return typeof value === 'object' && value !== null
 }
 
 export const useChatStore = create<ChatState>()(
@@ -70,11 +76,11 @@ export const useChatStore = create<ChatState>()(
             },
             filters: [],
             chatSessionId: null,
+            userContext: '',
 
             setSystemPrompt: (prompt: string) => {
                 set({ systemPrompt: prompt })
             },
-
             setLlmProvider: (provider: string) => {
                 set({ llmProvider: provider })
             },
@@ -87,6 +93,10 @@ export const useChatStore = create<ChatState>()(
 
             setFilters: (filters: MemoFilter[]) => {
                 set({ filters })
+            },
+
+            setUserContext: (context: string) => {
+                set({ userContext: context })
             },
 
             addFilter: (filter: Omit<MemoFilter, 'id'>) => {
@@ -188,6 +198,11 @@ export const useChatStore = create<ChatState>()(
                     payload.chat_id = chatSessionId
                 }
 
+                const userContext = get().userContext.trim()
+                if (userContext) {
+                    payload.user_context = userContext
+                }
+
                 // Include RAG config
                 const ragConfig = get().ragConfig
                 const llmProvider = get().llmProvider
@@ -263,6 +278,15 @@ export const useChatStore = create<ChatState>()(
         }),
         {
             name: 'playground-settings',
+            version: 2,
+            migrate: (persistedState) => {
+                if (!isPersistedChatSettings(persistedState)) {
+                    return persistedState
+                }
+
+                const { userContext: _userContext, ...rest } = persistedState
+                return rest
+            },
             partialize: (state) => ({
                 systemPrompt: state.systemPrompt,
                 llmProvider: state.llmProvider,
