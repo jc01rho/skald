@@ -116,7 +116,6 @@ describe('Chat API', () => {
         jest.clearAllMocks()
     })
 
-
     // Helper function to create a default mock ragGraph response
     const mockRagGraphResponse = (query: string, rerankedResults: any[] = []) => {
         const defaultPrompt = ChatPromptTemplate.fromMessages([
@@ -1284,4 +1283,209 @@ describe('Chat API', () => {
         })
     })
 
+    describe('Task 21: Backward-Compatibility Regression Matrix (strong integration tests)', () => {
+        describe('Simple Query Backward-Compatibility', () => {
+            it('should preserve basic query response contract and RAG invocation', async () => {
+                const user = await createTestUser(orm, 'test@example.com', 'password123')
+                const org = await createTestOrganization(orm, 'Test Org', user)
+                await createTestOrganizationMembership(orm, user, org)
+                const project = await createTestProject(orm, 'Test Project', org, user)
+                const token = generateAccessToken('test@example.com')
+
+                const mockRerankedResults = [
+                    { document: 'Backward-compat test content', relevance_score: 0.9, index: 0 },
+                ]
+                const mockRagState = mockRagGraphResponse('What is this?', mockRerankedResults)
+                ;(ragGraphModule.ragGraph.invoke as jest.Mock).mockResolvedValue(mockRagState)
+
+                async function* mockStreamGenerator() {
+                    yield { type: 'token', content: 'This is the backward-compatible answer.' }
+                }
+                ;(chatAgent.streamChatAgent as jest.Mock).mockReturnValue(mockStreamGenerator())
+
+                const response = await request(app)
+                    .post('/api/chat')
+                    .set('Cookie', [`accessToken=${token}`])
+                    .query({ project_id: project.uuid })
+                    .send({ query: 'What is this?' })
+
+                expect(response.status).toBe(200)
+                expect(response.body.ok).toBe(true)
+                expect(response.body.chat_id).toBeDefined()
+                expect(typeof response.body.chat_id).toBe('string')
+                expect(response.body.response).toBeDefined()
+                expect(typeof response.body.response).toBe('string')
+                expect(response.body.response.length).toBeGreaterThan(0)
+                expect((ragGraphModule.ragGraph.invoke as jest.Mock).mock.calls.length).toBeGreaterThan(0)
+            })
+        })
+
+        describe('Greeting Bypass Regression', () => {
+            it('should handle greeting queries and return valid response', async () => {
+                const user = await createTestUser(orm, 'test@example.com', 'password123')
+                const org = await createTestOrganization(orm, 'Test Org', user)
+                await createTestOrganizationMembership(orm, user, org)
+                const project = await createTestProject(orm, 'Test Project', org, user)
+                const token = generateAccessToken('test@example.com')
+
+                const mockRerankedResults = [{ document: 'Greeting response', relevance_score: 0.9, index: 0 }]
+                const mockRagState = mockRagGraphResponse('Hello', mockRerankedResults)
+                ;(ragGraphModule.ragGraph.invoke as jest.Mock).mockResolvedValue(mockRagState)
+
+                async function* mockStreamGenerator() {
+                    yield { type: 'token', content: 'Hello! How can I help?' }
+                }
+                ;(chatAgent.streamChatAgent as jest.Mock).mockReturnValue(mockStreamGenerator())
+
+                const response = await request(app)
+                    .post('/api/chat')
+                    .set('Cookie', [`accessToken=${token}`])
+                    .query({ project_id: project.uuid })
+                    .send({ query: 'Hello' })
+
+                expect(response.status).toBe(200)
+                expect(response.body.ok).toBe(true)
+                expect(response.body.chat_id).toBeDefined()
+                expect(response.body.response).toBeDefined()
+                expect(typeof response.body.response).toBe('string')
+            })
+        })
+
+        describe('Citation Mode Regression', () => {
+            it('should provide references in response when references enabled', async () => {
+                const user = await createTestUser(orm, 'test@example.com', 'password123')
+                const org = await createTestOrganization(orm, 'Test Org', user)
+                await createTestOrganizationMembership(orm, user, org)
+                const project = await createTestProject(orm, 'Test Project', org, user)
+                const token = generateAccessToken('test@example.com')
+
+                const mockRerankedResults = [
+                    {
+                        document: 'Test doc for citation',
+                        relevance_score: 0.95,
+                        index: 0,
+                        memo_uuid: 'uuid-1',
+                        document_type: 'jira_issue',
+                    },
+                ]
+                const mockRagState = mockRagGraphResponse('Cite this', mockRerankedResults)
+                ;(ragGraphModule.ragGraph.invoke as jest.Mock).mockResolvedValue(mockRagState)
+
+                async function* mockStreamGenerator() {
+                    yield { type: 'token', content: 'Here is the answer [[1]]' }
+                }
+                ;(chatAgent.streamChatAgent as jest.Mock).mockReturnValue(mockStreamGenerator())
+
+                const response = await request(app)
+                    .post('/api/chat')
+                    .set('Cookie', [`accessToken=${token}`])
+                    .query({ project_id: project.uuid })
+                    .send({
+                        query: 'Cite this',
+                        rag_config: { references: { enabled: true } },
+                    })
+
+                expect(response.status).toBe(200)
+                expect(response.body.chat_id).toBeDefined()
+                expect(response.body.response).toBeDefined()
+            })
+
+            it('should NOT provide references when references disabled', async () => {
+                const user = await createTestUser(orm, 'test@example.com', 'password123')
+                const org = await createTestOrganization(orm, 'Test Org', user)
+                await createTestOrganizationMembership(orm, user, org)
+                const project = await createTestProject(orm, 'Test Project', org, user)
+                const token = generateAccessToken('test@example.com')
+
+                const mockRerankedResults = [{ document: 'No citation needed', relevance_score: 0.85, index: 0 }]
+                const mockRagState = mockRagGraphResponse('No cite', mockRerankedResults)
+                ;(ragGraphModule.ragGraph.invoke as jest.Mock).mockResolvedValue(mockRagState)
+
+                async function* mockStreamGenerator() {
+                    yield { type: 'token', content: 'Answer without citation.' }
+                }
+                ;(chatAgent.streamChatAgent as jest.Mock).mockReturnValue(mockStreamGenerator())
+
+                const response = await request(app)
+                    .post('/api/chat')
+                    .set('Cookie', [`accessToken=${token}`])
+                    .query({ project_id: project.uuid })
+                    .send({
+                        query: 'No cite',
+                        rag_config: { references: { enabled: false } },
+                    })
+
+                expect(response.status).toBe(200)
+                expect(response.body.chat_id).toBeDefined()
+                expect(response.body.response).toBeDefined()
+            })
+        })
+
+        describe('Streaming vs Non-Streaming Parity', () => {
+            it('should maintain same chat_id and response shape in non-streaming mode', async () => {
+                const user = await createTestUser(orm, 'test@example.com', 'password123')
+                const org = await createTestOrganization(orm, 'Test Org', user)
+                await createTestOrganizationMembership(orm, user, org)
+                const project = await createTestProject(orm, 'Test Project', org, user)
+                const token = generateAccessToken('test@example.com')
+
+                const mockRerankedResults = [{ document: 'Parity test content', relevance_score: 0.9, index: 0 }]
+                const mockRagState = mockRagGraphResponse('Test parity', mockRerankedResults)
+                ;(ragGraphModule.ragGraph.invoke as jest.Mock).mockResolvedValue(mockRagState)
+
+                async function* mockStreamGenerator() {
+                    yield { type: 'token', content: 'Non-streaming response.' }
+                }
+                ;(chatAgent.streamChatAgent as jest.Mock).mockReturnValue(mockStreamGenerator())
+
+                const response = await request(app)
+                    .post('/api/chat')
+                    .set('Cookie', [`accessToken=${token}`])
+                    .query({ project_id: project.uuid })
+                    .send({
+                        query: 'Test parity',
+                        stream: false,
+                    })
+
+                expect(response.status).toBe(200)
+                expect(response.body.chat_id).toBeDefined()
+                expect(typeof response.body.chat_id).toBe('string')
+                expect(response.body.response).toBeDefined()
+                expect(typeof response.body.response).toBe('string')
+            })
+        })
+
+        describe('Filters Backward-Compatibility', () => {
+            it('should handle queries with empty filters array', async () => {
+                const user = await createTestUser(orm, 'test@example.com', 'password123')
+                const org = await createTestOrganization(orm, 'Test Org', user)
+                await createTestOrganizationMembership(orm, user, org)
+                const project = await createTestProject(orm, 'Test Project', org, user)
+                const token = generateAccessToken('test@example.com')
+
+                const mockRerankedResults = [{ document: 'Query with filters', relevance_score: 0.9, index: 0 }]
+                const mockRagState = mockRagGraphResponse('Query with filters', mockRerankedResults)
+                ;(ragGraphModule.ragGraph.invoke as jest.Mock).mockResolvedValue(mockRagState)
+
+                async function* mockStreamGenerator() {
+                    yield { type: 'token', content: 'Response with filters support.' }
+                }
+                ;(chatAgent.streamChatAgent as jest.Mock).mockReturnValue(mockStreamGenerator())
+
+                const response = await request(app)
+                    .post('/api/chat')
+                    .set('Cookie', [`accessToken=${token}`])
+                    .query({ project_id: project.uuid })
+                    .send({
+                        query: 'Query with filters',
+                        filters: [],
+                    })
+
+                expect(response.status).toBe(200)
+                expect(response.body.chat_id).toBeDefined()
+                expect(response.body.response).toBeDefined()
+                expect(typeof response.body.response).toBe('string')
+            })
+        })
+    })
 })
