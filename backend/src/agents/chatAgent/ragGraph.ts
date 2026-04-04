@@ -2,7 +2,7 @@ import { Project } from '@/entities/Project'
 import { getOptimizedChatHistory } from '@/lib/chatUtils'
 import { StateGraph, END } from '@langchain/langgraph'
 import { Annotation } from '@langchain/langgraph'
-import { rewrite, rewriteMultiQuery, generateHyDE, generateJiraHyDE } from './queryRewrite'
+import { decomposeQuery, rewrite, rewriteMultiQuery, generateHyDE, generateJiraHyDE } from './queryRewrite'
 import { MemoFilter } from '@/lib/filterUtils'
 import { EmbeddingService } from '@/services/embeddingService'
 import { memoChunkVectorSearch, MemoChunkWithDistance } from '@/embeddings/vectorSearch'
@@ -32,6 +32,14 @@ interface RerankResult {
     source_url?: string
     embedding?: number[] // Optional embedding for MMR diversity calculation
 }
+
+export type LowConfidenceGuidanceMode =
+    | 'none'
+    | 'user_context_only_partial'
+    | 'retrieval_only_partial'
+    | 'both_weak_limitations'
+    | 'key_miss_with_alternatives'
+    | 'insufficient_evidence'
 
 const ENTERPRISE_IDENTIFIER_PATTERN = /(엔터프라이즈|enterprise|sparrow)/iu
 const ERROR_CODE_IDENTIFIER_PATTERN = /(에러\s*코드|에러코드|오류\s*코드|오류코드|error\s*codes?)/iu
@@ -118,6 +126,17 @@ function buildLiteralQueryAnchorBlock(query: string): string {
         `${queryAnchors.join(', ')}\n` +
         '[End of Literal Query Anchors]\n\n'
     )
+}
+
+export function buildUserContextEvidenceBlock(userContext: string | null | undefined): string {
+    const normalized = userContext?.trim()
+    if (!normalized) {
+        return ''
+    }
+
+    const escaped = normalized.replace(/```/g, '\\\`\\\`\\\`').replace(/\[/g, '［').replace(/\]/g, '］')
+
+    return ['[User-Provided Context]', '```text', escaped, '```', '[End of User-Provided Context]', '', ''].join('\n')
 }
 
 function preserveAnchorMatches({
@@ -271,11 +290,13 @@ const RAGState = Annotation.Root({
     query: Annotation<string>,
     filters: Annotation<MemoFilter[]>,
     clientSystemPrompt: Annotation<string | null>,
+    userContext: Annotation<string | null>,
     ragConfig: Annotation<RAGConfig>,
     chatId: Annotation<string | null>,
     conversationHistory: Annotation<Array<['human' | 'ai' | 'system', string]> | null>,
     queryUnderstanding: Annotation<SearchStrategy | null>,
     rewrittenQuery: Annotation<string | null>,
+    subQuestions: Annotation<string[] | null>,
     chunkResults: Annotation<MemoChunkWithDistance[] | null>,
     rerankedResults: Annotation<RerankResult[]>,
     memoPropertiesMap: Annotation<Map<
@@ -695,6 +716,14 @@ async function analyzeAndRewriteNode(state: typeof RAGState.State) {
         EmbeddingService.generateEmbedding(query, 'search'),
     ])
 
+    const shouldDecompose =
+        !!queryUnderstanding &&
+        (queryUnderstanding.intent === 'comparison' ||
+            queryUnderstanding.intent === 'troubleshooting' ||
+            queryUnderstanding.query_type === 'broad')
+
+    const subQuestions = shouldDecompose ? await decomposeQuery(query) : null
+
     logger.info(
         {
             originalQuery: query,
@@ -703,6 +732,8 @@ async function analyzeAndRewriteNode(state: typeof RAGState.State) {
             queryUnderstandingEnabled: ragConfig.queryUnderstanding?.enabled,
             queryRewriteEnabled: ragConfig.queryRewrite.enabled,
             precomputedEmbedding: !!precomputedQueryEmbedding,
+            decompositionEnabled: shouldDecompose,
+            subQuestionCount: subQuestions?.length ?? 0,
         },
         'RAG analyzeAndRewrite completed (with speculative embedding)'
     )
@@ -710,6 +741,7 @@ async function analyzeAndRewriteNode(state: typeof RAGState.State) {
     return {
         queryUnderstanding,
         rewrittenQuery: rewrittenQueryRaw && rewrittenQueryRaw !== query ? rewrittenQueryRaw : null,
+        subQuestions,
         precomputedQueryEmbedding,
     }
 }
@@ -767,27 +799,126 @@ function calculateDynamicConfidenceThreshold(results: RerankResult[], baseThresh
     return Math.max(0.18, Math.min(baseThreshold, averageScore * 0.9))
 }
 
-export function shouldInjectLowConfidenceGuidance({
+function buildLowConfidenceGuidance({
+    mode,
+    avgRelevanceScore,
+}: {
+    mode: Exclude<LowConfidenceGuidanceMode, 'none'>
+    avgRelevanceScore: number
+}): string {
+    const avgScoreText = avgRelevanceScore.toFixed(2)
+
+    const guidanceTable: Record<Exclude<LowConfidenceGuidanceMode, 'none'>, string> = {
+        user_context_only_partial:
+            '\n\n[응답 제한 모드: 사용자 제공 컨텍스트 우선]\n' +
+            `- 검색된 문서 근거는 약하거나 없습니다 (평균 관련성: ${avgScoreText}).\n` +
+            '- [User-Provided Context]에 직접 포함된 사실만 제한적으로 답변하십시오.\n' +
+            '- 검색된 문서로 확인되지 않은 일반화, 확장 추론, 추가 사실 보완은 하지 마십시오.\n' +
+            '- 답변에서 확인된 부분과 아직 확인되지 않은 부분을 분리해 명시하십시오.\n',
+        retrieval_only_partial:
+            '\n\n[응답 제한 모드: 약한 검색 근거]\n' +
+            `- 검색된 문서의 관련성이 낮습니다 (평균 관련성: ${avgScoreText}).\n` +
+            '- 검색된 문서에서 직접 확인되는 최소 사실만 부분적으로 답변하십시오.\n' +
+            '- 문서에서 직접 확인되지 않는 세부사항은 추측하지 말고, 제공된 문맥에서 확인되지 않는다고 명시하십시오.\n' +
+            '- blanket refusal 대신 제한된 범위의 grounded answer를 우선하십시오.\n',
+        both_weak_limitations:
+            '\n\n[응답 제한 모드: 근거 제한 및 상충 가능성]\n' +
+            `- 검색 근거가 약하고(평균 관련성: ${avgScoreText}), 사용자 제공 컨텍스트만으로도 전체 질문을 확정하기 어렵습니다.\n` +
+            '- 두 출처에서 직접 확인되는 최소 사실만 답변하고, 불확실하거나 누락된 부분은 명시적으로 구분하십시오.\n' +
+            '- 검색 결과와 사용자 제공 컨텍스트가 상충하거나 범위가 다르면 그 차이를 숨기지 말고 드러내십시오.\n' +
+            '- 근거가 없는 일반 상식 보완이나 확장 추론은 금지됩니다.\n',
+        key_miss_with_alternatives:
+            '\n\n[응답 제한 모드: 요청 문서 없음 + 대체 근거]\n' +
+            '- 사용자가 요청한 특정 문서는 지식베이스에서 확인되지 않습니다.\n' +
+            '- 다만 검색 결과 또는 사용자 제공 컨텍스트에 부분적으로 관련된 대체 근거가 있을 수 있습니다.\n' +
+            '- 요청 문서 자체를 찾은 것처럼 말하지 말고, 대체 근거임을 명확히 밝힌 뒤 제한적으로 답변하십시오.\n' +
+            '- 요청 문서 부재와 대체 근거 기반 답변을 반드시 분리해 설명하십시오.\n',
+        insufficient_evidence:
+            '\n\n[응답 제한 모드: 근거 부족]\n' +
+            `- 검색 결과와 사용자 제공 컨텍스트 모두 질문에 답하기에 충분하지 않습니다 (평균 관련성: ${avgScoreText}).\n` +
+            '- 제공된 문맥에서 직접 확인되는 사실이 없다면, 충분한 근거를 찾지 못했다고 분명히 말하십시오.\n' +
+            '- 확인 가능한 최소 사실만 답변하고, 나머지는 제공된 문맥에서 확인되지 않는다고 설명하십시오.\n' +
+            '- 절대로 내용을 만들어내지 마십시오.\n',
+    }
+
+    return guidanceTable[mode]
+}
+
+export function getLowConfidenceGuidanceMode({
     lookupHit,
     rerankedResults,
     confidenceThreshold,
     hasStrongLiteralAnchorEvidence = false,
+    hasUserContext = false,
+    hasKeyMisses = false,
 }: {
     lookupHit: boolean | null
     rerankedResults: RerankResult[]
     confidenceThreshold: number
     hasStrongLiteralAnchorEvidence?: boolean
-}): boolean {
+    hasUserContext?: boolean
+    hasKeyMisses?: boolean
+}): LowConfidenceGuidanceMode {
+    const hasAlternativeEvidence = lookupHit || hasUserContext || rerankedResults.length > 0
+
+    if (hasKeyMisses && hasAlternativeEvidence) {
+        return 'key_miss_with_alternatives'
+    }
+
     if (hasStrongLiteralAnchorEvidence) {
-        return false
+        return 'none'
     }
 
     const avgRelevanceScore =
         rerankedResults.length > 0
             ? rerankedResults.reduce((sum, r) => sum + r.relevance_score, 0) / rerankedResults.length
             : 0
+    const retrievalWeak = rerankedResults.length === 0 || avgRelevanceScore < confidenceThreshold
 
-    return !lookupHit && (rerankedResults.length === 0 || avgRelevanceScore < confidenceThreshold)
+    if (lookupHit || !retrievalWeak) {
+        return 'none'
+    }
+
+    if (hasUserContext && rerankedResults.length === 0) {
+        return 'user_context_only_partial'
+    }
+
+    if (hasUserContext && rerankedResults.length > 0) {
+        return 'both_weak_limitations'
+    }
+
+    if (rerankedResults.length > 0) {
+        return 'retrieval_only_partial'
+    }
+
+    return 'insufficient_evidence'
+}
+
+export function shouldInjectLowConfidenceGuidance({
+    lookupHit,
+    rerankedResults,
+    confidenceThreshold,
+    hasStrongLiteralAnchorEvidence = false,
+    hasUserContext = false,
+    hasKeyMisses = false,
+}: {
+    lookupHit: boolean | null
+    rerankedResults: RerankResult[]
+    confidenceThreshold: number
+    hasStrongLiteralAnchorEvidence?: boolean
+    hasUserContext?: boolean
+    hasKeyMisses?: boolean
+}): boolean {
+    return (
+        getLowConfidenceGuidanceMode({
+            lookupHit,
+            rerankedResults,
+            confidenceThreshold,
+            hasStrongLiteralAnchorEvidence,
+            hasUserContext,
+            hasKeyMisses,
+        }) !== 'none'
+    )
 }
 
 function hasStrongLiteralAnchorEvidence({
@@ -869,7 +1000,16 @@ function mergeSearchResults(
 }
 
 async function vectorSearchNode(state: typeof RAGState.State) {
-    const { rewrittenQuery, query, project, filters, ragConfig, queryUnderstanding, precomputedQueryEmbedding } = state
+    const {
+        rewrittenQuery,
+        query,
+        project,
+        filters,
+        ragConfig,
+        queryUnderstanding,
+        precomputedQueryEmbedding,
+        subQuestions,
+    } = state
 
     // Use dynamic search strategy from query understanding if available, otherwise use defaults
     const strategy = queryUnderstanding || {
@@ -890,6 +1030,10 @@ async function vectorSearchNode(state: typeof RAGState.State) {
     ])
     if (rewrittenQuery && rewrittenQuery !== query) {
         searchQueries.push(...expandTechnicalQueryVariants(rewrittenQuery))
+    }
+
+    if (subQuestions && subQuestions.length > 1) {
+        searchQueries.push(...subQuestions.slice(1).flatMap((subQuestion) => expandTechnicalQueryVariants(subQuestion)))
     }
 
     const [variants, hypothetical, jiraHypothetical] = await Promise.all([
@@ -1451,11 +1595,13 @@ function buildLLMInputsNode(state: typeof RAGState.State) {
         ragConfig,
         rerankedResults,
         clientSystemPrompt,
+        userContext,
         memoPropertiesMap,
         parentChunkMap,
         chunkResults,
         exactLookupResults,
         lookupHit,
+        subQuestions,
     } = state
 
     const queryAnchors = extractQueryAnchors(query)
@@ -1473,22 +1619,27 @@ function buildLLMInputsNode(state: typeof RAGState.State) {
             ? rerankedResults.reduce((sum, r) => sum + r.relevance_score, 0) / rerankedResults.length
             : 0
     const confidenceThreshold = calculateDynamicConfidenceThreshold(rerankedResults, baseConfidenceThreshold)
-    const isLowConfidence = shouldInjectLowConfidenceGuidance({
+    const hasUserContext = Boolean(userContext?.trim())
+    const hasKeyMisses = Boolean(exactLookupResults?.some((result) => result.status === 'miss'))
+    const lowConfidenceMode = getLowConfidenceGuidanceMode({
         lookupHit,
         rerankedResults,
         confidenceThreshold,
         hasStrongLiteralAnchorEvidence: hasAnchorEvidence,
+        hasUserContext,
+        hasKeyMisses,
     })
 
-    if (isLowConfidence) {
+    if (lowConfidenceMode !== 'none') {
         logger.info(
             {
+                mode: lowConfidenceMode,
                 avgRelevanceScore: avgRelevanceScore.toFixed(3),
                 threshold: confidenceThreshold,
                 baseThreshold: baseConfidenceThreshold,
                 resultCount: rerankedResults.length,
             },
-            'Low confidence retrieval detected — injecting abstain guidance'
+            'Low confidence retrieval detected — injecting limitation guidance'
         )
     }
 
@@ -1537,7 +1688,19 @@ function buildLLMInputsNode(state: typeof RAGState.State) {
         }
     }
 
+    contextStr += buildUserContextEvidenceBlock(userContext)
+
     contextStr += buildLiteralQueryAnchorBlock(query)
+
+    if (subQuestions && subQuestions.length > 1) {
+        contextStr += '[Mixed-Question Decomposition]\n'
+        contextStr += subQuestions
+            .map(
+                (subQuestion, index) => `${index === 0 ? 'Original Question' : `Sub-question ${index}`}: ${subQuestion}`
+            )
+            .join('\n')
+        contextStr += '\n[End of Mixed-Question Decomposition]\n\n'
+    }
 
     for (let i = 0; i < rerankedResults.length; i++) {
         const result = rerankedResults[i]
@@ -1567,22 +1730,29 @@ function buildLLMInputsNode(state: typeof RAGState.State) {
     let systemPrompt = ragConfig.references.enabled ? CHAT_AGENT_INSTRUCTIONS_WITH_SOURCES : CHAT_AGENT_INSTRUCTIONS
 
     // P0-4: Inject low-confidence guidance into system prompt
-    if (isLowConfidence) {
-        const abstainGuidance =
-            '\n\n[검색 신뢰도 경고]\n' +
-            '검색된 컨텍스트의 관련성 점수가 낮습니다 (평균: ' +
-            avgRelevanceScore.toFixed(2) +
-            '). ' +
-            '다음 지침을 따르십시오:\n' +
-            '- 검색 결과가 질문과 직접적으로 관련이 없다면, "현재 ���장된 문서에서 해당 질문에 대한 충분한 정보를 찾지 못했습니다"라고 솔직하게 답변하십시오.\n' +
-            '- 부분적으로 관련된 정보가 있다면, 해당 부분만 답변하고 확신이 낮음을 명시하십시오.\n' +
-            '- 절대로 컨텍스트에 없는 내용을 만들어내지 마십시오.\n' +
-            '- 답변 시 "검색 결과의 관련성이 낮아" 또는 "제한된 정보에 기반하여"와 같은 표현을 사용하십시오.'
-        systemPrompt += abstainGuidance
+    if (lowConfidenceMode !== 'none') {
+        systemPrompt += buildLowConfidenceGuidance({
+            mode: lowConfidenceMode,
+            avgRelevanceScore,
+        })
+    }
+
+    if (subQuestions && subQuestions.length > 1) {
+        systemPrompt +=
+            '\n\n[Mixed-Question Answer Format]\n' +
+            'The query has been decomposed into bounded sub-questions. Answer in separated grounded sections.\n' +
+            '- Use one short section per sub-question after the overall answer.\n' +
+            '- Clearly label each section with the matching sub-question.\n' +
+            '- Distinguish grounded facts from limited recommendations or unknown parts.\n' +
+            '- If one sub-question lacks evidence, explicitly say that section is unverified instead of collapsing the whole answer.\n'
     }
 
     // Task 7: Inject key-not-found guidance if explicit keys were requested but not found
-    if (exactLookupResults && exactLookupResults.some((r) => !r.found)) {
+    if (
+        exactLookupResults &&
+        exactLookupResults.some((r) => !r.found) &&
+        lowConfidenceMode !== 'key_miss_with_alternatives'
+    ) {
         const missingKeys = exactLookupResults.filter((r) => !r.found).map((r) => r.key)
         const keyNotFoundGuidance =
             '\n\n[Key-Not-Found Guidance]\n' +
@@ -1654,9 +1824,13 @@ const ragGraphDefinition = new StateGraph(RAGState)
 export const ragGraph = ragGraphDefinition.compile()
 
 export const __testables__ = {
+    analyzeAndRewriteNode,
     extractQueryAnchors,
     preserveAnchorMatches,
     buildLLMInputsNode,
     buildLiteralQueryAnchorBlock,
+    buildUserContextEvidenceBlock,
     hasStrongLiteralAnchorEvidence,
+    buildLowConfidenceGuidance,
+    vectorSearchNode,
 }
