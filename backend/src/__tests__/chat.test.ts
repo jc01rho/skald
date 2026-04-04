@@ -1316,7 +1316,13 @@ describe('Chat API', () => {
                 expect(response.body.response).toBeDefined()
                 expect(typeof response.body.response).toBe('string')
                 expect(response.body.response.length).toBeGreaterThan(0)
-                expect((ragGraphModule.ragGraph.invoke as jest.Mock).mock.calls.length).toBeGreaterThan(0)
+
+                // Strong assertion: ragGraph.invoke must be called with query
+                const ragInvokeCalls = (ragGraphModule.ragGraph.invoke as jest.Mock).mock.calls
+                expect(ragInvokeCalls.length).toBeGreaterThan(0)
+                const invokeArgs = ragInvokeCalls[0][0]
+                expect(invokeArgs).toHaveProperty('query')
+                expect(invokeArgs.query).toEqual('What is this?')
             })
         })
 
@@ -1348,6 +1354,13 @@ describe('Chat API', () => {
                 expect(response.body.chat_id).toBeDefined()
                 expect(response.body.response).toBeDefined()
                 expect(typeof response.body.response).toBe('string')
+
+                // Strong assertion: greeting queries must use streamChatAgent (direct path)
+                expect((chatAgent.streamChatAgent as jest.Mock).mock.calls.length).toBeGreaterThan(0)
+                const streamChatCalls = (chatAgent.streamChatAgent as jest.Mock).mock.calls
+                const firstCall = streamChatCalls[0][0]
+                expect(firstCall).toHaveProperty('query')
+                expect(firstCall.query).toEqual('Hello')
             })
         })
 
@@ -1388,6 +1401,16 @@ describe('Chat API', () => {
                 expect(response.status).toBe(200)
                 expect(response.body.chat_id).toBeDefined()
                 expect(response.body.response).toBeDefined()
+
+                // Strong assertion: response must contain citation format [[N]]
+                expect(response.body.response).toMatch(/\[\[\d+\]\]/)
+
+                // Strong assertion: streamChatAgent must be called with enableReferences=true
+                const streamCalls = (chatAgent.streamChatAgent as jest.Mock).mock.calls
+                expect(streamCalls.length).toBeGreaterThan(0)
+                const firstCall = streamCalls[0][0]
+                expect(firstCall).toHaveProperty('enableReferences')
+                expect(firstCall.enableReferences).toBe(true)
             })
 
             it('should NOT provide references when references disabled', async () => {
@@ -1418,6 +1441,16 @@ describe('Chat API', () => {
                 expect(response.status).toBe(200)
                 expect(response.body.chat_id).toBeDefined()
                 expect(response.body.response).toBeDefined()
+
+                // Strong assertion: response must NOT contain citation format [[N]]
+                expect(response.body.response).not.toMatch(/\[\[\d+\]\]/)
+
+                // Strong assertion: streamChatAgent must be called with enableReferences=false
+                const streamCalls = (chatAgent.streamChatAgent as jest.Mock).mock.calls
+                expect(streamCalls.length).toBeGreaterThan(0)
+                const firstCall = streamCalls[0][0]
+                expect(firstCall).toHaveProperty('enableReferences')
+                expect(firstCall.enableReferences).toBe(false)
             })
         })
 
@@ -1452,6 +1485,18 @@ describe('Chat API', () => {
                 expect(typeof response.body.chat_id).toBe('string')
                 expect(response.body.response).toBeDefined()
                 expect(typeof response.body.response).toBe('string')
+
+                // Strong assertion: non-streaming mode must still invoke streamChatAgent with correct query
+                const streamCalls = (chatAgent.streamChatAgent as jest.Mock).mock.calls
+                expect(streamCalls.length).toBeGreaterThan(0)
+                const firstCall = streamCalls[0][0]
+                expect(firstCall).toHaveProperty('query')
+                expect(firstCall.query).toEqual('Test parity')
+
+                // Strong assertion: response body structure parity
+                expect(response.body).toHaveProperty('ok')
+                expect(response.body).toHaveProperty('chat_id')
+                expect(response.body).toHaveProperty('response')
             })
         })
 
@@ -1485,6 +1530,17 @@ describe('Chat API', () => {
                 expect(response.body.chat_id).toBeDefined()
                 expect(response.body.response).toBeDefined()
                 expect(typeof response.body.response).toBe('string')
+
+                // Strong assertion: ragGraph.invoke must be called (filters don't skip RAG)
+                const ragInvokeCalls = (ragGraphModule.ragGraph.invoke as jest.Mock).mock.calls
+                expect(ragInvokeCalls.length).toBeGreaterThan(0)
+                const invokeArgs = ragInvokeCalls[0][0]
+                expect(invokeArgs).toHaveProperty('query')
+                expect(invokeArgs.query).toEqual('Query with filters')
+
+                // Strong assertion: empty filters are preserved in backward-compat call signature
+                expect(invokeArgs).toHaveProperty('filters')
+                expect(invokeArgs.filters).toEqual([])
             })
         })
     })
