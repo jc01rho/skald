@@ -1545,3 +1545,50 @@ describe('Chat API', () => {
         })
     })
 })
+
+describe('Prompt Contract Tests', () => {
+    it('CHAT_AGENT_INSTRUCTIONS should explicitly support dual evidence (retrieved + user-provided)', () => {
+        const { CHAT_AGENT_INSTRUCTIONS } = require('../agents/chatAgent/prompts')
+        expect(CHAT_AGENT_INSTRUCTIONS).toContain('이중 증거')
+        expect(CHAT_AGENT_INSTRUCTIONS).toContain('검색된 문서')
+        expect(CHAT_AGENT_INSTRUCTIONS).toContain('사용자 제공 컨텍스트')
+        expect(CHAT_AGENT_INSTRUCTIONS).toContain('두 출처 모두에서 정보를 사용할 수 있습니다')
+    })
+
+    it('CHAT_AGENT_INSTRUCTIONS should prefer partial grounded answers over refusal', () => {
+        const { CHAT_AGENT_INSTRUCTIONS } = require('../agents/chatAgent/prompts')
+        expect(CHAT_AGENT_INSTRUCTIONS).toContain('부분 답변을 제공하고')
+        expect(CHAT_AGENT_INSTRUCTIONS).toContain('절대 거절하지 마십시오')
+        expect(CHAT_AGENT_INSTRUCTIONS).toContain('부분적인 답변을 항상 선호하세요')
+    })
+
+    it('CHAT_AGENT_INSTRUCTIONS should explicitly surface contradictions instead of silently resolving', () => {
+        const { CHAT_AGENT_INSTRUCTIONS } = require('../agents/chatAgent/prompts')
+        expect(CHAT_AGENT_INSTRUCTIONS).toContain('상충 사항을 명시적으로 노출')
+        expect(CHAT_AGENT_INSTRUCTIONS).toContain('한 출처를 조용히 선택하지 마십시오')
+    })
+
+    it('CHAT_AGENT_INSTRUCTIONS_WITH_SOURCES should forbid citations for user-provided evidence', () => {
+        const { CHAT_AGENT_INSTRUCTIONS_WITH_SOURCES } = require('../agents/chatAgent/prompts')
+        expect(CHAT_AGENT_INSTRUCTIONS_WITH_SOURCES).toContain('사용자 제공 컨텍스트에서 나온 정보에는 절대 [[N]] 인용을 붙이지 마십시오')
+        expect(CHAT_AGENT_INSTRUCTIONS_WITH_SOURCES).toContain('검색된 문서만 인용합니다')
+    })
+
+    it('CHAT_AGENT_INSTRUCTIONS_WITH_SOURCES should preserve [[N]] citation rules for retrieved docs only', () => {
+        const { CHAT_AGENT_INSTRUCTIONS_WITH_SOURCES } = require('../agents/chatAgent/prompts')
+        expect(CHAT_AGENT_INSTRUCTIONS_WITH_SOURCES).toContain('검색된 문서에서 도출된 각 주장 직후에만 [[result_number]]를 사용')
+        expect(CHAT_AGENT_INSTRUCTIONS_WITH_SOURCES).toContain('검색된 문서에서 나온 주장에는 반드시 [[N]] 형식의 출처가 필요합니다')
+    })
+
+    it('CHAT_AGENT_INSTRUCTIONS_WITH_SOURCES should explicitly surface contradictions between evidence sources', () => {
+        const { CHAT_AGENT_INSTRUCTIONS_WITH_SOURCES } = require('../agents/chatAgent/prompts')
+        expect(CHAT_AGENT_INSTRUCTIONS_WITH_SOURCES).toContain('증거 간 내용이 상충될 경우')
+        expect(CHAT_AGENT_INSTRUCTIONS_WITH_SOURCES).toContain('상충 사항을 명시적으로 노출')
+        expect(CHAT_AGENT_INSTRUCTIONS_WITH_SOURCES).toContain('각 출처(검색 vs 사용자 제공)를 표시')
+    })
+
+    it('CHAT_AGENT_INSTRUCTIONS_WITH_SOURCES should forbid fake citations (no [[N]] for user context)', () => {
+        const { CHAT_AGENT_INSTRUCTIONS_WITH_SOURCES } = require('../agents/chatAgent/prompts')
+        expect(CHAT_AGENT_INSTRUCTIONS_WITH_SOURCES).toContain('사용자 제공 컨텍스트에서 나온 정보에는 절대 인용을 붙이지 마십시오')
+    })
+})
