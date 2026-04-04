@@ -1,4 +1,10 @@
-import { QUERY_REWRITE_PROMPT, MULTI_QUERY_PROMPT, HYDE_PROMPT, JIRA_HYDE_PROMPT } from '@/agents/chatAgent/prompts'
+import {
+    QUERY_REWRITE_PROMPT,
+    MULTI_QUERY_PROMPT,
+    HYDE_PROMPT,
+    JIRA_HYDE_PROMPT,
+    DECOMPOSITION_PROMPT,
+} from '@/agents/chatAgent/prompts'
 import { logger } from '@/lib/logger'
 import { expandTechnicalQueryVariants } from '@/lib/queryNormalization'
 import { LLMService } from '@/services/llmService'
@@ -159,5 +165,64 @@ export const generateJiraHyDE = async (query: string): Promise<string> => {
             extra: { query },
         })
         return ''
+    }
+}
+
+/**
+ * Bounded decomposition of mixed queries.
+ * - Always returns [original, ...subQuestions] with original first
+ * - Max 3 sub-questions (bounded)
+ * - Returns [original] on empty output, parse failure, or LLM error
+ * - Follows rewriteMultiQuery coding style
+ */
+export const decomposeQuery = async (query: string): Promise<string[]> => {
+    const original = query.trim()
+    if (!original) {
+        return [original]
+    }
+
+    try {
+        const response = await LLMService.invokeWithRetry({
+            messages: [
+                { role: 'system', content: DECOMPOSITION_PROMPT },
+                { role: 'user', content: `질문: "${query}"` },
+            ],
+            temperature: 0.3,
+        })
+
+        const raw = response.content?.toString().trim()
+
+        if (!raw) {
+            logger.warn({ query }, 'Decomposition returned empty, returning original query only')
+            return [original]
+        }
+
+        // Parse sub-questions, filter empty lines, limit to 3
+        const subQuestions = raw
+            .split('\n')
+            .map((q: string) => q.trim())
+            .filter((q: string) => q.length > 0)
+            .slice(0, 3)
+
+        // Return original first, then sub-questions
+        if (subQuestions.length === 0) {
+            return [original]
+        }
+
+        const result = [original, ...subQuestions]
+
+        logger.info(
+            { originalQuery: query, subQuestions, resultCount: result.length },
+            'Bounded decomposition completed'
+        )
+
+        return result
+    } catch (error) {
+        logger.error({ err: error, query }, 'Error in bounded decomposition')
+        Sentry.captureException(error, {
+            tags: { service: 'bounded_decomposition' },
+            extra: { query },
+        })
+        return [original]
     }
 }
