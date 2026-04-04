@@ -40,6 +40,42 @@ const classifySufficiencyClass = (contextLength: number, rerankedCount: number):
     return contextLength === 0 ? 'empty' : rerankedCount >= 5 ? 'high' : rerankedCount >= 2 ? 'medium' : 'low'
 }
 
+const isPlainObject = (value: unknown): value is Record<string, unknown> => {
+    if (value === null || typeof value !== 'object' || Array.isArray(value)) {
+        return false
+    }
+
+    const prototype = Object.getPrototypeOf(value)
+    return prototype === Object.prototype || prototype === null
+}
+
+const normalizeUserContext = (value: unknown): { value: string | null; error: string | null } => {
+    if (value === undefined || value === null) {
+        return { value: null, error: null }
+    }
+
+    if (typeof value === 'string') {
+        const normalized = value.trim()
+        return { value: normalized.length > 0 ? normalized : null, error: null }
+    }
+
+    if (isPlainObject(value)) {
+        if (Object.keys(value).length === 0) {
+            return { value: null, error: null }
+        }
+
+        return {
+            value: JSON.stringify(value, null, 2),
+            error: null,
+        }
+    }
+
+    return {
+        value: null,
+        error: 'user_context must be a string or plain object',
+    }
+}
+
 const captureChatTelemetry = ({
     req,
     distinctId,
@@ -97,11 +133,15 @@ export const chat = async (req: Request, res: Response) => {
     const filters = req.body.filters || []
     const chatId = req.body.chat_id
     const clientSystemPrompt = req.body.system_prompt || null
-    const usedUserContext = false
+    const { value: userContext, error: userContextError } = normalizeUserContext(req.body.user_context)
+    let usedUserContext = userContext !== null
     const ragConfig = req.body.rag_config || {}
-
     if (!query) {
         return res.status(400).json({ error: 'Query is required' })
+    }
+
+    if (userContextError) {
+        return res.status(400).json({ error: userContextError })
     }
 
     if (!Array.isArray(filters)) {
@@ -157,6 +197,7 @@ export const chat = async (req: Request, res: Response) => {
                 stream,
                 chatId: chatId || null,
                 clientSystemPrompt: clientSystemPrompt || null,
+                userContext,
                 ragConfig: parsedRagConfig,
             })
         )
@@ -235,7 +276,7 @@ export const chat = async (req: Request, res: Response) => {
     // caused by long-running RAG processes (especially with local LLMs)
     if (stream) {
         // Log that we are entering streaming mode
-        logger.info({ chatId, query }, 'Starting streaming response for chat')
+        logger.info({ chatId }, 'Starting streaming response for chat')
 
         // We do NOT await ragGraph here for streaming. We pass the config into _generateStreamingResponse
         // and let it run the RAG graph *after* sending headers.
@@ -246,6 +287,7 @@ export const chat = async (req: Request, res: Response) => {
             chatId,
             filters,
             clientSystemPrompt,
+            userContext,
             distinctId: getChatDistinctId(req, project),
             parsedRagConfig,
         })
@@ -268,6 +310,7 @@ export const chat = async (req: Request, res: Response) => {
         chatId,
         filters,
         clientSystemPrompt,
+        userContext,
         ragConfig: parsedRagConfig,
     })
 
@@ -278,7 +321,6 @@ export const chat = async (req: Request, res: Response) => {
     const rerankedCount = rerankedResults?.length || 0
     const sufficiencyClass = classifySufficiencyClass(contextLength, rerankedCount)
     const decompositionUsed = !!ragResultState.queryUnderstanding
-
     try {
         // non-streaming response - compose full response from stream
         let fullResponse = ''
@@ -335,6 +377,7 @@ export const chat = async (req: Request, res: Response) => {
                             chatId,
                             filters,
                             clientSystemPrompt,
+                            userContext,
                             ragConfig: retryRagConfig,
                         })
 
@@ -490,6 +533,7 @@ export const _generateStreamingResponse = async ({
     chatId,
     filters,
     clientSystemPrompt,
+    userContext,
     distinctId,
     parsedRagConfig,
 }: {
@@ -499,6 +543,7 @@ export const _generateStreamingResponse = async ({
     chatId?: string
     filters: any[]
     clientSystemPrompt: string | null
+    userContext: string | null
     distinctId: string
     parsedRagConfig: any
 }): Promise<void> => {
@@ -515,7 +560,7 @@ export const _generateStreamingResponse = async ({
     let streamingRerankedCount = 0
     let streamingLookupHit = false
     let streamingDecompositionUsed = false
-    const usedUserContext = false
+    let usedUserContext = userContext !== null
     try {
         // Run RAG graph *after* headers are sent
         const ragResultState = await ragGraph.invoke({
@@ -524,6 +569,7 @@ export const _generateStreamingResponse = async ({
             chatId,
             filters,
             clientSystemPrompt,
+            userContext,
             ragConfig: parsedRagConfig,
         })
 
@@ -535,6 +581,7 @@ export const _generateStreamingResponse = async ({
         streamingRerankedCount = rerankedResults?.length || 0
         streamingLookupHit = ragResultState.lookupHit || false
         streamingDecompositionUsed = !!ragResultState.queryUnderstanding
+        usedUserContext = userContext !== null
 
         logger.info('RAG process completed, starting generation')
 
