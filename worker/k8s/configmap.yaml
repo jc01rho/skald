@@ -20,6 +20,14 @@ data:
     DOCS_POLL_INTERVAL_MINUTES: '30'
     DOCS_ENABLED: 'true'
 
+    # Notion Configuration
+    NOTION_ENABLED: 'false'
+    NOTION_ROOT_PAGE_ID: 'replace-with-notion-root-page-id'
+    NOTION_SYNC_CRON_HOUR: '1'
+    NOTION_SYNC_CRON_MINUTE: '0'
+    NOTION_MAX_DEPTH: '5'
+    NOTION_MAX_PAGES: '500'
+
     # Worker Configuration
     WORKER_CONCURRENCY: '4'
     LOG_LEVEL: 'INFO'
