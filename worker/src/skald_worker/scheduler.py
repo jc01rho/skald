@@ -1,7 +1,6 @@
 """Background scheduler for periodic data collection."""
 
-import asyncio
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 import structlog
@@ -11,6 +10,7 @@ from apscheduler.triggers.interval import IntervalTrigger
 
 from skald_worker.collectors.docs_collector import get_docs_collector
 from skald_worker.collectors.jira_collector import get_jira_collector
+from skald_worker.collectors.notion_collector import get_notion_collector
 from skald_worker.collectors.release_collector import get_release_collector
 from skald_worker.collectors.userdata_collector import get_userdata_collector
 from skald_worker.config import settings
@@ -46,7 +46,7 @@ async def docs_sync_job() -> None:
         
         # Calculate updated_since based on configured days
         updated_since = (
-            datetime.now(timezone.utc) - timedelta(days=settings.docs_sync_days)
+            datetime.now(UTC) - timedelta(days=settings.docs_sync_days)
         ).strftime("%Y-%m-%dT%H:%M:%SZ")
         
         logger.info(
@@ -99,6 +99,22 @@ async def userdata_sync_job() -> None:
         )
     except Exception as e:
         logger.error("Scheduled userdata sync failed", error=str(e))
+
+
+async def notion_sync_job() -> None:
+    """Scheduled job to sync Notion wiki pages."""
+    logger.info("Starting scheduled Notion sync")
+    try:
+        collector = get_notion_collector()
+        result = await collector.sync_all()
+        _last_runs["notion"] = datetime.now()
+        logger.info(
+            "Scheduled Notion sync completed",
+            processed=result["processed"],
+            failed=result["failed"],
+        )
+    except Exception as e:
+        logger.error("Scheduled Notion sync failed", error=str(e))
 
 
 def start_scheduler() -> AsyncIOScheduler:
@@ -175,6 +191,23 @@ def start_scheduler() -> AsyncIOScheduler:
             "Scheduled userdata sync job",
             cron_hour=settings.docs_sync_cron_hour,
             cron_minute=settings.docs_sync_cron_minute,
+        )
+
+    if settings.notion_enabled and settings.notion_token and settings.notion_root_page_id:
+        _scheduler.add_job(
+            notion_sync_job,
+            trigger=CronTrigger(
+                hour=settings.notion_sync_cron_hour,
+                minute=settings.notion_sync_cron_minute,
+            ),
+            id="notion_sync",
+            name="Notion Sync",
+            replace_existing=True,
+        )
+        logger.info(
+            "Scheduled notion sync job",
+            cron_hour=settings.notion_sync_cron_hour,
+            cron_minute=settings.notion_sync_cron_minute,
         )
 
     _scheduler.start()

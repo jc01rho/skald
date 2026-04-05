@@ -90,7 +90,7 @@ class ChatResponse(BaseModel):
 class SyncRequest(BaseModel):
     """Manual sync trigger request."""
 
-    source: str = Field(..., description="Source to sync: 'jira' or 'docs'")
+    source: str = Field(..., description="Source to sync: 'jira', 'docs', or 'notion'")
     options: dict[str, Any] = Field(default_factory=dict, description="Source-specific options")
 
 

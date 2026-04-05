@@ -22,6 +22,7 @@ from skald_worker.circuit_breaker import CircuitBreakerError, get_all_circuit_br
 from skald_worker.clients.skald import get_skald_client
 from skald_worker.collectors.docs_collector import get_docs_collector
 from skald_worker.collectors.jira_collector import get_jira_collector
+from skald_worker.collectors.notion_collector import get_notion_collector
 from skald_worker.config import settings
 from skald_worker.errors import (
     circuit_breaker_open,
@@ -67,6 +68,7 @@ async def health_check() -> HealthResponse:
         collectors={
             "jira": settings.jira_enabled and bool(settings.jira_server),
             "docs": settings.docs_enabled and bool(settings.spms_base_url),
+            "notion": settings.notion_enabled and bool(settings.notion_token) and bool(settings.notion_root_page_id),
             "release": settings.release_enabled and bool(settings.spms_base_url),
             "userdata": settings.userdata_enabled and bool(settings.spms_base_url),
         },
@@ -126,12 +128,12 @@ async def search(
     except CircuitBreakerError as e:
         search_requests_total.labels(status="circuit_open").inc()
         circuit_breaker_rejections_total.labels(name=e.name).inc()
-        raise circuit_breaker_open("Skald", e.recovery_time)
+        raise circuit_breaker_open("Skald", e.recovery_time) from e
 
     except Exception as e:
         search_requests_total.labels(status="error").inc()
         logger.error("Search failed", error=str(e))
-        raise external_service_error("Skald", "Search failed", e)
+        raise external_service_error("Skald", "Search failed", e) from e
 
 
 @router.post("/similar-issues", response_model=SimilarIssuesResponse)
@@ -177,12 +179,12 @@ async def find_similar_issues(
     except CircuitBreakerError as e:
         similar_issues_requests_total.labels(status="circuit_open").inc()
         circuit_breaker_rejections_total.labels(name=e.name).inc()
-        raise circuit_breaker_open("Skald", e.recovery_time)
+        raise circuit_breaker_open("Skald", e.recovery_time) from e
 
     except Exception as e:
         similar_issues_requests_total.labels(status="error").inc()
         logger.error("Find similar issues failed", issue_key=request.issue_key, error=str(e))
-        raise external_service_error("Search", "Find similar issues failed", e)
+        raise external_service_error("Search", "Find similar issues failed", e) from e
 
 
 @router.post("/chat", response_model=ChatResponse)
@@ -222,12 +224,12 @@ async def chat(
     except CircuitBreakerError as e:
         chat_requests_total.labels(status="circuit_open").inc()
         circuit_breaker_rejections_total.labels(name=e.name).inc()
-        raise circuit_breaker_open("Skald", e.recovery_time)
+        raise circuit_breaker_open("Skald", e.recovery_time) from e
 
     except Exception as e:
         chat_requests_total.labels(status="error").inc()
         logger.error("Chat failed", error=str(e))
-        raise external_service_error("Skald", "Chat failed", e)
+        raise external_service_error("Skald", "Chat failed", e) from e
 
 
 @router.post("/sync", response_model=SyncResponse)
@@ -237,7 +239,7 @@ async def trigger_sync(
 ) -> SyncResponse:
     """Manually trigger a sync operation.
 
-    Supports syncing Jira issues or technical docs on demand.
+    Supports syncing Jira issues, technical docs, or Notion pages on demand.
     """
     start_time = time.perf_counter()
     sync_state_manager = get_sync_state_manager()
@@ -318,10 +320,39 @@ async def trigger_sync(
                 message=f"Synced {total_processed} documents",
             )
 
+        elif request.source == "notion":
+            if not settings.notion_enabled or not settings.notion_token or not settings.notion_root_page_id:
+                sync_jobs_total.labels(source="notion", status="error").inc()
+                raise integration_not_configured("Notion")
+
+            sync_state_manager.record_sync_start("notion")
+            collector = get_notion_collector()
+            result = await collector.sync_all()
+
+            sync_jobs_total.labels(source="notion", status="success").inc()
+            sync_job_duration_seconds.labels(source="notion").observe(time.perf_counter() - start_time)
+            sync_items_processed_total.labels(source="notion", status="success").inc(result["processed"])
+            sync_items_processed_total.labels(source="notion", status="failed").inc(result["failed"])
+
+            sync_state_manager.record_sync_success(
+                "notion",
+                items_processed=result["processed"],
+                items_failed=result["failed"],
+                metadata={"root_page_id": settings.notion_root_page_id},
+            )
+
+            return SyncResponse(
+                source="notion",
+                status="completed",
+                processed=result["processed"],
+                failed=result["failed"],
+                message=f"Synced {result['processed']} Notion pages",
+            )
+
         else:
             from skald_worker.errors import bad_request
 
-            raise bad_request(f"Unknown source: {request.source}. Valid sources: jira, docs")
+            raise bad_request(f"Unknown source: {request.source}. Valid sources: jira, docs, notion")
 
     except HTTPException:
         raise
@@ -330,10 +361,10 @@ async def trigger_sync(
         sync_jobs_total.labels(source=request.source, status="circuit_open").inc()
         sync_state_manager.record_sync_failure(request.source, f"Circuit breaker open: {e.name}")
         circuit_breaker_rejections_total.labels(name=e.name).inc()
-        raise circuit_breaker_open("Skald", e.recovery_time)
+        raise circuit_breaker_open("Skald", e.recovery_time) from e
 
     except Exception as e:
         sync_jobs_total.labels(source=request.source, status="error").inc()
         sync_state_manager.record_sync_failure(request.source, str(e))
         logger.error("Sync failed", source=request.source, error=str(e))
-        raise internal_error(f"Sync failed: {e}")
+        raise internal_error(f"Sync failed: {e}") from e

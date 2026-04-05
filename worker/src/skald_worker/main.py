@@ -2,8 +2,8 @@
 
 import logging
 import time
+from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
-from typing import AsyncGenerator
 
 import structlog
 from fastapi import FastAPI, Request, Response
@@ -56,6 +56,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         version=__version__,
         jira_enabled=settings.jira_enabled,
         docs_enabled=settings.docs_enabled,
+        notion_enabled=settings.notion_enabled,
         release_enabled=settings.release_enabled,
         userdata_enabled=settings.userdata_enabled,
     )
