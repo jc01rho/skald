@@ -140,6 +140,40 @@ class Settings(BaseSettings):
         description="Number of successful calls to close circuit from half-open",
     )
 
+    # Notion Configuration
+    notion_enabled: bool = Field(
+        default=False,
+        description="Enable Notion wiki collection",
+    )
+    notion_token: str = Field(
+        default="",
+        description="Notion integration token (Internal Integration Secret)",
+    )
+    notion_root_page_id: str = Field(
+        default="",
+        description="Root Notion page ID to crawl (and all children)",
+    )
+    notion_sync_cron_hour: int = Field(
+        default=1,
+        description="Hour to run daily Notion sync (0-23, default 1 AM)",
+    )
+    notion_sync_cron_minute: int = Field(
+        default=0,
+        description="Minute to run daily Notion sync (0-59, default 0)",
+    )
+    notion_max_depth: int = Field(
+        default=5,
+        description="Maximum depth for recursive child page traversal",
+    )
+    notion_max_pages: int = Field(
+        default=500,
+        description="Maximum pages to process per sync (safety valve)",
+    )
+    notion_rate_limit_rps: float = Field(
+        default=2.5,
+        description="Notion API requests per second limit (official: 3, safe: 2.5)",
+    )
+
     # Sync State Persistence
     sync_state_file: str = Field(
         default="/tmp/skald-worker-sync-state.json",
