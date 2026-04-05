@@ -19,6 +19,7 @@ dependencies = [
     "pydantic-settings>=2.6.0",
     "httpx>=0.28.0",
     "jira>=3.10.0",
+    "notion-client>=2.2.0",
     "apscheduler>=3.10.0",
     "beautifulsoup4>=4.12.0",
     "structlog>=24.0.0",
