@@ -14,6 +14,7 @@ import { MemoChunk } from '@/entities/MemoChunk'
 import { Memo } from '@/entities/Memo'
 import { logger } from '@/lib/logger'
 import { deleteFileFromS3 } from '@/lib/s3Utils'
+import { sha256 } from '@/lib/hashUtils'
 import {
     DATALAB_API_KEY,
     IS_CLOUD,
@@ -291,10 +292,12 @@ export const updateMemo = async (req: Request, res: Response) => {
                     DI.memoChunks.find({ memo }),
                 ])
                 const memoContent = await DI.memoContents.findOne({ memo })
+                const newContent = validatedData.data['content'] as string
                 if (memoContent) {
-                    memoContent.content = validatedData.data['content'] as string
+                    memoContent.content = newContent
                     em.persist(memoContent)
                 }
+                memo.content_hash = sha256(newContent)
                 if (memoSummary) {
                     em.remove(memoSummary)
                 }
