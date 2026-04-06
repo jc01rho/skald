@@ -147,22 +147,14 @@ class SkaldClient:
 
         Args:
             content: Main content
-            title: Optional title to include in hash
-            metadata: Optional metadata to include in hash
-            tags: Optional tags to include in hash
+            title: Unused, kept for backward-compatible call signatures
+            metadata: Unused, kept for backward-compatible call signatures
+            tags: Unused, kept for backward-compatible call signatures
 
         Returns:
-            SHA256 hash (first 16 chars for shorter ID)
+            Full SHA256 hex digest of content
         """
-        # Build hash content including all relevant fields
-        hash_data = {
-            "title": title,
-            "content": content,
-            "metadata": metadata or {},
-            "tags": sorted(tags or []),
-        }
-        content_str = json.dumps(hash_data, sort_keys=True, ensure_ascii=False, default=str)
-        return hashlib.sha256(content_str.encode("utf-8")).hexdigest()[:16]
+        return hashlib.sha256(content.encode("utf-8")).hexdigest()
 
     async def create_memo(
         self,
