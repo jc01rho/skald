@@ -94,13 +94,13 @@ data:
   REDIS_HOST: "redis-service"
   REDIS_PORT: "6379"
   
-  # Application Configuration
-  IS_SELF_HOSTED_DEPLOY: "true"
-  LLM_PROVIDER: "${LLM_PROVIDER:-cli-proxy-api}"
-  CLI_PROXY_API_BASE_URL: "${CLI_PROXY_API_BASE_URL:-http://***REMOVED***/v1}"
-  CLI_PROXY_BASE_URL: "${CLI_PROXY_BASE_URL:-${CLI_PROXY_API_BASE_URL:-http://***REMOVED***/v1}}"
-  GEMINI_API_BASE_URL: "${GEMINI_API_BASE_URL:-http://***REMOVED***/v1}"
-  LLM_DEFAULT_CHAT_MODEL: "${LLM_DEFAULT_CHAT_MODEL:-parrot}"
+   # Application Configuration
+   IS_SELF_HOSTED_DEPLOY: "true"
+   LLM_PROVIDER: "${LLM_PROVIDER:-cli-proxy-api}"
+   CLI_PROXY_API_BASE_URL: "${CLI_PROXY_API_BASE_URL:-}"
+   CLI_PROXY_BASE_URL: "${CLI_PROXY_BASE_URL:-${CLI_PROXY_API_BASE_URL:-}}"
+   GEMINI_API_BASE_URL: "${GEMINI_API_BASE_URL:-}"
+   LLM_DEFAULT_CHAT_MODEL: "${LLM_DEFAULT_CHAT_MODEL:-parrot}"
   LLM_DEFAULT_CLASSIFICATION_MODEL: "${LLM_DEFAULT_CLASSIFICATION_MODEL:-parrot}"
   LLM_FALLBACK_CHAIN: "${LLM_FALLBACK_CHAIN:-parrot,qwen-3.5,deepseek-v3.2,glm-5,kimi,qwen3-235b,free,gemini-2.5-pro,gemini-3-flash-preview,qwen3-max-preview,qwen3-coder-plus,qwen3-235b-a22b-thinking-2507,qwen3-235b-a22b-instruct,qwen3-32b,deepseek-v3.2-reasoner,deepseek-v3.1,deepseek-v3,deepseek-r1,deepseek-v3.2-chat,giga-potato,sonnet}"
   EMBEDDING_PROVIDER: "${EMBEDDING_PROVIDER:-external}"
