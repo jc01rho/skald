@@ -27,9 +27,14 @@ class TestSkaldClient:
         """Test content hash computation."""
         content = "Test content for hashing"
         hash1 = client.compute_content_hash(content)
-        hash2 = client.compute_content_hash(content)
+        hash2 = client.compute_content_hash(
+            content,
+            title="Different title",
+            metadata={"key": "value"},
+            tags=["tag-a", "tag-b"],
+        )
 
-        # Same content should produce same hash
+        # Same content should produce same hash regardless of title/metadata/tags
         assert hash1 == hash2
         assert len(hash1) == 64  # SHA256 produces 64 hex characters
 
