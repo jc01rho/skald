@@ -13,6 +13,7 @@ import {
     createTestMemo,
 } from './testHelpers'
 import { generateAccessToken } from '../lib/tokenUtils'
+import { sha256 } from '../lib/hashUtils'
 import { userMiddleware } from '../middleware/userMiddleware'
 import { User } from '../entities/User'
 import { Project } from '../entities/Project'
@@ -421,6 +422,37 @@ describe('Memo API Tests', () => {
 
             expect(response.status).toBe(404)
             expect(response.body.error).toBe('Memo not found')
+        })
+
+        it('should update memo content and update content_hash', async () => {
+            const user = await createTestUser(orm, 'test@example.com', 'password123')
+            const org = await createTestOrganization(orm, 'Test Org', user)
+            await createTestOrganizationMembership(orm, user, org)
+            const project = await createTestProject(orm, 'Test Project', org, user)
+            const memo = await createTestMemo(orm, project, {
+                title: 'Test Memo',
+                content: 'Original content',
+            })
+            const token = generateAccessToken('test@example.com')
+
+            const newContent = 'Updated content with new text'
+            const response = await request(app)
+                .patch(`/api/memos/${memo.uuid}`)
+                .set('Cookie', [`accessToken=${token}`])
+                .query({ project_id: project.uuid })
+                .send({
+                    content: newContent,
+                })
+
+            expect(response.status).toBe(200)
+            expect(response.body.ok).toBe(true)
+
+            const em = orm.em.fork()
+            const updatedMemo = await em.findOne(Memo, { uuid: memo.uuid })
+            expect(updatedMemo).toBeDefined()
+
+            const expectedHash = sha256(newContent)
+            expect(updatedMemo!.content_hash).toBe(expectedHash)
         })
     })
 
