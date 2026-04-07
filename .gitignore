@@ -162,6 +162,7 @@ skald_prod2.dump
 k8s/secret.yaml
 k8s/secret-string.yaml
 k8s/configmap.local.yaml
+worker/k8s/secret.local.yaml
 
 # Environment files with real secrets
 .env
@@ -182,6 +183,8 @@ k8s/ui-configmap.yaml
 k8s/worker-configmap.yaml
 k8s/worker-secret.local.yaml
 k8s/worker-configmap.local.yaml
+k8s/discord-bot-configmap.local.yaml
+worker/k8s/configmap.local.yaml
 
 # Discord Bot
 /discord-bot/.env

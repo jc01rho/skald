@@ -380,51 +380,26 @@ deploy_traefik() {
 create_configs() {
     log_info "Step 2: ConfigMap 및 Secret 생성"
     
-# ConfigMap 생성
-    if kubectl apply -f configmap.yaml -n "$NAMESPACE"; then
-        log_success "ConfigMap 생성 완료"
-    else
-        log_error "ConfigMap 생성 실패"
-        exit 1
-    fi
-
+    # ConfigMap 생성 (로컬 파일 우선)
     if [ -f "configmap.local.yaml" ]; then
-        log_info "configmap.local.yaml에서 환경변수를 skald-config에 병합합니다..."
-        
-        # configmap.local.yaml에서 data 섹션의 값들을 추출하여 skald-config에 패치
-        # EMBEDDING_SERVICE_URL, INTERNAL_RERANK_URL, CLI_PROXY_BASE_URL 등
-        local local_embedding_url=$(grep -E "^\s*EMBEDDING_SERVICE_URL:" configmap.local.yaml | sed "s/.*EMBEDDING_SERVICE_URL:\s*['\"]*//" | sed "s/['\"].*//")
-        local local_rerank_url=$(grep -E "^\s*INTERNAL_RERANK_URL:" configmap.local.yaml | sed "s/.*INTERNAL_RERANK_URL:\s*['\"]*//" | sed "s/['\"].*//")
-        local local_cli_proxy_url=$(grep -E "^\s*CLI_PROXY_BASE_URL:" configmap.local.yaml | sed "s/.*CLI_PROXY_BASE_URL:\s*['\"]*//" | sed "s/['\"].*//")
-        
-        # 패치할 데이터 구성
-        local patch_data=""
-        if [ -n "$local_embedding_url" ]; then
-            patch_data="${patch_data}\"EMBEDDING_SERVICE_URL\": \"$local_embedding_url\","
-            log_info "  EMBEDDING_SERVICE_URL: $local_embedding_url"
+        log_info "configmap.local.yaml 사용"
+        if kubectl apply -f configmap.local.yaml -n "$NAMESPACE"; then
+            log_success "ConfigMap 생성 완료 (local)"
+        else
+            log_error "ConfigMap 생성 실패"
+            exit 1
         fi
-        if [ -n "$local_rerank_url" ]; then
-            patch_data="${patch_data}\"INTERNAL_RERANK_URL\": \"$local_rerank_url\","
-            log_info "  INTERNAL_RERANK_URL: $local_rerank_url"
-        fi
-        if [ -n "$local_cli_proxy_url" ]; then
-            patch_data="${patch_data}\"CLI_PROXY_BASE_URL\": \"$local_cli_proxy_url\","
-            log_info "  CLI_PROXY_BASE_URL: $local_cli_proxy_url"
-        fi
-        
-        # 마지막 쉼표 제거
-        patch_data=$(echo "$patch_data" | sed 's/,$//')
-        
-        if [ -n "$patch_data" ]; then
-            if kubectl patch configmap skald-config -n "$NAMESPACE" --type merge -p "{\"data\": {$patch_data}}"; then
-                log_success "Local ConfigMap 값들이 skald-config에 병합되었습니다"
-            else
-                log_error "Local ConfigMap 병합 실패"
-                exit 1
-            fi
+    elif [ -f "configmap.yaml" ]; then
+        log_info "configmap.yaml 사용"
+        if kubectl apply -f configmap.yaml -n "$NAMESPACE"; then
+            log_success "ConfigMap 생성 완료"
+        else
+            log_error "ConfigMap 생성 실패"
+            exit 1
         fi
     else
-        log_info "configmap.local.yaml 파일이 없습니다. 건너뜁니다."
+        log_error "ConfigMap 파일이 없습니다 (configmap.local.yaml 또는 configmap.yaml)"
+        exit 1
     fi
     
     # 초기화 스크립트 ConfigMap 생성
@@ -691,16 +666,16 @@ deploy_worker() {
             log_error "Worker ConfigMap 생성 실패"
             exit 1
         fi
-    elif [ -f "../worker/k8s/configmap.yaml" ]; then
-        log_info "../worker/k8s/configmap.yaml 사용"
-        if kubectl apply -f ../worker/k8s/configmap.yaml -n "$NAMESPACE"; then
+    elif [ -f "../worker/k8s/configmap.local.yaml" ]; then
+        log_info "../worker/k8s/configmap.local.yaml 사용"
+        if kubectl apply -f ../worker/k8s/configmap.local.yaml -n "$NAMESPACE"; then
             log_success "Worker ConfigMap 생성 완료 (worker/k8s)"
         else
             log_error "Worker ConfigMap 생성 실패"
             exit 1
         fi
     else
-        log_error "Worker ConfigMap 파일이 없습니다 (worker-configmap.local.yaml, worker-configmap.yaml 또는 ../worker/k8s/configmap.yaml)"
+        log_error "Worker ConfigMap 파일이 없습니다 (worker-configmap.local.yaml, worker-configmap.yaml 또는 ../worker/k8s/configmap.local.yaml)"
         exit 1
     fi
 
@@ -721,16 +696,16 @@ deploy_worker() {
             log_error "Worker Secret 생성 실패"
             exit 1
         fi
-    elif [ -f "../worker/k8s/secret.yaml" ]; then
-        log_info "../worker/k8s/secret.yaml 사용"
-        if kubectl apply -f ../worker/k8s/secret.yaml -n "$NAMESPACE"; then
+    elif [ -f "../worker/k8s/secret.local.yaml" ]; then
+        log_info "../worker/k8s/secret.local.yaml 사용"
+        if kubectl apply -f ../worker/k8s/secret.local.yaml -n "$NAMESPACE"; then
             log_success "Worker Secret 생성 완료 (worker/k8s)"
         else
             log_error "Worker Secret 생성 실패"
             exit 1
         fi
     else
-        log_warning "Worker Secret 파일이 없습니다 (worker-secret.local.yaml, worker-secret.yaml 또는 ../worker/k8s/secret.yaml)"
+        log_warning "Worker Secret 파일이 없습니다 (worker-secret.local.yaml, worker-secret.yaml 또는 ../worker/k8s/secret.local.yaml)"
         log_warning "Worker가 제대로 작동하지 않을 수 있습니다."
     fi
 
@@ -785,7 +760,15 @@ deploy_discord_bot() {
     log_info "Step 7.6: Discord Bot 배포"
 
     # Discord Bot ConfigMap 생성
-    if [ -f "discord-bot-configmap.yaml" ]; then
+    if [ -f "discord-bot-configmap.local.yaml" ]; then
+        log_info "discord-bot-configmap.local.yaml 사용"
+        if kubectl apply -f discord-bot-configmap.local.yaml -n "$NAMESPACE"; then
+            log_success "Discord Bot ConfigMap 생성 완료 (local)"
+        else
+            log_error "Discord Bot ConfigMap 생성 실패"
+            exit 1
+        fi
+    elif [ -f "discord-bot-configmap.yaml" ]; then
         if kubectl apply -f discord-bot-configmap.yaml -n "$NAMESPACE"; then
             log_success "Discord Bot ConfigMap 생성 완료"
         else
