@@ -18,4 +18,4 @@ metadata:
 data:
     INTERNAL_EMBEDDING_URL: 'http://your-embedding-server:8889/v1/embeddings'
     INTERNAL_RERANK_URL: 'http://your-rerank-server:8889/v1/rerank'
-    CLI_PROXY_BASE_URL: 'http://your-cli-proxy-server:8317/v1'
+    CLI_PROXY_API_BASE_URL: 'http://your-cli-proxy-server:8317/v1'
