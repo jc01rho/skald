@@ -160,6 +160,7 @@ skald_prod2.dump
 
 # Kubernetes secrets (contains sensitive API keys)
 k8s/secret.yaml
+k8s/secret.local.yaml
 k8s/secret-string.yaml
 k8s/configmap.local.yaml
 worker/k8s/secret.local.yaml

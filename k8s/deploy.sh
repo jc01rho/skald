@@ -94,13 +94,13 @@ data:
   REDIS_HOST: "redis-service"
   REDIS_PORT: "6379"
   
-   # Application Configuration
-   IS_SELF_HOSTED_DEPLOY: "true"
-   LLM_PROVIDER: "${LLM_PROVIDER:-cli-proxy-api}"
-   CLI_PROXY_API_BASE_URL: "${CLI_PROXY_API_BASE_URL:-}"
-   CLI_PROXY_BASE_URL: "${CLI_PROXY_BASE_URL:-${CLI_PROXY_API_BASE_URL:-}}"
-   GEMINI_API_BASE_URL: "${GEMINI_API_BASE_URL:-}"
-   LLM_DEFAULT_CHAT_MODEL: "${LLM_DEFAULT_CHAT_MODEL:-parrot}"
+  # Application Configuration
+  IS_SELF_HOSTED_DEPLOY: "true"
+  LLM_PROVIDER: "${LLM_PROVIDER:-cli-proxy-api}"
+  CLI_PROXY_API_BASE_URL: "${CLI_PROXY_API_BASE_URL:-}"
+  CLI_PROXY_BASE_URL: "${CLI_PROXY_BASE_URL:-${CLI_PROXY_API_BASE_URL:-}}"
+  GEMINI_API_BASE_URL: "${GEMINI_API_BASE_URL:-}"
+  LLM_DEFAULT_CHAT_MODEL: "${LLM_DEFAULT_CHAT_MODEL:-parrot}"
   LLM_DEFAULT_CLASSIFICATION_MODEL: "${LLM_DEFAULT_CLASSIFICATION_MODEL:-parrot}"
   LLM_FALLBACK_CHAIN: "${LLM_FALLBACK_CHAIN:-parrot,qwen-3.5,deepseek-v3.2,glm-5,kimi,qwen3-235b,free,gemini-2.5-pro,gemini-3-flash-preview,qwen3-max-preview,qwen3-coder-plus,qwen3-235b-a22b-thinking-2507,qwen3-235b-a22b-instruct,qwen3-32b,deepseek-v3.2-reasoner,deepseek-v3.1,deepseek-v3,deepseek-r1,deepseek-v3.2-chat,giga-potato,sonnet}"
   EMBEDDING_PROVIDER: "${EMBEDDING_PROVIDER:-external}"
@@ -417,19 +417,27 @@ create_configs() {
         log_warning "Embedding Service Source ConfigMap 생성 실패 (소스 파일 경로 확인 필요)"
     fi
     
-    # Secret 확인
-    if [ ! -f "secret.yaml" ]; then
-        log_warning "secret.yaml 파일이 없습니다. secret.yaml.example를 복사하여 설정하세요."
-        log_info "cp secret.yaml.example secret.yaml"
-        log_info "secret.yaml 파일의 모든 플레이스홀더 값을 실제 값으로 교체한 후 다시 실행하세요."
-        exit 1
-    fi
-    
-    # Secret 생성
-    if kubectl apply -f secret.yaml -n "$NAMESPACE"; then
-        log_success "Secret 생성 완료"
+    # Secret 생성 (로컬 파일 우선)
+    if [ -f "secret.local.yaml" ]; then
+        log_info "secret.local.yaml 사용"
+        if kubectl apply -f secret.local.yaml -n "$NAMESPACE"; then
+            log_success "Secret 생성 완료 (local)"
+        else
+            log_error "Secret 생성 실패"
+            exit 1
+        fi
+    elif [ -f "secret.yaml" ]; then
+        log_info "secret.yaml 사용"
+        if kubectl apply -f secret.yaml -n "$NAMESPACE"; then
+            log_success "Secret 생성 완료"
+        else
+            log_error "Secret 생성 실패"
+            exit 1
+        fi
     else
-        log_error "Secret 생성 실패"
+        log_warning "secret 파일이 없습니다. secret.local.yaml 또는 secret.yaml.example 기반 secret.yaml을 준비하세요."
+        log_info "cp secret.yaml.example secret.local.yaml"
+        log_info "secret.local.yaml 또는 secret.yaml의 모든 플레이스홀더 값을 실제 값으로 교체한 후 다시 실행하세요."
         exit 1
     fi
 }
