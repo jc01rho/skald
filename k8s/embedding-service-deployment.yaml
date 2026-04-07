@@ -139,7 +139,7 @@ spec:
                                 name: skald-secrets
                                 key: CLI_PROXY_API_KEY
                                 optional: true
-                      - name: CLI_PROXY_BASE_URL
+                      - name: CLI_PROXY_API_BASE_URL
                         valueFrom:
                             configMapKeyRef:
                                 name: skald-config

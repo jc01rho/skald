@@ -55,7 +55,7 @@ OPENROUTER_BASE_URL = os.getenv("OPENROUTER_BASE_URL", "")
 OPENROUTER_HTTP_REFERER = os.getenv("OPENROUTER_HTTP_REFERER", "")
 # CLI Proxy API (OpenAI-compatible with multi-model support)
 CLI_PROXY_API_KEY = os.getenv("CLI_PROXY_API_KEY", "")
-CLI_PROXY_BASE_URL = os.getenv("CLI_PROXY_BASE_URL", "")
+CLI_PROXY_API_BASE_URL = os.getenv("CLI_PROXY_API_BASE_URL", "")
 CLI_PROXY_MODELS_STR = os.getenv("CLI_PROXY_MODELS", "")
 CLI_PROXY_MODELS = [m.strip() for m in CLI_PROXY_MODELS_STR.split(",") if m.strip()]
 
@@ -1532,7 +1532,7 @@ async def _call_cli_proxy(
     if not CLI_PROXY_API_KEY:
         return None
 
-    url = f"{CLI_PROXY_BASE_URL}/chat/completions"
+    url = f"{CLI_PROXY_API_BASE_URL}/chat/completions"
     headers = {
         "Authorization": f"Bearer {CLI_PROXY_API_KEY}",
         "Content-Type": "application/json",
