@@ -16,11 +16,14 @@ def rich_text_to_plain(rich_texts: list[dict[str, Any]] | None) -> str:
 
     rendered_parts: list[str] = []
     for rich_text in rich_texts:
+        if not isinstance(rich_text, dict):
+            continue
+
         text = _extract_rich_text_content(rich_text)
         if not text:
             continue
 
-        annotations = rich_text.get("annotations", {})
+        annotations = rich_text.get("annotations") or {}
         rendered = text
 
         if annotations.get("code"):
@@ -32,7 +35,9 @@ def rich_text_to_plain(rich_texts: list[dict[str, Any]] | None) -> str:
         if annotations.get("strikethrough"):
             rendered = f"~~{rendered}~~"
 
-        link_url = rich_text.get("href") or rich_text.get("text", {}).get("link", {}).get("url")
+        text_data = rich_text.get("text") or {}
+        link_data = text_data.get("link") or {}
+        link_url = rich_text.get("href") or link_data.get("url")
         if link_url:
             rendered = f"[{rendered}]({link_url})"
 
@@ -67,7 +72,7 @@ def _render_blocks(blocks: list[dict[str, Any]], indent_level: int) -> list[str]
 
 def _render_block(block: dict[str, Any], indent_level: int, number_index: int) -> str:
     block_type = block.get("type", "unknown")
-    block_data = block.get(block_type, {})
+    block_data = block.get(block_type) or {}
     indent = "    " * indent_level
 
     if block_type == "paragraph":
@@ -179,15 +184,18 @@ def _normalize_row(row: list[str], width: int) -> list[str]:
 
 
 def _extract_rich_text_content(rich_text: dict[str, Any]) -> str:
+    if not isinstance(rich_text, dict):
+        return ""
+
     plain_text = rich_text.get("plain_text")
     if plain_text is not None:
         return plain_text
 
     rich_text_type = rich_text.get("type")
     if rich_text_type == "text":
-        return rich_text.get("text", {}).get("content", "")
+        return (rich_text.get("text") or {}).get("content", "")
     if rich_text_type == "equation":
-        return rich_text.get("equation", {}).get("expression", "")
+        return (rich_text.get("equation") or {}).get("expression", "")
 
     return ""
 
