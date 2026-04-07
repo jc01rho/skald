@@ -230,8 +230,6 @@ spec:
                                 key: IS_DEVELOPMENT
                       - name: EXPRESS_SERVER_PORT
                         value: '8000'
-                      - name: PORT
-                        value: '8000'
                       - name: SECRET_KEY
                         valueFrom:
                             secretKeyRef:
@@ -263,16 +261,6 @@ spec:
                             configMapKeyRef:
                                 name: skald-config
                                 key: DOCUMENT_EXTRACTION_PROVIDER
-                      - name: LOCAL_EMBEDDING_MODEL
-                        valueFrom:
-                            configMapKeyRef:
-                                name: skald-config
-                                key: LOCAL_EMBEDDING_MODEL
-                      - name: LOCAL_RERANK_MODEL
-                        valueFrom:
-                            configMapKeyRef:
-                                name: skald-config
-                                key: LOCAL_RERANK_MODEL
                       - name: STRIPE_SECRET_KEY
                         valueFrom:
                             secretKeyRef:
@@ -376,7 +364,7 @@ spec:
                         valueFrom:
                             configMapKeyRef:
                                 name: skald-config
-                                key: GEMINI_API_BASE_URL
+                                key: CLI_PROXY_API_BASE_URL
                       - name: ENABLE_SECURITY_SETTINGS
                         valueFrom:
                             configMapKeyRef:

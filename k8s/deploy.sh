@@ -72,14 +72,9 @@ metadata:
   name: skald-config
   namespace: $NAMESPACE
 data:
-  # Domain Configuration
-  API_DOMAIN: "${API_DOMAIN:-api.skald.local}"
-  UI_DOMAIN: "${UI_DOMAIN:-ui.skald.local}"
-  ACME_EMAIL: "${ACME_EMAIL:-admin@skald.local}"
-  
   # Database Configuration
-  POSTGRES_DB: "${POSTGRES_DB:-skald2}"
-  POSTGRES_USER: "${POSTGRES_USER:-postgres}"
+  DB_NAME: "${POSTGRES_DB:-skald2}"
+  DB_USER: "${POSTGRES_USER:-postgres}"
   DB_HOST: "postgres-service"
   DB_PORT: "5432"
   
@@ -95,11 +90,13 @@ data:
   REDIS_PORT: "6379"
   
   # Application Configuration
+  NODE_ENV: "production"
+  IS_DEVELOPMENT: "false"
   IS_SELF_HOSTED_DEPLOY: "true"
+  ENABLE_SECURITY_SETTINGS: "true"
+  EMAIL_VERIFICATION_ENABLED: "false"
   LLM_PROVIDER: "${LLM_PROVIDER:-cli-proxy-api}"
   CLI_PROXY_API_BASE_URL: "${CLI_PROXY_API_BASE_URL:-}"
-  CLI_PROXY_BASE_URL: "${CLI_PROXY_BASE_URL:-${CLI_PROXY_API_BASE_URL:-}}"
-  GEMINI_API_BASE_URL: "${GEMINI_API_BASE_URL:-}"
   LLM_DEFAULT_CHAT_MODEL: "${LLM_DEFAULT_CHAT_MODEL:-parrot}"
   LLM_DEFAULT_CLASSIFICATION_MODEL: "${LLM_DEFAULT_CLASSIFICATION_MODEL:-parrot}"
   LLM_FALLBACK_CHAIN: "${LLM_FALLBACK_CHAIN:-parrot,qwen-3.5,deepseek-v3.2,glm-5,kimi,qwen3-235b,free,gemini-2.5-pro,gemini-3-flash-preview,qwen3-max-preview,qwen3-coder-plus,qwen3-235b-a22b-thinking-2507,qwen3-235b-a22b-instruct,qwen3-32b,deepseek-v3.2-reasoner,deepseek-v3.1,deepseek-v3,deepseek-r1,deepseek-v3.2-chat,giga-potato,sonnet}"
@@ -107,26 +104,14 @@ data:
   DOCUMENT_EXTRACTION_PROVIDER: "${DOCUMENT_EXTRACTION_PROVIDER:-docling}"
   EMBEDDING_SERVICE_URL: "${EMBEDDING_SERVICE_URL:-http://embedding-service:8000}"
   DOCLING_SERVICE_URL: "http://docling-service:5001"
-  SECURE_SSL_REDIRECT: "false"
-  EXPRESS_SERVER_PORT: "8000"
   
   # Frontend Configuration
   FRONTEND_URL: "https://${UI_DOMAIN:-ui.skald.local}"
-  API_URL: "https://${API_DOMAIN:-api.skald.local}"
-  
-  # LangSmith Configuration (optional)
-  LANGSMITH_TRACING: "${LANGSMITH_TRACING:-false}"
-  LANGSMITH_ENDPOINT: "${LANGSMITH_ENDPOINT:-}"
-  LANGSMITH_PROJECT: "${LANGSMITH_PROJECT:-}"
-  
-  # Local LLM Configuration (optional)
-  LOCAL_LLM_BASE_URL: "${LOCAL_LLM_BASE_URL:-}"
-  LOCAL_LLM_MODEL: "${LOCAL_LLM_MODEL:-}"
+  CORS_ALLOWED_ORIGINS: "https://${UI_DOMAIN:-ui.skald.local},https://${API_DOMAIN:-api.skald.local}"
   
   # Local Embedding Configuration (optional)
   LOCAL_EMBEDDING_MODEL: "${LOCAL_EMBEDDING_MODEL:-all-MiniLM-L6-v2}"
   LOCAL_RERANK_MODEL: "${LOCAL_RERANK_MODEL:-cross-encoder/ms-marco-MiniLM-L-6-v2}"
-  TARGET_DIMENSION: "2048"
   
   # Reranking Configuration
   RERANK_PROVIDER: "${RERANK_PROVIDER:-ollama}"
@@ -608,7 +593,7 @@ deploy_ai_services() {
     fi
     
     # AI 서비스 Pod 준비 대기
-    wait_for_pods "component=embedding-service" 300
+    wait_for_pods "component=embedding-service" 1800
     wait_for_pods "component=docling-service" 300
     
     # 임시 파일 정리

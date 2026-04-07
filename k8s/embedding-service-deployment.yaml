@@ -143,7 +143,7 @@ spec:
                         valueFrom:
                             configMapKeyRef:
                                 name: skald-config
-                                key: CLI_PROXY_BASE_URL
+                                key: CLI_PROXY_API_BASE_URL
                                 optional: true
                       - name: CLI_PROXY_MODELS
                         valueFrom:
