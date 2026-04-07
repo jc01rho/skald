@@ -1565,8 +1565,12 @@ main() {
         # ConfigMap 및 Secret 생성
         create_configs
         
-        # 환경 변수 파일 기반 ConfigMap 값 덮어쓰기 (create_configs 이후 실행)
-        generate_configmap_from_env
+        # 로컬/정적 ConfigMap 파일이 없을 때만 환경 변수 기반 ConfigMap 생성
+        if [ -f "configmap.local.yaml" ] || [ -f "configmap.yaml" ]; then
+            log_info "ConfigMap 파일이 이미 적용되었으므로 환경 변수 기반 ConfigMap 덮어쓰기를 건너뜁니다."
+        else
+            generate_configmap_from_env
+        fi
         
         create_pvcs  # PVC 생성 함수는 호출되지만 내부 로직 생략됨
         deploy_infrastructure
