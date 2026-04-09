@@ -3,6 +3,7 @@ import '@/settings'
 
 import { startExpressServer } from '@/expressServer'
 import { startMemoProcessingServer } from '@/memoProcessingServer'
+import { startWikiProcessingServer } from '@/wikiProcessingServer'
 import { logger } from '@/lib/logger'
 import { canConnectToPostgres } from '@/lib/postgresClient'
 import { canConnectToRedis } from '@/lib/redisClient'
@@ -35,6 +36,8 @@ const getModeFromArgs = (): string | null => {
         startExpressServer()
     } else if (mode === 'memo-processing-server') {
         startMemoProcessingServer()
+    } else if (mode === 'wiki-processing-server') {
+        startWikiProcessingServer()
     } else {
         logger.error({ mode }, 'Invalid mode')
         process.exit(1)

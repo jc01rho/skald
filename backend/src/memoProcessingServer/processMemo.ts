@@ -14,7 +14,8 @@ import { UsageTrackingService } from '@/services/usageTrackingService'
 import { calculateMemoWritesUsage } from '@/lib/usageTrackingUtils'
 import { Project } from '@/entities/Project'
 import { Organization } from '@/entities/Organization'
-import { LLM_PROVIDER } from '@/settings'
+import { LLM_PROVIDER, WIKI_ASYNC_MODE } from '@/settings'
+import { WikiCompilerService } from '@/services/wiki/wikiCompilerService'
 
 const runMemoProcessingAgents = async (em: EntityManager, memoUuid: string) => {
     const sql = `
@@ -95,6 +96,14 @@ export const processMemo = async (em: EntityManager, memoUuid: string) => {
         })
 
         await runMemoProcessingAgents(em, memoUuid)
+
+        const refreshRequest = await WikiCompilerService.enqueueRefreshForMemo(em, memoUuid, 'memo_updated')
+        if (refreshRequest) {
+            await WikiCompilerService.dispatchRefreshRequest(em, refreshRequest)
+            if (WIKI_ASYNC_MODE !== 'queue') {
+                await WikiCompilerService.processPendingRefreshes(em, 1)
+            }
+        }
 
         await updateMemoStatus(em, memoUuid, {
             processing_status: 'processed',

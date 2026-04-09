@@ -23,6 +23,7 @@ import { stripeWebhook } from '@/api/stripe_webhook'
 import { subscriptionRouter } from '@/api/subscription'
 import { userRouter } from '@/api/user'
 import { publicMemoSubmissionRouter, authMemoSubmissionRouter, publicMemosRouter } from '@/api/memoSubmission'
+import { wikiRouter } from '@/api/wiki'
 import { logger } from '@/lib/logger'
 import { posthog } from '@/lib/posthogUtils'
 import { authRateLimiter, generalRateLimiter } from '@/middleware/rateLimitMiddleware'
@@ -51,8 +52,9 @@ export const startExpressServer = async (
 
     const app = express()
 
-    // Trust Fly.io proxy for accurate client IP detection in rate limiting
-    app.set('trust proxy', true)
+    // Trust exactly one upstream proxy hop (e.g. k8s ingress / load balancer)
+    // to preserve client IPs without allowing permissive proxy spoofing.
+    app.set('trust proxy', 1)
 
     const route404 = (req: Request, res: Response) => {
         res.status(404).json({ error: 'Not found' })
@@ -114,6 +116,7 @@ export const startExpressServer = async (
     privateRoutesRouter.use('/onboarding', onboardingRouter)
     privateRoutesRouter.use('/v1/config', configRouter)
     privateRoutesRouter.use('/v1/memo-submissions', [requireProjectAccess()], authMemoSubmissionRouter)
+    privateRoutesRouter.use('/v1/wiki', wikiRouter)
 
     // register extra private routes (e.g., enterprise features)
     for (const [route, middleware, router] of extraPrivateRoutes) {

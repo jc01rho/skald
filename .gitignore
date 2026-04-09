@@ -196,3 +196,4 @@ k8s/discord-bot-secret.local.yaml
 # tldr cache
 .tldr/
 .gitnexus
+rag-reference/

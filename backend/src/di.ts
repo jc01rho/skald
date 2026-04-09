@@ -27,6 +27,20 @@ import { EvaluationDatasetQuestion } from '@/entities/EvaluationDatasetQuestion'
 import { Experiment } from '@/entities/Experiment'
 import { ExperimentResult } from '@/entities/ExperimentResult'
 import { MemoParentChunk } from '@/entities/MemoParentChunk'
+import { WikiPage } from '@/entities/WikiPage'
+import { WikiPageRevision } from '@/entities/WikiPageRevision'
+import { RawSourceDocument } from '@/entities/RawSourceDocument'
+import { RawSourceContent } from '@/entities/RawSourceContent'
+import { WikiRule } from '@/entities/WikiRule'
+import { WikiPageSourceLink } from '@/entities/WikiPageSourceLink'
+import { WikiRefreshRequest } from '@/entities/WikiRefreshRequest'
+import { WikiNode } from '@/entities/WikiNode'
+import { WikiEdge } from '@/entities/WikiEdge'
+import { WikiClaim } from '@/entities/WikiClaim'
+import { WikiSourceRef } from '@/entities/WikiSourceRef'
+import { WikiClaimSourceRef } from '@/entities/WikiClaimSourceRef'
+import { WikiPageLink } from '@/entities/WikiPageLink'
+import { WikiCompileRun } from '@/entities/WikiCompileRun'
 
 export const DI = {} as {
     server: http.Server
@@ -57,6 +71,20 @@ export const DI = {} as {
     experiments: EntityRepository<Experiment>
     experimentResults: EntityRepository<ExperimentResult>
     memoSubmissions: EntityRepository<MemoSubmission>
+    wikiPages: EntityRepository<WikiPage>
+    wikiPageRevisions: EntityRepository<WikiPageRevision>
+    rawSourceDocuments: EntityRepository<RawSourceDocument>
+    rawSourceContents: EntityRepository<RawSourceContent>
+    wikiRules: EntityRepository<WikiRule>
+    wikiPageSourceLinks: EntityRepository<WikiPageSourceLink>
+    wikiRefreshRequests: EntityRepository<WikiRefreshRequest>
+    wikiNodes: EntityRepository<WikiNode>
+    wikiEdges: EntityRepository<WikiEdge>
+    wikiClaims: EntityRepository<WikiClaim>
+    wikiSourceRefs: EntityRepository<WikiSourceRef>
+    wikiClaimSourceRefs: EntityRepository<WikiClaimSourceRef>
+    wikiPageLinks: EntityRepository<WikiPageLink>
+    wikiCompileRuns: EntityRepository<WikiCompileRun>
 }
 
 export const initDI = async (): Promise<typeof DI> => {
@@ -87,6 +115,20 @@ export const initDI = async (): Promise<typeof DI> => {
     DI.experiments = DI.orm.em.getRepository(Experiment)
     DI.experimentResults = DI.orm.em.getRepository(ExperimentResult)
     DI.memoSubmissions = DI.orm.em.getRepository(MemoSubmission)
+    DI.wikiPages = DI.orm.em.getRepository(WikiPage)
+    DI.wikiPageRevisions = DI.orm.em.getRepository(WikiPageRevision)
+    DI.rawSourceDocuments = DI.orm.em.getRepository(RawSourceDocument)
+    DI.rawSourceContents = DI.orm.em.getRepository(RawSourceContent)
+    DI.wikiRules = DI.orm.em.getRepository(WikiRule)
+    DI.wikiPageSourceLinks = DI.orm.em.getRepository(WikiPageSourceLink)
+    DI.wikiRefreshRequests = DI.orm.em.getRepository(WikiRefreshRequest)
+    DI.wikiNodes = DI.orm.em.getRepository(WikiNode)
+    DI.wikiEdges = DI.orm.em.getRepository(WikiEdge)
+    DI.wikiClaims = DI.orm.em.getRepository(WikiClaim)
+    DI.wikiSourceRefs = DI.orm.em.getRepository(WikiSourceRef)
+    DI.wikiClaimSourceRefs = DI.orm.em.getRepository(WikiClaimSourceRef)
+    DI.wikiPageLinks = DI.orm.em.getRepository(WikiPageLink)
+    DI.wikiCompileRuns = DI.orm.em.getRepository(WikiCompileRun)
 
     return DI
 }

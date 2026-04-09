@@ -258,6 +258,22 @@ export const FRONTEND_URL = process.env.FRONTEND_URL || 'http://localhost:5173'
 
 export const EXPRESS_SERVER_PORT = parseInt(process.env.EXPRESS_SERVER_PORT || '3000')
 
+// ---- Wiki Layer Configuration ----
+export const WIKI_ENABLED = strToBool(process.env.WIKI_ENABLED, false)
+export const WIKI_COMPILE_ON_MEMO_PROCESS = strToBool(process.env.WIKI_COMPILE_ON_MEMO_PROCESS, false)
+export const WIKI_ASYNC_MODE = process.env.WIKI_ASYNC_MODE || 'inline'
+export const WIKI_CHANNEL_NAME = process.env.WIKI_CHANNEL_NAME || 'process_wiki_refresh'
+export const WIKI_SQS_QUEUE_URL = process.env.WIKI_SQS_QUEUE_URL || SQS_QUEUE_URL
+export const WIKI_RABBITMQ_QUEUE_NAME = process.env.WIKI_RABBITMQ_QUEUE_NAME || 'process_wiki_refresh'
+export const WIKI_BATCH_SIZE = parseInt(process.env.WIKI_BATCH_SIZE || '5')
+export const WIKI_CLAIM_TTL_SECONDS = parseInt(process.env.WIKI_CLAIM_TTL_SECONDS || '300')
+export const WIKI_STALE_THRESHOLD_SECONDS = parseInt(process.env.WIKI_STALE_THRESHOLD_SECONDS || '900')
+export const WIKI_MAX_SOURCE_CHUNKS = parseInt(process.env.WIKI_MAX_SOURCE_CHUNKS || '8')
+export const WIKI_LLM_MODEL_OVERRIDE = process.env.WIKI_LLM_MODEL_OVERRIDE || ''
+export const WIKI_CONTEXT_TOKEN_BUDGET = parseInt(process.env.WIKI_CONTEXT_TOKEN_BUDGET || '12000')
+export const WIKI_MIN_CONFIDENCE = parseFloat(process.env.WIKI_MIN_CONFIDENCE || '0.5')
+export const WIKI_ENABLE_GRAPH_EXPANSION = strToBool(process.env.WIKI_ENABLE_GRAPH_EXPANSION, true)
+
 // ---- Google OAuth Configuration ----
 export const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID
 export const GOOGLE_CLIENT_SECRET = process.env.GOOGLE_CLIENT_SECRET

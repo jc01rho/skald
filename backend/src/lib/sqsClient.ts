@@ -27,11 +27,14 @@ const initSQSClient = () => {
     return sqsClient
 }
 
-export const receiveMessages = async () => {
+export const receiveMessagesForQueue = async (queueUrl: string | undefined) => {
     const _sqsClient = initSQSClient()
+    if (!queueUrl) {
+        throw new Error('Queue URL is required')
+    }
 
     const command = new ReceiveMessageCommand({
-        QueueUrl: SQS_QUEUE_URL,
+        QueueUrl: queueUrl,
         MaxNumberOfMessages: MAX_MESSAGES,
         WaitTimeSeconds: WAIT_TIME_SECONDS,
         VisibilityTimeout: VISIBILITY_TIMEOUT,
@@ -39,12 +42,17 @@ export const receiveMessages = async () => {
     return await _sqsClient.send(command)
 }
 
-export const deleteMessage = async (message: Message) => {
+export const receiveMessages = async () => receiveMessagesForQueue(SQS_QUEUE_URL)
+
+export const deleteMessage = async (message: Message, queueUrl: string = SQS_QUEUE_URL || '') => {
     const _sqsClient = initSQSClient()
+    if (!queueUrl) {
+        throw new Error('Queue URL is required')
+    }
 
     await _sqsClient.send(
         new DeleteMessageCommand({
-            QueueUrl: SQS_QUEUE_URL,
+            QueueUrl: queueUrl,
             ReceiptHandle: message.ReceiptHandle,
         })
     )
