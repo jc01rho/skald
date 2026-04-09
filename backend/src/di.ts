@@ -41,6 +41,7 @@ import { WikiSourceRef } from '@/entities/WikiSourceRef'
 import { WikiClaimSourceRef } from '@/entities/WikiClaimSourceRef'
 import { WikiPageLink } from '@/entities/WikiPageLink'
 import { WikiCompileRun } from '@/entities/WikiCompileRun'
+import { ProjectSweepState } from '@/entities/ProjectSweepState'
 
 export const DI = {} as {
     server: http.Server
@@ -85,6 +86,7 @@ export const DI = {} as {
     wikiClaimSourceRefs: EntityRepository<WikiClaimSourceRef>
     wikiPageLinks: EntityRepository<WikiPageLink>
     wikiCompileRuns: EntityRepository<WikiCompileRun>
+    projectSweepStates: EntityRepository<ProjectSweepState>
 }
 
 export const initDI = async (): Promise<typeof DI> => {
@@ -129,6 +131,7 @@ export const initDI = async (): Promise<typeof DI> => {
     DI.wikiClaimSourceRefs = DI.orm.em.getRepository(WikiClaimSourceRef)
     DI.wikiPageLinks = DI.orm.em.getRepository(WikiPageLink)
     DI.wikiCompileRuns = DI.orm.em.getRepository(WikiCompileRun)
+    DI.projectSweepStates = DI.orm.em.getRepository(ProjectSweepState)
 
     return DI
 }
