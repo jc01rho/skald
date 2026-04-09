@@ -83,6 +83,7 @@ describe('ragGraph decomposition wiring', () => {
         exactLookupKeys: null,
         exactLookupResults: null,
         lookupHit: null,
+        wikiTraversal: null,
     })
 
     const createVectorSearchState = () => ({

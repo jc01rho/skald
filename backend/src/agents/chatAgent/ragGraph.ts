@@ -22,6 +22,11 @@ import { HNSWOptimizationService } from '@/lib/hnswOptimization'
 import { extractExplicitKeys, ExtractedKey } from '@/lib/keyExtractor'
 import { expandTechnicalQueryVariants } from '@/lib/queryNormalization'
 import { buildMemoSourceUrl } from '@/lib/memoSourceUrl'
+import { RawSourceDocument } from '@/entities/RawSourceDocument'
+import { WikiPage } from '@/entities/WikiPage'
+import { WikiPageSourceLink } from '@/entities/WikiPageSourceLink'
+import { WikiNode } from '@/entities/WikiNode'
+import { WikiEdge } from '@/entities/WikiEdge'
 
 interface RerankResult {
     index: number
@@ -284,6 +289,31 @@ export interface RAGConfig {
     }
 }
 
+interface WikiTraversalContext {
+    pages: Array<{
+        slug: string
+        title: string
+        summary: string | null
+        canonical: string | null
+        confidence: number
+        freshness: number
+    }>
+    nodes: Array<{
+        canonicalName: string
+        displayName: string
+        description: string | null
+        nodeType: string
+        confidence: number
+        freshness: number
+    }>
+    edges: Array<{
+        fromCanonicalName: string
+        toCanonicalName: string
+        edgeType: string
+        weight: number
+    }>
+}
+
 // Define your state schema
 const RAGState = Annotation.Root({
     project: Annotation<Project>,
@@ -321,6 +351,7 @@ const RAGState = Annotation.Root({
         contradiction?: { urlKey: string; inlineKey: string }
     }> | null>,
     lookupHit: Annotation<boolean | null>,
+    wikiTraversal: Annotation<WikiTraversalContext | null>,
 })
 
 async function getChatHistoryNode(state: typeof RAGState.State) {
@@ -1588,6 +1619,180 @@ async function fetchParentChunksNode(state: typeof RAGState.State) {
     }
 }
 
+function buildWikiTraversalBlock(wikiTraversal: WikiTraversalContext | null): string {
+    if (!wikiTraversal) {
+        return ''
+    }
+
+    let block = ''
+
+    if (wikiTraversal.pages.length > 0) {
+        block += '[Related Wiki Pages]\n'
+        for (const page of wikiTraversal.pages) {
+            block += `- ${page.title} (${page.slug})`
+            if (page.summary) {
+                block += `: ${page.summary}`
+            }
+            block += '\n'
+        }
+        block += '[End of Related Wiki Pages]\n\n'
+    }
+
+    if (wikiTraversal.nodes.length > 0) {
+        block += '[Wiki Graph Nodes]\n'
+        for (const node of wikiTraversal.nodes) {
+            block += `- ${node.displayName} <${node.nodeType}>`
+            if (node.description) {
+                block += `: ${node.description}`
+            }
+            block += '\n'
+        }
+        block += '[End of Wiki Graph Nodes]\n\n'
+    }
+
+    if (wikiTraversal.edges.length > 0) {
+        block += '[Wiki Graph Relationships]\n'
+        for (const edge of wikiTraversal.edges) {
+            block += `- ${edge.fromCanonicalName} --[${edge.edgeType}]--> ${edge.toCanonicalName} (weight=${edge.weight})\n`
+        }
+        block += '[End of Wiki Graph Relationships]\n\n'
+    }
+
+    return block
+}
+
+async function wikiTraversalNode(state: typeof RAGState.State) {
+    const { project, rerankedResults } = state
+    const em = DI.orm.em.fork()
+
+    if (!rerankedResults || rerankedResults.length === 0) {
+        return { wikiTraversal: null }
+    }
+
+    const memoUuids = Array.from(
+        new Set(rerankedResults.map((result) => result.memo_uuid).filter((value): value is string => Boolean(value)))
+    ).slice(0, 8)
+
+    if (memoUuids.length === 0) {
+        return { wikiTraversal: null }
+    }
+
+    const rawSourceDocuments = await em.find(
+        RawSourceDocument,
+        {
+            project,
+            external_reference: { $in: memoUuids },
+        },
+        { fields: ['uuid', 'external_reference'] }
+    )
+
+    if (rawSourceDocuments.length === 0) {
+        return { wikiTraversal: null }
+    }
+
+    const rawSourceDocumentIds = rawSourceDocuments.map((document) => document.uuid)
+    const sourceLinks = await em.find(
+        WikiPageSourceLink,
+        {
+            project,
+            raw_source_document: { $in: rawSourceDocumentIds },
+        },
+        {
+            populate: ['wiki_page_revision', 'wiki_page_revision.wiki_page'],
+            orderBy: { created_at: 'DESC' },
+        }
+    )
+
+    if (sourceLinks.length === 0) {
+        return { wikiTraversal: null }
+    }
+
+    const pageByUuid = new Map<string, WikiPage>()
+    for (const sourceLink of sourceLinks) {
+        const page = sourceLink.wiki_page_revision?.wiki_page
+        if (!page || pageByUuid.has(page.uuid)) {
+            continue
+        }
+        pageByUuid.set(page.uuid, page)
+    }
+
+    const pages = Array.from(pageByUuid.values()).slice(0, 5)
+    if (pages.length === 0) {
+        return { wikiTraversal: null }
+    }
+
+    const canonicalNames = Array.from(
+        new Set(
+            pages.map((page) => page.canonical?.trim().toLowerCase()).filter((value): value is string => Boolean(value))
+        )
+    )
+
+    const directNodes = canonicalNames.length
+        ? await em.find(WikiNode, {
+              project,
+              canonical_name: { $in: canonicalNames },
+          })
+        : []
+
+    const directNodeIds = directNodes.map((node) => node.uuid)
+    const directEdges = directNodeIds.length
+        ? await em.find(
+              WikiEdge,
+              {
+                  project,
+                  from_node: { $in: directNodeIds },
+              },
+              {
+                  populate: ['from_node', 'to_node'],
+                  orderBy: { weight: 'DESC', updated_at: 'DESC' },
+                  limit: 12,
+              }
+          )
+        : []
+
+    const nodeByCanonicalName = new Map<string, WikiNode>()
+    for (const node of directNodes) {
+        nodeByCanonicalName.set(node.canonical_name, node)
+    }
+    for (const edge of directEdges) {
+        if (edge.from_node?.canonical_name && !nodeByCanonicalName.has(edge.from_node.canonical_name)) {
+            nodeByCanonicalName.set(edge.from_node.canonical_name, edge.from_node)
+        }
+        if (edge.to_node?.canonical_name && !nodeByCanonicalName.has(edge.to_node.canonical_name)) {
+            nodeByCanonicalName.set(edge.to_node.canonical_name, edge.to_node)
+        }
+    }
+
+    return {
+        wikiTraversal: {
+            pages: pages.map((page) => ({
+                slug: page.slug,
+                title: page.title,
+                summary: page.summary || null,
+                canonical: page.canonical || null,
+                confidence: page.confidence,
+                freshness: page.freshness,
+            })),
+            nodes: Array.from(nodeByCanonicalName.values())
+                .slice(0, 10)
+                .map((node) => ({
+                    canonicalName: node.canonical_name,
+                    displayName: node.display_name,
+                    description: node.description || null,
+                    nodeType: node.node_type,
+                    confidence: node.confidence,
+                    freshness: node.freshness,
+                })),
+            edges: directEdges.slice(0, 12).map((edge) => ({
+                fromCanonicalName: edge.from_node.canonical_name,
+                toCanonicalName: edge.to_node.canonical_name,
+                edgeType: edge.edge_type,
+                weight: edge.weight,
+            })),
+        },
+    }
+}
+
 function buildLLMInputsNode(state: typeof RAGState.State) {
     const {
         conversationHistory,
@@ -1602,6 +1807,7 @@ function buildLLMInputsNode(state: typeof RAGState.State) {
         exactLookupResults,
         lookupHit,
         subQuestions,
+        wikiTraversal,
     } = state
 
     const queryAnchors = extractQueryAnchors(query)
@@ -1701,6 +1907,8 @@ function buildLLMInputsNode(state: typeof RAGState.State) {
             .join('\n')
         contextStr += '\n[End of Mixed-Question Decomposition]\n\n'
     }
+
+    contextStr += buildWikiTraversalBlock(wikiTraversal)
 
     for (let i = 0; i < rerankedResults.length; i++) {
         const result = rerankedResults[i]
@@ -1803,6 +2011,7 @@ const ragGraphDefinition = new StateGraph(RAGState)
     .addNode('mmr', mmrNode)
     .addNode('contextReorder', contextReorderNode)
     .addNode('fetchParentChunks', fetchParentChunksNode)
+    .addNode('collectWikiTraversal', wikiTraversalNode)
     .addNode('buildLLMInputs', buildLLMInputsNode)
     .addEdge('__start__', 'getChatHistory')
     // exactLookup and analyzeAndRewrite can run in parallel after chat history is loaded
@@ -1817,8 +2026,9 @@ const ragGraphDefinition = new StateGraph(RAGState)
     .addEdge('rerank', 'validateCrag')
     .addEdge('validateCrag', 'mmr')
     .addEdge('mmr', 'contextReorder')
-    // Fan-in: buildLLMInputs waits for both contextReorder and fetchParentChunks
-    .addEdge(['contextReorder', 'fetchParentChunks'], 'buildLLMInputs')
+    .addEdge('contextReorder', 'collectWikiTraversal')
+    // Fan-in: buildLLMInputs waits for both collectWikiTraversal and fetchParentChunks
+    .addEdge(['collectWikiTraversal', 'fetchParentChunks'], 'buildLLMInputs')
     .addEdge('buildLLMInputs', END)
 
 export const ragGraph = ragGraphDefinition.compile()
@@ -1833,4 +2043,6 @@ export const __testables__ = {
     hasStrongLiteralAnchorEvidence,
     buildLowConfidenceGuidance,
     vectorSearchNode,
+    wikiTraversalNode,
+    buildWikiTraversalBlock,
 }

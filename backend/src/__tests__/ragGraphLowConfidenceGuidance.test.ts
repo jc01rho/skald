@@ -37,6 +37,7 @@ describe('ragGraph low-confidence guidance', () => {
         exactLookupKeys: null,
         exactLookupResults: null,
         lookupHit: false,
+        wikiTraversal: null,
         ...overrides,
     })
 
@@ -283,5 +284,49 @@ describe('ragGraph low-confidence guidance', () => {
         expect(result.contextStr).toContain('[Mixed-Question Decomposition]')
         expect(result.contextStr).toContain('Sub-question 1: 장애 요약')
         expect(result.contextStr).toContain('Sub-question 3: 권장 조치')
+    })
+
+    it('injects browseable wiki context blocks into final context assembly', () => {
+        const result = __testables__.buildLLMInputsNode(
+            createBuildInputsState({
+                wikiTraversal: {
+                    pages: [
+                        {
+                            slug: 'oauth-gateway',
+                            title: 'OAuth Gateway',
+                            summary: '인증 게이트웨이 동작 개요',
+                            canonical: 'oauth_gateway',
+                            confidence: 0.9,
+                            freshness: 0.8,
+                        },
+                    ],
+                    nodes: [
+                        {
+                            canonicalName: 'oauth_gateway',
+                            displayName: 'OAuth Gateway',
+                            description: '인증 리다이렉트를 담당하는 컴포넌트',
+                            nodeType: 'artifact',
+                            confidence: 0.9,
+                            freshness: 0.8,
+                        },
+                    ],
+                    edges: [
+                        {
+                            fromCanonicalName: 'oauth_gateway',
+                            toCanonicalName: 'auth_callback',
+                            edgeType: 'depends_on',
+                            weight: 0.8,
+                        },
+                    ],
+                },
+            })
+        )
+
+        expect(result.contextStr).toContain('[Related Wiki Pages]')
+        expect(result.contextStr).toContain('OAuth Gateway (oauth-gateway): 인증 게이트웨이 동작 개요')
+        expect(result.contextStr).toContain('[Wiki Graph Nodes]')
+        expect(result.contextStr).toContain('OAuth Gateway <artifact>: 인증 리다이렉트를 담당하는 컴포넌트')
+        expect(result.contextStr).toContain('[Wiki Graph Relationships]')
+        expect(result.contextStr).toContain('oauth_gateway --[depends_on]--> auth_callback')
     })
 })
