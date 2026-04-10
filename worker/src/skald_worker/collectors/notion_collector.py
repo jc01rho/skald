@@ -222,10 +222,69 @@ class NotionCollector:
 
         return all_blocks
 
+    async def fetch_database_entries(
+        self,
+        database_id: str,
+        start_cursor: str | None = None,
+    ) -> dict[str, Any]:
+        """Fetch one page of entries from a Notion database."""
+        database = await self._request_with_retry(
+            self.client.databases.retrieve,
+            database_id=database_id,
+        )
+        data_sources = database.get("data_sources", [])
+        data_source_id = data_sources[0].get("id") if data_sources else None
+        if not data_source_id:
+            raise ValueError(f"Database {database_id} does not expose a data source")
+
+        params: dict[str, Any] = {}
+        if start_cursor:
+            params["start_cursor"] = start_cursor
+
+        return await self._request_with_retry(
+            self.client.data_sources.query,
+            data_source_id=data_source_id,
+            **params,
+        )
+
+    async def fetch_all_database_entries(
+        self,
+        database_id: str,
+        max_results: int | None = None,
+    ) -> list[dict[str, Any]]:
+        """Fetch all page entries for a Notion database, following pagination."""
+        all_entries: list[dict[str, Any]] = []
+        start_cursor: str | None = None
+
+        while True:
+            response = await self.fetch_database_entries(database_id, start_cursor)
+            results = response.get("results", [])
+
+            if max_results is not None:
+                remaining = max_results - len(all_entries)
+                if remaining <= 0:
+                    break
+                all_entries.extend(results[:remaining])
+            else:
+                all_entries.extend(results)
+
+            if max_results is not None and len(all_entries) >= max_results:
+                break
+
+            if not response.get("has_more", False):
+                break
+
+            start_cursor = response.get("next_cursor")
+            if not start_cursor:
+                break
+
+        return all_entries
+
     async def discover_child_pages(
         self,
         page_id: str,
         current_depth: int = 0,
+        seen_page_ids: set[str] | None = None,
     ) -> list[dict[str, Any]]:
         """Discover child pages recursively from a root wiki page."""
         if current_depth > self.max_depth:
@@ -237,48 +296,102 @@ class NotionCollector:
             )
             return []
 
+        if seen_page_ids is None:
+            seen_page_ids = set()
+
         discovered_pages: list[dict[str, Any]] = []
 
         try:
             blocks = await self.fetch_all_block_children(page_id)
             for block in blocks:
-                if block.get("type") != "child_page":
+                block_type = block.get("type")
+
+                if block_type == "child_page":
+                    child_page_id = block.get("id")
+                    if not child_page_id or child_page_id in seen_page_ids:
+                        continue
+
+                    page_metadata = await self.fetch_page(child_page_id)
+                    child_title = self._extract_page_title(page_metadata)
+                    discovered_pages.append(
+                        {
+                            "id": child_page_id,
+                            "title": child_title,
+                            "last_edited_time": page_metadata.get("last_edited_time"),
+                            "depth": current_depth + 1,
+                            "parent_id": page_id,
+                        }
+                    )
+                    seen_page_ids.add(child_page_id)
+
+                    if len(discovered_pages) >= self.max_pages:
+                        logger.warning(
+                            "Max pages limit reached during child page discovery",
+                            max_pages=self.max_pages,
+                        )
+                        break
+
+                    nested_pages = await self.discover_child_pages(
+                        child_page_id,
+                        current_depth=current_depth + 1,
+                        seen_page_ids=seen_page_ids,
+                    )
+                    discovered_pages.extend(nested_pages)
+
+                    if len(discovered_pages) >= self.max_pages:
+                        logger.warning(
+                            "Max pages limit reached after recursive discovery",
+                            max_pages=self.max_pages,
+                        )
+                        break
+
                     continue
 
-                child_page_id = block.get("id")
-                if not child_page_id:
+                if block_type != "child_database":
                     continue
 
-                page_metadata = await self.fetch_page(child_page_id)
-                child_title = self._extract_page_title(page_metadata)
-                discovered_pages.append(
-                    {
-                        "id": child_page_id,
-                        "title": child_title,
-                        "last_edited_time": page_metadata.get("last_edited_time"),
-                        "depth": current_depth + 1,
-                        "parent_id": page_id,
-                    }
-                )
+                database_id = block.get("id")
+                if not database_id:
+                    continue
 
-                if len(discovered_pages) >= self.max_pages:
+                remaining_slots = self.max_pages - len(discovered_pages)
+                if remaining_slots <= 0:
                     logger.warning(
-                        "Max pages limit reached during child page discovery",
+                        "Max pages limit reached during database page discovery",
                         max_pages=self.max_pages,
                     )
                     break
 
-                nested_pages = await self.discover_child_pages(
-                    child_page_id,
-                    current_depth=current_depth + 1,
+                database_entries = await self.fetch_all_database_entries(
+                    database_id,
+                    max_results=remaining_slots,
                 )
-                discovered_pages.extend(nested_pages)
+
+                for entry in database_entries:
+                    entry_id = entry.get("id")
+                    if not entry_id or entry_id in seen_page_ids:
+                        continue
+
+                    entry_title = self._extract_page_title(entry)
+                    discovered_pages.append(
+                        {
+                            "id": entry_id,
+                            "title": entry_title,
+                            "last_edited_time": entry.get("last_edited_time"),
+                            "depth": current_depth + 1,
+                            "parent_id": page_id,
+                        }
+                    )
+                    seen_page_ids.add(entry_id)
+
+                    if len(discovered_pages) >= self.max_pages:
+                        logger.warning(
+                            "Max pages limit reached during database page discovery",
+                            max_pages=self.max_pages,
+                        )
+                        break
 
                 if len(discovered_pages) >= self.max_pages:
-                    logger.warning(
-                        "Max pages limit reached after recursive discovery",
-                        max_pages=self.max_pages,
-                    )
                     break
         except Exception as exc:
             logger.error(
