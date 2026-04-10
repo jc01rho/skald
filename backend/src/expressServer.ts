@@ -76,7 +76,7 @@ export const startExpressServer = async (
     // Must come before express.json() middleware
     app.post('/api/stripe/webhook', express.raw({ type: 'application/json' }), stripeWebhook)
 
-    app.use(express.json())
+    app.use(express.json({ limit: '1mb' }))
     app.use(cookieParser())
     app.use((req, res, next) => RequestContext.create(DI.orm.em, next))
     app.use(userMiddleware())
