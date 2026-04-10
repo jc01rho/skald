@@ -70,31 +70,50 @@ class TestSkaldClient:
     async def test_get_memo_found(self, client, sample_memo):
         """Test getting an existing memo."""
         mock_response = MagicMock()
+        mock_response.status_code = 200
         mock_response.json.return_value = sample_memo
+        mock_response.raise_for_status = MagicMock()
 
-        with patch.object(client, "_request_with_retry", new_callable=AsyncMock) as mock_request:
-            mock_request.return_value = mock_response
+        mock_http_client = MagicMock()
+        mock_http_client.is_closed = False
+        mock_http_client.request = AsyncMock(return_value=mock_response)
+        mock_http_client.aclose = AsyncMock()
+        client._client = mock_http_client
 
-            result = await client.get_memo("jira:TEST-123")
+        result = await client.get_memo("jira:TEST-123")
 
-            mock_request.assert_called_once()
-            assert result == sample_memo
+        mock_http_client.request.assert_awaited_once_with(
+            "GET",
+            "/api/v1/memo/jira:TEST-123",
+            params={"id_type": "reference_id"},
+        )
+        mock_response.raise_for_status.assert_called_once()
+        assert result == sample_memo
 
     @pytest.mark.asyncio
     async def test_get_memo_not_found(self, client):
-        """Test getting a non-existent memo returns None."""
+        """Test getting a non-existent memo returns None without tripping circuit breaker."""
         mock_response = MagicMock()
         mock_response.status_code = 404
+        mock_response.raise_for_status = MagicMock()
 
-        with patch.object(client, "_request_with_retry", new_callable=AsyncMock) as mock_request:
-            mock_request.side_effect = httpx.HTTPStatusError(
-                message="Not Found",
-                request=MagicMock(),
-                response=mock_response,
-            )
+        mock_http_client = MagicMock()
+        mock_http_client.is_closed = False
+        mock_http_client.request = AsyncMock(return_value=mock_response)
+        mock_http_client.aclose = AsyncMock()
+        client._client = mock_http_client
 
-            result = await client.get_memo("nonexistent-ref")
-            assert result is None
+        result = await client.get_memo("nonexistent-ref")
+
+        mock_http_client.request.assert_awaited_once_with(
+            "GET",
+            "/api/v1/memo/nonexistent-ref",
+            params={"id_type": "reference_id"},
+        )
+        mock_response.raise_for_status.assert_not_called()
+        assert result is None
+        assert client.circuit_breaker.state.value == "closed"
+        assert client.circuit_breaker.get_status()["failure_count"] == 0
 
     @pytest.mark.asyncio
     async def test_upsert_memo_creates_new(self, client, sample_memo):

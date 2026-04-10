@@ -245,17 +245,25 @@ class SkaldClient:
         Returns:
             Memo data or None if not found
         """
-        try:
-            response = await self._request_with_retry(
-                "GET",
-                f"/api/v1/memo/{reference_id}",
-                params={"id_type": "reference_id"},
+        async with self._circuit_breaker:
+
+            async def _do_request() -> dict[str, Any] | None:
+                response = await self.client.request(
+                    "GET",
+                    f"/api/v1/memo/{reference_id}",
+                    params={"id_type": "reference_id"},
+                )
+                if response.status_code == 404:
+                    return None
+                response.raise_for_status()
+                return response.json()
+
+            return await with_retry(
+                _do_request,
+                max_attempts=self.max_retries,
+                min_wait=self.retry_min_wait,
+                max_wait=self.retry_max_wait,
             )
-            return response.json()
-        except httpx.HTTPStatusError as e:
-            if e.response.status_code == 404:
-                return None
-            raise
 
     async def upsert_memo(
         self,
