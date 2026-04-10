@@ -49,3 +49,19 @@ def test_rich_text_to_plain_handles_null_equation_payload() -> None:
     )
 
     assert result == "E=mc^2"
+
+
+def test_blocks_to_markdown_renders_child_database() -> None:
+    result = blocks_to_markdown(
+        [
+            {
+                "type": "child_database",
+                "id": "13412909-57b2-8093-8763-c016ec8b88be",
+                "child_database": {"title": "Engineering Docs"},
+                "url": "https://www.notion.so/engineering-docs",
+            }
+        ]
+    )
+
+    assert "🗃️ Engineering Docs" in result
+    assert "https://www.notion.so/engineering-docs" in result

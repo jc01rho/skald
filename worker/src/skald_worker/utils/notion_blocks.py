@@ -119,13 +119,17 @@ def _render_block(block: dict[str, Any], indent_level: int, number_index: int) -
         title = block_data.get("title", "Untitled")
         url = block.get("url") or _notion_page_url(block.get("id", ""))
         content = _with_indent(f"[📄 {title}]({url})" if url else f"📄 {title}", indent)
+    elif block_type == "child_database":
+        title = block_data.get("title", "Untitled")
+        url = block.get("url") or _notion_page_url(block.get("id", ""))
+        content = _with_indent(f"[🗃️ {title}]({url})" if url else f"🗃️ {title}", indent)
     elif block_type == "table_row":
         content = _with_indent(_render_table_row(block_data), indent)
     else:
         content = _with_indent(f"<!-- unsupported block: {block_type} -->", indent)
 
     children = block.get("children", [])
-    if not children or block_type in {"table", "table_row", "child_page"}:
+    if not children or block_type in {"table", "table_row", "child_page", "child_database"}:
         return content
 
     rendered_children = _render_blocks(children, indent_level=indent_level + 1)
