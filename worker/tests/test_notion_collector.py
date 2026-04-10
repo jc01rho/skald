@@ -126,3 +126,46 @@ class TestNotionCollector:
 
         assert len(discovered) == 1
         assert discovered[0]["id"] == "shared-page"
+
+    @pytest.mark.asyncio
+    async def test_sync_page_skips_empty_markdown_content(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        collector = NotionCollector(
+            token="test-token",
+            root_page_id="root-page",
+        )
+
+        async def fake_fetch_page(page_id: str) -> dict:
+            assert page_id == "empty-page"
+            return {
+                "id": page_id,
+                "last_edited_time": "2026-04-10T00:00:00.000Z",
+                "properties": {
+                    "Name": {
+                        "type": "title",
+                        "title": [{"plain_text": "Empty page"}],
+                    }
+                },
+            }
+
+        async def fake_fetch_all_block_children(page_id: str) -> list[dict]:
+            assert page_id == "empty-page"
+            return []
+
+        class UnexpectedClient:
+            async def upsert_memo(self, **kwargs):  # pragma: no cover - should never run
+                raise AssertionError("upsert_memo should not be called for empty pages")
+
+        monkeypatch.setattr(collector, "fetch_page", fake_fetch_page)
+        monkeypatch.setattr(collector, "fetch_all_block_children", fake_fetch_all_block_children)
+        monkeypatch.setattr(
+            "skald_worker.collectors.notion_collector.get_skald_client",
+            lambda: UnexpectedClient(),
+        )
+
+        status, result = await collector._sync_page("empty-page")
+
+        assert status == "skipped"
+        assert result is None

@@ -461,6 +461,14 @@ class NotionCollector:
 
             blocks = await self.fetch_all_block_children(page_id)
             markdown_content = blocks_to_markdown(blocks)
+            if not markdown_content.strip():
+                logger.info(
+                    "Skipping empty Notion page",
+                    page_id=page_id,
+                    title=title,
+                )
+                return "skipped", None
+
             reference_id = self._build_reference_id(page_id)
 
             result = await get_skald_client().upsert_memo(
