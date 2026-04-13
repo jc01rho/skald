@@ -346,12 +346,12 @@ spec:
                                 key: S3_BUCKET_NAME
                                 optional: true
                       # Wiki Processing 관련 환경변수
-                       - name: WIKI_ENABLED
-                         value: 'true'
-                       - name: WIKI_COMPILE_ON_MEMO_PROCESS
-                         value: 'true'
-                       - name: WIKI_ASYNC_MODE
-                         value: 'queue'
+                      - name: WIKI_ENABLED
+                        value: 'true'
+                      - name: WIKI_COMPILE_ON_MEMO_PROCESS
+                        value: 'true'
+                      - name: WIKI_ASYNC_MODE
+                        value: 'queue'
                       - name: WIKI_RABBITMQ_QUEUE_NAME
                         value: 'process_wiki_refresh'
                       - name: WIKI_BATCH_SIZE
