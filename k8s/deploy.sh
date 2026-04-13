@@ -532,16 +532,30 @@ deploy_backend() {
         exit 1
     fi
     
+    # Wiki Processing 서비스 배포
+    sed "s|\${IMAGE_TAG:-latest}|$IMAGE_TAG|g" wiki-processing-deployment.yaml > /tmp/wiki-processing-deployment.yaml
+    echo "Wiki Processing Deployment 임시 파일 생성 완료: /tmp/wiki-processing-deployment.yaml"
+    echo "Image in temp file: $(grep 'ghcr.io/jc01rho/skald/backend:' /tmp/wiki-processing-deployment.yaml)"
+
+    if kubectl apply -f /tmp/wiki-processing-deployment.yaml -n "$NAMESPACE"; then
+        log_success "Wiki Processing Deployment 생성 완료"
+    else
+        log_error "Wiki Processing Deployment 생성 실패"
+        exit 1
+    fi
+    
     # 강제 롤아웃 리스타트 (latest 태그 갱신을 위해)
     # 이미지가 변경되지 않았더라도(latest), 파드를 재시작하여 새 이미지를 pull하도록 함
     log_info "Deployments 롤아웃 리스타트 실행..."
     kubectl rollout restart deployment/api-server -n "$NAMESPACE"
     kubectl rollout restart deployment/memo-processing-server -n "$NAMESPACE"
+    kubectl rollout restart deployment/wiki-processing-server -n "$NAMESPACE"
     
     # 롤아웃 완료 대기
     log_info "롤아웃 완료 대기 중..."
     kubectl rollout status deployment/api-server -n "$NAMESPACE"
     kubectl rollout status deployment/memo-processing-server -n "$NAMESPACE"
+    kubectl rollout status deployment/wiki-processing-server -n "$NAMESPACE"
     
     # 파드가 안정화될 때까지 잠시 대기
     log_info "파드 안정화 대기 중..."
@@ -550,9 +564,10 @@ deploy_backend() {
     # Backend Pod 준비 대기
     wait_for_pods "component=api" 1800
     wait_for_pods "component=memo-processing" 300
+    wait_for_pods "component=wiki-processing" 300
     
     # 임시 파일 정리
-    rm -f /tmp/api-deployment.yaml /tmp/memo-processing-deployment.yaml
+    rm -f /tmp/api-deployment.yaml /tmp/memo-processing-deployment.yaml /tmp/wiki-processing-deployment.yaml
 }
 
 # Step 6: AI 서비스 배포
@@ -1155,6 +1170,14 @@ undeploy_ai_services() {
 # 언디플로이: Backend 리소스 삭제
 undeploy_backend() {
     log_info "Step 4: Backend 서비스 Deployment/Service 삭제 중..."
+    
+    # Wiki Processing Deployment 삭제
+    if kubectl delete deployment wiki-processing-server -n "$NAMESPACE" --ignore-not-found=true; then
+        log_success "Wiki Processing Deployment 삭제 완료"
+    else
+        log_error "Wiki Processing Deployment 삭제 실패"
+        return 1
+    fi
     
     # Memo Processing Service 삭제
     if kubectl delete deployment memo-processing-server -n "$NAMESPACE" --ignore-not-found=true; then

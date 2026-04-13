@@ -19,3 +19,11 @@ data:
     INTERNAL_EMBEDDING_URL: 'http://your-embedding-server:8889/v1/embeddings'
     INTERNAL_RERANK_URL: 'http://your-rerank-server:8889/v1/rerank'
     CLI_PROXY_API_BASE_URL: 'http://your-cli-proxy-server:8317/v1'
+    # Optional wiki overrides for shared backend runtimes.
+    # The wiki-processing deployment sets its required runtime flags inline,
+    # but you can override queue/model tuning here when needed.
+    WIKI_ENABLED: 'true'
+    WIKI_COMPILE_ON_MEMO_PROCESS: 'true'
+    WIKI_ASYNC_MODE: 'queue'
+    WIKI_RABBITMQ_QUEUE_NAME: 'process_wiki_refresh'
+    WIKI_BATCH_SIZE: '5'

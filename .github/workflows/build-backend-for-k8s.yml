@@ -1,4 +1,4 @@
-name: Build Backend for K8s
+name: Build Shared Backend Image for K8s
 
 on:
   workflow_dispatch:
@@ -11,13 +11,14 @@ on:
     branches: [main]
     paths:
       - 'backend/**'
+      - '.github/workflows/build-backend-for-k8s.yml'
 
 env:
   REGISTRY: ghcr.io
   IMAGE_NAME: ${{ github.repository }}/backend
 
 jobs:
-  build-and-push:
+  build-and-push-shared-backend-image:
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -52,7 +53,10 @@ jobs:
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
 
-      - name: Print image info
+      - name: Print shared backend runtime targets
         run: |
-          echo "Built and pushed image:"
-          echo "  ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.event.inputs.image_tag || 'latest' }}"
+          echo "Built and pushed shared backend image for:"
+          echo "  - api-server"
+          echo "  - memo-processing-server"
+          echo "  - wiki-processing-server"
+          echo "Image: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.event.inputs.image_tag || 'latest' }}"

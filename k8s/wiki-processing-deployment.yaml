@@ -1,18 +1,18 @@
-# Memo Processing 서버 Deployment 정의
-# Skald 메모 처리 서버를 실행하는 Deployment입니다.
+# Wiki Processing 서버 Deployment 정의
+# Skald 위키 처리 서버를 실행하는 Deployment입니다.
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-    name: memo-processing-server
+    name: wiki-processing-server
     namespace: skald
     labels:
         app: skald
-        component: memo-processing
+        component: wiki-processing
         environment: production
     annotations:
-        description: 'Skald 메모 처리 서버 Deployment'
+        description: 'Skald 위키 처리 서버 Deployment'
 spec:
-    replicas: 2
+    replicas: 1
     strategy:
         type: RollingUpdate
         rollingUpdate:
@@ -21,12 +21,12 @@ spec:
     selector:
         matchLabels:
             app: skald
-            component: memo-processing
+            component: wiki-processing
     template:
         metadata:
             labels:
                 app: skald
-                component: memo-processing
+                component: wiki-processing
                 environment: production
         spec:
             # initContainer를 사용하여 의존 서비스가 준비될 때까지 대기
@@ -110,15 +110,15 @@ spec:
                 runAsGroup: 1000
                 fsGroup: 1000
             containers:
-                - name: memo-processing-server
+                - name: wiki-processing-server
                   # Use forked backend image from GHCR with LLM provider fixes
                   image: ghcr.io/jc01rho/skald/backend:latest
                   imagePullPolicy: Always
-                  # 메모 처리 서버 모드로 실행
+                  # 위키 처리 서버 모드로 실행
                   command:
                       - node
                       - dist/index.js
-                      - --mode=memo-processing-server
+                      - --mode=wiki-processing-server
                   env:
                       # 데이터베이스 관련 환경변수
                       - name: DATABASE_URL
@@ -295,7 +295,6 @@ spec:
                                 name: skald-secrets
                                 key: STRIPE_SECRET_KEY
                                 optional: true
-
                       - name: DATALAB_API_KEY
                         valueFrom:
                             secretKeyRef:
@@ -308,19 +307,6 @@ spec:
                             configMapKeyRef:
                                 name: skald-config
                                 key: INTER_PROCESS_QUEUE
-                      - name: RABBITMQ_QUEUE_NAME
-                        value: 'process_memo'
-                      # Wiki Processing 관련 환경변수
-                      - name: WIKI_ENABLED
-                        value: 'true'
-                      - name: WIKI_COMPILE_ON_MEMO_PROCESS
-                        value: 'true'
-                      - name: WIKI_ASYNC_MODE
-                        value: 'queue'
-                      - name: WIKI_RABBITMQ_QUEUE_NAME
-                        value: 'process_wiki_refresh'
-                      - name: WIKI_BATCH_SIZE
-                        value: '5'
                       # Redis 설정 (캐시용)
                       - name: REDIS_HOST
                         valueFrom:
@@ -359,6 +345,17 @@ spec:
                                 name: skald-config
                                 key: S3_BUCKET_NAME
                                 optional: true
+                      # Wiki Processing 관련 환경변수
+                       - name: WIKI_ENABLED
+                         value: 'true'
+                       - name: WIKI_COMPILE_ON_MEMO_PROCESS
+                         value: 'true'
+                       - name: WIKI_ASYNC_MODE
+                         value: 'queue'
+                      - name: WIKI_RABBITMQ_QUEUE_NAME
+                        value: 'process_wiki_refresh'
+                      - name: WIKI_BATCH_SIZE
+                        value: '5'
                   # 보안 설정
                   securityContext:
                       allowPrivilegeEscalation: false
