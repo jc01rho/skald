@@ -481,8 +481,8 @@ export async function handleMention(message: Message, client: Client) {
                 rag_config: {
                     llm_provider: 'cli-proxy-api',
                     query_rewrite: { enabled: true },
-                    reranking: { enabled: true, top_k: 100 },
-                    vector_search: { top_k: 100, similarity_threshold: 0.4 },
+                    reranking: { enabled: true, top_k: 25 },
+                    vector_search: { top_k: 50, similarity_threshold: 0.4 },
                     references: { enabled: true },
                 },
             })) {
