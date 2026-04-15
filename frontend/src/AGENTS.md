@@ -1,6 +1,6 @@
 # FRONTEND SOURCE DOMAIN
 
-**Generated:** 2026-03-03
+**Generated:** 2026-04-15
 **Domain:** UI Runtime (`frontend/src`) (Score 18)
 
 ## OVERVIEW
