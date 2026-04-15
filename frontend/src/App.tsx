@@ -10,6 +10,7 @@ import { UpgradePromptDialog } from '@/components/Subscription/UpgradePromptDial
 import { useUpgradePromptStore } from '@/stores/upgradePromptStore'
 import { isLicensedDeploy } from '@/config'
 import { PublicChatPage } from '@/pages/PublicChatPage'
+import { PublicWikiGraphPage } from '@/pages/PublicWikiGraphPage'
 import { PublicMemosPage } from '@/pages/PublicMemosPage'
 import { PublicSubmitMemoPage } from '@/pages/PublicSubmitMemoPage'
 import '@/index.css'
@@ -92,6 +93,7 @@ function App() {
                 <Route path="/projects/memos/:projectUuid" element={<PublicMemosPage />} />
                 <Route path="/projects/memos/:projectUuid/submit" element={<PublicSubmitMemoPage />} />
                 {isLicensedDeploy && <Route path="/public_chat/:slug" element={<PublicChatPage />} />}
+                <Route path="/public/wiki/:slug" element={<PublicWikiGraphPage />} />
                 {privateRoutes.map((route) => (
                     <Route
                         key={route.path}
