@@ -23,6 +23,7 @@ import { stripeWebhook } from '@/api/stripe_webhook'
 import { subscriptionRouter } from '@/api/subscription'
 import { userRouter } from '@/api/user'
 import { publicMemoSubmissionRouter, authMemoSubmissionRouter, publicMemosRouter } from '@/api/memoSubmission'
+import { publicWikiRouter } from '@/api/publicWiki'
 import { wikiRouter } from '@/api/wiki'
 import { logger } from '@/lib/logger'
 import { posthog } from '@/lib/posthogUtils'
@@ -99,6 +100,7 @@ export const startExpressServer = async (
 
     app.use('/api/public/memos', publicMemosRouter)
     app.use('/api/public/memo-submissions', publicMemoSubmissionRouter)
+    app.use('/api/public/wiki', publicWikiRouter)
 
     app.use('/api/auth', authRateLimiter, authRouter)
     app.use('/api/user', authRateLimiter, userRouter)
