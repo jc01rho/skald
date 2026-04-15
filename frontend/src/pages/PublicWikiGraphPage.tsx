@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Navigate, useParams } from 'react-router-dom'
+import { useParams } from 'react-router-dom'
 import { AlertCircle, Loader2, Network, ScanSearch } from 'lucide-react'
 import { api } from '@/lib/api'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
@@ -86,6 +86,7 @@ export const PublicWikiGraphPage = () => {
             } catch (error) {
                 console.error('Error loading public wiki graph:', error)
                 setIsAvailable(false)
+                setErrorMessage('공개 wiki 그래프를 확인하지 못했습니다.')
             } finally {
                 setIsChecking(false)
             }
@@ -99,7 +100,15 @@ export const PublicWikiGraphPage = () => {
     }, [graphMode, nodeGraph, pageGraph])
 
     if (!slug) {
-        return <Navigate to="/404" replace />
+        return (
+            <div className="mx-auto flex min-h-screen w-full max-w-4xl items-center px-4 py-8 sm:px-6 lg:px-8">
+                <Alert variant="destructive" className="max-w-3xl">
+                    <AlertCircle className="h-4 w-4" />
+                    <AlertTitle>유효하지 않은 공개 wiki 링크입니다</AlertTitle>
+                    <AlertDescription>공개 wiki를 보려면 올바른 slug가 필요합니다.</AlertDescription>
+                </Alert>
+            </div>
+        )
     }
 
     if (isChecking) {
@@ -111,7 +120,17 @@ export const PublicWikiGraphPage = () => {
     }
 
     if (!isAvailable) {
-        return <Navigate to="/404" replace />
+        return (
+            <div className="mx-auto flex min-h-screen w-full max-w-4xl items-center px-4 py-8 sm:px-6 lg:px-8">
+                <Alert variant="destructive" className="max-w-3xl">
+                    <AlertCircle className="h-4 w-4" />
+                    <AlertTitle>공개 wiki 그래프를 찾을 수 없습니다</AlertTitle>
+                    <AlertDescription>
+                        {errorMessage || '이 slug는 아직 활성화되지 않았거나 접근할 수 없습니다.'}
+                    </AlertDescription>
+                </Alert>
+            </div>
+        )
     }
 
     const currentSelectedNodeId = graphMode === 'page' ? selectedPageId : selectedNodeId

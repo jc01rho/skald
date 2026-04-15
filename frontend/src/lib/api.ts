@@ -23,7 +23,20 @@ interface ApiResponse<T = unknown> {
 
 const LOCAL_URL = 'http://localhost:3000'
 
-export const domain = import.meta.env.VITE_API_HOST || LOCAL_URL
+const getApiDomain = () => {
+    const configuredHost = import.meta.env.VITE_API_HOST?.trim()
+    if (configuredHost) {
+        return configuredHost
+    }
+
+    if (typeof window !== 'undefined') {
+        return ''
+    }
+
+    return LOCAL_URL
+}
+
+export const domain = getApiDomain()
 
 const baseUrl = `${domain}/api`
 
