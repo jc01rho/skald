@@ -99,6 +99,10 @@ function selectReferenceEntries(
     return citedReferenceEntries.length > 0 ? citedReferenceEntries : allReferenceEntries
 }
 
+function shouldPreservePartialResponseOnError(eventType: string, fullResponse: string): boolean {
+    return eventType === 'transport_error' && fullResponse.trim().length > 0
+}
+
 type CitationMatch = {
     start: number
     end: number
@@ -501,6 +505,17 @@ export async function handleMention(message: Message, client: Client) {
                         break
                     case 'done':
                         break
+                    case 'transport_error':
+                        if (shouldPreservePartialResponseOnError(event.type, fullResponse)) {
+                            logger.warn(
+                                { error: event.content, partialLength: fullResponse.length },
+                                'Stream terminated after partial response; preserving accumulated answer'
+                            )
+                            break
+                        }
+
+                        await editor.showError(event.content)
+                        return
                     case 'error':
                         await editor.showError(event.content)
                         return
@@ -597,4 +612,5 @@ export const __testables__ = {
     extractInfoDocUrls,
     detectProductId,
     shouldSkipProductFilter,
+    shouldPreservePartialResponseOnError,
 }
