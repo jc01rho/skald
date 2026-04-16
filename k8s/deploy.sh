@@ -606,6 +606,21 @@ deploy_ai_services() {
         log_error "Docling Service Service 생성 실패"
         exit 1
     fi
+
+    # 강제 롤아웃 리스타트 (latest 태그/실행 중 이미지 갱신 반영을 위해)
+    # 이미지 태그 문자열이 동일하더라도 파드를 재시작하여 최신 이미지를 pull 하도록 함
+    log_info "AI 서비스 Deployment 롤아웃 리스타트 실행..."
+    kubectl rollout restart deployment/embedding-service -n "$NAMESPACE"
+    kubectl rollout restart deployment/docling-service -n "$NAMESPACE"
+
+    # 롤아웃 완료 대기
+    log_info "AI 서비스 롤아웃 완료 대기 중..."
+    kubectl rollout status deployment/embedding-service -n "$NAMESPACE"
+    kubectl rollout status deployment/docling-service -n "$NAMESPACE"
+
+    # 파드가 안정화될 때까지 잠시 대기
+    log_info "AI 서비스 파드 안정화 대기 중..."
+    sleep 5
     
     # AI 서비스 Pod 준비 대기
     wait_for_pods "component=embedding-service" 1800
@@ -645,6 +660,19 @@ deploy_frontend() {
         log_error "UI Service 생성 실패"
         exit 1
     fi
+
+    # 강제 롤아웃 리스타트 (latest 태그 갱신을 위해)
+    # 이미지 태그 문자열이 동일하더라도 파드를 재시작하여 최신 이미지를 pull 하도록 함
+    log_info "UI Deployment 롤아웃 리스타트 실행..."
+    kubectl rollout restart deployment/ui -n "$NAMESPACE"
+
+    # 롤아웃 완료 대기
+    log_info "UI 롤아웃 완료 대기 중..."
+    kubectl rollout status deployment/ui -n "$NAMESPACE"
+
+    # 파드가 안정화될 때까지 잠시 대기
+    log_info "UI 파드 안정화 대기 중..."
+    sleep 5
     
     # UI Pod 준비 대기
     wait_for_pods "component=ui" 300
