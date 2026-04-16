@@ -37,6 +37,8 @@ export class SkaldClient {
             ...options,
         }
 
+        let hasReceivedToken = false
+
         for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
             try {
                 const response = await fetch(`${this.baseUrl}${buildChatPath(this.projectId)}`, {
@@ -88,9 +90,16 @@ export class SkaldClient {
 
                         try {
                             const event = JSON.parse(payload) as SSEEvent
+                            if (event.type === 'token' && event.content) {
+                                hasReceivedToken = true
+                            }
                             yield event
                         } catch {
-                            yield { type: 'error', content: 'Failed to parse SSE message' }
+                            yield {
+                                type: hasReceivedToken ? 'transport_error' : 'error',
+                                content: 'Failed to parse SSE message',
+                            }
+                            return
                         }
                     }
                 }
@@ -100,9 +109,16 @@ export class SkaldClient {
                     if (payload) {
                         try {
                             const event = JSON.parse(payload) as SSEEvent
+                            if (event.type === 'token' && event.content) {
+                                hasReceivedToken = true
+                            }
                             yield event
                         } catch {
-                            yield { type: 'error', content: 'Failed to parse trailing SSE message' }
+                            yield {
+                                type: hasReceivedToken ? 'transport_error' : 'error',
+                                content: 'Failed to parse trailing SSE message',
+                            }
+                            return
                         }
                     }
                 }
@@ -110,7 +126,14 @@ export class SkaldClient {
                 return
             } catch (error) {
                 const isLastAttempt = attempt === MAX_RETRIES
-                // 'terminated' indicates server closed stream unexpectedly - may be model unsupported
+                if (hasReceivedToken) {
+                    yield {
+                        type: 'transport_error',
+                        content: normalizeErrorMessage(error),
+                    }
+                    return
+                }
+
                 if (isLastAttempt) {
                     yield {
                         type: 'error',
