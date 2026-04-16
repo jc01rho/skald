@@ -10,6 +10,11 @@ const SlugParamsSchema = z.object({
     slug: z.string().min(1, 'Slug is required'),
 })
 
+const PublicWikiPageParamsSchema = z.object({
+    slug: z.string().min(1, 'Slug is required'),
+    pageSlug: z.string().min(1, 'Page slug is required'),
+})
+
 interface PublicWikiProject {
     uuid: string
     name: string
@@ -27,6 +32,13 @@ const getProjectBySlug = async (slug: string) => {
         }
     ) as Promise<PublicWikiProject | null>
 }
+
+const normalizeSlug = (value: string) =>
+    value
+        .trim()
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, '-')
+        .replace(/^-+|-+$/g, '')
 
 const getPublicProject = async (req: Request, res: Response) => {
     const validatedParams = SlugParamsSchema.safeParse(req.params)
@@ -187,8 +199,49 @@ export const getPublicWikiNodeGraph = async (req: Request, res: Response) => {
     })
 }
 
+export const getPublicWikiPageDetail = async (req: Request, res: Response) => {
+    const validatedParams = PublicWikiPageParamsSchema.safeParse(req.params)
+    if (!validatedParams.success) {
+        return res.status(400).json({ error: validatedParams.error.errors.map((err) => err.message).join(', ') })
+    }
+
+    const project = await getProjectBySlug(validatedParams.data.slug)
+    if (!project || !project.chat_ui_enabled) {
+        return res.status(404).json({ error: 'Not found' })
+    }
+
+    const em = DI.orm.em.fork()
+    const page = await em.findOne(WikiPage, {
+        project: project.uuid,
+        slug: normalizeSlug(validatedParams.data.pageSlug),
+    })
+
+    if (!page) {
+        return res.status(404).json({ error: 'Wiki page not found' })
+    }
+
+    return res.status(200).json({
+        project: {
+            slug: project.chat_ui_slug,
+            name: project.name,
+            title: project.chat_ui_title || project.name,
+            logo_url: project.chat_ui_logo_url || null,
+        },
+        page: {
+            id: page.uuid,
+            slug: page.slug,
+            title: page.title,
+            summary: page.summary || null,
+            content: page.content,
+            page_type: page.page_type,
+            updated_at: page.updated_at,
+        },
+    })
+}
+
 export const publicWikiRouter = express.Router({ mergeParams: true })
 publicWikiRouter.get('/:slug/available', checkPublicWikiAvailability)
 publicWikiRouter.get('/:slug/config', getPublicWikiConfig)
 publicWikiRouter.get('/:slug/page-graph', getPublicWikiPageGraph)
 publicWikiRouter.get('/:slug/node-graph', getPublicWikiNodeGraph)
+publicWikiRouter.get('/:slug/pages/:pageSlug', getPublicWikiPageDetail)

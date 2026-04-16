@@ -185,6 +185,50 @@ describe('Public Wiki API Tests', () => {
         })
     })
 
+    it('returns public wiki page detail by page slug', async () => {
+        mockFindProject.mockResolvedValue({
+            uuid: 'project-4',
+            name: 'Detail Wiki Project',
+            chat_ui_enabled: true,
+            chat_ui_slug: 'public-detail-wiki',
+            chat_ui_title: 'Detail Wiki',
+            chat_ui_logo_url: null,
+        })
+
+        const mockFindOne = jest.fn().mockResolvedValue({
+            uuid: 'page-3',
+            slug: 'incident-flow',
+            title: 'Incident Flow',
+            summary: '요약',
+            content: '# Incident Flow\n\n상세 설명',
+            page_type: 'process_page',
+            updated_at: new Date('2026-04-15T08:00:00Z'),
+        })
+
+        mockFork.mockReturnValue({
+            find: mockFind,
+            findOne: mockFindOne,
+        })
+
+        const response = await request(app).get('/api/public/wiki/public-detail-wiki/pages/incident-flow')
+
+        expect(response.status).toBe(200)
+        expect(response.body.project).toEqual({
+            slug: 'public-detail-wiki',
+            name: 'Detail Wiki Project',
+            title: 'Detail Wiki',
+            logo_url: null,
+        })
+        expect(response.body.page).toMatchObject({
+            id: 'page-3',
+            slug: 'incident-flow',
+            title: 'Incident Flow',
+            summary: '요약',
+            content: '# Incident Flow\n\n상세 설명',
+            page_type: 'process_page',
+        })
+    })
+
     it('returns not found for disabled public wiki', async () => {
         mockFindProject.mockResolvedValue(null)
 
