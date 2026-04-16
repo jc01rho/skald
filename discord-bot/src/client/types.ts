@@ -6,6 +6,7 @@ export type SSEEvent =
           content: string | Record<string, { memo_uuid: string; memo_title: string; source_url?: string }>
       }
     | { type: 'done'; chat_id: string }
+    | { type: 'transport_error'; content: string }
     | { type: 'error'; content: string }
 
 export interface MemoFilter {
