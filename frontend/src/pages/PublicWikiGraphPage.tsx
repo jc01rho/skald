@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useParams } from 'react-router-dom'
-import { AlertCircle, Loader2, Network, ScanSearch } from 'lucide-react'
+import { AlertCircle, BookOpenText, Loader2, Network, ScanSearch } from 'lucide-react'
 import { api } from '@/lib/api'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Badge } from '@/components/ui/badge'
@@ -11,8 +11,10 @@ import {
     type PublicWikiGraphEdge,
     type PublicWikiGraphNode,
 } from '@/components/PublicWiki/PublicWikiGraphView'
+import { PublicWikiTextView, type PublicWikiTextPage } from '@/components/PublicWiki/PublicWikiTextView'
 
 type GraphMode = 'page' | 'node'
+type ViewMode = 'graph' | 'text'
 
 interface PublicWikiConfig {
     title: string
@@ -36,17 +38,27 @@ interface PublicWikiGraphResponse {
     edges: PublicWikiGraphEdge[]
 }
 
+interface PublicWikiPageDetailResponse {
+    project: PublicWikiProjectSummary
+    page: PublicWikiTextPage
+}
+
 export const PublicWikiGraphPage = () => {
     const { slug } = useParams<{ slug: string }>()
     const [isChecking, setIsChecking] = useState(true)
     const [isAvailable, setIsAvailable] = useState(false)
     const [graphMode, setGraphMode] = useState<GraphMode>('page')
+    const [viewMode, setViewMode] = useState<ViewMode>('graph')
+    const [focusMode, setFocusMode] = useState(false)
     const [config, setConfig] = useState<PublicWikiConfig | null>(null)
     const [pageGraph, setPageGraph] = useState<PublicWikiGraphResponse | null>(null)
     const [nodeGraph, setNodeGraph] = useState<PublicWikiGraphResponse | null>(null)
     const [errorMessage, setErrorMessage] = useState<string | null>(null)
     const [selectedPageId, setSelectedPageId] = useState<string | null>(null)
     const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null)
+    const [selectedPageDetail, setSelectedPageDetail] = useState<PublicWikiTextPage | null>(null)
+    const [isPageDetailLoading, setIsPageDetailLoading] = useState(false)
+    const [pageDetailError, setPageDetailError] = useState<string | null>(null)
 
     useEffect(() => {
         if (!slug) {
@@ -95,9 +107,54 @@ export const PublicWikiGraphPage = () => {
         loadPublicWiki()
     }, [slug])
 
-    const activeGraph = useMemo(() => {
-        return graphMode === 'page' ? pageGraph : nodeGraph
-    }, [graphMode, nodeGraph, pageGraph])
+    const activeGraph = useMemo(() => (graphMode === 'page' ? pageGraph : nodeGraph), [graphMode, nodeGraph, pageGraph])
+
+    const selectedPageNode = useMemo(
+        () => pageGraph?.nodes.find((node) => node.id === selectedPageId) ?? pageGraph?.nodes[0] ?? null,
+        [pageGraph, selectedPageId]
+    )
+
+    useEffect(() => {
+        if (!slug || viewMode !== 'text' || !selectedPageNode?.slug) {
+            setSelectedPageDetail(null)
+            if (viewMode === 'text') {
+                setPageDetailError(null)
+            }
+            return
+        }
+
+        let cancelled = false
+        const loadPageDetail = async () => {
+            setIsPageDetailLoading(true)
+            setPageDetailError(null)
+            try {
+                const response = await api.get<PublicWikiPageDetailResponse>(
+                    `/public/wiki/${slug}/pages/${selectedPageNode.slug}`
+                )
+                if (!cancelled) {
+                    setSelectedPageDetail(response.data?.page ?? null)
+                    if (!response.data?.page) {
+                        setPageDetailError('페이지 상세를 불러오지 못했습니다.')
+                    }
+                }
+            } catch (error) {
+                console.error('Error loading public wiki page detail:', error)
+                if (!cancelled) {
+                    setSelectedPageDetail(null)
+                    setPageDetailError('페이지 상세를 불러오지 못했습니다.')
+                }
+            } finally {
+                if (!cancelled) {
+                    setIsPageDetailLoading(false)
+                }
+            }
+        }
+
+        loadPageDetail()
+        return () => {
+            cancelled = true
+        }
+    }, [selectedPageNode?.slug, slug, viewMode])
 
     if (!slug) {
         return (
@@ -134,6 +191,7 @@ export const PublicWikiGraphPage = () => {
     }
 
     const currentSelectedNodeId = graphMode === 'page' ? selectedPageId : selectedNodeId
+    const pageCount = pageGraph?.stats.nodes ?? 0
 
     return (
         <div className="min-h-screen bg-slate-50/60">
@@ -165,25 +223,43 @@ export const PublicWikiGraphPage = () => {
                             <div className="flex flex-wrap gap-2">
                                 <Button
                                     type="button"
-                                    variant={graphMode === 'page' ? 'default' : 'outline'}
-                                    onClick={() => setGraphMode('page')}
+                                    variant={viewMode === 'graph' && graphMode === 'page' ? 'default' : 'outline'}
+                                    onClick={() => {
+                                        setViewMode('graph')
+                                        setGraphMode('page')
+                                    }}
                                 >
                                     <Network className="mr-2 h-4 w-4" />
                                     Page graph view
                                 </Button>
                                 <Button
                                     type="button"
-                                    variant={graphMode === 'node' ? 'default' : 'outline'}
-                                    onClick={() => setGraphMode('node')}
+                                    variant={viewMode === 'graph' && graphMode === 'node' ? 'default' : 'outline'}
+                                    onClick={() => {
+                                        setViewMode('graph')
+                                        setGraphMode('node')
+                                    }}
                                 >
                                     <ScanSearch className="mr-2 h-4 w-4" />
                                     Node / edge graph view
+                                </Button>
+                                <Button
+                                    type="button"
+                                    variant={viewMode === 'text' ? 'default' : 'outline'}
+                                    onClick={() => {
+                                        setGraphMode('page')
+                                        setViewMode('text')
+                                    }}
+                                    disabled={!pageCount}
+                                >
+                                    <BookOpenText className="mr-2 h-4 w-4" />
+                                    Text reading
                                 </Button>
                             </div>
                         </div>
                     </CardHeader>
                     <CardContent className="pt-6">
-                        <div className="grid gap-3 text-sm text-muted-foreground sm:grid-cols-3">
+                        <div className="grid gap-3 text-sm text-muted-foreground sm:grid-cols-4">
                             <div className="rounded-lg border bg-background p-4">
                                 <p className="font-medium text-foreground">접근 키</p>
                                 <p className="mt-1 break-all">{slug}</p>
@@ -194,7 +270,17 @@ export const PublicWikiGraphPage = () => {
                             </div>
                             <div className="rounded-lg border bg-background p-4">
                                 <p className="font-medium text-foreground">현재 모드</p>
-                                <p className="mt-1">{graphMode === 'page' ? '페이지 간 연결' : '개념/프로세스 연결'}</p>
+                                <p className="mt-1">
+                                    {viewMode === 'text'
+                                        ? '텍스트 열람'
+                                        : graphMode === 'page'
+                                          ? '페이지 간 연결'
+                                          : '개념/프로세스 연결'}
+                                </p>
+                            </div>
+                            <div className="rounded-lg border bg-background p-4">
+                                <p className="font-medium text-foreground">포커스</p>
+                                <p className="mt-1">{focusMode ? '선택 항목 중심' : '전체 구조'}</p>
                             </div>
                         </div>
                     </CardContent>
@@ -208,7 +294,53 @@ export const PublicWikiGraphPage = () => {
                     </Alert>
                 ) : null}
 
-                {!activeGraph ? (
+                {viewMode === 'text' ? (
+                    <div className="grid gap-6 lg:grid-cols-[280px_minmax(0,1fr)]">
+                        <Card className="h-fit overflow-hidden">
+                            <CardHeader className="border-b bg-[linear-gradient(135deg,rgba(248,250,252,0.96),rgba(255,255,255,0.88))]">
+                                <CardTitle>공개 wiki 페이지</CardTitle>
+                                <CardDescription>
+                                    페이지 그래프에서 연결된 문서를 텍스트로 직접 읽을 수 있습니다.
+                                </CardDescription>
+                            </CardHeader>
+                            <CardContent className="space-y-3 pt-6">
+                                {pageGraph?.nodes.map((node) => (
+                                    <Button
+                                        key={node.id}
+                                        type="button"
+                                        variant={node.id === selectedPageNode?.id ? 'default' : 'outline'}
+                                        className="h-auto w-full justify-start whitespace-normal px-4 py-3 text-left"
+                                        onClick={() => setSelectedPageId(node.id)}
+                                    >
+                                        <div>
+                                            <div className="font-medium">{node.title || node.slug}</div>
+                                            <div className="mt-1 text-xs opacity-80">{node.slug}</div>
+                                        </div>
+                                    </Button>
+                                ))}
+                            </CardContent>
+                        </Card>
+
+                        <div className="space-y-4">
+                            {pageDetailError ? (
+                                <Alert variant="destructive">
+                                    <AlertCircle className="h-4 w-4" />
+                                    <AlertTitle>텍스트를 불러오지 못했습니다</AlertTitle>
+                                    <AlertDescription>{pageDetailError}</AlertDescription>
+                                </Alert>
+                            ) : null}
+                            <PublicWikiTextView
+                                page={selectedPageDetail}
+                                loading={isPageDetailLoading}
+                                emptyMessage={
+                                    selectedPageNode?.slug
+                                        ? `${selectedPageNode.slug} 페이지를 텍스트로 불러오지 못했습니다.`
+                                        : '왼쪽에서 읽을 wiki 페이지를 선택해 주세요.'
+                                }
+                            />
+                        </div>
+                    </div>
+                ) : !activeGraph ? (
                     <Alert>
                         <AlertCircle className="h-4 w-4" />
                         <AlertTitle>그래프 데이터가 아직 준비되지 않았습니다</AlertTitle>
@@ -229,12 +361,22 @@ export const PublicWikiGraphPage = () => {
                         title={graphMode === 'page' ? 'Page graph view' : 'Node / edge graph view'}
                         description={
                             graphMode === 'page'
-                                ? 'Wiki page 사이의 링크 구조를 원형 배치로 보여줍니다.'
-                                : 'Wiki node 와 edge 사이의 관계를 원형 배치로 보여줍니다.'
+                                ? 'Wiki page 사이의 링크 구조를 차분한 레이아웃으로 보여주고, 선택한 페이지 중심으로 읽기 쉽게 강조합니다.'
+                                : 'Wiki node 와 edge 사이의 관계를 선택 개체 중심으로 재구성해 복잡도를 낮춰 보여줍니다.'
                         }
                         nodes={activeGraph.nodes}
                         edges={activeGraph.edges}
                         selectedNodeId={currentSelectedNodeId}
+                        focusMode={focusMode}
+                        onToggleFocusMode={() => setFocusMode((current) => !current)}
+                        onResetSelection={() => {
+                            setFocusMode(false)
+                            if (graphMode === 'page') {
+                                setSelectedPageId(activeGraph.nodes[0]?.id ?? null)
+                            } else {
+                                setSelectedNodeId(activeGraph.nodes[0]?.id ?? null)
+                            }
+                        }}
                         onSelectNode={(nodeId) => {
                             if (graphMode === 'page') {
                                 setSelectedPageId(nodeId)
