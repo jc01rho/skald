@@ -477,7 +477,7 @@ export async function handleMention(message: Message, client: Client) {
                 logger.info({ detectedProductId }, 'Product ID detected from query')
             }
 
-            for await (const event of skaldClient.chatStream(query, {
+            const response = await skaldClient.chat(query, {
                 history,
                 filters,
                 system_prompt:
@@ -489,38 +489,10 @@ export async function handleMention(message: Message, client: Client) {
                     vector_search: { top_k: 50, similarity_threshold: 0.4 },
                     references: { enabled: true },
                 },
-            })) {
-                switch (event.type) {
-                    case 'token':
-                        fullResponse += event.content
-                        editor.append(event.content)
-                        break
-                    case 'references':
-                        // Backend sends references as JSON string, need to parse
-                        if (typeof event.content === 'string') {
-                            references = JSON.parse(event.content)
-                        } else {
-                            references = event.content
-                        }
-                        break
-                    case 'done':
-                        break
-                    case 'transport_error':
-                        if (shouldPreservePartialResponseOnError(event.type, fullResponse)) {
-                            logger.warn(
-                                { error: event.content, partialLength: fullResponse.length },
-                                'Stream terminated after partial response; preserving accumulated answer'
-                            )
-                            break
-                        }
+            })
 
-                        await editor.showError(event.content)
-                        return
-                    case 'error':
-                        await editor.showError(event.content)
-                        return
-                }
-            }
+            fullResponse = response.response
+            references = response.references || {}
 
             const normalizedResponse = normalizeCitationSpacing(fullResponse)
             const recoveredResponse = recoverPlainNumericCitations(normalizedResponse, references)
