@@ -552,6 +552,14 @@ export const _generateStreamingResponse = async ({
     // establish connection immediately to prevent 504
     res.write(': ping\n\n')
 
+    const keepAlive = setInterval(() => {
+        try {
+            res.write(': ping\n\n')
+        } catch {
+            clearInterval(keepAlive)
+        }
+    }, 15000)
+
     logger.info({ provider: parsedRagConfig.llmProvider }, 'Starting RAG process for stream')
 
     let fullResponse = ''
@@ -602,6 +610,10 @@ export const _generateStreamingResponse = async ({
             }
         }
 
+        if (!fullResponse.trim()) {
+            throw new Error('Chat stream completed without any response content')
+        }
+
         captureChatTelemetry({
             distinctId,
             req: undefined,
@@ -647,6 +659,7 @@ export const _generateStreamingResponse = async ({
         const errorData = JSON.stringify({ type: 'error', content: errorMsg })
         res.write(`data: ${errorData}\n\n`)
     } finally {
+        clearInterval(keepAlive)
         res.end()
 
         // Fire-and-forget lazy reprocessing after stream ends (don't block response)

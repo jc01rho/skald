@@ -451,6 +451,36 @@ describe('Chat API', () => {
             expect(response.status).toBe(200)
         })
 
+        it('should emit streaming error when chat stream ends without token content', async () => {
+            const user = await createTestUser(orm, 'test@example.com', 'password123')
+            const org = await createTestOrganization(orm, 'Test Org', user)
+            await createTestOrganizationMembership(orm, user, org)
+            const project = await createTestProject(orm, 'Test Project', org, user)
+            const token = generateAccessToken('test@example.com')
+
+            const mockRagState = mockRagGraphResponse('test query', [])
+            ;(ragGraphModule.ragGraph.invoke as jest.Mock).mockResolvedValue(mockRagState)
+
+            async function* mockStreamGenerator() {
+                yield { type: 'references', content: JSON.stringify({}) }
+            }
+
+            ;(chatAgent.streamChatAgent as jest.Mock).mockReturnValue(mockStreamGenerator())
+
+            const response = await request(app)
+                .post('/api/chat')
+                .set('Cookie', [`accessToken=${token}`])
+                .query({ project_id: project.uuid })
+                .send({
+                    query: 'test query',
+                    stream: true,
+                })
+
+            expect(response.status).toBe(200)
+            expect(response.text).toContain('type":"error"')
+            expect(response.text).toContain('Chat stream completed without any response content')
+        })
+
         it('should format context string from reranked results', async () => {
             const user = await createTestUser(orm, 'test@example.com', 'password123')
             const org = await createTestOrganization(orm, 'Test Org', user)
