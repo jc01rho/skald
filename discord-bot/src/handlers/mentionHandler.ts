@@ -103,6 +103,146 @@ function shouldPreservePartialResponseOnError(eventType: string, fullResponse: s
     return eventType === 'transport_error' && fullResponse.trim().length > 0
 }
 
+type ReferenceMap = Record<string, { memo_uuid: string; memo_title: string; source_url?: string }>
+
+function parseReferencesEventContent(content: string | ReferenceMap): ReferenceMap {
+    if (typeof content === 'string') {
+        try {
+            const parsed = JSON.parse(content) as unknown
+            if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+                return parsed as ReferenceMap
+            }
+        } catch (parseError) {
+            logger.warn({ err: parseError }, 'Failed to parse references event payload')
+        }
+
+        return {}
+    }
+
+    if (content && typeof content === 'object' && !Array.isArray(content)) {
+        return content as ReferenceMap
+    }
+
+    return {}
+}
+
+function buildMentionErrorMessage(errorMessage: string): string {
+    const normalized = errorMessage.trim()
+
+    if (!normalized) {
+        return '요청 처리 중 오류가 발생했습니다.'
+    }
+
+    if (normalized === 'Service unavailable' || normalized === 'Chat agent unavailable') {
+        return '백엔드 채팅 서비스가 현재 응답하지 않습니다. 잠시 후 다시 시도해 주세요.'
+    }
+
+    if (/abort|timeout/i.test(normalized)) {
+        return '백엔드 응답이 제한 시간 안에 도착하지 않았습니다. 잠시 후 다시 시도해 주세요.'
+    }
+
+    if (/HTTP error:\s*401/i.test(normalized)) {
+        return '백엔드 인증에 실패했습니다. 봇 설정을 확인해 주세요.'
+    }
+
+    if (/HTTP error:\s*403/i.test(normalized)) {
+        return '이 프로젝트에 대한 접근 권한이 없습니다. 봇 설정을 확인해 주세요.'
+    }
+
+    if (/HTTP error:\s*404/i.test(normalized)) {
+        return '백엔드 채팅 엔드포인트를 찾지 못했습니다. 배포 설정을 확인해 주세요.'
+    }
+
+    return '요청 처리 중 오류가 발생했습니다.'
+}
+
+function formatFinalResponse(
+    query: string,
+    fullResponse: string,
+    references: ReferenceMap,
+    options: { partial?: boolean } = {}
+): string {
+    const normalizedResponse = normalizeCitationSpacing(fullResponse)
+    const recoveredResponse = recoverPlainNumericCitations(normalizedResponse, references)
+    const finalResponse = linkifyCitationsWithReferences(recoveredResponse, references)
+    const finalResponseWithNotice = containsHttpUrl(query) ? `${URL_ACCESS_NOTICE}${finalResponse}` : finalResponse
+
+    if (!options.partial) {
+        return finalResponseWithNotice
+    }
+
+    return `${finalResponseWithNotice}\n\n⚠️ 응답이 중간에 끊겨 일부 내용만 전달되었습니다.`.trim()
+}
+
+async function sendReferenceEmbeds(
+    responseThread: ThreadChannel,
+    fullResponse: string,
+    references: ReferenceMap
+): Promise<void> {
+    const citedReferenceEntries = selectReferenceEntries(fullResponse, references)
+
+    const inferredInfoDocUrls = extractInfoDocUrls(fullResponse)
+    const citedReferenceSourceUrls = citedReferenceEntries
+        .map(([, ref]) => ref.source_url?.trim())
+        .filter((url): url is string => Boolean(url))
+    const citedReferenceInfoDocUrls = citedReferenceEntries.flatMap(([, ref]) => extractInfoDocUrls(ref.memo_title))
+
+    const allInfoDocUrls = Array.from(
+        new Set([...inferredInfoDocUrls, ...citedReferenceSourceUrls, ...citedReferenceInfoDocUrls])
+    )
+
+    if (citedReferenceEntries.length > 0) {
+        try {
+            const lines = citedReferenceEntries.map(([key, ref]) => {
+                const sourceUrl =
+                    ref.source_url?.trim() ||
+                    extractFirstJiraIssueUrl(ref.memo_title) ||
+                    extractFirstInfoDocUrl(ref.memo_title)
+                const titleWithJiraLinks = linkifyJiraIssueKeys(ref.memo_title)
+                if (sourceUrl) {
+                    return `**[${key}]** ${titleWithJiraLinks}\n🔗 ${sourceUrl}`
+                }
+                return `**[${key}]** ${titleWithJiraLinks}`
+            })
+
+            const description = lines.join('\n').slice(0, 4000)
+
+            const refEmbed = new EmbedBuilder().setTitle('📚 참고 자료').setColor(0x5865f2).setDescription(description)
+            await responseThread.send({ embeds: [refEmbed] })
+        } catch (embedError) {
+            logger.warn({ err: embedError }, 'Failed to send reference embed (non-fatal)')
+        }
+    }
+
+    if (allInfoDocUrls.length > 0) {
+        try {
+            const description = allInfoDocUrls
+                .map((url) => `- ${url}`)
+                .join('\n')
+                .slice(0, 4000)
+            const linkEmbed = new EmbedBuilder()
+                .setTitle('🔗 문서 원문 링크')
+                .setColor(0x2ecc71)
+                .setDescription(description)
+            await responseThread.send({ embeds: [linkEmbed] })
+        } catch (embedError) {
+            logger.warn({ err: embedError }, 'Failed to send info doc links embed (non-fatal)')
+        }
+    }
+}
+
+function persistConversationHistory(
+    historyKey: string,
+    history: Array<{ role: string; content: string }>,
+    query: string,
+    response: string
+): void {
+    history.push({ role: 'user', content: query })
+    history.push({ role: 'assistant', content: response })
+    if (history.length > 20) history.splice(0, history.length - 20)
+    conversationHistory.set(historyKey, history)
+}
+
 type CitationMatch = {
     start: number
     end: number
@@ -447,8 +587,9 @@ export async function handleMention(message: Message, client: Client) {
     await runConversationSerially(historyKey, async () => {
         const history = [...(conversationHistory.get(historyKey) || [])]
 
-        const reply = await responseThread.send('⏳ 답변을 생성하고 있습니다...')
+        const reply = await responseThread.send('⏳ 답변 생성을 시작했습니다. 첫 문장부터 바로 이어서 보여드릴게요...')
         const editor = new DiscordStreamEditor(reply)
+        const startedAt = Date.now()
 
         try {
             const skaldClient = new SkaldClient({
@@ -458,7 +599,8 @@ export async function handleMention(message: Message, client: Client) {
             })
 
             let fullResponse = ''
-            let references: Record<string, { memo_uuid: string; memo_title: string; source_url?: string }> = {}
+            let references: ReferenceMap = {}
+            let firstTokenLogged = false
 
             // Detect product_id from query and build filter
             const detectedProductId = detectProductId(query)
@@ -477,7 +619,7 @@ export async function handleMention(message: Message, client: Client) {
                 logger.info({ detectedProductId }, 'Product ID detected from query')
             }
 
-            const response = await skaldClient.chat(query, {
+            for await (const event of skaldClient.chatStream(query, {
                 history,
                 filters,
                 system_prompt:
@@ -489,99 +631,98 @@ export async function handleMention(message: Message, client: Client) {
                     vector_search: { top_k: 50, similarity_threshold: 0.4 },
                     references: { enabled: true },
                 },
-            })
+            })) {
+                if (event.type === 'token' && event.content) {
+                    if (!firstTokenLogged) {
+                        firstTokenLogged = true
+                        logger.info({ elapsedMs: Date.now() - startedAt }, 'Received first token for mention response')
+                    }
 
-            fullResponse = response.response
-            references = response.references || {}
+                    fullResponse += event.content
+                    editor.append(event.content)
+                    continue
+                }
 
-            const normalizedResponse = normalizeCitationSpacing(fullResponse)
-            const recoveredResponse = recoverPlainNumericCitations(normalizedResponse, references)
-            const finalResponse = linkifyCitationsWithReferences(recoveredResponse, references)
-            const finalResponseWithNotice = containsHttpUrl(query)
-                ? `${URL_ACCESS_NOTICE}${finalResponse}`
-                : finalResponse
+                if (event.type === 'references' && event.content) {
+                    references = parseReferencesEventContent(event.content)
+                    continue
+                }
+
+                if (event.type === 'done') {
+                    continue
+                }
+
+                if (event.type === 'error' || event.type === 'transport_error') {
+                    const userFacingError = buildMentionErrorMessage(event.content)
+                    logger.warn(
+                        {
+                            eventType: event.type,
+                            streamError: event.content,
+                            elapsedMs: Date.now() - startedAt,
+                            partialResponseLength: fullResponse.length,
+                        },
+                        'Mention stream failed'
+                    )
+
+                    if (shouldPreservePartialResponseOnError(event.type, fullResponse)) {
+                        const partialResponse = formatFinalResponse(query, fullResponse, references, { partial: true })
+
+                        try {
+                            await editor.finalize(partialResponse)
+                        } catch (editError) {
+                            logger.error(
+                                { err: editError },
+                                'Failed to finalize partial response, falling back to plain messages'
+                            )
+                            await sendFinalResponseFallback(responseThread, partialResponse)
+                        }
+
+                        await sendReferenceEmbeds(responseThread, fullResponse, references)
+                        await responseThread.send(`⚠️ ${userFacingError}`)
+                        persistConversationHistory(historyKey, history, query, partialResponse)
+                    } else {
+                        await editor.showError(userFacingError)
+                    }
+
+                    return
+                }
+            }
+
+            if (!fullResponse.trim()) {
+                throw new Error('Chat stream completed without any response content')
+            }
+
+            const finalResponseWithNotice = formatFinalResponse(query, fullResponse, references)
 
             try {
                 await editor.finalize(finalResponseWithNotice)
             } catch (editError) {
-                logger.error({ editError }, 'Failed to stream final response, falling back to plain messages')
+                logger.error({ err: editError }, 'Failed to stream final response, falling back to plain messages')
                 await sendFinalResponseFallback(responseThread, finalResponseWithNotice)
             }
 
-            const citedReferenceEntries = selectReferenceEntries(fullResponse, references)
+            await sendReferenceEmbeds(responseThread, fullResponse, references)
 
-            const inferredInfoDocUrls = extractInfoDocUrls(fullResponse)
-            const citedReferenceSourceUrls = citedReferenceEntries
-                .map(([, ref]) => ref.source_url?.trim())
-                .filter((url): url is string => Boolean(url))
-            const citedReferenceInfoDocUrls = citedReferenceEntries.flatMap(([, ref]) =>
-                extractInfoDocUrls(ref.memo_title)
+            logger.info(
+                { elapsedMs: Date.now() - startedAt, responseLength: fullResponse.length },
+                'Completed streamed mention response'
             )
 
-            const allInfoDocUrls = Array.from(
-                new Set([...inferredInfoDocUrls, ...citedReferenceSourceUrls, ...citedReferenceInfoDocUrls])
-            )
-
-            // Send reference embed (non-fatal - don't fail if this errors)
-            if (citedReferenceEntries.length > 0) {
-                try {
-                    const lines = citedReferenceEntries.map(([key, ref]) => {
-                        const sourceUrl =
-                            ref.source_url?.trim() ||
-                            extractFirstJiraIssueUrl(ref.memo_title) ||
-                            extractFirstInfoDocUrl(ref.memo_title)
-                        const titleWithJiraLinks = linkifyJiraIssueKeys(ref.memo_title)
-                        if (sourceUrl) {
-                            return `**[${key}]** ${titleWithJiraLinks}\n🔗 ${sourceUrl}`
-                        }
-                        return `**[${key}]** ${titleWithJiraLinks}`
-                    })
-
-                    // Discord embed description limit is 4096 chars
-                    const description = lines.join('\n').slice(0, 4000)
-
-                    const refEmbed = new EmbedBuilder()
-                        .setTitle('📚 참고 자료')
-                        .setColor(0x5865f2)
-                        .setDescription(description)
-                    await responseThread.send({ embeds: [refEmbed] })
-                } catch (embedError) {
-                    logger.warn({ embedError }, 'Failed to send reference embed (non-fatal)')
-                }
-            }
-
-            // Send info doc links (non-fatal - don't fail if this errors)
-            if (allInfoDocUrls.length > 0) {
-                try {
-                    const description = allInfoDocUrls
-                        .map((url) => `- ${url}`)
-                        .join('\n')
-                        .slice(0, 4000)
-                    const linkEmbed = new EmbedBuilder()
-                        .setTitle('🔗 문서 원문 링크')
-                        .setColor(0x2ecc71)
-                        .setDescription(description)
-                    await responseThread.send({ embeds: [linkEmbed] })
-                } catch (embedError) {
-                    logger.warn({ embedError }, 'Failed to send info doc links embed (non-fatal)')
-                }
-            }
-
-            history.push({ role: 'user', content: query })
-            history.push({ role: 'assistant', content: finalResponseWithNotice })
-            if (history.length > 20) history.splice(0, history.length - 20)
-            conversationHistory.set(historyKey, history)
+            persistConversationHistory(historyKey, history, query, finalResponseWithNotice)
         } catch (error) {
-            logger.error({ error }, 'Failed to handle mention')
+            logger.error({ err: error, elapsedMs: Date.now() - startedAt }, 'Failed to handle mention')
             await editor.showError('요청 처리 중 오류가 발생했습니다.')
         }
     })
 }
 
 export const __testables__ = {
+    buildMentionErrorMessage,
+    formatFinalResponse,
     extractCitedReferenceKeys,
     selectReferenceEntries,
     extractInfoDocUrls,
+    parseReferencesEventContent,
     detectProductId,
     shouldSkipProductFilter,
     shouldPreservePartialResponseOnError,

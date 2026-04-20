@@ -46,3 +46,24 @@ test('preserves partial response when transport terminates after tokens', () => 
     assert.equal(__testables__.shouldPreservePartialResponseOnError('transport_error', '   '), false)
     assert.equal(__testables__.shouldPreservePartialResponseOnError('error', '부분 응답'), false)
 })
+
+test('maps backend availability errors to user-friendly mention message', () => {
+    assert.equal(
+        __testables__.buildMentionErrorMessage('Service unavailable'),
+        '백엔드 채팅 서비스가 현재 응답하지 않습니다. 잠시 후 다시 시도해 주세요.'
+    )
+    assert.equal(
+        __testables__.buildMentionErrorMessage('The operation was aborted due to timeout'),
+        '백엔드 응답이 제한 시간 안에 도착하지 않았습니다. 잠시 후 다시 시도해 주세요.'
+    )
+})
+
+test('parses references event payload from string content', () => {
+    assert.deepEqual(__testables__.parseReferencesEventContent(JSON.stringify(references)), references)
+})
+
+test('formats partial final response with interruption notice', () => {
+    const formatted = __testables__.formatFinalResponse('일반 질문', '응답 본문 [1]', references, { partial: true })
+    assert.match(formatted, /응답이 중간에 끊겨 일부 내용만 전달되었습니다\./)
+    assert.match(formatted, /\[1\]\(https:\/\/example\.com\/1\)/)
+})
