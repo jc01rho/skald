@@ -137,6 +137,15 @@ function buildMentionErrorMessage(errorMessage: string): string {
         return '백엔드 채팅 서비스가 현재 응답하지 않습니다. 잠시 후 다시 시도해 주세요.'
     }
 
+    if (
+        normalized === 'An error occurred' ||
+        normalized === 'Chat stream completed without any response content' ||
+        /Failed to parse (trailing )?SSE message/i.test(normalized) ||
+        /terminated|fetch failed|socket hang up|other side closed|ECONNRESET|UND_ERR_SOCKET/i.test(normalized)
+    ) {
+        return '백엔드 스트리밍 응답이 중간에 종료되었습니다. 잠시 후 다시 시도해 주세요.'
+    }
+
     if (/abort|timeout/i.test(normalized)) {
         return '백엔드 응답이 제한 시간 안에 도착하지 않았습니다. 잠시 후 다시 시도해 주세요.'
     }
@@ -711,7 +720,8 @@ export async function handleMention(message: Message, client: Client) {
             persistConversationHistory(historyKey, history, query, finalResponseWithNotice)
         } catch (error) {
             logger.error({ err: error, elapsedMs: Date.now() - startedAt }, 'Failed to handle mention')
-            await editor.showError('요청 처리 중 오류가 발생했습니다.')
+            const fallbackMessage = buildMentionErrorMessage(error instanceof Error ? error.message : String(error))
+            await editor.showError(fallbackMessage)
         }
     })
 }

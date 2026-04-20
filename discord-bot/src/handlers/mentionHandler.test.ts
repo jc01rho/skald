@@ -56,6 +56,18 @@ test('maps backend availability errors to user-friendly mention message', () => 
         __testables__.buildMentionErrorMessage('The operation was aborted due to timeout'),
         '백엔드 응답이 제한 시간 안에 도착하지 않았습니다. 잠시 후 다시 시도해 주세요.'
     )
+    assert.equal(
+        __testables__.buildMentionErrorMessage('Chat stream completed without any response content'),
+        '백엔드 스트리밍 응답이 중간에 종료되었습니다. 잠시 후 다시 시도해 주세요.'
+    )
+    assert.equal(
+        __testables__.buildMentionErrorMessage('An error occurred'),
+        '백엔드 스트리밍 응답이 중간에 종료되었습니다. 잠시 후 다시 시도해 주세요.'
+    )
+    assert.equal(
+        __testables__.buildMentionErrorMessage('fetch failed'),
+        '백엔드 스트리밍 응답이 중간에 종료되었습니다. 잠시 후 다시 시도해 주세요.'
+    )
 })
 
 test('parses references event payload from string content', () => {
