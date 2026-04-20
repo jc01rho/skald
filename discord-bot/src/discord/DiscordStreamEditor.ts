@@ -10,10 +10,10 @@ export class DiscordStreamEditor {
     private isFinalized: boolean = false
     private editChain: Promise<void> = Promise.resolve()
 
-    private readonly THROTTLE_MS = 1000
+    private readonly THROTTLE_MS = 400
     private readonly MAX_LENGTH = 1900
-    private readonly STREAMING_INDICATOR = '⏳'
-    private readonly STREAMING_PREVIEW_SEPARATOR = '\n\n…\n\n'
+    private readonly STREAMING_PREFIX = '⏳ 답변을 스트리밍하는 중입니다. 아래 내용이 실시간으로 이어집니다.\n\n'
+    private readonly STREAMING_CURSOR = '▌'
 
     constructor(message: Message) {
         this.message = message
@@ -126,27 +126,26 @@ export class DiscordStreamEditor {
             return []
         }
 
-        const prefix = `${this.STREAMING_INDICATOR} `
-        const maxContentLength = this.MAX_LENGTH - prefix.length
-        if (normalized.length <= maxContentLength) {
-            return [`${prefix}${normalized}`]
+        const streamingText = `${normalized}${this.STREAMING_CURSOR}`
+        const firstChunkLimit = this.MAX_LENGTH - this.STREAMING_PREFIX.length
+
+        if (firstChunkLimit <= 0) {
+            return this.splitMessage(streamingText)
         }
 
-        const separatorLength = this.STREAMING_PREVIEW_SEPARATOR.length
-        const headLength = Math.min(900, Math.max(0, Math.floor((maxContentLength - separatorLength) / 2)))
-        const tailLength = Math.max(0, maxContentLength - separatorLength - headLength)
-        const head = normalized.slice(0, headLength).trimEnd()
-        const tail = normalized.slice(-tailLength).trimStart()
+        const firstChunkContent = streamingText.slice(0, firstChunkLimit)
+        const remaining = streamingText.slice(firstChunkLimit)
+        const chunks = [`${this.STREAMING_PREFIX}${firstChunkContent}`]
 
-        return [`${prefix}${head}${this.STREAMING_PREVIEW_SEPARATOR}${tail}`]
+        for (let start = 0; start < remaining.length; start += this.MAX_LENGTH) {
+            chunks.push(remaining.slice(start, start + this.MAX_LENGTH))
+        }
+
+        return chunks
     }
 
     private async syncMessages(chunks: string[]): Promise<void> {
         await this.message.edit(chunks[0])
-
-        if (!this.isFinalized) {
-            return
-        }
 
         for (let index = 1; index < chunks.length; index++) {
             const targetIndex = index - 1
