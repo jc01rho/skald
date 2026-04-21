@@ -1,6 +1,32 @@
 import { logger } from '@/lib/logger'
 import { containsCJK } from '@/lib/languageDetector'
 
+export type QuerySimplicity = 'simple' | 'moderate' | 'complex'
+
+export interface FastRetrievalProfile {
+    topK: number
+    similarityThreshold: number
+    maxPreviewChars: number
+}
+
+export const FAST_RETRIEVAL_PROFILES: Record<QuerySimplicity, FastRetrievalProfile> = {
+    simple: {
+        topK: 3,
+        similarityThreshold: 0.78,
+        maxPreviewChars: 220,
+    },
+    moderate: {
+        topK: 5,
+        similarityThreshold: 0.72,
+        maxPreviewChars: 320,
+    },
+    complex: {
+        topK: 8,
+        similarityThreshold: 0.68,
+        maxPreviewChars: 420,
+    },
+}
+
 export interface ComplexityResult {
     score: number
     lengthScore: number
@@ -104,4 +130,13 @@ export class ComplexityCalculator {
 
         return result
     }
+}
+
+export function classifyQuerySimplicity(query: string): QuerySimplicity {
+    const { score, details } = ComplexityCalculator.calculate(query)
+    const normalizedLength = query.trim().length
+
+    if (details.multiIntentIndicatorsFound >= 1 || score >= 0.7) return 'complex'
+    if (normalizedLength <= 60 && details.depthIndicatorsFound <= 1 && score < 0.35) return 'simple'
+    return 'moderate'
 }
