@@ -27,6 +27,8 @@ import { rewrite } from '../agents/chatAgent/queryRewrite'
 import { LLMService } from '../services/llmService'
 import * as ragGraphModule from '../agents/chatAgent/ragGraph'
 import { ChatPromptTemplate } from '@langchain/core/prompts'
+import * as fastRetrieveModule from '../lib/fastRetrieve'
+import * as previewAgentModule from '../agents/chatAgent/previewAgent'
 
 // Mock external dependencies
 jest.mock('../agents/chatAgent/chatAgent')
@@ -82,6 +84,20 @@ jest.mock('../lib/complexityCalculator', () => ({
     ComplexityCalculator: {
         calculate: jest.fn().mockReturnValue({ requiresSelfRag: false }),
     },
+    classifyQuerySimplicity: jest.fn().mockReturnValue('simple'),
+    FAST_RETRIEVAL_PROFILES: {
+        simple: { topK: 3, similarityThreshold: 0.78, maxPreviewChars: 220 },
+        moderate: { topK: 5, similarityThreshold: 0.72, maxPreviewChars: 320 },
+        complex: { topK: 8, similarityThreshold: 0.68, maxPreviewChars: 420 },
+    },
+}))
+jest.mock('../lib/fastRetrieve', () => ({
+    fastRetrieve: jest.fn().mockResolvedValue({ contextStr: 'Result 1: preview context', results: [] }),
+}))
+jest.mock('../agents/chatAgent/previewAgent', () => ({
+    generatePreview: jest
+        .fn()
+        .mockResolvedValue('1차 답변: 질문을 확인했습니다. 최종 답변은 곧 자세한 근거와 함께 이어집니다.'),
 }))
 
 describe('Chat API', () => {
@@ -1807,6 +1823,75 @@ describe('Chat API', () => {
                 expect(response.status).toBe(200)
                 expect(response.text).toContain('"type":"preview"')
                 expect(response.text).toContain('Cached answer for this query')
+                expect(fastRetrieveModule.fastRetrieve).not.toHaveBeenCalled()
+            })
+
+            it('should always emit preview for streaming RAG queries before the first token', async () => {
+                const user = await createTestUser(orm, 'test@example.com', 'password123')
+                const org = await createTestOrganization(orm, 'Test Org', user)
+                await createTestOrganizationMembership(orm, user, org)
+                const project = await createTestProject(orm, 'Test Project', org, user)
+                const token = generateAccessToken('test@example.com')
+
+                const mockRagState = mockRagGraphResponse('test query', [
+                    { document: 'deep result', memo_uuid: 'memo-1' },
+                ])
+                ;(ragGraphModule.ragGraph.invoke as jest.Mock).mockResolvedValue(mockRagState)
+
+                async function* mockStreamGenerator() {
+                    yield { type: 'token', content: 'final answer token' }
+                }
+                ;(chatAgent.streamChatAgent as jest.Mock).mockReturnValue(mockStreamGenerator())
+
+                const response = await request(app)
+                    .post('/api/chat')
+                    .set('Cookie', [`accessToken=${token}`])
+                    .query({ project_id: project.uuid })
+                    .send({
+                        query: 'test query',
+                        stream: true,
+                    })
+
+                expect(response.status).toBe(200)
+                const previewIndex = response.text.indexOf('"type":"preview"')
+                const tokenIndex = response.text.indexOf('"type":"token"')
+                expect(previewIndex).toBeGreaterThan(-1)
+                expect(tokenIndex).toBeGreaterThan(-1)
+                expect(previewIndex).toBeLessThan(tokenIndex)
+                expect(fastRetrieveModule.fastRetrieve).toHaveBeenCalled()
+                expect(previewAgentModule.generatePreview).toHaveBeenCalled()
+            })
+
+            it('should fall back to the default preview copy when fast Stage A fails', async () => {
+                const user = await createTestUser(orm, 'test@example.com', 'password123')
+                const org = await createTestOrganization(orm, 'Test Org', user)
+                await createTestOrganizationMembership(orm, user, org)
+                const project = await createTestProject(orm, 'Test Project', org, user)
+                const token = generateAccessToken('test@example.com')
+
+                const mockRagState = mockRagGraphResponse('test query', [])
+                ;(ragGraphModule.ragGraph.invoke as jest.Mock).mockResolvedValue(mockRagState)
+                ;(fastRetrieveModule.fastRetrieve as jest.Mock).mockRejectedValue(new Error('preview miss'))
+
+                async function* mockStreamGenerator() {
+                    yield { type: 'token', content: 'final answer token' }
+                }
+                ;(chatAgent.streamChatAgent as jest.Mock).mockReturnValue(mockStreamGenerator())
+
+                const response = await request(app)
+                    .post('/api/chat')
+                    .set('Cookie', [`accessToken=${token}`])
+                    .query({ project_id: project.uuid })
+                    .send({
+                        query: 'test query',
+                        stream: true,
+                    })
+
+                expect(response.status).toBe(200)
+                expect(response.text).toContain('"type":"preview"')
+                expect(response.text).toContain(
+                    '1차 답변: 질문을 확인했습니다. 최종 답변은 곧 자세한 근거와 함께 이어집니다.'
+                )
             })
         })
     })

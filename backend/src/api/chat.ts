@@ -15,7 +15,7 @@ import { chatRateLimiter } from '@/middleware/rateLimitMiddleware'
 import { trackChatUsage } from '@/middleware/trackChatUsageMiddleware'
 import { posthogCapture } from '@/lib/posthogUtils'
 import { SelfRagEvaluator } from '@/lib/selfRagEvaluator'
-import { ComplexityCalculator } from '@/lib/complexityCalculator'
+import { ComplexityCalculator, classifyQuerySimplicity, FAST_RETRIEVAL_PROFILES } from '@/lib/complexityCalculator'
 import {
     checkAndQueueLazyReprocess,
     extractMemoUuidsFromRerankResults,
@@ -24,23 +24,24 @@ import {
 import { cacheResponse, getCachedResponse } from '@/lib/ragCache'
 import crypto from 'crypto'
 import { buildReferenceResults } from '@/lib/referenceResults'
+import { fastRetrieve } from '@/lib/fastRetrieve'
+import { generatePreview } from '@/agents/chatAgent/previewAgent'
+import { MemoFilter } from '@/lib/filterUtils'
 
 type AnswerMode = 'detailed' | 'partial' | 'rejected'
 type SufficiencyClass = 'high' | 'medium' | 'low' | 'empty'
 
 /**
  * Build a preview response for streaming path.
- * Uses cheap sources only: routeQuery direct responses, cache hits, or safe fallback.
+ * Uses cheap sources only: routeQuery direct responses or cache hits.
  * Returns null if no cheap preview is available.
  */
 const buildPreviewResponse = ({
     routeResult,
     cachedResponse,
-    query,
 }: {
     routeResult: { route: string; response?: string }
     cachedResponse: string | null
-    query: string
 }): string | null => {
     // Priority 1: Direct route response (greeting, chitchat)
     if (routeResult.route !== 'rag' && routeResult.response) {
@@ -52,16 +53,10 @@ const buildPreviewResponse = ({
         return cachedResponse
     }
 
-    // Priority 3: Safe fallback - acknowledge the query without hallucination
-    // Only provide fallback for short, simple queries
-    const normalizedQuery = query.trim()
-    if (normalizedQuery.length <= 50 && !normalizedQuery.includes('?')) {
-        return `1차 답변: 질문을 확인했습니다. 관련 문서를 먼저 찾고 있으며, 곧 자세한 근거와 함께 다시 답변드리겠습니다.`
-    }
-
-    // No preview available - will show only progress status
     return null
 }
+
+const DEFAULT_STREAMING_PREVIEW = '1차 답변: 질문을 확인했습니다. 최종 답변은 곧 자세한 근거와 함께 이어집니다.'
 
 const getChatDistinctId = (req: Request | undefined, project: Project): string => {
     return req?.context?.requestUser?.userInstance?.email || `project:${project.uuid}`
@@ -125,6 +120,8 @@ const captureChatTelemetry = ({
     usedUserContext,
     decompositionUsed,
     sufficiencyClass,
+    querySimplicity,
+    fastPreviewEmitted,
 }: {
     req?: Request
     distinctId?: string
@@ -139,6 +136,8 @@ const captureChatTelemetry = ({
     usedUserContext: boolean
     decompositionUsed: boolean
     sufficiencyClass: SufficiencyClass
+    querySimplicity?: 'simple' | 'moderate' | 'complex'
+    fastPreviewEmitted?: boolean
 }) => {
     posthogCapture({
         event: 'chat_api_call',
@@ -158,6 +157,8 @@ const captureChatTelemetry = ({
             used_user_context: usedUserContext,
             decomposition_used: decompositionUsed,
             stream,
+            query_simplicity: querySimplicity,
+            fast_preview_emitted: fastPreviewEmitted,
         },
     })
 }
@@ -336,6 +337,7 @@ export const chat = async (req: Request, res: Response) => {
             project,
             chatId,
             filters,
+            memoFilters,
             clientSystemPrompt,
             userContext,
             distinctId: getChatDistinctId(req, project),
@@ -583,6 +585,7 @@ export const _generateStreamingResponse = async ({
     project,
     chatId,
     filters,
+    memoFilters,
     clientSystemPrompt,
     userContext,
     distinctId,
@@ -595,6 +598,7 @@ export const _generateStreamingResponse = async ({
     project: Project
     chatId?: string
     filters: any[]
+    memoFilters: MemoFilter[]
     clientSystemPrompt: string | null
     userContext: string | null
     distinctId: string
@@ -625,16 +629,51 @@ export const _generateStreamingResponse = async ({
     // Reuse the non-stream cache shape so previously answered identical queries
     // can surface a meaningful first-pass answer immediately.
     const cachedResponseForPreview = await getCachedResponse(previewCacheKey)
-    const previewResponse = buildPreviewResponse({ routeResult, cachedResponse: cachedResponseForPreview, query })
-    if (previewResponse) {
-        res.write(`data: ${JSON.stringify({ type: 'preview', content: previewResponse })}\n\n`)
-    }
+    const cheapPreview = buildPreviewResponse({ routeResult, cachedResponse: cachedResponseForPreview })
+    const querySimplicity = classifyQuerySimplicity(query)
+    const fastRetrievalProfile = FAST_RETRIEVAL_PROFILES[querySimplicity]
+
+    let previewResponse = cheapPreview
+    let fastPreviewEmitted = false
 
     res.write(`data: ${JSON.stringify({ type: 'progress', status: 'searching' })}\n\n`)
     logger.info(
-        { provider: parsedRagConfig.llmProvider, hasPreview: !!previewResponse },
+        { provider: parsedRagConfig.llmProvider, hasPreview: !!previewResponse, querySimplicity },
         'Starting RAG process for stream'
     )
+
+    const fastPreviewPromise = previewResponse
+        ? Promise.resolve(previewResponse)
+        : (async () => {
+              try {
+                  const fastRetrieveResult = await fastRetrieve({
+                      project,
+                      query,
+                      filters: memoFilters,
+                      limit: fastRetrievalProfile.topK,
+                      similarityThreshold: fastRetrievalProfile.similarityThreshold,
+                  })
+
+                  return await generatePreview({
+                      query,
+                      context: fastRetrieveResult.contextStr,
+                      maxLength: fastRetrievalProfile.maxPreviewChars,
+                  })
+              } catch (error) {
+                  logger.warn({ err: error }, 'Fast preview stage failed, falling back to default preview copy')
+                  return DEFAULT_STREAMING_PREVIEW
+              }
+          })()
+
+    const deepStagePromise = ragGraph.invoke({
+        query,
+        project,
+        chatId: chatUuid,
+        filters,
+        clientSystemPrompt,
+        userContext,
+        ragConfig: parsedRagConfig,
+    })
 
     let fullResponse = ''
     let streamingRerankedResults: Array<{ memo_uuid?: string }> = []
@@ -644,16 +683,12 @@ export const _generateStreamingResponse = async ({
     let streamingDecompositionUsed = false
     let usedUserContext = userContext !== null
     try {
-        // Run RAG graph *after* headers are sent
-        const ragResultState = await ragGraph.invoke({
-            query,
-            project,
-            chatId: chatUuid,
-            filters,
-            clientSystemPrompt,
-            userContext,
-            ragConfig: parsedRagConfig,
-        })
+        previewResponse = (await fastPreviewPromise)?.trim() || DEFAULT_STREAMING_PREVIEW
+        res.write(`data: ${JSON.stringify({ type: 'preview', content: previewResponse })}\n\n`)
+        fastPreviewEmitted = true
+
+        // Stage B authoritative path runs concurrently with the fast preview stage.
+        const ragResultState = await deepStagePromise
 
         const { query: finalQuery, contextStr, prompt, rerankedResults, exactLookupResults } = ragResultState
         const referenceResults = buildReferenceResults(rerankedResults || [], exactLookupResults || [])
@@ -704,6 +739,8 @@ export const _generateStreamingResponse = async ({
             usedUserContext,
             decompositionUsed: streamingDecompositionUsed,
             sufficiencyClass: classifySufficiencyClass(streamingContextLength, streamingRerankedCount),
+            querySimplicity,
+            fastPreviewEmitted,
         })
 
         // Phase 2 — assistant persistence
@@ -729,6 +766,8 @@ export const _generateStreamingResponse = async ({
             usedUserContext,
             decompositionUsed: streamingDecompositionUsed,
             sufficiencyClass: classifySufficiencyClass(streamingContextLength, streamingRerankedCount),
+            querySimplicity,
+            fastPreviewEmitted,
         })
         const errorMsg =
             IS_DEVELOPMENT && error instanceof Error ? `${error.message}\n${error.stack}` : 'An error occurred'
