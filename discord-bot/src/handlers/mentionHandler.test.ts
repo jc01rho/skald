@@ -98,3 +98,22 @@ test('handles preview event type without throwing', () => {
     assert.equal(previewEvent.type, 'preview')
     assert.equal(previewEvent.content, '미리보기 답변입니다.')
 })
+
+test('strips discord mention markup from thread title queries', () => {
+    const cleaned = __testables__.stripDiscordMentions(
+        '@Parrot <@1475414065273765990> <@!1475414065273765990> <@&1475414065273765990> <#1475414065273765990> 작업 프로파일의 목록 가져오기 기능에 대해 알려줘'
+    )
+
+    assert.equal(cleaned, '@Parrot 작업 프로파일의 목록 가져오기 기능에 대해 알려줘')
+    assert.equal(__testables__.buildThreadName(cleaned), '🤖 @Parrot 작업 프로파일의 목록 가져오기 기능에 대해 알려줘')
+})
+
+test('uses lightweight RAG config for discord mention streaming', () => {
+    assert.deepEqual(__testables__.DISCORD_MENTION_RAG_CONFIG, {
+        llm_provider: 'cli-proxy-api',
+        query_rewrite: { enabled: false },
+        reranking: { enabled: true, top_k: 8 },
+        vector_search: { top_k: 16, similarity_threshold: 0.45 },
+        references: { enabled: true },
+    })
+})

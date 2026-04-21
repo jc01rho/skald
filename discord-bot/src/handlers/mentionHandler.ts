@@ -13,6 +13,13 @@ const HTTP_URL_IN_TEXT_REGEX = /https?:\/\//i
 const DEFAULT_JIRA_BASE_URL = 'https://jira.sparrowfasoo.com'
 const URL_ACCESS_NOTICE =
     '참고로 저는 질문에 포함된 URL에 직접 접속하거나 그 내용을 읽을 수 없습니다. URL 본문이 필요하면 관련 내용을 함께 보내 주세요.\n\n'
+const DISCORD_MENTION_RAG_CONFIG = {
+    llm_provider: 'cli-proxy-api',
+    query_rewrite: { enabled: false },
+    reranking: { enabled: true, top_k: 8 },
+    vector_search: { top_k: 16, similarity_threshold: 0.45 },
+    references: { enabled: true },
+} as const
 
 function isHttpUrl(value: string | undefined): value is string {
     return Boolean(value && /^https?:\/\//i.test(value))
@@ -549,6 +556,13 @@ function buildThreadName(query: string): string {
     return `🤖 ${compact}`
 }
 
+function stripDiscordMentions(content: string): string {
+    return content
+        .replace(/<[@#][!&]?\d+>/g, ' ')
+        .replace(/\s+/g, ' ')
+        .trim()
+}
+
 async function resolveResponseThread(message: Message, query: string): Promise<ThreadChannel> {
     if (message.channel.isThread()) {
         return message.channel
@@ -568,7 +582,7 @@ export async function handleMention(message: Message, client: Client) {
 
     if (!client.user || !message.mentions.has(client.user)) return
 
-    const query = message.content.replace(/<@!?\d+>/g, '').trim()
+    const query = stripDiscordMentions(message.content)
 
     let responseThread: ThreadChannel
     try {
@@ -635,13 +649,7 @@ export async function handleMention(message: Message, client: Client) {
                 filters,
                 system_prompt:
                     '제공된 프롬프트와 문맥 안에서만 답하고 그 외 없는 내용으로는 답변하지 말것. 항상 한국어로 답변할 것. 사용자 질문에 대해 최대한 자세히 설명할 것.',
-                rag_config: {
-                    llm_provider: 'cli-proxy-api',
-                    query_rewrite: { enabled: true },
-                    reranking: { enabled: true, top_k: 25 },
-                    vector_search: { top_k: 50, similarity_threshold: 0.4 },
-                    references: { enabled: true },
-                },
+                rag_config: DISCORD_MENTION_RAG_CONFIG,
             })) {
                 if (event.type === 'accepted') {
                     continue
@@ -754,4 +762,7 @@ export const __testables__ = {
     detectProductId,
     shouldSkipProductFilter,
     shouldPreservePartialResponseOnError,
+    stripDiscordMentions,
+    buildThreadName,
+    DISCORD_MENTION_RAG_CONFIG,
 }
