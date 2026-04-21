@@ -77,3 +77,36 @@ test('chatStream keeps retrying pre-stream failures and returns error on last at
     assert.equal(fetchCalls, 3)
     assert.deepEqual(events, [{ type: 'error', content: 'terminated' }])
 })
+
+test('chatStream yields preview event when backend sends it', async () => {
+    global.fetch = (async () => {
+        return new Response(
+            createSSEStream([
+                'data: {"type":"accepted","chat_id":"test-chat"}\n\n',
+                'data: {"type":"preview","content":"미리보기 답변입니다"}\n\n',
+                'data: {"type":"progress","status":"searching"}\n\n',
+                'data: {"type":"token","content":"상세 답변"}\n\n',
+                'data: {"type":"done","chat_id":"test-chat"}\n\n',
+            ]),
+            { status: 200, headers: { 'Content-Type': 'text/event-stream' } }
+        )
+    }) as typeof fetch
+
+    const client = new SkaldClient({
+        baseUrl: 'http://localhost:3000',
+        apiKey: 'test-key',
+        projectId: 'test-project',
+    })
+
+    const events = []
+    for await (const event of client.chatStream('질문')) {
+        events.push(event)
+    }
+
+    assert.equal(events.length, 5)
+    assert.deepEqual(events[0], { type: 'accepted', chat_id: 'test-chat' })
+    assert.deepEqual(events[1], { type: 'preview', content: '미리보기 답변입니다' })
+    assert.deepEqual(events[2], { type: 'progress', status: 'searching' })
+    assert.deepEqual(events[3], { type: 'token', content: '상세 답변' })
+    assert.deepEqual(events[4], { type: 'done', chat_id: 'test-chat' })
+})

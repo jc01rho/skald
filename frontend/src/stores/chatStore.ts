@@ -232,6 +232,18 @@ export const useChatStore = create<ChatState>()(
                     '/v1/chat/',
                     payload,
                     (data: ApiStreamData) => {
+                        if (data.type === 'accepted' && 'chat_id' in data && typeof data.chat_id === 'string') {
+                            set({ chatSessionId: data.chat_id })
+                            return
+                        }
+                        if (data.type === 'progress') {
+                            return
+                        }
+                        if (data.type === 'preview') {
+                            // Preview is informational - no action needed for web UI
+                            // Discord bot uses preview for first-response latency
+                            return
+                        }
                         if (data.type === 'token' && data.content) {
                             const currentContent =
                                 get().messages.find((m) => m.id === assistantMessageId)?.content || ''

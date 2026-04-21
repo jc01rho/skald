@@ -48,10 +48,13 @@ test('streams long content across multiple discord messages before finalize', as
     const rootMessage = createFakeMessage()
     const editor = new DiscordStreamEditor(rootMessage as never)
 
+    const showStatus = Reflect.get(editor, 'showStatus')
+    assert.equal(typeof showStatus, 'function')
+    await showStatus.call(editor, 'generating')
     editor.append('가'.repeat(2500))
     await editor.finalize()
 
-    assert.match(rootMessage.edits[0], /⏳ 답변을 스트리밍하는 중입니다/)
+    assert.match(rootMessage.edits[0], /관련 문서 확인이 끝나 자세한 답변을 생성하는 중입니다/)
     assert.equal(rootMessage.replies.length, 1)
     assert.ok(rootMessage.replies[0]?.content.includes('가'))
     assert.equal(rootMessage.content.includes('▌'), false)
@@ -84,4 +87,31 @@ test('showError deletes stale streaming chunks', async () => {
 
     assert.equal(rootMessage.content, '❌ Error: 실패했습니다')
     assert.equal(extraMessage?.deleted, true)
+})
+
+test('setPreview shows preview content with searching status', async () => {
+    const rootMessage = createFakeMessage()
+    const editor = new DiscordStreamEditor(rootMessage as never)
+
+    const setPreview = Reflect.get(editor, 'setPreview')
+    assert.equal(typeof setPreview, 'function')
+    await setPreview.call(editor, '미리보기 답변입니다')
+
+    assert.match(rootMessage.content, /미리보기 답변/)
+    assert.match(rootMessage.content, /💬.*미리보기 답변/)
+    assert.match(rootMessage.content, /질문을 접수했고 관련 문서를 먼저 확인하는 중/)
+})
+
+test('showStatus preserves preview content when preview is set', async () => {
+    const rootMessage = createFakeMessage()
+    const editor = new DiscordStreamEditor(rootMessage as never)
+
+    const setPreview = Reflect.get(editor, 'setPreview')
+    await setPreview.call(editor, '미리보기')
+
+    const showStatus = Reflect.get(editor, 'showStatus')
+    await showStatus.call(editor, 'generating')
+
+    assert.match(rootMessage.content, /미리보기/)
+    assert.match(rootMessage.content, /관련 문서 확인이 끝나 자세한 답변을 생성하는 중/)
 })

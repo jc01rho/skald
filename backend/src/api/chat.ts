@@ -4,7 +4,7 @@ import { streamChatAgent } from '@/agents/chatAgent/chatAgent'
 import { IS_CLOUD, IS_DEVELOPMENT } from '@/settings'
 import { logger } from '@/lib/logger'
 import * as Sentry from '@sentry/node'
-import { createChatMessagePair } from '@/lib/chatUtils'
+import { createChatMessagePair, createChatWithUserMessage, persistAssistantMessage } from '@/lib/chatUtils'
 import { CachedQueries } from '@/queries/cachedQueries'
 import { DI } from '@/di'
 import { ragGraph } from '@/agents/chatAgent/ragGraph'
@@ -27,6 +27,41 @@ import { buildReferenceResults } from '@/lib/referenceResults'
 
 type AnswerMode = 'detailed' | 'partial' | 'rejected'
 type SufficiencyClass = 'high' | 'medium' | 'low' | 'empty'
+
+/**
+ * Build a preview response for streaming path.
+ * Uses cheap sources only: routeQuery direct responses, cache hits, or safe fallback.
+ * Returns null if no cheap preview is available.
+ */
+const buildPreviewResponse = ({
+    routeResult,
+    cachedResponse,
+    query,
+}: {
+    routeResult: { route: string; response?: string }
+    cachedResponse: string | null
+    query: string
+}): string | null => {
+    // Priority 1: Direct route response (greeting, chitchat)
+    if (routeResult.route !== 'rag' && routeResult.response) {
+        return routeResult.response
+    }
+
+    // Priority 2: Cache hit (exact match from previous queries)
+    if (cachedResponse) {
+        return cachedResponse
+    }
+
+    // Priority 3: Safe fallback - acknowledge the query without hallucination
+    // Only provide fallback for short, simple queries
+    const normalizedQuery = query.trim()
+    if (normalizedQuery.length <= 50 && !normalizedQuery.includes('?')) {
+        return `1차 답변: 질문을 확인했습니다. 관련 문서를 먼저 찾고 있으며, 곧 자세한 근거와 함께 다시 답변드리겠습니다.`
+    }
+
+    // No preview available - will show only progress status
+    return null
+}
 
 const getChatDistinctId = (req: Request | undefined, project: Project): string => {
     return req?.context?.requestUser?.userInstance?.email || `project:${project.uuid}`
@@ -187,6 +222,21 @@ export const chat = async (req: Request, res: Response) => {
 
     const routeResult = routeQuery(query)
 
+    const previewCacheKey = crypto
+        .createHash('sha256')
+        .update(
+            JSON.stringify({
+                projectUuid: project.uuid,
+                query,
+                filters,
+                chatId: chatId || null,
+                clientSystemPrompt: clientSystemPrompt || null,
+                userContext,
+                ragConfig: parsedRagConfig,
+            })
+        )
+        .digest('hex')
+
     const responseCacheKey = crypto
         .createHash('sha256')
         .update(
@@ -290,9 +340,10 @@ export const chat = async (req: Request, res: Response) => {
             userContext,
             distinctId: getChatDistinctId(req, project),
             parsedRagConfig,
+            routeResult,
+            previewCacheKey,
         })
     }
-
     logger.info(
         {
             similarityThreshold: parsedRagConfig.vectorSearch.similarityThreshold,
@@ -536,6 +587,8 @@ export const _generateStreamingResponse = async ({
     userContext,
     distinctId,
     parsedRagConfig,
+    routeResult,
+    previewCacheKey,
 }: {
     res: Response
     query: string
@@ -546,6 +599,8 @@ export const _generateStreamingResponse = async ({
     userContext: string | null
     distinctId: string
     parsedRagConfig: any
+    routeResult: { route: string; response?: string }
+    previewCacheKey: string
 }): Promise<void> => {
     _setStreamingResponseHeaders(res)
 
@@ -560,7 +615,26 @@ export const _generateStreamingResponse = async ({
         }
     }, 15000)
 
-    logger.info({ provider: parsedRagConfig.llmProvider }, 'Starting RAG process for stream')
+    // Phase 1 — early persistence
+    const { chatUuid, messageGroupId } = await createChatWithUserMessage(project, query, chatId, clientSystemPrompt)
+
+    // accepted
+    res.write(`data: ${JSON.stringify({ type: 'accepted', chat_id: chatUuid })}\n\n`)
+
+    // Try to emit preview before expensive RAG work.
+    // Reuse the non-stream cache shape so previously answered identical queries
+    // can surface a meaningful first-pass answer immediately.
+    const cachedResponseForPreview = await getCachedResponse(previewCacheKey)
+    const previewResponse = buildPreviewResponse({ routeResult, cachedResponse: cachedResponseForPreview, query })
+    if (previewResponse) {
+        res.write(`data: ${JSON.stringify({ type: 'preview', content: previewResponse })}\n\n`)
+    }
+
+    res.write(`data: ${JSON.stringify({ type: 'progress', status: 'searching' })}\n\n`)
+    logger.info(
+        { provider: parsedRagConfig.llmProvider, hasPreview: !!previewResponse },
+        'Starting RAG process for stream'
+    )
 
     let fullResponse = ''
     let streamingRerankedResults: Array<{ memo_uuid?: string }> = []
@@ -574,7 +648,7 @@ export const _generateStreamingResponse = async ({
         const ragResultState = await ragGraph.invoke({
             query,
             project,
-            chatId,
+            chatId: chatUuid,
             filters,
             clientSystemPrompt,
             userContext,
@@ -590,6 +664,8 @@ export const _generateStreamingResponse = async ({
         streamingLookupHit = ragResultState.lookupHit || false
         streamingDecompositionUsed = !!ragResultState.queryUnderstanding
         usedUserContext = userContext !== null
+
+        res.write(`data: ${JSON.stringify({ type: 'progress', status: 'generating' })}\n\n`)
 
         logger.info('RAG process completed, starting generation')
 
@@ -630,9 +706,9 @@ export const _generateStreamingResponse = async ({
             sufficiencyClass: classifySufficiencyClass(streamingContextLength, streamingRerankedCount),
         })
 
-        // Save chat to DB
-        const finalChatId = await createChatMessagePair(project, query, fullResponse, chatId, clientSystemPrompt)
-        res.write(`data: ${JSON.stringify({ type: 'done', chat_id: finalChatId })}\n\n`)
+        // Phase 2 — assistant persistence
+        await persistAssistantMessage(project, chatUuid, messageGroupId, fullResponse)
+        res.write(`data: ${JSON.stringify({ type: 'done', chat_id: chatUuid })}\n\n`)
     } catch (error) {
         Sentry.captureException(error)
         logger.error(
@@ -671,6 +747,7 @@ export const _generateStreamingResponse = async ({
         }
     }
 }
+
 export const listChats = async (req: Request, res: Response) => {
     const project = req.context?.requestUser?.project as Project
 

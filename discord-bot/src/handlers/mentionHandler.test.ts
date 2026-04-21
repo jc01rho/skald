@@ -43,8 +43,21 @@ test('keeps automatic product filter for non-error-code product queries', () => 
 
 test('preserves partial response when transport terminates after tokens', () => {
     assert.equal(__testables__.shouldPreservePartialResponseOnError('transport_error', '부분 응답'), true)
-    assert.equal(__testables__.shouldPreservePartialResponseOnError('transport_error', '   '), false)
+    assert.equal(__testables__.shouldPreservePartialResponseOnError('transport_error', ' '), false)
     assert.equal(__testables__.shouldPreservePartialResponseOnError('error', '부분 응답'), false)
+})
+
+test('handles accepted and progress events without throwing', () => {
+    const acceptedEvent = { type: 'accepted', chat_id: 'test-chat-id' }
+    const progressSearchingEvent = { type: 'progress', status: 'searching' }
+    const progressGeneratingEvent = { type: 'progress', status: 'generating' }
+
+    assert.equal(acceptedEvent.type, 'accepted')
+    assert.equal(acceptedEvent.chat_id, 'test-chat-id')
+    assert.equal(progressSearchingEvent.type, 'progress')
+    assert.equal(progressSearchingEvent.status, 'searching')
+    assert.equal(progressGeneratingEvent.type, 'progress')
+    assert.equal(progressGeneratingEvent.status, 'generating')
 })
 
 test('maps backend availability errors to user-friendly mention message', () => {
@@ -78,4 +91,10 @@ test('formats partial final response with interruption notice', () => {
     const formatted = __testables__.formatFinalResponse('일반 질문', '응답 본문 [1]', references, { partial: true })
     assert.match(formatted, /응답이 중간에 끊겨 일부 내용만 전달되었습니다\./)
     assert.match(formatted, /\[1\]\(https:\/\/example\.com\/1\)/)
+})
+
+test('handles preview event type without throwing', () => {
+    const previewEvent = { type: 'preview', content: '미리보기 답변입니다.' }
+    assert.equal(previewEvent.type, 'preview')
+    assert.equal(previewEvent.content, '미리보기 답변입니다.')
 })

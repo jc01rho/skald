@@ -1,10 +1,10 @@
 export interface ApiStreamData {
-    type: 'token' | 'sources' | 'chat_context' | 'done' | 'error' | 'references'
+    type: 'token' | 'sources' | 'chat_context' | 'done' | 'error' | 'references' | 'accepted' | 'progress' | 'preview'
     content?: string
     data?: unknown
     chat_id?: string
+    status?: string
 }
-
 export interface ApiErrorData {
     error: string
 }

@@ -6,9 +6,11 @@ export type SSEEvent =
           content: string | Record<string, { memo_uuid: string; memo_title: string; source_url?: string }>
       }
     | { type: 'done'; chat_id: string }
+    | { type: 'accepted'; chat_id: string }
+    | { type: 'progress'; status: string }
+    | { type: 'preview'; content: string }
     | { type: 'transport_error'; content: string }
     | { type: 'error'; content: string }
-
 export interface MemoFilter {
     field: string
     operator: 'eq' | 'neq' | 'contains' | 'startswith' | 'endswith' | 'in' | 'not_in'

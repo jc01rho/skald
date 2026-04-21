@@ -172,3 +172,79 @@ export const createChatMessagePair = async (
     await DI.em.persistAndFlush(entitiesToPersist)
     return chat.uuid
 }
+
+/**
+ * Create a chat and persist the user message immediately for streaming requests.
+ * This allows chat history timestamps to reflect the actual request time,
+ * while the assistant message is only persisted when the response is complete.
+ *
+ * @returns chat UUID and message group ID for later assistant message creation
+ */
+export const createChatWithUserMessage = async (
+    project: Project,
+    userMessage: string,
+    chatId?: string,
+    clientSystemPrompt?: string | null
+): Promise<{ chatUuid: string; messageGroupId: string }> => {
+    const entitiesToPersist = []
+    let chat: Chat
+    if (!chatId) {
+        chat = DI.em.create(Chat, {
+            uuid: randomUUID(),
+            project: project,
+            created_at: new Date(),
+        })
+        entitiesToPersist.push(chat)
+    } else {
+        try {
+            chat = await DI.em.findOneOrFail(Chat, { uuid: chatId, project: project })
+        } catch {
+            chat = DI.em.create(Chat, {
+                uuid: randomUUID(),
+                project: project,
+                created_at: new Date(),
+            })
+            entitiesToPersist.push(chat)
+        }
+    }
+
+    const messageGroupId = randomUUID()
+    const userMessageEntity = DI.em.create(ChatMessage, {
+        uuid: randomUUID(),
+        message_group_id: messageGroupId,
+        project: project,
+        chat: chat,
+        content: userMessage,
+        skald_system_prompt: CHAT_AGENT_INSTRUCTIONS,
+        client_system_prompt: clientSystemPrompt || null,
+        sent_by: 'user',
+        sent_at: new Date(),
+    })
+    entitiesToPersist.push(userMessageEntity)
+
+    await DI.em.persistAndFlush(entitiesToPersist)
+    return { chatUuid: chat.uuid, messageGroupId }
+}
+
+/**
+ * Persist the assistant message after streaming is complete.
+ * This is called separately after the full response is generated.
+ */
+export const persistAssistantMessage = async (
+    project: Project,
+    chatUuid: string,
+    messageGroupId: string,
+    modelMessage: string
+): Promise<void> => {
+    const chat = await DI.em.findOneOrFail(Chat, { uuid: chatUuid, project: project })
+    const modelMessageEntity = DI.em.create(ChatMessage, {
+        uuid: randomUUID(),
+        message_group_id: messageGroupId,
+        project: project,
+        chat: chat,
+        content: modelMessage,
+        sent_by: 'model',
+        sent_at: new Date(),
+    })
+    await DI.em.persistAndFlush(modelMessageEntity)
+}

@@ -1588,6 +1588,227 @@ describe('Chat API', () => {
                 expect(invokeArgs.filters).toEqual([])
             })
         })
+
+        describe('Two-Phase Chat UX: Early Persistence and SSE Events', () => {
+            it('should emit accepted and progress events in streaming response', async () => {
+                const user = await createTestUser(orm, 'test@example.com', 'password123')
+                const org = await createTestOrganization(orm, 'Test Org', user)
+                await createTestOrganizationMembership(orm, user, org)
+                const project = await createTestProject(orm, 'Test Project', org, user)
+                const token = generateAccessToken('test@example.com')
+
+                const mockRerankedResults = [{ document: 'Result content', relevance_score: 0.9, index: 0 }]
+                const mockRagState = mockRagGraphResponse('test query', mockRerankedResults)
+                ;(ragGraphModule.ragGraph.invoke as jest.Mock).mockResolvedValue(mockRagState)
+
+                async function* mockStreamGenerator() {
+                    yield { content: 'chunk1' }
+                    yield { content: 'chunk2' }
+                }
+                ;(chatAgent.streamChatAgent as jest.Mock).mockReturnValue(mockStreamGenerator())
+
+                const response = await request(app)
+                    .post('/api/chat')
+                    .set('Cookie', [`accessToken=${token}`])
+                    .query({ project_id: project.uuid })
+                    .send({
+                        query: 'test query',
+                        stream: true,
+                    })
+
+                expect(response.status).toBe(200)
+                expect(response.text).toContain('"type":"accepted"')
+                expect(response.text).toContain('"type":"progress"')
+                expect(response.text).toContain('"status":"searching"')
+                expect(response.text).toContain('"status":"generating"')
+            })
+
+            it('should persist user and assistant messages in streaming mode', async () => {
+                const user = await createTestUser(orm, 'test@example.com', 'password123')
+                const org = await createTestOrganization(orm, 'Test Org', user)
+                await createTestOrganizationMembership(orm, user, org)
+                const project = await createTestProject(orm, 'Test Project', org, user)
+                const token = generateAccessToken('test@example.com')
+
+                const mockRerankedResults = [{ document: 'Result content', relevance_score: 0.9, index: 0 }]
+                const mockRagState = mockRagGraphResponse('test query', mockRerankedResults)
+                ;(ragGraphModule.ragGraph.invoke as jest.Mock).mockResolvedValue(mockRagState)
+
+                async function* mockStreamGenerator() {
+                    yield { content: 'response' }
+                }
+                ;(chatAgent.streamChatAgent as jest.Mock).mockReturnValue(mockStreamGenerator())
+
+                await request(app)
+                    .post('/api/chat')
+                    .set('Cookie', [`accessToken=${token}`])
+                    .query({ project_id: project.uuid })
+                    .send({
+                        query: 'test query',
+                        stream: true,
+                    })
+
+                const em = orm.em.fork()
+                const chats = await em.find(Chat, { project: project.uuid })
+                expect(chats).toHaveLength(1)
+
+                const chatMessages = await em.find(
+                    ChatMessage,
+                    { chat: chats[0].uuid },
+                    { orderBy: { sent_at: 'ASC' } }
+                )
+                expect(chatMessages).toHaveLength(2)
+                expect(chatMessages[0].sent_by).toBe('user')
+                expect(chatMessages[0].content).toBe('test query')
+                expect(chatMessages[1].sent_by).toBe('model')
+            })
+
+            it('should include chat_id in accepted event matching done event', async () => {
+                const user = await createTestUser(orm, 'test@example.com', 'password123')
+                const org = await createTestOrganization(orm, 'Test Org', user)
+                await createTestOrganizationMembership(orm, user, org)
+                const project = await createTestProject(orm, 'Test Project', org, user)
+                const token = generateAccessToken('test@example.com')
+
+                const mockRerankedResults = [{ document: 'Result content', relevance_score: 0.9, index: 0 }]
+                const mockRagState = mockRagGraphResponse('test query', mockRerankedResults)
+                ;(ragGraphModule.ragGraph.invoke as jest.Mock).mockResolvedValue(mockRagState)
+
+                async function* mockStreamGenerator() {
+                    yield { content: 'response' }
+                }
+                ;(chatAgent.streamChatAgent as jest.Mock).mockReturnValue(mockStreamGenerator())
+
+                const response = await request(app)
+                    .post('/api/chat')
+                    .set('Cookie', [`accessToken=${token}`])
+                    .query({ project_id: project.uuid })
+                    .send({
+                        query: 'test query',
+                        stream: true,
+                    })
+
+                expect(response.status).toBe(200)
+
+                const acceptedMatch = response.text.match(/"type":"accepted"[^}]*"chat_id":"([^"]+)"/)
+                expect(acceptedMatch).not.toBeNull()
+                expect(acceptedMatch![1]).toMatch(/^[0-9a-f-]{36}$/)
+
+                const doneMatch = response.text.match(/"type":"done"[^}]*"chat_id":"([^"]+)"/)
+                expect(doneMatch).not.toBeNull()
+                expect(doneMatch![1]).toBe(acceptedMatch![1])
+            })
+
+            it('should keep only the user message persisted when accepted streaming request fails before any token', async () => {
+                const user = await createTestUser(orm, 'test@example.com', 'password123')
+                const org = await createTestOrganization(orm, 'Test Org', user)
+                await createTestOrganizationMembership(orm, user, org)
+                const project = await createTestProject(orm, 'Test Project', org, user)
+                const token = generateAccessToken('test@example.com')
+
+                const mockRagState = mockRagGraphResponse('test query', [])
+                ;(ragGraphModule.ragGraph.invoke as jest.Mock).mockResolvedValue(mockRagState)
+
+                async function* mockStreamGenerator() {
+                    throw new Error('Chat stream completed without any response content')
+                }
+
+                ;(chatAgent.streamChatAgent as jest.Mock).mockReturnValue(mockStreamGenerator())
+
+                const response = await request(app)
+                    .post('/api/chat')
+                    .set('Cookie', [`accessToken=${token}`])
+                    .query({ project_id: project.uuid })
+                    .send({
+                        query: 'test query',
+                        stream: true,
+                    })
+
+                expect(response.status).toBe(200)
+                expect(response.text).toContain('"type":"accepted"')
+                expect(response.text).toContain('"type":"error"')
+
+                const em = orm.em.fork()
+                const chats = await em.find(Chat, { project: project.uuid })
+                expect(chats).toHaveLength(1)
+
+                const chatMessages = await em.find(
+                    ChatMessage,
+                    { chat: chats[0].uuid },
+                    { orderBy: { sent_at: 'ASC' } }
+                )
+                expect(chatMessages).toHaveLength(1)
+                expect(chatMessages[0].sent_by).toBe('user')
+                expect(chatMessages[0].content).toBe('test query')
+            })
+
+            it('should keep direct route streaming on the existing fast token path without preview', async () => {
+                const user = await createTestUser(orm, 'test@example.com', 'password123')
+                const org = await createTestOrganization(orm, 'Test Org', user)
+                await createTestOrganizationMembership(orm, user, org)
+                const project = await createTestProject(orm, 'Test Project', org, user)
+                const token = generateAccessToken('test@example.com')
+
+                const mockRagState = mockRagGraphResponse('test query', [])
+                ;(ragGraphModule.ragGraph.invoke as jest.Mock).mockResolvedValue(mockRagState)
+
+                async function* mockStreamGenerator() {
+                    yield { content: 'chunk1' }
+                }
+                ;(chatAgent.streamChatAgent as jest.Mock).mockReturnValue(mockStreamGenerator())
+
+                const routeQueryMock = require('../lib/queryRouter').routeQuery as jest.Mock
+                routeQueryMock.mockReturnValue({ route: 'direct_greeting', response: '안녕하세요!' })
+
+                const response = await request(app)
+                    .post('/api/chat')
+                    .set('Cookie', [`accessToken=${token}`])
+                    .query({ project_id: project.uuid })
+                    .send({
+                        query: '안녕',
+                        stream: true,
+                    })
+
+                expect(response.status).toBe(200)
+                expect(response.text).not.toContain('"type":"accepted"')
+                expect(response.text).not.toContain('"type":"preview"')
+                expect(response.text).toContain('"type":"token"')
+                expect(response.text).toContain('"type":"done"')
+                expect(response.text).toContain('안녕하세요!')
+            })
+
+            it('should emit preview event with cached response when available', async () => {
+                const user = await createTestUser(orm, 'test@example.com', 'password123')
+                const org = await createTestOrganization(orm, 'Test Org', user)
+                await createTestOrganizationMembership(orm, user, org)
+                const project = await createTestProject(orm, 'Test Project', org, user)
+                const token = generateAccessToken('test@example.com')
+
+                const mockRagState = mockRagGraphResponse('test query', [])
+                ;(ragGraphModule.ragGraph.invoke as jest.Mock).mockResolvedValue(mockRagState)
+
+                async function* mockStreamGenerator() {
+                    yield { content: 'response' }
+                }
+                ;(chatAgent.streamChatAgent as jest.Mock).mockReturnValue(mockStreamGenerator())
+
+                const getCachedResponseMock = require('../lib/ragCache').getCachedResponse as jest.Mock
+                getCachedResponseMock.mockResolvedValue('Cached answer for this query')
+
+                const response = await request(app)
+                    .post('/api/chat')
+                    .set('Cookie', [`accessToken=${token}`])
+                    .query({ project_id: project.uuid })
+                    .send({
+                        query: 'test query',
+                        stream: true,
+                    })
+
+                expect(response.status).toBe(200)
+                expect(response.text).toContain('"type":"preview"')
+                expect(response.text).toContain('Cached answer for this query')
+            })
+        })
     })
 })
 

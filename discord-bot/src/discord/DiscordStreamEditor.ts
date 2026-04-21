@@ -231,4 +231,59 @@ export class DiscordStreamEditor {
             logger.error({ editError }, 'Failed to show error message')
         }
     }
+
+    private readonly SEARCHING_PREFIX =
+        '🔎 질문을 접수했고 관련 문서를 먼저 확인하는 중입니다. 곧 자세한 답변을 이어서 보여드릴게요.\n\n'
+    private readonly GENERATING_PREFIX = '⏳ 관련 문서 확인이 끝나 자세한 답변을 생성하는 중입니다.\n\n'
+    private readonly PREVIEW_PREFIX = '💬 **미리보기 답변**\n'
+
+    private previewContent: string | null = null
+
+    async showStatus(status: 'searching' | 'generating'): Promise<void> {
+        if (this.isFinalized) {
+            return
+        }
+
+        const prefix = status === 'searching' ? this.SEARCHING_PREFIX : this.GENERATING_PREFIX
+
+        try {
+            const nextEdit = this.editChain
+                .catch(() => undefined)
+                .then(async () => {
+                    const displayContent = this.previewContent
+                        ? `${this.PREVIEW_PREFIX}${this.previewContent}\n\n${prefix}`
+                        : prefix
+                    await this.message.edit(displayContent)
+                    this.lastEditTime = Date.now()
+                })
+
+            this.editChain = nextEdit
+            await nextEdit
+        } catch (editError) {
+            logger.error({ editError }, 'Failed to show status message')
+        }
+    }
+
+    async setPreview(content: string): Promise<void> {
+        if (this.isFinalized) {
+            return
+        }
+
+        this.previewContent = content
+
+        try {
+            const nextEdit = this.editChain
+                .catch(() => undefined)
+                .then(async () => {
+                    const displayContent = `${this.PREVIEW_PREFIX}${content}\n\n${this.SEARCHING_PREFIX}`
+                    await this.message.edit(displayContent)
+                    this.lastEditTime = Date.now()
+                })
+
+            this.editChain = nextEdit
+            await nextEdit
+        } catch (editError) {
+            logger.error({ editError }, 'Failed to set preview content')
+        }
+    }
 }

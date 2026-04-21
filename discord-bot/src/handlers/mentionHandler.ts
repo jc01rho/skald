@@ -596,7 +596,9 @@ export async function handleMention(message: Message, client: Client) {
     await runConversationSerially(historyKey, async () => {
         const history = [...(conversationHistory.get(historyKey) || [])]
 
-        const reply = await responseThread.send('⏳ 답변 생성을 시작했습니다. 첫 문장부터 바로 이어서 보여드릴게요...')
+        const reply = await responseThread.send(
+            '🔎 질문을 접수했고 관련 문서를 먼저 확인하는 중입니다. 곧 자세한 답변을 이어서 보여드릴게요.'
+        )
         const editor = new DiscordStreamEditor(reply)
         const startedAt = Date.now()
 
@@ -641,6 +643,22 @@ export async function handleMention(message: Message, client: Client) {
                     references: { enabled: true },
                 },
             })) {
+                if (event.type === 'accepted') {
+                    continue
+                }
+
+                if (event.type === 'progress') {
+                    if (event.status === 'searching' || event.status === 'generating') {
+                        await editor.showStatus(event.status)
+                    }
+                    continue
+                }
+
+                if (event.type === 'preview' && event.content) {
+                    await editor.setPreview(event.content)
+                    continue
+                }
+
                 if (event.type === 'token' && event.content) {
                     if (!firstTokenLogged) {
                         firstTokenLogged = true
