@@ -1,5 +1,5 @@
 import ReactMarkdown from 'react-markdown'
-import { FileText, Loader2, Sparkles } from 'lucide-react'
+import { BookOpenText, FileText, Home, Loader2, Network, Sparkles, Tag } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 
@@ -19,30 +19,53 @@ interface PublicWikiTextViewProps {
     emptyMessage: string
 }
 
+const getPageTypeMeta = (pageType?: string | null) => {
+    switch (pageType) {
+        case 'index_page':
+            return { icon: Home, label: 'Wiki Home' }
+        case 'concept_page':
+            return { icon: BookOpenText, label: '개념 문서' }
+        case 'entity_page':
+            return { icon: Tag, label: '엔티티 문서' }
+        case 'process_page':
+            return { icon: Network, label: '프로세스 문서' }
+        default:
+            return { icon: FileText, label: '문서' }
+    }
+}
+
 export const PublicWikiTextView = ({ page, loading, emptyMessage }: PublicWikiTextViewProps) => {
+    const pageTypeMeta = getPageTypeMeta(page?.page_type)
+    const PageTypeIcon = pageTypeMeta.icon
+
     return (
         <Card className="overflow-hidden border-slate-200/80 shadow-sm">
-            <CardHeader className="border-b bg-white/80 backdrop-blur">
-                <div className="flex flex-wrap items-center gap-2">
-                    <Badge variant="secondary" className="gap-1 bg-slate-900 text-slate-50">
-                        <FileText className="h-3 w-3" />
-                        Text reading view
-                    </Badge>
-                    {page?.page_type ? <Badge variant="outline">{page.page_type}</Badge> : null}
+            <CardHeader className="border-b bg-white/80 text-slate-900 backdrop-blur">
+                <div className="flex flex-wrap items-center gap-2 text-sm text-slate-500">
+                    <span className="inline-flex items-center gap-2 rounded-full bg-slate-100 px-3 py-1 text-slate-700">
+                        <PageTypeIcon className="h-3.5 w-3.5" />
+                        {pageTypeMeta.label}
+                    </span>
+                    {page?.page_type === 'index_page' ? (
+                        <Badge className="rounded-full bg-sky-600 text-white hover:bg-sky-600">Start here</Badge>
+                    ) : null}
                 </div>
-                <CardTitle className="text-2xl text-slate-900">{page?.title || '페이지를 선택해 주세요'}</CardTitle>
-                <CardDescription>
+                <CardTitle className="text-2xl leading-tight text-slate-900 sm:text-[2rem]">
+                    {page?.title || '페이지를 선택해 주세요'}
+                </CardTitle>
+                <CardDescription className="text-slate-600">
                     {page
-                        ? `${page.slug} · ${new Date(page.updated_at).toLocaleString('en-US', {
+                        ? `Last updated ${new Date(page.updated_at).toLocaleString('en-US', {
+                              year: 'numeric',
                               month: 'short',
                               day: 'numeric',
                               hour: '2-digit',
                               minute: '2-digit',
-                          })}`
+                          })} · ${page.slug}`
                         : emptyMessage}
                 </CardDescription>
             </CardHeader>
-            <CardContent className="bg-[linear-gradient(180deg,rgba(248,250,252,0.94),rgba(255,255,255,1))] p-6 sm:p-8">
+            <CardContent className="bg-[linear-gradient(180deg,rgba(248,250,252,0.94),rgba(255,255,255,1))] p-6 text-slate-900 sm:p-8">
                 {loading ? (
                     <div className="flex min-h-[320px] items-center justify-center gap-3 text-sm text-slate-500">
                         <Loader2 className="h-4 w-4 animate-spin" />
@@ -60,12 +83,18 @@ export const PublicWikiTextView = ({ page, loading, emptyMessage }: PublicWikiTe
                                 <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
                                     Summary
                                 </p>
-                                <p className="mt-3 text-sm leading-7 text-slate-700">{page.summary}</p>
+                                <p
+                                    className={`mt-3 leading-7 text-slate-700 ${page.page_type === 'index_page' ? 'text-base sm:text-[1.05rem]' : 'text-sm'}`}
+                                >
+                                    {page.summary}
+                                </p>
                             </div>
                         ) : null}
 
                         <div className="rounded-[28px] border border-slate-200/80 bg-white p-6 shadow-[0_18px_60px_rgba(15,23,42,0.06)] sm:p-8">
-                            <div className="prose prose-slate max-w-none text-[15px] leading-7 react-markdown">
+                            <div
+                                className={`react-markdown prose prose-slate mx-auto text-[15px] leading-7 ${page.page_type === 'index_page' ? 'prose-lg max-w-3xl' : 'max-w-prose'}`}
+                            >
                                 <ReactMarkdown>{page.content}</ReactMarkdown>
                             </div>
                         </div>
