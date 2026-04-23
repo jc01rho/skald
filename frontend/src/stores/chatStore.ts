@@ -173,6 +173,8 @@ export const useChatStore = create<ChatState>()(
                 set({ isLoading: true, isStreaming: true })
 
                 const assistantMessageId = crypto.randomUUID()
+                let activeAssistantMessageId = assistantMessageId
+
                 get().addMessage({
                     id: assistantMessageId,
                     role: 'assistant',
@@ -236,47 +238,93 @@ export const useChatStore = create<ChatState>()(
                             set({ chatSessionId: data.chat_id })
                             return
                         }
+
                         if (data.type === 'progress') {
                             return
                         }
+
                         if (data.type === 'preview') {
-                            // Preview is informational - no action needed for web UI
-                            // Discord bot uses preview for first-response latency
+                            const previewContent = data.content?.trim()
+                            const previewMessage = get().messages.find((message) => message.id === assistantMessageId)
+
+                            if (!previewContent || activeAssistantMessageId !== assistantMessageId || !previewMessage) {
+                                return
+                            }
+
+                            if (previewMessage.content.trim()) {
+                                return
+                            }
+
+                            set((state) => ({
+                                messages: state.messages.map((message) =>
+                                    message.id === assistantMessageId
+                                        ? { ...message, content: previewContent, isStreaming: false }
+                                        : message
+                                ),
+                            }))
+
+                            const authoritativeMessageId = crypto.randomUUID()
+                            get().addMessage({
+                                id: authoritativeMessageId,
+                                role: 'assistant',
+                                content: '',
+                                isStreaming: true,
+                            })
+
+                            activeAssistantMessageId = authoritativeMessageId
+                            set({ currentStreamingMessageId: authoritativeMessageId, isStreaming: true })
                             return
                         }
+
                         if (data.type === 'token' && data.content) {
                             const currentContent =
-                                get().messages.find((m) => m.id === assistantMessageId)?.content || ''
-                            get().updateStreamingMessage(assistantMessageId, currentContent + data.content)
+                                get().messages.find((message) => message.id === activeAssistantMessageId)?.content || ''
+                            get().updateStreamingMessage(activeAssistantMessageId, currentContent + data.content)
                         } else if (data.type === 'references' && data.content) {
                             try {
                                 const references = JSON.parse(data.content)
-                                get().setMessageReferences(assistantMessageId, references)
+                                get().setMessageReferences(activeAssistantMessageId, references)
                             } catch (error) {
                                 console.error('Failed to parse references:', error)
                             }
                         } else if (data.type === 'done') {
-                            get().finishStreaming(assistantMessageId)
+                            const activeMessage = get().messages.find((message) => message.id === activeAssistantMessageId)
+
+                            if (
+                                activeAssistantMessageId !== assistantMessageId &&
+                                activeMessage &&
+                                !activeMessage.content.trim() &&
+                                !activeMessage.references
+                            ) {
+                                set((state) => ({
+                                    messages: state.messages.filter((message) => message.id !== activeAssistantMessageId),
+                                    isStreaming: false,
+                                    currentStreamingMessageId: null,
+                                }))
+                            } else {
+                                get().finishStreaming(activeAssistantMessageId)
+                            }
+
                             if ('chat_id' in data && typeof data.chat_id === 'string') {
                                 set({ chatSessionId: data.chat_id })
                             }
                         } else if (data.type === 'error') {
-                            get().finishStreaming(assistantMessageId)
+                            get().finishStreaming(activeAssistantMessageId)
                             get().updateStreamingMessage(
-                                assistantMessageId,
+                                activeAssistantMessageId,
                                 `Error: ${data.content || 'An error occurred'}`
                             )
                         }
                     },
                     (error: ApiErrorData | Event) => {
                         console.error('Chat stream error:', error)
-                        get().finishStreaming(assistantMessageId)
+                        get().finishStreaming(activeAssistantMessageId)
 
                         // Extract error message from ApiErrorData or use generic message
                         const errorMessage =
                             'error' in error && typeof error.error === 'string' ? error.error : 'Failed to get response'
 
-                        get().updateStreamingMessage(assistantMessageId, `Error: ${errorMessage}`)
+                        get().updateStreamingMessage(activeAssistantMessageId, `Error: ${errorMessage}`)
                         toast.error(errorMessage)
                     }
                 )
