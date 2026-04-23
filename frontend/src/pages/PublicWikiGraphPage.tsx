@@ -140,7 +140,7 @@ const getSearchableText = (node: PublicWikiGraphNode) => {
 }
 
 export const PublicWikiGraphPage = () => {
-    const { slug } = useParams<{ slug: string }>()
+    const { slug, pageSlug } = useParams<{ slug: string; pageSlug?: string }>()
     const [isChecking, setIsChecking] = useState(true)
     const [isAvailable, setIsAvailable] = useState(false)
     const [graphMode, setGraphMode] = useState<GraphMode>('page')
@@ -190,7 +190,14 @@ export const PublicWikiGraphPage = () => {
                 setConfig(configResponse.data)
                 setPageGraph(pageGraphResponse.data)
                 setNodeGraph(nodeGraphResponse.data)
-                setSelectedPageId(findDefaultPageNode(pageGraphResponse.data.nodes)?.id ?? null)
+
+                if (pageSlug) {
+                    const targetNode = pageGraphResponse.data.nodes.find((n) => n.slug === pageSlug)
+                    setSelectedPageId(targetNode?.id ?? findDefaultPageNode(pageGraphResponse.data.nodes)?.id ?? null)
+                } else {
+                    setSelectedPageId(findDefaultPageNode(pageGraphResponse.data.nodes)?.id ?? null)
+                }
+
                 setSelectedNodeId(nodeGraphResponse.data.nodes[0]?.id ?? null)
             } catch (error) {
                 console.error('Error loading public wiki graph:', error)
@@ -738,6 +745,7 @@ export const PublicWikiGraphPage = () => {
                             <PublicWikiTextView
                                 page={selectedPageDetail}
                                 loading={isPageDetailLoading}
+                                projectSlug={slug}
                                 emptyMessage={
                                     selectedPageNode?.slug
                                         ? `${selectedPageNode.slug} 페이지를 텍스트로 불러오지 못했습니다.`

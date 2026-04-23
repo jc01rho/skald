@@ -93,6 +93,7 @@ function App() {
                 <Route path="/projects/memos/:projectUuid" element={<PublicMemosPage />} />
                 <Route path="/projects/memos/:projectUuid/submit" element={<PublicSubmitMemoPage />} />
                 {isLicensedDeploy && <Route path="/public_chat/:slug" element={<PublicChatPage />} />}
+                <Route path="/public/wiki/:slug/pages/:pageSlug" element={<PublicWikiGraphPage />} />
                 <Route path="/public/wiki/:slug" element={<PublicWikiGraphPage />} />
                 {privateRoutes.map((route) => (
                     <Route

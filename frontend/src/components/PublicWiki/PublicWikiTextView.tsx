@@ -1,4 +1,5 @@
 import ReactMarkdown from 'react-markdown'
+import { Link } from 'react-router-dom'
 import { BookOpenText, FileText, Home, Loader2, Network, Sparkles, Tag } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -17,6 +18,7 @@ interface PublicWikiTextViewProps {
     page: PublicWikiTextPage | null
     loading: boolean
     emptyMessage: string
+    projectSlug?: string | null
 }
 
 const getPageTypeMeta = (pageType?: string | null) => {
@@ -34,7 +36,36 @@ const getPageTypeMeta = (pageType?: string | null) => {
     }
 }
 
-export const PublicWikiTextView = ({ page, loading, emptyMessage }: PublicWikiTextViewProps) => {
+const getInternalWikiPageRoute = (href: string | undefined, projectSlug?: string | null) => {
+    if (!href || !projectSlug) {
+        return null
+    }
+
+    const normalizedHref = href.trim()
+    if (!normalizedHref || normalizedHref.startsWith('#') || /^[a-z][a-z0-9+.-]*:/i.test(normalizedHref)) {
+        return null
+    }
+
+    const [withoutHash, hashFragment = ''] = normalizedHref.split('#', 2)
+    const [pathOnly, queryString = ''] = withoutHash.split('?', 2)
+    const suffix = `${queryString ? `?${queryString}` : ''}${hashFragment ? `#${hashFragment}` : ''}`
+    const sanitizedHref = pathOnly
+
+    if (sanitizedHref.startsWith('/public/wiki/')) {
+        const parts = sanitizedHref.split('/').filter(Boolean)
+        const pageSlug = parts[3] === 'pages' ? parts[4] : parts[2]
+        return pageSlug ? `/public/wiki/${projectSlug}/pages/${pageSlug}${suffix}` : null
+    }
+
+    if (sanitizedHref.startsWith('../')) {
+        return null
+    }
+
+    const pageSlug = sanitizedHref.replace(/^\.\//, '').replace(/^\//, '')
+    return pageSlug ? `/public/wiki/${projectSlug}/pages/${pageSlug}${suffix}` : null
+}
+
+export const PublicWikiTextView = ({ page, loading, emptyMessage, projectSlug }: PublicWikiTextViewProps) => {
     const pageTypeMeta = getPageTypeMeta(page?.page_type)
     const PageTypeIcon = pageTypeMeta.icon
 
@@ -95,7 +126,29 @@ export const PublicWikiTextView = ({ page, loading, emptyMessage }: PublicWikiTe
                             <div
                                 className={`react-markdown prose prose-slate mx-auto text-[15px] leading-7 ${page.page_type === 'index_page' ? 'prose-lg max-w-3xl' : 'max-w-prose'}`}
                             >
-                                <ReactMarkdown>{page.content}</ReactMarkdown>
+                                <ReactMarkdown
+                                    components={{
+                                        a: ({ href, children, ...props }) => {
+                                            const internalWikiPageRoute = getInternalWikiPageRoute(href, projectSlug)
+
+                                            if (internalWikiPageRoute) {
+                                                return (
+                                                    <Link to={internalWikiPageRoute} {...props}>
+                                                        {children}
+                                                    </Link>
+                                                )
+                                            }
+
+                                            return (
+                                                <a href={href} target="_blank" rel="noopener noreferrer" {...props}>
+                                                    {children}
+                                                </a>
+                                            )
+                                        },
+                                    }}
+                                >
+                                    {page.content}
+                                </ReactMarkdown>
                             </div>
                         </div>
                     </div>
