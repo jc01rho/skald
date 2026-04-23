@@ -169,3 +169,60 @@ class TestNotionCollector:
 
         assert status == "skipped"
         assert result is None
+
+    @pytest.mark.asyncio
+    async def test_sync_page_allows_short_non_empty_markdown(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        collector = NotionCollector(
+            token="test-token",
+            root_page_id="root-page",
+        )
+
+        short_content = "짧은 메모"
+
+        async def fake_fetch_page(page_id: str) -> dict:
+            assert page_id == "short-page"
+            return {
+                "id": page_id,
+                "last_edited_time": "2026-04-10T00:00:00.000Z",
+                "properties": {
+                    "Name": {
+                        "type": "title",
+                        "title": [{"plain_text": "Short page"}],
+                    }
+                },
+            }
+
+        async def fake_fetch_all_block_children(page_id: str) -> list[dict]:
+            assert page_id == "short-page"
+            return [{"type": "paragraph", "paragraph": {"rich_text": []}}]
+
+        class RecordingClient:
+            def __init__(self) -> None:
+                self.calls: list[dict] = []
+
+            async def upsert_memo(self, **kwargs):
+                self.calls.append(kwargs)
+                return {"memo_uuid": "memo-short"}
+
+        client = RecordingClient()
+
+        monkeypatch.setattr(collector, "fetch_page", fake_fetch_page)
+        monkeypatch.setattr(collector, "fetch_all_block_children", fake_fetch_all_block_children)
+        monkeypatch.setattr(
+            "skald_worker.collectors.notion_collector.blocks_to_markdown",
+            lambda _blocks: short_content,
+        )
+        monkeypatch.setattr(
+            "skald_worker.collectors.notion_collector.get_skald_client",
+            lambda: client,
+        )
+
+        status, result = await collector._sync_page("short-page")
+
+        assert status == "processed"
+        assert result == {"memo_uuid": "memo-short"}
+        assert len(client.calls) == 1
+        assert client.calls[0]["content"] == short_content
