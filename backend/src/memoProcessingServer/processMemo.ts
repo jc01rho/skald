@@ -78,6 +78,16 @@ const runMemoProcessingAgents = async (em: EntityManager, memoUuid: string) => {
         return
     }
 
+    // Delete existing chunks and summaries before re-processing to prevent accumulation.
+    // Without this, repeated reprocessing creates duplicate chunks (root cause of DB bloat:
+    // 4.4M parent chunks for ~15K memos). Child chunks must be deleted before parent chunks
+    // to avoid FK constraint violations on parent_chunk_id.
+    const conn = em.getConnection()
+    await conn.execute(`DELETE FROM skald_memochunk WHERE memo_id = ?`, [row.memo_uuid])
+    await conn.execute(`DELETE FROM skald_memoparentchunk WHERE memo_id = ?`, [row.memo_uuid])
+    await conn.execute(`DELETE FROM skald_memosummary WHERE memo_id = ?`, [row.memo_uuid])
+    logger.info({ memoUuid: row.memo_uuid }, 'Cleared existing chunks and summaries before re-processing')
+
     const promises = [createMemoChunks(em, row.memo_uuid, row.project_id, row.content, row.title)]
 
     if (['openai', 'anthropic', 'gemini', 'local'].includes(LLM_PROVIDER)) {

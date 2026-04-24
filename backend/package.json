@@ -24,9 +24,10 @@
         "reindex": "tsx src/scripts/reindexAllMemos.ts",
         "backfill-wiki": "ts-node src/scripts/backfillWikiForMemos.ts",
         "backfill-wiki-scheduled": "ts-node src/scripts/backfillWikiForMemos.ts --scheduled --created-within-hours 24 --batch-size 20 --delay-ms 3000",
-        "backfill-wiki-full-sweep": "ts-node src/scripts/backfillWikiForMemos.ts --full-corpus-sweep --batch-size 20 --delay-ms 3000 --limit 100"
-    },
-    "keywords": [],
+    "backfill-wiki-full-sweep": "ts-node src/scripts/backfillWikiForMemos.ts --full-corpus-sweep --batch-size 20 --delay-ms 3000 --limit 100",
+    "cleanup-duplicate-chunks": "ts-node src/scripts/cleanupDuplicateChunks.ts",
+    "cleanup-duplicate-chunks:execute": "ts-node src/scripts/cleanupDuplicateChunks.ts --execute"
+  },    "keywords": [],
     "author": "",
     "license": "ISC",
     "dependencies": {
