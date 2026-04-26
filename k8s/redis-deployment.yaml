@@ -36,11 +36,11 @@ spec:
                       - 'yes'
                   resources:
                       requests:
-                          memory: '128Mi'
+                          memory: '512Mi'
                           cpu: '100m'
                       limits:
-                          memory: '256Mi'
-                          cpu: '200m'
+                          memory: '1Gi'
+                          cpu: '500m'
                   volumeMounts:
                       - name: redis-data
                         mountPath: /data
