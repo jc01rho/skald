@@ -7,3 +7,7 @@ export const sha3_256 = (data: string) => {
 export const sha256 = (data: string) => {
     return createHash('sha256').update(data).digest('hex')
 }
+
+export const sha256Buffer = (data: Buffer | Uint8Array) => {
+    return createHash('sha256').update(data).digest('hex')
+}

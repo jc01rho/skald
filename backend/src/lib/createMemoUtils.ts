@@ -26,6 +26,14 @@ import { EntityData } from '@mikro-orm/core'
 import { generateS3Key, uploadFileToS3 } from './s3Utils'
 import { publishMessage } from '@/lib/sqsClient'
 
+export function shouldEnqueueMemoProcessing(currentHash?: string | null, nextHash?: string | null): boolean {
+    if (!currentHash || !nextHash) {
+        return true
+    }
+
+    return currentHash !== nextHash
+}
+
 function buildLegacyReferenceId(
     referenceId?: string | null,
     source?: string | null,
@@ -370,9 +378,13 @@ export async function sendMemoForAsyncProcessing(memo: Memo): Promise<void> {
 }
 
 export async function createNewMemo(memoData: MemoData, project: Project): Promise<Memo> {
+    let shouldEnqueueProcessing = true
     let memo = await findExistingMemoForCreate(memoData, project)
     if (memo) {
+        const previousContentHash = memo.content_hash ?? null
+        const nextContentHash = memoData.content ? sha256(memoData.content) : null
         memo = await reuseExistingMemoForCreate(memo, memoData, project)
+        shouldEnqueueProcessing = shouldEnqueueMemoProcessing(previousContentHash, nextContentHash)
     } else {
         try {
             memo = await _createMemoObject(memoData, project)
@@ -385,10 +397,17 @@ export async function createNewMemo(memoData: MemoData, project: Project): Promi
             if (!existingMemo) {
                 throw error
             }
+            const previousContentHash = existingMemo.content_hash ?? null
+            const nextContentHash = memoData.content ? sha256(memoData.content) : null
             memo = await reuseExistingMemoForCreate(existingMemo, memoData, project)
+            shouldEnqueueProcessing = shouldEnqueueMemoProcessing(previousContentHash, nextContentHash)
         }
     }
-    await sendMemoForAsyncProcessing(memo)
+
+    if (shouldEnqueueProcessing) {
+        await sendMemoForAsyncProcessing(memo)
+    }
+
     return memo
 }
 
@@ -397,9 +416,13 @@ export const createNewDocumentMemo = async (
     project: Project,
     file: Express.Multer.File
 ): Promise<Memo> => {
+    let shouldEnqueueProcessing = true
     let memo = await findExistingMemoForCreate(memoData, project)
     if (memo) {
+        const previousFileHash = typeof memo.metadata?.file_hash === 'string' ? memo.metadata.file_hash : null
+        const nextFileHash = typeof memoData.metadata?.file_hash === 'string' ? memoData.metadata.file_hash : null
         memo = await reuseExistingMemoForCreate(memo, memoData, project)
+        shouldEnqueueProcessing = shouldEnqueueMemoProcessing(previousFileHash, nextFileHash)
     } else {
         try {
             memo = await _createMemoObject(memoData, project)
@@ -412,7 +435,11 @@ export const createNewDocumentMemo = async (
             if (!existingMemo) {
                 throw error
             }
+            const previousFileHash =
+                typeof existingMemo.metadata?.file_hash === 'string' ? existingMemo.metadata.file_hash : null
+            const nextFileHash = typeof memoData.metadata?.file_hash === 'string' ? memoData.metadata.file_hash : null
             memo = await reuseExistingMemoForCreate(existingMemo, memoData, project)
+            shouldEnqueueProcessing = shouldEnqueueMemoProcessing(previousFileHash, nextFileHash)
         }
     }
 
@@ -423,6 +450,9 @@ export const createNewDocumentMemo = async (
         'original-filename': file.originalname,
     })
 
-    await sendMemoForAsyncProcessing(memo)
+    if (shouldEnqueueProcessing) {
+        await sendMemoForAsyncProcessing(memo)
+    }
+
     return memo
 }
