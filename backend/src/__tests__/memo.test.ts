@@ -26,6 +26,7 @@ import { Organization } from '../entities/Organization'
 import { OrganizationMembership } from '../entities/OrganizationMembership'
 import { UsageRecord } from '../entities/UsageRecord'
 import { OrganizationSubscription } from '../entities/OrganizationSubscription'
+import { sendMemoForAsyncProcessing, shouldEnqueueMemoProcessing } from '../lib/createMemoUtils'
 
 // Mock S3 utilities
 jest.mock('../lib/s3Utils', () => ({
@@ -275,6 +276,95 @@ describe('Memo API Tests', () => {
             expect(response.status).toBe(201)
             expect(response.body.memo_uuid).toBeDefined()
         })
+
+        it('should not enqueue processing again when create reuses an unchanged memo', async () => {
+            const user = await createTestUser(orm, 'test@example.com', 'password123')
+            const org = await createTestOrganization(orm, 'Test Org', user)
+            await createTestOrganizationMembership(orm, user, org)
+            const project = await createTestProject(orm, 'Test Project', org, user)
+            const token = generateAccessToken('test@example.com')
+
+            const requestBody = {
+                title: 'Test Memo',
+                content: 'This is test content',
+                reference_id: 'ref-dedup-1',
+                source: 'test',
+                type: 'note',
+            }
+
+            const firstResponse = await request(app)
+                .post('/api/memos')
+                .set('Cookie', [`accessToken=${token}`])
+                .query({ project_id: project.uuid })
+                .send(requestBody)
+
+            expect(firstResponse.status).toBe(201)
+            const firstMemoUuid = firstResponse.body.memo_uuid
+
+            const secondResponse = await request(app)
+                .post('/api/memos')
+                .set('Cookie', [`accessToken=${token}`])
+                .query({ project_id: project.uuid })
+                .send(requestBody)
+
+            expect(secondResponse.status).toBe(201)
+            expect(secondResponse.body.memo_uuid).toBe(firstMemoUuid)
+
+            const em = orm.em.fork()
+            const memos = await em.find(Memo, { client_reference_id: 'ref-dedup-1', project })
+            expect(memos).toHaveLength(1)
+            expect(memos[0].content_hash).toBe(sha256(requestBody.content))
+        })
+
+        it('should enqueue processing again when create reuses a changed memo', async () => {
+            const user = await createTestUser(orm, 'test@example.com', 'password123')
+            const org = await createTestOrganization(orm, 'Test Org', user)
+            await createTestOrganizationMembership(orm, user, org)
+            const project = await createTestProject(orm, 'Test Project', org, user)
+            const token = generateAccessToken('test@example.com')
+
+            const firstResponse = await request(app)
+                .post('/api/memos')
+                .set('Cookie', [`accessToken=${token}`])
+                .query({ project_id: project.uuid })
+                .send({
+                    title: 'Test Memo',
+                    content: 'This is test content',
+                    reference_id: 'ref-dedup-2',
+                    source: 'test',
+                    type: 'note',
+                })
+
+            expect(firstResponse.status).toBe(201)
+            const firstMemoUuid = firstResponse.body.memo_uuid
+            const changedContent = 'This is changed test content'
+
+            const secondResponse = await request(app)
+                .post('/api/memos')
+                .set('Cookie', [`accessToken=${token}`])
+                .query({ project_id: project.uuid })
+                .send({
+                    title: 'Test Memo',
+                    content: changedContent,
+                    reference_id: 'ref-dedup-2',
+                    source: 'test',
+                    type: 'note',
+                })
+
+            expect(secondResponse.status).toBe(201)
+            expect(secondResponse.body.memo_uuid).toBe(firstMemoUuid)
+
+            const em = orm.em.fork()
+            const memo = await em.findOneOrFail(Memo, { uuid: firstMemoUuid })
+            expect(memo.content_hash).toBe(sha256(changedContent))
+        })
+
+        it('should enqueue memo processing only when input hash changes or is missing', () => {
+            expect(shouldEnqueueMemoProcessing('same-hash', 'same-hash')).toBe(false)
+            expect(shouldEnqueueMemoProcessing('old-hash', 'new-hash')).toBe(true)
+            expect(shouldEnqueueMemoProcessing(null, 'new-hash')).toBe(true)
+            expect(shouldEnqueueMemoProcessing('old-hash', null)).toBe(true)
+        })
     })
 
     describe('GET /api/memos/:id - Get Memo', () => {
@@ -453,6 +543,94 @@ describe('Memo API Tests', () => {
 
             const expectedHash = sha256(newContent)
             expect(updatedMemo!.content_hash).toBe(expectedHash)
+        })
+
+        it('should not enqueue processing when content is unchanged', async () => {
+            const sendMemoForAsyncProcessingMock = sendMemoForAsyncProcessing as jest.MockedFunction<
+                typeof sendMemoForAsyncProcessing
+            >
+            sendMemoForAsyncProcessingMock.mockClear()
+
+            const user = await createTestUser(orm, 'test@example.com', 'password123')
+            const org = await createTestOrganization(orm, 'Test Org', user)
+            await createTestOrganizationMembership(orm, user, org)
+            const project = await createTestProject(orm, 'Test Project', org, user)
+            const memo = await createTestMemo(orm, project, {
+                title: 'Test Memo',
+                content: 'Original content',
+            })
+            const token = generateAccessToken('test@example.com')
+
+            const response = await request(app)
+                .patch(`/api/memos/${memo.uuid}`)
+                .set('Cookie', [`accessToken=${token}`])
+                .query({ project_id: project.uuid })
+                .send({
+                    content: 'Original content',
+                })
+
+            expect(response.status).toBe(200)
+            expect(sendMemoForAsyncProcessingMock).not.toHaveBeenCalled()
+        })
+
+        it('should enqueue processing when content changes', async () => {
+            const sendMemoForAsyncProcessingMock = sendMemoForAsyncProcessing as jest.MockedFunction<
+                typeof sendMemoForAsyncProcessing
+            >
+            sendMemoForAsyncProcessingMock.mockClear()
+
+            const user = await createTestUser(orm, 'test@example.com', 'password123')
+            const org = await createTestOrganization(orm, 'Test Org', user)
+            await createTestOrganizationMembership(orm, user, org)
+            const project = await createTestProject(orm, 'Test Project', org, user)
+            const memo = await createTestMemo(orm, project, {
+                title: 'Test Memo',
+                content: 'Original content',
+            })
+            const token = generateAccessToken('test@example.com')
+
+            const response = await request(app)
+                .patch(`/api/memos/${memo.uuid}`)
+                .set('Cookie', [`accessToken=${token}`])
+                .query({ project_id: project.uuid })
+                .send({
+                    content: 'Updated content with new text',
+                })
+
+            expect(response.status).toBe(200)
+            expect(sendMemoForAsyncProcessingMock).toHaveBeenCalledTimes(1)
+        })
+
+        it('should not enqueue processing when content is unchanged even if memo is not processed', async () => {
+            const sendMemoForAsyncProcessingMock = sendMemoForAsyncProcessing as jest.MockedFunction<
+                typeof sendMemoForAsyncProcessing
+            >
+            sendMemoForAsyncProcessingMock.mockClear()
+
+            const user = await createTestUser(orm, 'test@example.com', 'password123')
+            const org = await createTestOrganization(orm, 'Test Org', user)
+            await createTestOrganizationMembership(orm, user, org)
+            const project = await createTestProject(orm, 'Test Project', org, user)
+            const memo = await createTestMemo(orm, project, {
+                title: 'Test Memo',
+                content: 'Original content',
+            })
+            const em = orm.em.fork()
+            const managedMemo = await em.findOneOrFail(Memo, { uuid: memo.uuid })
+            managedMemo.processing_status = 'error'
+            await em.persistAndFlush(managedMemo)
+            const token = generateAccessToken('test@example.com')
+
+            const response = await request(app)
+                .patch(`/api/memos/${memo.uuid}`)
+                .set('Cookie', [`accessToken=${token}`])
+                .query({ project_id: project.uuid })
+                .send({
+                    content: 'Original content',
+                })
+
+            expect(response.status).toBe(200)
+            expect(sendMemoForAsyncProcessingMock).not.toHaveBeenCalled()
         })
     })
 
@@ -1039,6 +1217,75 @@ describe('Memo API Tests', () => {
             const em = orm.em.fork()
             const memo = await em.findOne(Memo, { uuid: response.body.memo_uuid })
             expect(memo?.type).toBe('document')
+        })
+
+        it('should not enqueue processing again for identical document re-upload', async () => {
+            const user = await createTestUser(orm, 'test@example.com', 'password123')
+            const org = await createTestOrganization(orm, 'Test Org', user)
+            await createTestOrganizationMembership(orm, user, org)
+            const project = await createTestProject(orm, 'Test Project', org, user)
+            const token = generateAccessToken('test@example.com')
+
+            const fileBuffer = Buffer.from('same pdf content')
+
+            const firstResponse = await request(app)
+                .post('/api/memos')
+                .set('Cookie', [`accessToken=${token}`])
+                .query({ project_id: project.uuid })
+                .attach('file', fileBuffer, 'same.pdf')
+                .field('reference_id', 'doc-dedup-1')
+
+            expect(firstResponse.status).toBe(201)
+            const firstMemoUuid = firstResponse.body.memo_uuid
+
+            const secondResponse = await request(app)
+                .post('/api/memos')
+                .set('Cookie', [`accessToken=${token}`])
+                .query({ project_id: project.uuid })
+                .attach('file', fileBuffer, 'same.pdf')
+                .field('reference_id', 'doc-dedup-1')
+
+            expect(secondResponse.status).toBe(201)
+            expect(secondResponse.body.memo_uuid).toBe(firstMemoUuid)
+
+            const em = orm.em.fork()
+            const memo = await em.findOneOrFail(Memo, { uuid: firstMemoUuid })
+            expect(memo.metadata.file_hash).toBe(sha256(fileBuffer.toString()))
+        })
+
+        it('should enqueue processing again for changed document re-upload', async () => {
+            const user = await createTestUser(orm, 'test@example.com', 'password123')
+            const org = await createTestOrganization(orm, 'Test Org', user)
+            await createTestOrganizationMembership(orm, user, org)
+            const project = await createTestProject(orm, 'Test Project', org, user)
+            const token = generateAccessToken('test@example.com')
+
+            const firstFile = Buffer.from('first pdf content')
+            const secondFile = Buffer.from('second pdf content')
+
+            const firstResponse = await request(app)
+                .post('/api/memos')
+                .set('Cookie', [`accessToken=${token}`])
+                .query({ project_id: project.uuid })
+                .attach('file', firstFile, 'same.pdf')
+                .field('reference_id', 'doc-dedup-2')
+
+            expect(firstResponse.status).toBe(201)
+            const firstMemoUuid = firstResponse.body.memo_uuid
+
+            const secondResponse = await request(app)
+                .post('/api/memos')
+                .set('Cookie', [`accessToken=${token}`])
+                .query({ project_id: project.uuid })
+                .attach('file', secondFile, 'same.pdf')
+                .field('reference_id', 'doc-dedup-2')
+
+            expect(secondResponse.status).toBe(201)
+            expect(secondResponse.body.memo_uuid).toBe(firstMemoUuid)
+
+            const em = orm.em.fork()
+            const memo = await em.findOneOrFail(Memo, { uuid: firstMemoUuid })
+            expect(memo.metadata.file_hash).toBe(sha256(secondFile.toString()))
         })
 
         it('should handle malformed tags JSON', async () => {

@@ -4,17 +4,23 @@ import multer from 'multer'
 import { RequestContext } from '@mikro-orm/postgresql'
 import { DI } from '@/di'
 import { NextFunction } from 'express'
-import { createNewMemo, createNewDocumentMemo, sendMemoForAsyncProcessing } from '@/lib/createMemoUtils'
+import {
+    createNewMemo,
+    createNewDocumentMemo,
+    sendMemoForAsyncProcessing,
+    shouldEnqueueMemoProcessing,
+} from '@/lib/createMemoUtils'
 import { requireProjectAccess } from '@/middleware/authMiddleware'
 import { Project } from '@/entities/Project'
 import { MemoContent } from '@/entities/MemoContent'
 import { MemoSummary } from '@/entities/MemoSummary'
 import { MemoTag } from '@/entities/MemoTag'
 import { MemoChunk } from '@/entities/MemoChunk'
+import { MemoParentChunk } from '@/entities/MemoParentChunk'
 import { Memo } from '@/entities/Memo'
 import { logger } from '@/lib/logger'
 import { deleteFileFromS3 } from '@/lib/s3Utils'
-import { sha256 } from '@/lib/hashUtils'
+import { sha256, sha256Buffer } from '@/lib/hashUtils'
 import {
     DATALAB_API_KEY,
     IS_CLOUD,
@@ -124,6 +130,7 @@ const createFileMemo = async (req: Request, res: Response) => {
                 original_filename: file.originalname,
                 mimetype: file.mimetype,
                 size: file.size,
+                file_hash: sha256Buffer(file.buffer),
             },
             type: 'document',
         }
@@ -283,26 +290,38 @@ export const updateMemo = async (req: Request, res: Response) => {
         let memoUpdated = false
         for (const field of Object.keys(validatedData.data) as (keyof typeof validatedData.data)[]) {
             if (field === 'content') {
+                const newContent = validatedData.data['content'] as string
+                const nextContentHash = sha256(newContent)
+
+                if (!shouldEnqueueMemoProcessing(memo.content_hash, nextContentHash)) {
+                    continue
+                }
+
                 contentUpdated = true
                 memoUpdated = true
-                DI.memoContents.findOne({ memo })
-                const [memoSummary, memoTags, memoChunks] = await Promise.all([
-                    DI.memoSummaries.findOne({ memo }),
-                    DI.memoTags.find({ memo }),
-                    DI.memoChunks.find({ memo }),
-                ])
+
                 const memoContent = await DI.memoContents.findOne({ memo })
-                const newContent = validatedData.data['content'] as string
                 if (memoContent) {
                     memoContent.content = newContent
                     em.persist(memoContent)
+                } else {
+                    em.persist(
+                        em.create(MemoContent, {
+                            uuid: crypto.randomUUID(),
+                            memo,
+                            content: newContent,
+                            project,
+                        })
+                    )
                 }
-                memo.content_hash = sha256(newContent)
-                if (memoSummary) {
-                    em.remove(memoSummary)
-                }
-                em.remove(memoTags)
-                em.remove(memoChunks)
+
+                memo.content_length = newContent.length
+                memo.content_hash = nextContentHash
+
+                await em.nativeDelete(MemoSummary, { memo })
+                await em.nativeDelete(MemoTag, { memo })
+                await em.nativeDelete(MemoChunk, { memo })
+                await em.nativeDelete(MemoParentChunk, { memo })
             } else {
                 if (validatedData.data[field] === null || validatedData.data[field] === undefined) {
                     continue
