@@ -6,6 +6,7 @@ import { wikiRouter } from '../api/wiki'
 import { DI } from '../di'
 import { createTestDatabase, clearDatabase, closeDatabase } from './testDb'
 import {
+    createTestMemo,
     createTestOrganization,
     createTestOrganizationMembership,
     createTestProject,
@@ -19,6 +20,9 @@ import { Organization } from '../entities/Organization'
 import { OrganizationMembership } from '../entities/OrganizationMembership'
 import { WikiPage } from '../entities/WikiPage'
 import { WikiPageRevision } from '../entities/WikiPageRevision'
+import { MemoContent } from '../entities/MemoContent'
+import { WikiRefreshRequest } from '../entities/WikiRefreshRequest'
+import { WikiCompilerService } from '../services/wiki/wikiCompilerService'
 
 jest.setTimeout(120000)
 
@@ -185,5 +189,35 @@ describe('Wiki API Tests', () => {
             .set('Cookie', [`accessToken=${token}`])
         expect(response.status).toBe(400)
         expect(response.body.error).toBe('Project ID is required')
+    })
+
+    it('should enqueue wiki refresh only for source creation and real content updates', async () => {
+        const user = await createTestUser(orm, 'wiki-refresh@example.com', 'password123')
+        const org = await createTestOrganization(orm, 'Wiki Refresh Org', user)
+        const project = await createTestProject(orm, 'Wiki Refresh Project', org, user)
+        const memo = await createTestMemo(orm, project, {
+            title: 'Refresh Memo',
+            content: 'initial wiki source',
+            type: 'plaintext',
+        })
+
+        const em = orm.em.fork()
+        const firstRequest = await WikiCompilerService.enqueueRefreshForMemo(em, memo.uuid, 'memo_created')
+        expect(firstRequest).not.toBeNull()
+        expect(firstRequest?.trigger).toBe('memo_created')
+
+        const skippedRequest = await WikiCompilerService.enqueueRefreshForMemo(em, memo.uuid, 'memo_updated')
+        expect(skippedRequest).toBeNull()
+        expect(await em.count(WikiRefreshRequest, { project })).toBe(1)
+
+        const memoContent = await em.findOneOrFail(MemoContent, { memo })
+        memoContent.content = 'updated wiki source'
+        await em.flush()
+
+        const updateRequest = await WikiCompilerService.enqueueRefreshForMemo(em, memo.uuid, 'memo_updated')
+        expect(updateRequest).not.toBeNull()
+        expect(updateRequest?.uuid).toBe(firstRequest?.uuid)
+        expect(updateRequest?.trigger).toBe('memo_updated')
+        expect(await em.count(WikiRefreshRequest, { project })).toBe(1)
     })
 })

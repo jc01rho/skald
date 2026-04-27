@@ -76,6 +76,13 @@ interface WikiCompileOutput {
     notes?: string[]
 }
 
+interface SyncedRawSourceDocument {
+    document: RawSourceDocument
+    isNewDocument: boolean
+    isNewContent: boolean
+    contentHash: string
+}
+
 function normalizeSlug(raw: string): string {
     return raw
         .trim()
@@ -141,10 +148,13 @@ async function createRevision(
 
 export class WikiCompilerService {
     static isEnabled(): boolean {
-        return WIKI_ENABLED && WIKI_COMPILE_ON_MEMO_PROCESS
+        const wikiEnabled = process.env.WIKI_ENABLED?.toLowerCase() === 'true' || WIKI_ENABLED
+        const compileOnMemoProcess =
+            process.env.WIKI_COMPILE_ON_MEMO_PROCESS?.toLowerCase() === 'true' || WIKI_COMPILE_ON_MEMO_PROCESS
+        return wikiEnabled && compileOnMemoProcess
     }
 
-    static async syncRawSourceFromMemo(em: EntityManager, memoUuid: string): Promise<RawSourceDocument | null> {
+    static async syncRawSourceFromMemo(em: EntityManager, memoUuid: string): Promise<SyncedRawSourceDocument | null> {
         const memo = await em.findOne(Memo, { uuid: memoUuid }, { populate: ['project'] })
         if (!memo) {
             return null
@@ -164,6 +174,7 @@ export class WikiCompilerService {
         const now = new Date()
         const contentHash = createHash('sha256').update(memoContent.content).digest('hex')
 
+        const isNewDocument = !existingDocument
         const rawSourceDocument =
             existingDocument ||
             em.create(RawSourceDocument, {
@@ -199,7 +210,9 @@ export class WikiCompilerService {
             content_hash: contentHash,
         })
 
-        if (!existingContent) {
+        const isNewContent = !existingContent
+
+        if (isNewContent) {
             em.persist(
                 em.create(RawSourceContent, {
                     uuid: randomUUID(),
@@ -218,7 +231,12 @@ export class WikiCompilerService {
         }
 
         await em.flush()
-        return rawSourceDocument
+        return {
+            document: rawSourceDocument,
+            isNewDocument,
+            isNewContent,
+            contentHash,
+        }
     }
 
     static async enqueueRefreshForMemo(
@@ -230,10 +248,11 @@ export class WikiCompilerService {
             return null
         }
 
-        const rawSourceDocument = await this.syncRawSourceFromMemo(em, memoUuid)
-        if (!rawSourceDocument) {
+        const syncResult = await this.syncRawSourceFromMemo(em, memoUuid)
+        if (!syncResult) {
             return null
         }
+        const { document: rawSourceDocument, isNewDocument, isNewContent, contentHash } = syncResult
 
         const existingPending = await em.findOne(WikiRefreshRequest, {
             project: rawSourceDocument.project,
@@ -241,13 +260,26 @@ export class WikiCompilerService {
             status: { $in: ['pending', 'claimed', 'processing'] },
         })
 
+        const existingRequest = await em.findOne(WikiRefreshRequest, {
+            project: rawSourceDocument.project,
+            raw_source_document: rawSourceDocument,
+        })
+
+        const shouldEnqueue = isNewDocument || isNewContent || !existingRequest
+        const effectiveTrigger: WikiRefreshRequest['trigger'] = isNewDocument ? 'memo_created' : trigger
+
+        if (!shouldEnqueue) {
+            return null
+        }
+
         if (existingPending) {
-            existingPending.trigger = trigger
+            existingPending.trigger = effectiveTrigger
             existingPending.updated_at = new Date()
             existingPending.error_message = null
             existingPending.metadata = {
                 ...(existingPending.metadata || {}),
                 memoUuid,
+                contentHash,
                 refreshedAt: new Date().toISOString(),
             }
             await em.flush()
@@ -258,9 +290,9 @@ export class WikiCompilerService {
             uuid: randomUUID(),
             created_at: new Date(),
             updated_at: null,
-            trigger,
+            trigger: effectiveTrigger,
             status: 'pending',
-            metadata: { memoUuid },
+            metadata: { memoUuid, contentHash },
             claimed_at: null,
             claim_token: null,
             priority: 100,
