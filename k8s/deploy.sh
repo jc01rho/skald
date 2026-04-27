@@ -43,7 +43,7 @@ ENV_FILE="${ENV_FILE:-.env.prod}"
 # 언디플로이 관련 변수
 UNDEPLOY_MODE="false"
 FORCE_UNDEPLOY="false"
-KEEP_DATA="false"
+KEEP_DATA="true"
 
 # 강제 응답 관련 변수
 FORCE_YES="false"
@@ -1041,13 +1041,14 @@ show_undeploy_confirmation() {
     echo -e "  - ConfigMap 및 Secret"
     
     if [ "$KEEP_DATA" = "false" ]; then
-        echo -e "  - PVC (데이터가 삭제됩니다)"
+        echo -e "  - 네임스페이스 (PVC 포함 모든 데이터 삭제)"
     else
-        echo -e "  - PVC (데이터 유지)"
+        echo -e "  - 네임스페이스 선택 스킵 (데이터 유지)"
     fi
     
     echo -e "${YELLOW}계속 진행하시겠습니까?${NC}"
     echo -e "네임스페이스: ${NAMESPACE}"
+    echo -e "데이터 유지: ${KEEP_DATA}"
     
     if [ "$FORCE_UNDEPLOY" = "false" ] && [ "$FORCE_YES" = "false" ]; then
         read -p "계속하시려면 'yes'를 입력하세요: " -r
@@ -1364,6 +1365,12 @@ undeploy_configs() {
 
 # 언디플로이: 네임스페이스 삭제
 undeploy_namespace() {
+    # KEEP_DATA=true일 때는 네임스페이스 삭제 건너뛰기 (PVC 보존)
+    if [ "$KEEP_DATA" = "true" ]; then
+        log_info "Step 9: 네임스페이스 삭제 건너뜀 (KEEP_DATA=true, 데이터 유지)"
+        return 0
+    fi
+    
     log_info "Step 9: 네임스페이스 삭제 중..."
     
     if kubectl delete namespace "$NAMESPACE" --ignore-not-found=true; then
@@ -1662,7 +1669,8 @@ show_help() {
     echo
     echo "언디플로이 옵션:"
     echo "  --undeploy, --delete    언디플로이(삭제) 모드로 실행"
-    echo "  --keep-data             PVC 삭제하지 않고 데이터 유지"
+    echo "  --keep-data             PVC 삭제하지 않고 데이터 유지 (기본값)"
+    echo "  --purge-data            PVC 포함 모든 데이터 삭제"
     echo "  --force                 확인 없이 강제 삭제"
     echo
     echo "환경변수:"
@@ -1679,8 +1687,8 @@ show_help() {
     echo "  $0 --skip-ingress                     # Ingress 없이 배포"
     echo "  $0 -y                                 # 확인 없이 배포"
     echo "  $0 --yes                              # 확인 없이 배포"
-    echo "  $0 --undeploy                         # 전체 삭제 (데이터 포함)"
-    echo "  $0 --undeploy --keep-data             # 데이터 유지하고 삭제"
+    echo "  $0 --undeploy                         # 데이터 유지하고 삭제 (기본값)"
+    echo "  $0 --undeploy --purge-data            # 데이터 포함 전체 삭제"
     echo "  $0 --undeploy --force                 # 확인 없이 강제 삭제"
     echo "  $0 --undeploy -y                      # 언디플로이 시 확인 없이 진행"
 }
@@ -1710,6 +1718,10 @@ while [[ $# -gt 0 ]]; do
             ;;
         --keep-data)
             KEEP_DATA="true"
+            shift
+            ;;
+        --purge-data)
+            KEEP_DATA="false"
             shift
             ;;
         --force)
