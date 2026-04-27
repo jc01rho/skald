@@ -14,6 +14,7 @@ Skald API:
 import time
 import random
 import logging
+import os
 import requests
 import urllib3
 import re
@@ -34,7 +35,7 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(
 logger = logging.getLogger(__name__)
 
 # Skald API 설정
-SKALD_API_KEY = "sk_proj_53810647708a05e33cf23649e53d4aa42d3aca6b"
+SKALD_API_KEY = os.getenv("SKALD_API_KEY", "")
 SKALD_BASE_URL = "https://api.skald.sparrow.local"
 
 
@@ -68,6 +69,8 @@ class IntegratedDocumentProcessor(BaseDocumentProcessor):
     
     def _get_skald_headers(self):
         """Skald API 헤더 반환"""
+        if not SKALD_API_KEY:
+            raise RuntimeError("SKALD_API_KEY environment variable is required")
         return {
             "Authorization": f"Bearer {SKALD_API_KEY}",
             "Content-Type": "application/json"
