@@ -1,0 +1,81 @@
+d96496506e0f392003f0c299f88a1d95
+"use strict";
+var __decorate = (this && this.__decorate) || function (decorators, target, key, desc) {
+    var c = arguments.length, r = c < 3 ? target : desc === null ? desc = Object.getOwnPropertyDescriptor(target, key) : desc, d;
+    if (typeof Reflect === "object" && typeof Reflect.decorate === "function") r = Reflect.decorate(decorators, target, key, desc);
+    else for (var i = decorators.length - 1; i >= 0; i--) if (d = decorators[i]) r = (c < 3 ? d(r) : c > 3 ? d(target, key, r) : d(target, key)) || r;
+    return c > 3 && r && Object.defineProperty(target, key, r), r;
+};
+var __metadata = (this && this.__metadata) || function (k, v) {
+    if (typeof Reflect === "object" && typeof Reflect.metadata === "function") return Reflect.metadata(k, v);
+};
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.ChatMessage = void 0;
+const core_1 = require("@mikro-orm/core");
+const Project_1 = require("@/entities/Project");
+const Chat_1 = require("./Chat");
+let ChatMessage = class ChatMessage {
+    uuid;
+    message_group_id;
+    project;
+    chat;
+    content;
+    // in order to save disk space on the db we could ofc store this as e.g. v1, v2, etc
+    // but shouldn't need it now
+    skald_system_prompt;
+    client_system_prompt;
+    sent_by; // 'user' | 'model'
+    sent_at;
+};
+exports.ChatMessage = ChatMessage;
+__decorate([
+    (0, core_1.PrimaryKey)({ type: 'uuid' }),
+    __metadata("design:type", String)
+], ChatMessage.prototype, "uuid", void 0);
+__decorate([
+    (0, core_1.Index)(),
+    (0, core_1.Property)({ nullable: true }),
+    __metadata("design:type", String)
+], ChatMessage.prototype, "message_group_id", void 0);
+__decorate([
+    (0, core_1.ManyToOne)({
+        entity: () => Project_1.Project,
+        fieldName: 'project_id',
+        deferMode: core_1.DeferMode.INITIALLY_DEFERRED,
+        index: 'skald_chat_project_id_92ds3jsue',
+    }),
+    __metadata("design:type", Project_1.Project)
+], ChatMessage.prototype, "project", void 0);
+__decorate([
+    (0, core_1.ManyToOne)({
+        entity: () => Chat_1.Chat,
+        fieldName: 'chat_id',
+        deferMode: core_1.DeferMode.INITIALLY_DEFERRED,
+        index: 'skald_chatmessage_chat_id_32455sja',
+    }),
+    __metadata("design:type", Chat_1.Chat)
+], ChatMessage.prototype, "chat", void 0);
+__decorate([
+    (0, core_1.Property)({ type: 'text' }),
+    __metadata("design:type", String)
+], ChatMessage.prototype, "content", void 0);
+__decorate([
+    (0, core_1.Property)({ type: 'text', nullable: true }),
+    __metadata("design:type", String)
+], ChatMessage.prototype, "skald_system_prompt", void 0);
+__decorate([
+    (0, core_1.Property)({ type: 'text', nullable: true }),
+    __metadata("design:type", String)
+], ChatMessage.prototype, "client_system_prompt", void 0);
+__decorate([
+    (0, core_1.Property)(),
+    __metadata("design:type", String)
+], ChatMessage.prototype, "sent_by", void 0);
+__decorate([
+    (0, core_1.Property)(),
+    __metadata("design:type", Date)
+], ChatMessage.prototype, "sent_at", void 0);
+exports.ChatMessage = ChatMessage = __decorate([
+    (0, core_1.Entity)({ tableName: 'skald_chatmessage' })
+], ChatMessage);
+//# sourceMappingURL=data:application/json;charset=utf-8;base64,eyJmaWxlIjoiL2hvbWUvamMwMXJoby9naXQvc2thbGQvYmFja2VuZC9zcmMvZW50aXRpZXMvQ2hhdE1lc3NhZ2UudHMiLCJtYXBwaW5ncyI6Ijs7Ozs7Ozs7Ozs7O0FBQUEsMENBQTJGO0FBQzNGLGdEQUE0QztBQUM1QyxpQ0FBNkI7QUFHdEIsSUFBTSxXQUFXLEdBQWpCLE1BQU0sV0FBVztJQUVwQixJQUFJLENBQVM7SUFJYixnQkFBZ0IsQ0FBUztJQVF6QixPQUFPLENBQVU7SUFRakIsSUFBSSxDQUFPO0lBR1gsT0FBTyxDQUFTO0lBRWhCLG9GQUFvRjtJQUNwRiw0QkFBNEI7SUFFNUIsbUJBQW1CLENBQVM7SUFHNUIsb0JBQW9CLENBQVM7SUFHN0IsT0FBTyxDQUFTLENBQUMsbUJBQW1CO0lBR3BDLE9BQU8sQ0FBTztDQUNqQixDQUFBO0FBeENZLGtDQUFXO0FBRXBCO0lBREMsSUFBQSxpQkFBVSxFQUFDLEVBQUUsSUFBSSxFQUFFLE1BQU0sRUFBRSxDQUFDOzt5Q0FDaEI7QUFJYjtJQUZDLElBQUEsWUFBSyxHQUFFO0lBQ1AsSUFBQSxlQUFRLEVBQUMsRUFBRSxRQUFRLEVBQUUsSUFBSSxFQUFFLENBQUM7O3FEQUNKO0FBUXpCO0lBTkMsSUFBQSxnQkFBUyxFQUFDO1FBQ1AsTUFBTSxFQUFFLEdBQUcsRUFBRSxDQUFDLGlCQUFPO1FBQ3JCLFNBQVMsRUFBRSxZQUFZO1FBQ3ZCLFNBQVMsRUFBRSxnQkFBUyxDQUFDLGtCQUFrQjtRQUN2QyxLQUFLLEVBQUUsaUNBQWlDO0tBQzNDLENBQUM7OEJBQ1EsaUJBQU87NENBQUE7QUFRakI7SUFOQyxJQUFBLGdCQUFTLEVBQUM7UUFDUCxNQUFNLEVBQUUsR0FBRyxFQUFFLENBQUMsV0FBSTtRQUNsQixTQUFTLEVBQUUsU0FBUztRQUNwQixTQUFTLEVBQUUsZ0JBQVMsQ0FBQyxrQkFBa0I7UUFDdkMsS0FBSyxFQUFFLG9DQUFvQztLQUM5QyxDQUFDOzhCQUNLLFdBQUk7eUNBQUE7QUFHWDtJQURDLElBQUEsZUFBUSxFQUFDLEVBQUUsSUFBSSxFQUFFLE1BQU0sRUFBRSxDQUFDOzs0Q0FDWDtBQUtoQjtJQURDLElBQUEsZUFBUSxFQUFDLEVBQUUsSUFBSSxFQUFFLE1BQU0sRUFBRSxRQUFRLEVBQUUsSUFBSSxFQUFFLENBQUM7O3dEQUNmO0FBRzVCO0lBREMsSUFBQSxlQUFRLEVBQUMsRUFBRSxJQUFJLEVBQUUsTUFBTSxFQUFFLFFBQVEsRUFBRSxJQUFJLEVBQUUsQ0FBQzs7eURBQ2Q7QUFHN0I7SUFEQyxJQUFBLGVBQVEsR0FBRTs7NENBQ0s7QUFHaEI7SUFEQyxJQUFBLGVBQVEsR0FBRTs4QkFDRCxJQUFJOzRDQUFBO3NCQXZDTCxXQUFXO0lBRHZCLElBQUEsYUFBTSxFQUFDLEVBQUUsU0FBUyxFQUFFLG1CQUFtQixFQUFFLENBQUM7R0FDOUIsV0FBVyxDQXdDdkIiLCJuYW1lcyI6W10sInNvdXJjZXMiOlsiL2hvbWUvamMwMXJoby9naXQvc2thbGQvYmFja2VuZC9zcmMvZW50aXRpZXMvQ2hhdE1lc3NhZ2UudHMiXSwic291cmNlc0NvbnRlbnQiOlsiaW1wb3J0IHsgRGVmZXJNb2RlLCBFbnRpdHksIEluZGV4LCBNYW55VG9PbmUsIFByaW1hcnlLZXksIFByb3BlcnR5IH0gZnJvbSAnQG1pa3JvLW9ybS9jb3JlJ1xuaW1wb3J0IHsgUHJvamVjdCB9IGZyb20gJ0AvZW50aXRpZXMvUHJvamVjdCdcbmltcG9ydCB7IENoYXQgfSBmcm9tICcuL0NoYXQnXG5cbkBFbnRpdHkoeyB0YWJsZU5hbWU6ICdza2FsZF9jaGF0bWVzc2FnZScgfSlcbmV4cG9ydCBjbGFzcyBDaGF0TWVzc2FnZSB7XG4gICAgQFByaW1hcnlLZXkoeyB0eXBlOiAndXVpZCcgfSlcbiAgICB1dWlkITogc3RyaW5nXG5cbiAgICBASW5kZXgoKVxuICAgIEBQcm9wZXJ0eSh7IG51bGxhYmxlOiB0cnVlIH0pXG4gICAgbWVzc2FnZV9ncm91cF9pZD86IHN0cmluZ1xuXG4gICAgQE1hbnlUb09uZSh7XG4gICAgICAgIGVudGl0eTogKCkgPT4gUHJvamVjdCxcbiAgICAgICAgZmllbGROYW1lOiAncHJvamVjdF9pZCcsXG4gICAgICAgIGRlZmVyTW9kZTogRGVmZXJNb2RlLklOSVRJQUxMWV9ERUZFUlJFRCxcbiAgICAgICAgaW5kZXg6ICdza2FsZF9jaGF0X3Byb2plY3RfaWRfOTJkczNqc3VlJyxcbiAgICB9KVxuICAgIHByb2plY3QhOiBQcm9qZWN0XG5cbiAgICBATWFueVRvT25lKHtcbiAgICAgICAgZW50aXR5OiAoKSA9PiBDaGF0LFxuICAgICAgICBmaWVsZE5hbWU6ICdjaGF0X2lkJyxcbiAgICAgICAgZGVmZXJNb2RlOiBEZWZlck1vZGUuSU5JVElBTExZX0RFRkVSUkVELFxuICAgICAgICBpbmRleDogJ3NrYWxkX2NoYXRtZXNzYWdlX2NoYXRfaWRfMzI0NTVzamEnLFxuICAgIH0pXG4gICAgY2hhdCE6IENoYXRcblxuICAgIEBQcm9wZXJ0eSh7IHR5cGU6ICd0ZXh0JyB9KVxuICAgIGNvbnRlbnQhOiBzdHJpbmdcblxuICAgIC8vIGluIG9yZGVyIHRvIHNhdmUgZGlzayBzcGFjZSBvbiB0aGUgZGIgd2UgY291bGQgb2ZjIHN0b3JlIHRoaXMgYXMgZS5nLiB2MSwgdjIsIGV0Y1xuICAgIC8vIGJ1dCBzaG91bGRuJ3QgbmVlZCBpdCBub3dcbiAgICBAUHJvcGVydHkoeyB0eXBlOiAndGV4dCcsIG51bGxhYmxlOiB0cnVlIH0pXG4gICAgc2thbGRfc3lzdGVtX3Byb21wdD86IHN0cmluZ1xuXG4gICAgQFByb3BlcnR5KHsgdHlwZTogJ3RleHQnLCBudWxsYWJsZTogdHJ1ZSB9KVxuICAgIGNsaWVudF9zeXN0ZW1fcHJvbXB0Pzogc3RyaW5nXG5cbiAgICBAUHJvcGVydHkoKVxuICAgIHNlbnRfYnkhOiBzdHJpbmcgLy8gJ3VzZXInIHwgJ21vZGVsJ1xuXG4gICAgQFByb3BlcnR5KClcbiAgICBzZW50X2F0ITogRGF0ZVxufVxuIl0sInZlcnNpb24iOjN9

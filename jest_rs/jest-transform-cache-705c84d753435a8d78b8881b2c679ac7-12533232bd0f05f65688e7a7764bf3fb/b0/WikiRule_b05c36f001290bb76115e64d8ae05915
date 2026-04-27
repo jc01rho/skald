@@ -1,0 +1,91 @@
+308cc72785da5f2aab0f206cf20ded4a
+"use strict";
+var __decorate = (this && this.__decorate) || function (decorators, target, key, desc) {
+    var c = arguments.length, r = c < 3 ? target : desc === null ? desc = Object.getOwnPropertyDescriptor(target, key) : desc, d;
+    if (typeof Reflect === "object" && typeof Reflect.decorate === "function") r = Reflect.decorate(decorators, target, key, desc);
+    else for (var i = decorators.length - 1; i >= 0; i--) if (d = decorators[i]) r = (c < 3 ? d(r) : c > 3 ? d(target, key, r) : d(target, key)) || r;
+    return c > 3 && r && Object.defineProperty(target, key, r), r;
+};
+var __metadata = (this && this.__metadata) || function (k, v) {
+    if (typeof Reflect === "object" && typeof Reflect.metadata === "function") return Reflect.metadata(k, v);
+};
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.WikiRule = void 0;
+const core_1 = require("@mikro-orm/core");
+const Project_1 = require("@/entities/Project");
+const User_1 = require("@/entities/User");
+let WikiRule = class WikiRule {
+    uuid;
+    created_at;
+    updated_at;
+    rule_type;
+    name;
+    description;
+    config;
+    priority;
+    is_active;
+    project;
+    created_by;
+};
+exports.WikiRule = WikiRule;
+__decorate([
+    (0, core_1.PrimaryKey)({ type: 'uuid' }),
+    __metadata("design:type", String)
+], WikiRule.prototype, "uuid", void 0);
+__decorate([
+    (0, core_1.Property)(),
+    __metadata("design:type", Date)
+], WikiRule.prototype, "created_at", void 0);
+__decorate([
+    (0, core_1.Property)(),
+    __metadata("design:type", Date)
+], WikiRule.prototype, "updated_at", void 0);
+__decorate([
+    (0, core_1.Property)({ length: 100 }),
+    __metadata("design:type", String)
+], WikiRule.prototype, "rule_type", void 0);
+__decorate([
+    (0, core_1.Property)({ length: 255 }),
+    __metadata("design:type", String)
+], WikiRule.prototype, "name", void 0);
+__decorate([
+    (0, core_1.Property)({ type: 'text' }),
+    __metadata("design:type", String)
+], WikiRule.prototype, "description", void 0);
+__decorate([
+    (0, core_1.Property)({ type: 'json' }),
+    __metadata("design:type", Object)
+], WikiRule.prototype, "config", void 0);
+__decorate([
+    (0, core_1.Property)({ default: 100 }),
+    __metadata("design:type", Number)
+], WikiRule.prototype, "priority", void 0);
+__decorate([
+    (0, core_1.Property)({ default: true }),
+    __metadata("design:type", Boolean)
+], WikiRule.prototype, "is_active", void 0);
+__decorate([
+    (0, core_1.ManyToOne)({
+        entity: () => Project_1.Project,
+        fieldName: 'project_id',
+        deferMode: core_1.DeferMode.INITIALLY_DEFERRED,
+        index: 'skald_wiki_rule_project_id_idx',
+    }),
+    __metadata("design:type", Project_1.Project)
+], WikiRule.prototype, "project", void 0);
+__decorate([
+    (0, core_1.ManyToOne)({
+        entity: () => User_1.User,
+        fieldName: 'created_by_id',
+        deferMode: core_1.DeferMode.INITIALLY_DEFERRED,
+        nullable: true,
+        index: 'skald_wiki_rule_created_by_id_idx',
+    }),
+    __metadata("design:type", Object)
+], WikiRule.prototype, "created_by", void 0);
+exports.WikiRule = WikiRule = __decorate([
+    (0, core_1.Entity)({ tableName: 'skald_wiki_rule' }),
+    (0, core_1.Index)({ name: 'skald_wiki_rule_project_type_idx', properties: ['project', 'rule_type'] }),
+    (0, core_1.Index)({ name: 'skald_wiki_rule_project_active_idx', properties: ['project', 'is_active'] })
+], WikiRule);
+//# sourceMappingURL=data:application/json;charset=utf-8;base64,eyJmaWxlIjoiL2hvbWUvamMwMXJoby9naXQvc2thbGQvYmFja2VuZC9zcmMvZW50aXRpZXMvV2lraVJ1bGUudHMiLCJtYXBwaW5ncyI6Ijs7Ozs7Ozs7Ozs7O0FBQUEsMENBQTJGO0FBQzNGLGdEQUE0QztBQUM1QywwQ0FBc0M7QUFPL0IsSUFBTSxRQUFRLEdBQWQsTUFBTSxRQUFRO0lBRWpCLElBQUksQ0FBUztJQUdiLFVBQVUsQ0FBTztJQUdqQixVQUFVLENBQU87SUFHakIsU0FBUyxDQUFXO0lBR3BCLElBQUksQ0FBUztJQUdiLFdBQVcsQ0FBUztJQUdwQixNQUFNLENBQTBCO0lBR2hDLFFBQVEsQ0FBUztJQUdqQixTQUFTLENBQVU7SUFRbkIsT0FBTyxDQUFVO0lBU2pCLFVBQVUsQ0FBYztDQUMzQixDQUFBO0FBNUNZLDRCQUFRO0FBRWpCO0lBREMsSUFBQSxpQkFBVSxFQUFDLEVBQUUsSUFBSSxFQUFFLE1BQU0sRUFBRSxDQUFDOztzQ0FDaEI7QUFHYjtJQURDLElBQUEsZUFBUSxHQUFFOzhCQUNFLElBQUk7NENBQUE7QUFHakI7SUFEQyxJQUFBLGVBQVEsR0FBRTs4QkFDRSxJQUFJOzRDQUFBO0FBR2pCO0lBREMsSUFBQSxlQUFRLEVBQUMsRUFBRSxNQUFNLEVBQUUsR0FBRyxFQUFFLENBQUM7OzJDQUNOO0FBR3BCO0lBREMsSUFBQSxlQUFRLEVBQUMsRUFBRSxNQUFNLEVBQUUsR0FBRyxFQUFFLENBQUM7O3NDQUNiO0FBR2I7SUFEQyxJQUFBLGVBQVEsRUFBQyxFQUFFLElBQUksRUFBRSxNQUFNLEVBQUUsQ0FBQzs7NkNBQ1A7QUFHcEI7SUFEQyxJQUFBLGVBQVEsRUFBQyxFQUFFLElBQUksRUFBRSxNQUFNLEVBQUUsQ0FBQzs7d0NBQ0s7QUFHaEM7SUFEQyxJQUFBLGVBQVEsRUFBQyxFQUFFLE9BQU8sRUFBRSxHQUFHLEVBQUUsQ0FBQzs7MENBQ1Y7QUFHakI7SUFEQyxJQUFBLGVBQVEsRUFBQyxFQUFFLE9BQU8sRUFBRSxJQUFJLEVBQUUsQ0FBQzs7MkNBQ1Q7QUFRbkI7SUFOQyxJQUFBLGdCQUFTLEVBQUM7UUFDUCxNQUFNLEVBQUUsR0FBRyxFQUFFLENBQUMsaUJBQU87UUFDckIsU0FBUyxFQUFFLFlBQVk7UUFDdkIsU0FBUyxFQUFFLGdCQUFTLENBQUMsa0JBQWtCO1FBQ3ZDLEtBQUssRUFBRSxnQ0FBZ0M7S0FDMUMsQ0FBQzs4QkFDUSxpQkFBTzt5Q0FBQTtBQVNqQjtJQVBDLElBQUEsZ0JBQVMsRUFBQztRQUNQLE1BQU0sRUFBRSxHQUFHLEVBQUUsQ0FBQyxXQUFJO1FBQ2xCLFNBQVMsRUFBRSxlQUFlO1FBQzFCLFNBQVMsRUFBRSxnQkFBUyxDQUFDLGtCQUFrQjtRQUN2QyxRQUFRLEVBQUUsSUFBSTtRQUNkLEtBQUssRUFBRSxtQ0FBbUM7S0FDN0MsQ0FBQzs7NENBQ3NCO21CQTNDZixRQUFRO0lBSHBCLElBQUEsYUFBTSxFQUFDLEVBQUUsU0FBUyxFQUFFLGlCQUFpQixFQUFFLENBQUM7SUFDeEMsSUFBQSxZQUFLLEVBQUMsRUFBRSxJQUFJLEVBQUUsa0NBQWtDLEVBQUUsVUFBVSxFQUFFLENBQUMsU0FBUyxFQUFFLFdBQVcsQ0FBQyxFQUFFLENBQUM7SUFDekYsSUFBQSxZQUFLLEVBQUMsRUFBRSxJQUFJLEVBQUUsb0NBQW9DLEVBQUUsVUFBVSxFQUFFLENBQUMsU0FBUyxFQUFFLFdBQVcsQ0FBQyxFQUFFLENBQUM7R0FDL0UsUUFBUSxDQTRDcEIiLCJuYW1lcyI6W10sInNvdXJjZXMiOlsiL2hvbWUvamMwMXJoby9naXQvc2thbGQvYmFja2VuZC9zcmMvZW50aXRpZXMvV2lraVJ1bGUudHMiXSwic291cmNlc0NvbnRlbnQiOlsiaW1wb3J0IHsgRGVmZXJNb2RlLCBFbnRpdHksIEluZGV4LCBNYW55VG9PbmUsIFByaW1hcnlLZXksIFByb3BlcnR5IH0gZnJvbSAnQG1pa3JvLW9ybS9jb3JlJ1xuaW1wb3J0IHsgUHJvamVjdCB9IGZyb20gJ0AvZW50aXRpZXMvUHJvamVjdCdcbmltcG9ydCB7IFVzZXIgfSBmcm9tICdAL2VudGl0aWVzL1VzZXInXG5cbmV4cG9ydCB0eXBlIFJ1bGVUeXBlID0gJ3NjaGVtYScgfCAnaW5jbHVzaW9uJyB8ICdleGNsdXNpb24nIHwgJ3RyYW5zZm9ybScgfCAncHJpb3JpdHknXG5cbkBFbnRpdHkoeyB0YWJsZU5hbWU6ICdza2FsZF93aWtpX3J1bGUnIH0pXG5ASW5kZXgoeyBuYW1lOiAnc2thbGRfd2lraV9ydWxlX3Byb2plY3RfdHlwZV9pZHgnLCBwcm9wZXJ0aWVzOiBbJ3Byb2plY3QnLCAncnVsZV90eXBlJ10gfSlcbkBJbmRleCh7IG5hbWU6ICdza2FsZF93aWtpX3J1bGVfcHJvamVjdF9hY3RpdmVfaWR4JywgcHJvcGVydGllczogWydwcm9qZWN0JywgJ2lzX2FjdGl2ZSddIH0pXG5leHBvcnQgY2xhc3MgV2lraVJ1bGUge1xuICAgIEBQcmltYXJ5S2V5KHsgdHlwZTogJ3V1aWQnIH0pXG4gICAgdXVpZCE6IHN0cmluZ1xuXG4gICAgQFByb3BlcnR5KClcbiAgICBjcmVhdGVkX2F0ITogRGF0ZVxuXG4gICAgQFByb3BlcnR5KClcbiAgICB1cGRhdGVkX2F0ITogRGF0ZVxuXG4gICAgQFByb3BlcnR5KHsgbGVuZ3RoOiAxMDAgfSlcbiAgICBydWxlX3R5cGUhOiBSdWxlVHlwZVxuXG4gICAgQFByb3BlcnR5KHsgbGVuZ3RoOiAyNTUgfSlcbiAgICBuYW1lITogc3RyaW5nXG5cbiAgICBAUHJvcGVydHkoeyB0eXBlOiAndGV4dCcgfSlcbiAgICBkZXNjcmlwdGlvbiE6IHN0cmluZ1xuXG4gICAgQFByb3BlcnR5KHsgdHlwZTogJ2pzb24nIH0pXG4gICAgY29uZmlnITogUmVjb3JkPHN0cmluZywgdW5rbm93bj5cblxuICAgIEBQcm9wZXJ0eSh7IGRlZmF1bHQ6IDEwMCB9KVxuICAgIHByaW9yaXR5ITogbnVtYmVyXG5cbiAgICBAUHJvcGVydHkoeyBkZWZhdWx0OiB0cnVlIH0pXG4gICAgaXNfYWN0aXZlITogYm9vbGVhblxuXG4gICAgQE1hbnlUb09uZSh7XG4gICAgICAgIGVudGl0eTogKCkgPT4gUHJvamVjdCxcbiAgICAgICAgZmllbGROYW1lOiAncHJvamVjdF9pZCcsXG4gICAgICAgIGRlZmVyTW9kZTogRGVmZXJNb2RlLklOSVRJQUxMWV9ERUZFUlJFRCxcbiAgICAgICAgaW5kZXg6ICdza2FsZF93aWtpX3J1bGVfcHJvamVjdF9pZF9pZHgnLFxuICAgIH0pXG4gICAgcHJvamVjdCE6IFByb2plY3RcblxuICAgIEBNYW55VG9PbmUoe1xuICAgICAgICBlbnRpdHk6ICgpID0+IFVzZXIsXG4gICAgICAgIGZpZWxkTmFtZTogJ2NyZWF0ZWRfYnlfaWQnLFxuICAgICAgICBkZWZlck1vZGU6IERlZmVyTW9kZS5JTklUSUFMTFlfREVGRVJSRUQsXG4gICAgICAgIG51bGxhYmxlOiB0cnVlLFxuICAgICAgICBpbmRleDogJ3NrYWxkX3dpa2lfcnVsZV9jcmVhdGVkX2J5X2lkX2lkeCcsXG4gICAgfSlcbiAgICBjcmVhdGVkX2J5PzogVXNlciB8IG51bGxcbn1cbiJdLCJ2ZXJzaW9uIjozfQ==

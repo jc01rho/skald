@@ -1,0 +1,72 @@
+c5b22b2faeef47c5a8cb80e1f64f352d
+"use strict";
+var __decorate = (this && this.__decorate) || function (decorators, target, key, desc) {
+    var c = arguments.length, r = c < 3 ? target : desc === null ? desc = Object.getOwnPropertyDescriptor(target, key) : desc, d;
+    if (typeof Reflect === "object" && typeof Reflect.decorate === "function") r = Reflect.decorate(decorators, target, key, desc);
+    else for (var i = decorators.length - 1; i >= 0; i--) if (d = decorators[i]) r = (c < 3 ? d(r) : c > 3 ? d(target, key, r) : d(target, key)) || r;
+    return c > 3 && r && Object.defineProperty(target, key, r), r;
+};
+var __metadata = (this && this.__metadata) || function (k, v) {
+    if (typeof Reflect === "object" && typeof Reflect.metadata === "function") return Reflect.metadata(k, v);
+};
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.WikiPageSourceLink = void 0;
+const core_1 = require("@mikro-orm/core");
+const Project_1 = require("@/entities/Project");
+const WikiPageRevision_1 = require("@/entities/WikiPageRevision");
+const RawSourceDocument_1 = require("@/entities/RawSourceDocument");
+let WikiPageSourceLink = class WikiPageSourceLink {
+    uuid;
+    created_at;
+    contribution_metadata;
+    wiki_page_revision;
+    raw_source_document;
+    project;
+};
+exports.WikiPageSourceLink = WikiPageSourceLink;
+__decorate([
+    (0, core_1.PrimaryKey)({ type: 'uuid' }),
+    __metadata("design:type", String)
+], WikiPageSourceLink.prototype, "uuid", void 0);
+__decorate([
+    (0, core_1.Property)(),
+    __metadata("design:type", Date)
+], WikiPageSourceLink.prototype, "created_at", void 0);
+__decorate([
+    (0, core_1.Property)({ nullable: true, type: 'json' }),
+    __metadata("design:type", Object)
+], WikiPageSourceLink.prototype, "contribution_metadata", void 0);
+__decorate([
+    (0, core_1.ManyToOne)({
+        entity: () => WikiPageRevision_1.WikiPageRevision,
+        fieldName: 'wiki_page_revision_id',
+        deferMode: core_1.DeferMode.INITIALLY_DEFERRED,
+        index: 'skald_wiki_page_source_link_revision_id_idx',
+    }),
+    __metadata("design:type", WikiPageRevision_1.WikiPageRevision)
+], WikiPageSourceLink.prototype, "wiki_page_revision", void 0);
+__decorate([
+    (0, core_1.ManyToOne)({
+        entity: () => RawSourceDocument_1.RawSourceDocument,
+        fieldName: 'raw_source_document_id',
+        deferMode: core_1.DeferMode.INITIALLY_DEFERRED,
+        index: 'skald_wiki_page_source_link_document_id_idx',
+    }),
+    __metadata("design:type", RawSourceDocument_1.RawSourceDocument)
+], WikiPageSourceLink.prototype, "raw_source_document", void 0);
+__decorate([
+    (0, core_1.ManyToOne)({
+        entity: () => Project_1.Project,
+        fieldName: 'project_id',
+        deferMode: core_1.DeferMode.INITIALLY_DEFERRED,
+        index: 'skald_wiki_page_source_link_project_id_idx',
+    }),
+    __metadata("design:type", Project_1.Project)
+], WikiPageSourceLink.prototype, "project", void 0);
+exports.WikiPageSourceLink = WikiPageSourceLink = __decorate([
+    (0, core_1.Entity)({ tableName: 'skald_wiki_page_source_link' }),
+    (0, core_1.Unique)({ name: 'skald_wiki_page_source_link_unique_key', properties: ['wiki_page_revision', 'raw_source_document'] }),
+    (0, core_1.Index)({ name: 'skald_wiki_page_source_link_revision_idx', properties: ['wiki_page_revision'] }),
+    (0, core_1.Index)({ name: 'skald_wiki_page_source_link_source_idx', properties: ['raw_source_document'] })
+], WikiPageSourceLink);
+//# sourceMappingURL=data:application/json;charset=utf-8;base64,eyJmaWxlIjoiL2hvbWUvamMwMXJoby9naXQvc2thbGQvYmFja2VuZC9zcmMvZW50aXRpZXMvV2lraVBhZ2VTb3VyY2VMaW5rLnRzIiwibWFwcGluZ3MiOiI7Ozs7Ozs7Ozs7OztBQUFBLDBDQUFtRztBQUNuRyxnREFBNEM7QUFDNUMsa0VBQThEO0FBQzlELG9FQUFnRTtBQU16RCxJQUFNLGtCQUFrQixHQUF4QixNQUFNLGtCQUFrQjtJQUUzQixJQUFJLENBQVM7SUFHYixVQUFVLENBQU87SUFHakIscUJBQXFCLENBQWlDO0lBUXRELGtCQUFrQixDQUFtQjtJQVFyQyxtQkFBbUIsQ0FBb0I7SUFRdkMsT0FBTyxDQUFVO0NBQ3BCLENBQUE7QUFqQ1ksZ0RBQWtCO0FBRTNCO0lBREMsSUFBQSxpQkFBVSxFQUFDLEVBQUUsSUFBSSxFQUFFLE1BQU0sRUFBRSxDQUFDOztnREFDaEI7QUFHYjtJQURDLElBQUEsZUFBUSxHQUFFOzhCQUNFLElBQUk7c0RBQUE7QUFHakI7SUFEQyxJQUFBLGVBQVEsRUFBQyxFQUFFLFFBQVEsRUFBRSxJQUFJLEVBQUUsSUFBSSxFQUFFLE1BQU0sRUFBRSxDQUFDOztpRUFDVztBQVF0RDtJQU5DLElBQUEsZ0JBQVMsRUFBQztRQUNQLE1BQU0sRUFBRSxHQUFHLEVBQUUsQ0FBQyxtQ0FBZ0I7UUFDOUIsU0FBUyxFQUFFLHVCQUF1QjtRQUNsQyxTQUFTLEVBQUUsZ0JBQVMsQ0FBQyxrQkFBa0I7UUFDdkMsS0FBSyxFQUFFLDZDQUE2QztLQUN2RCxDQUFDOzhCQUNtQixtQ0FBZ0I7OERBQUE7QUFRckM7SUFOQyxJQUFBLGdCQUFTLEVBQUM7UUFDUCxNQUFNLEVBQUUsR0FBRyxFQUFFLENBQUMscUNBQWlCO1FBQy9CLFNBQVMsRUFBRSx3QkFBd0I7UUFDbkMsU0FBUyxFQUFFLGdCQUFTLENBQUMsa0JBQWtCO1FBQ3ZDLEtBQUssRUFBRSw2Q0FBNkM7S0FDdkQsQ0FBQzs4QkFDb0IscUNBQWlCOytEQUFBO0FBUXZDO0lBTkMsSUFBQSxnQkFBUyxFQUFDO1FBQ1AsTUFBTSxFQUFFLEdBQUcsRUFBRSxDQUFDLGlCQUFPO1FBQ3JCLFNBQVMsRUFBRSxZQUFZO1FBQ3ZCLFNBQVMsRUFBRSxnQkFBUyxDQUFDLGtCQUFrQjtRQUN2QyxLQUFLLEVBQUUsNENBQTRDO0tBQ3RELENBQUM7OEJBQ1EsaUJBQU87bURBQUE7NkJBaENSLGtCQUFrQjtJQUo5QixJQUFBLGFBQU0sRUFBQyxFQUFFLFNBQVMsRUFBRSw2QkFBNkIsRUFBRSxDQUFDO0lBQ3BELElBQUEsYUFBTSxFQUFDLEVBQUUsSUFBSSxFQUFFLHdDQUF3QyxFQUFFLFVBQVUsRUFBRSxDQUFDLG9CQUFvQixFQUFFLHFCQUFxQixDQUFDLEVBQUUsQ0FBQztJQUNySCxJQUFBLFlBQUssRUFBQyxFQUFFLElBQUksRUFBRSwwQ0FBMEMsRUFBRSxVQUFVLEVBQUUsQ0FBQyxvQkFBb0IsQ0FBQyxFQUFFLENBQUM7SUFDL0YsSUFBQSxZQUFLLEVBQUMsRUFBRSxJQUFJLEVBQUUsd0NBQXdDLEVBQUUsVUFBVSxFQUFFLENBQUMscUJBQXFCLENBQUMsRUFBRSxDQUFDO0dBQ2xGLGtCQUFrQixDQWlDOUIiLCJuYW1lcyI6W10sInNvdXJjZXMiOlsiL2hvbWUvamMwMXJoby9naXQvc2thbGQvYmFja2VuZC9zcmMvZW50aXRpZXMvV2lraVBhZ2VTb3VyY2VMaW5rLnRzIl0sInNvdXJjZXNDb250ZW50IjpbImltcG9ydCB7IERlZmVyTW9kZSwgRW50aXR5LCBJbmRleCwgTWFueVRvT25lLCBQcmltYXJ5S2V5LCBQcm9wZXJ0eSwgVW5pcXVlIH0gZnJvbSAnQG1pa3JvLW9ybS9jb3JlJ1xuaW1wb3J0IHsgUHJvamVjdCB9IGZyb20gJ0AvZW50aXRpZXMvUHJvamVjdCdcbmltcG9ydCB7IFdpa2lQYWdlUmV2aXNpb24gfSBmcm9tICdAL2VudGl0aWVzL1dpa2lQYWdlUmV2aXNpb24nXG5pbXBvcnQgeyBSYXdTb3VyY2VEb2N1bWVudCB9IGZyb20gJ0AvZW50aXRpZXMvUmF3U291cmNlRG9jdW1lbnQnXG5cbkBFbnRpdHkoeyB0YWJsZU5hbWU6ICdza2FsZF93aWtpX3BhZ2Vfc291cmNlX2xpbmsnIH0pXG5AVW5pcXVlKHsgbmFtZTogJ3NrYWxkX3dpa2lfcGFnZV9zb3VyY2VfbGlua191bmlxdWVfa2V5JywgcHJvcGVydGllczogWyd3aWtpX3BhZ2VfcmV2aXNpb24nLCAncmF3X3NvdXJjZV9kb2N1bWVudCddIH0pXG5ASW5kZXgoeyBuYW1lOiAnc2thbGRfd2lraV9wYWdlX3NvdXJjZV9saW5rX3JldmlzaW9uX2lkeCcsIHByb3BlcnRpZXM6IFsnd2lraV9wYWdlX3JldmlzaW9uJ10gfSlcbkBJbmRleCh7IG5hbWU6ICdza2FsZF93aWtpX3BhZ2Vfc291cmNlX2xpbmtfc291cmNlX2lkeCcsIHByb3BlcnRpZXM6IFsncmF3X3NvdXJjZV9kb2N1bWVudCddIH0pXG5leHBvcnQgY2xhc3MgV2lraVBhZ2VTb3VyY2VMaW5rIHtcbiAgICBAUHJpbWFyeUtleSh7IHR5cGU6ICd1dWlkJyB9KVxuICAgIHV1aWQhOiBzdHJpbmdcblxuICAgIEBQcm9wZXJ0eSgpXG4gICAgY3JlYXRlZF9hdCE6IERhdGVcblxuICAgIEBQcm9wZXJ0eSh7IG51bGxhYmxlOiB0cnVlLCB0eXBlOiAnanNvbicgfSlcbiAgICBjb250cmlidXRpb25fbWV0YWRhdGE/OiBSZWNvcmQ8c3RyaW5nLCB1bmtub3duPiB8IG51bGxcblxuICAgIEBNYW55VG9PbmUoe1xuICAgICAgICBlbnRpdHk6ICgpID0+IFdpa2lQYWdlUmV2aXNpb24sXG4gICAgICAgIGZpZWxkTmFtZTogJ3dpa2lfcGFnZV9yZXZpc2lvbl9pZCcsXG4gICAgICAgIGRlZmVyTW9kZTogRGVmZXJNb2RlLklOSVRJQUxMWV9ERUZFUlJFRCxcbiAgICAgICAgaW5kZXg6ICdza2FsZF93aWtpX3BhZ2Vfc291cmNlX2xpbmtfcmV2aXNpb25faWRfaWR4JyxcbiAgICB9KVxuICAgIHdpa2lfcGFnZV9yZXZpc2lvbiE6IFdpa2lQYWdlUmV2aXNpb25cblxuICAgIEBNYW55VG9PbmUoe1xuICAgICAgICBlbnRpdHk6ICgpID0+IFJhd1NvdXJjZURvY3VtZW50LFxuICAgICAgICBmaWVsZE5hbWU6ICdyYXdfc291cmNlX2RvY3VtZW50X2lkJyxcbiAgICAgICAgZGVmZXJNb2RlOiBEZWZlck1vZGUuSU5JVElBTExZX0RFRkVSUkVELFxuICAgICAgICBpbmRleDogJ3NrYWxkX3dpa2lfcGFnZV9zb3VyY2VfbGlua19kb2N1bWVudF9pZF9pZHgnLFxuICAgIH0pXG4gICAgcmF3X3NvdXJjZV9kb2N1bWVudCE6IFJhd1NvdXJjZURvY3VtZW50XG5cbiAgICBATWFueVRvT25lKHtcbiAgICAgICAgZW50aXR5OiAoKSA9PiBQcm9qZWN0LFxuICAgICAgICBmaWVsZE5hbWU6ICdwcm9qZWN0X2lkJyxcbiAgICAgICAgZGVmZXJNb2RlOiBEZWZlck1vZGUuSU5JVElBTExZX0RFRkVSUkVELFxuICAgICAgICBpbmRleDogJ3NrYWxkX3dpa2lfcGFnZV9zb3VyY2VfbGlua19wcm9qZWN0X2lkX2lkeCcsXG4gICAgfSlcbiAgICBwcm9qZWN0ITogUHJvamVjdFxufVxuIl0sInZlcnNpb24iOjN9

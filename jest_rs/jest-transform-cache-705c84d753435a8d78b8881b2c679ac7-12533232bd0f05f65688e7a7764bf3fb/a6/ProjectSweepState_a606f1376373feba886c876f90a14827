@@ -1,0 +1,64 @@
+7223db19d06e6a1b4d77389251fc25a5
+"use strict";
+var __decorate = (this && this.__decorate) || function (decorators, target, key, desc) {
+    var c = arguments.length, r = c < 3 ? target : desc === null ? desc = Object.getOwnPropertyDescriptor(target, key) : desc, d;
+    if (typeof Reflect === "object" && typeof Reflect.decorate === "function") r = Reflect.decorate(decorators, target, key, desc);
+    else for (var i = decorators.length - 1; i >= 0; i--) if (d = decorators[i]) r = (c < 3 ? d(r) : c > 3 ? d(target, key, r) : d(target, key)) || r;
+    return c > 3 && r && Object.defineProperty(target, key, r), r;
+};
+var __metadata = (this && this.__metadata) || function (k, v) {
+    if (typeof Reflect === "object" && typeof Reflect.metadata === "function") return Reflect.metadata(k, v);
+};
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.ProjectSweepState = void 0;
+const core_1 = require("@mikro-orm/core");
+const Project_1 = require("@/entities/Project");
+let ProjectSweepState = class ProjectSweepState {
+    uuid;
+    created_at;
+    updated_at;
+    sweep_type;
+    next_offset;
+    metadata;
+    project;
+};
+exports.ProjectSweepState = ProjectSweepState;
+__decorate([
+    (0, core_1.PrimaryKey)({ type: 'uuid' }),
+    __metadata("design:type", String)
+], ProjectSweepState.prototype, "uuid", void 0);
+__decorate([
+    (0, core_1.Property)(),
+    __metadata("design:type", Date)
+], ProjectSweepState.prototype, "created_at", void 0);
+__decorate([
+    (0, core_1.Property)(),
+    __metadata("design:type", Date)
+], ProjectSweepState.prototype, "updated_at", void 0);
+__decorate([
+    (0, core_1.Property)({ length: 100 }),
+    __metadata("design:type", String)
+], ProjectSweepState.prototype, "sweep_type", void 0);
+__decorate([
+    (0, core_1.Property)({ default: 0 }),
+    __metadata("design:type", Number)
+], ProjectSweepState.prototype, "next_offset", void 0);
+__decorate([
+    (0, core_1.Property)({ nullable: true, type: 'json' }),
+    __metadata("design:type", Object)
+], ProjectSweepState.prototype, "metadata", void 0);
+__decorate([
+    (0, core_1.ManyToOne)({
+        entity: () => Project_1.Project,
+        fieldName: 'project_id',
+        deferMode: core_1.DeferMode.INITIALLY_DEFERRED,
+        index: 'skald_project_sweep_state_project_id_idx',
+    }),
+    __metadata("design:type", Project_1.Project)
+], ProjectSweepState.prototype, "project", void 0);
+exports.ProjectSweepState = ProjectSweepState = __decorate([
+    (0, core_1.Entity)({ tableName: 'skald_project_sweep_state' }),
+    (0, core_1.Index)({ name: 'skald_project_sweep_state_project_idx', properties: ['project'] }),
+    (0, core_1.Unique)({ name: 'skald_project_sweep_state_project_type_key', properties: ['project', 'sweep_type'] })
+], ProjectSweepState);
+//# sourceMappingURL=data:application/json;charset=utf-8;base64,eyJmaWxlIjoiL2hvbWUvamMwMXJoby9naXQvc2thbGQvYmFja2VuZC9zcmMvZW50aXRpZXMvUHJvamVjdFN3ZWVwU3RhdGUudHMiLCJtYXBwaW5ncyI6Ijs7Ozs7Ozs7Ozs7O0FBQUEsMENBQW1HO0FBQ25HLGdEQUE0QztBQU9yQyxJQUFNLGlCQUFpQixHQUF2QixNQUFNLGlCQUFpQjtJQUUxQixJQUFJLENBQVM7SUFHYixVQUFVLENBQU87SUFHakIsVUFBVSxDQUFPO0lBR2pCLFVBQVUsQ0FBWTtJQUd0QixXQUFXLENBQVM7SUFHcEIsUUFBUSxDQUFpQztJQVF6QyxPQUFPLENBQVU7Q0FDcEIsQ0FBQTtBQTFCWSw4Q0FBaUI7QUFFMUI7SUFEQyxJQUFBLGlCQUFVLEVBQUMsRUFBRSxJQUFJLEVBQUUsTUFBTSxFQUFFLENBQUM7OytDQUNoQjtBQUdiO0lBREMsSUFBQSxlQUFRLEdBQUU7OEJBQ0UsSUFBSTtxREFBQTtBQUdqQjtJQURDLElBQUEsZUFBUSxHQUFFOzhCQUNFLElBQUk7cURBQUE7QUFHakI7SUFEQyxJQUFBLGVBQVEsRUFBQyxFQUFFLE1BQU0sRUFBRSxHQUFHLEVBQUUsQ0FBQzs7cURBQ0o7QUFHdEI7SUFEQyxJQUFBLGVBQVEsRUFBQyxFQUFFLE9BQU8sRUFBRSxDQUFDLEVBQUUsQ0FBQzs7c0RBQ0w7QUFHcEI7SUFEQyxJQUFBLGVBQVEsRUFBQyxFQUFFLFFBQVEsRUFBRSxJQUFJLEVBQUUsSUFBSSxFQUFFLE1BQU0sRUFBRSxDQUFDOzttREFDRjtBQVF6QztJQU5DLElBQUEsZ0JBQVMsRUFBQztRQUNQLE1BQU0sRUFBRSxHQUFHLEVBQUUsQ0FBQyxpQkFBTztRQUNyQixTQUFTLEVBQUUsWUFBWTtRQUN2QixTQUFTLEVBQUUsZ0JBQVMsQ0FBQyxrQkFBa0I7UUFDdkMsS0FBSyxFQUFFLDBDQUEwQztLQUNwRCxDQUFDOzhCQUNRLGlCQUFPO2tEQUFBOzRCQXpCUixpQkFBaUI7SUFIN0IsSUFBQSxhQUFNLEVBQUMsRUFBRSxTQUFTLEVBQUUsMkJBQTJCLEVBQUUsQ0FBQztJQUNsRCxJQUFBLFlBQUssRUFBQyxFQUFFLElBQUksRUFBRSx1Q0FBdUMsRUFBRSxVQUFVLEVBQUUsQ0FBQyxTQUFTLENBQUMsRUFBRSxDQUFDO0lBQ2pGLElBQUEsYUFBTSxFQUFDLEVBQUUsSUFBSSxFQUFFLDRDQUE0QyxFQUFFLFVBQVUsRUFBRSxDQUFDLFNBQVMsRUFBRSxZQUFZLENBQUMsRUFBRSxDQUFDO0dBQ3pGLGlCQUFpQixDQTBCN0IiLCJuYW1lcyI6W10sInNvdXJjZXMiOlsiL2hvbWUvamMwMXJoby9naXQvc2thbGQvYmFja2VuZC9zcmMvZW50aXRpZXMvUHJvamVjdFN3ZWVwU3RhdGUudHMiXSwic291cmNlc0NvbnRlbnQiOlsiaW1wb3J0IHsgRGVmZXJNb2RlLCBFbnRpdHksIEluZGV4LCBNYW55VG9PbmUsIFByaW1hcnlLZXksIFByb3BlcnR5LCBVbmlxdWUgfSBmcm9tICdAbWlrcm8tb3JtL2NvcmUnXG5pbXBvcnQgeyBQcm9qZWN0IH0gZnJvbSAnQC9lbnRpdGllcy9Qcm9qZWN0J1xuXG5leHBvcnQgdHlwZSBTd2VlcFR5cGUgPSAnd2lraV9mdWxsX2NvcnB1cydcblxuQEVudGl0eSh7IHRhYmxlTmFtZTogJ3NrYWxkX3Byb2plY3Rfc3dlZXBfc3RhdGUnIH0pXG5ASW5kZXgoeyBuYW1lOiAnc2thbGRfcHJvamVjdF9zd2VlcF9zdGF0ZV9wcm9qZWN0X2lkeCcsIHByb3BlcnRpZXM6IFsncHJvamVjdCddIH0pXG5AVW5pcXVlKHsgbmFtZTogJ3NrYWxkX3Byb2plY3Rfc3dlZXBfc3RhdGVfcHJvamVjdF90eXBlX2tleScsIHByb3BlcnRpZXM6IFsncHJvamVjdCcsICdzd2VlcF90eXBlJ10gfSlcbmV4cG9ydCBjbGFzcyBQcm9qZWN0U3dlZXBTdGF0ZSB7XG4gICAgQFByaW1hcnlLZXkoeyB0eXBlOiAndXVpZCcgfSlcbiAgICB1dWlkITogc3RyaW5nXG5cbiAgICBAUHJvcGVydHkoKVxuICAgIGNyZWF0ZWRfYXQhOiBEYXRlXG5cbiAgICBAUHJvcGVydHkoKVxuICAgIHVwZGF0ZWRfYXQhOiBEYXRlXG5cbiAgICBAUHJvcGVydHkoeyBsZW5ndGg6IDEwMCB9KVxuICAgIHN3ZWVwX3R5cGUhOiBTd2VlcFR5cGVcblxuICAgIEBQcm9wZXJ0eSh7IGRlZmF1bHQ6IDAgfSlcbiAgICBuZXh0X29mZnNldCE6IG51bWJlclxuXG4gICAgQFByb3BlcnR5KHsgbnVsbGFibGU6IHRydWUsIHR5cGU6ICdqc29uJyB9KVxuICAgIG1ldGFkYXRhPzogUmVjb3JkPHN0cmluZywgdW5rbm93bj4gfCBudWxsXG5cbiAgICBATWFueVRvT25lKHtcbiAgICAgICAgZW50aXR5OiAoKSA9PiBQcm9qZWN0LFxuICAgICAgICBmaWVsZE5hbWU6ICdwcm9qZWN0X2lkJyxcbiAgICAgICAgZGVmZXJNb2RlOiBEZWZlck1vZGUuSU5JVElBTExZX0RFRkVSUkVELFxuICAgICAgICBpbmRleDogJ3NrYWxkX3Byb2plY3Rfc3dlZXBfc3RhdGVfcHJvamVjdF9pZF9pZHgnLFxuICAgIH0pXG4gICAgcHJvamVjdCE6IFByb2plY3Rcbn1cbiJdLCJ2ZXJzaW9uIjozfQ==

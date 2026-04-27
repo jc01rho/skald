@@ -1,0 +1,89 @@
+1259f65961c01ffa97afce09687c1be7
+"use strict";
+var __decorate = (this && this.__decorate) || function (decorators, target, key, desc) {
+    var c = arguments.length, r = c < 3 ? target : desc === null ? desc = Object.getOwnPropertyDescriptor(target, key) : desc, d;
+    if (typeof Reflect === "object" && typeof Reflect.decorate === "function") r = Reflect.decorate(decorators, target, key, desc);
+    else for (var i = decorators.length - 1; i >= 0; i--) if (d = decorators[i]) r = (c < 3 ? d(r) : c > 3 ? d(target, key, r) : d(target, key)) || r;
+    return c > 3 && r && Object.defineProperty(target, key, r), r;
+};
+var __metadata = (this && this.__metadata) || function (k, v) {
+    if (typeof Reflect === "object" && typeof Reflect.metadata === "function") return Reflect.metadata(k, v);
+};
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.WikiEdge = void 0;
+const core_1 = require("@mikro-orm/core");
+const Project_1 = require("@/entities/Project");
+const WikiNode_1 = require("@/entities/WikiNode");
+let WikiEdge = class WikiEdge {
+    uuid;
+    created_at;
+    updated_at;
+    edge_type;
+    weight;
+    provenance_type;
+    from_node;
+    to_node;
+    project;
+};
+exports.WikiEdge = WikiEdge;
+__decorate([
+    (0, core_1.PrimaryKey)({ type: 'uuid' }),
+    __metadata("design:type", String)
+], WikiEdge.prototype, "uuid", void 0);
+__decorate([
+    (0, core_1.Property)(),
+    __metadata("design:type", Date)
+], WikiEdge.prototype, "created_at", void 0);
+__decorate([
+    (0, core_1.Property)(),
+    __metadata("design:type", Date)
+], WikiEdge.prototype, "updated_at", void 0);
+__decorate([
+    (0, core_1.Property)({ length: 50 }),
+    __metadata("design:type", String)
+], WikiEdge.prototype, "edge_type", void 0);
+__decorate([
+    (0, core_1.Property)({ default: 1 }),
+    __metadata("design:type", Number)
+], WikiEdge.prototype, "weight", void 0);
+__decorate([
+    (0, core_1.Property)({ nullable: true, length: 50 }),
+    __metadata("design:type", Object)
+], WikiEdge.prototype, "provenance_type", void 0);
+__decorate([
+    (0, core_1.ManyToOne)({
+        entity: () => WikiNode_1.WikiNode,
+        fieldName: 'from_node_id',
+        deferMode: core_1.DeferMode.INITIALLY_DEFERRED,
+        index: 'skald_wiki_edge_from_node_id_idx',
+    }),
+    __metadata("design:type", WikiNode_1.WikiNode)
+], WikiEdge.prototype, "from_node", void 0);
+__decorate([
+    (0, core_1.ManyToOne)({
+        entity: () => WikiNode_1.WikiNode,
+        fieldName: 'to_node_id',
+        deferMode: core_1.DeferMode.INITIALLY_DEFERRED,
+        index: 'skald_wiki_edge_to_node_id_idx',
+    }),
+    __metadata("design:type", WikiNode_1.WikiNode)
+], WikiEdge.prototype, "to_node", void 0);
+__decorate([
+    (0, core_1.ManyToOne)({
+        entity: () => Project_1.Project,
+        fieldName: 'project_id',
+        deferMode: core_1.DeferMode.INITIALLY_DEFERRED,
+        index: 'skald_wiki_edge_project_id_idx',
+    }),
+    __metadata("design:type", Project_1.Project)
+], WikiEdge.prototype, "project", void 0);
+exports.WikiEdge = WikiEdge = __decorate([
+    (0, core_1.Entity)({ tableName: 'skald_wiki_edge' }),
+    (0, core_1.Unique)({
+        name: 'skald_wiki_edge_project_from_to_type_key',
+        properties: ['project', 'from_node', 'to_node', 'edge_type'],
+    }),
+    (0, core_1.Index)({ name: 'skald_wiki_edge_project_type_idx', properties: ['project', 'edge_type'] }),
+    (0, core_1.Index)({ name: 'skald_wiki_edge_from_to_idx', properties: ['from_node', 'to_node'] })
+], WikiEdge);
+//# sourceMappingURL=data:application/json;charset=utf-8;base64,eyJmaWxlIjoiL2hvbWUvamMwMXJoby9naXQvc2thbGQvYmFja2VuZC9zcmMvZW50aXRpZXMvV2lraUVkZ2UudHMiLCJtYXBwaW5ncyI6Ijs7Ozs7Ozs7Ozs7O0FBQUEsMENBQW1HO0FBQ25HLGdEQUE0QztBQUM1QyxrREFBOEM7QUFxQnZDLElBQU0sUUFBUSxHQUFkLE1BQU0sUUFBUTtJQUVqQixJQUFJLENBQVM7SUFHYixVQUFVLENBQU87SUFHakIsVUFBVSxDQUFPO0lBR2pCLFNBQVMsQ0FBZTtJQUd4QixNQUFNLENBQVM7SUFHZixlQUFlLENBQWdCO0lBUS9CLFNBQVMsQ0FBVztJQVFwQixPQUFPLENBQVc7SUFRbEIsT0FBTyxDQUFVO0NBQ3BCLENBQUE7QUExQ1ksNEJBQVE7QUFFakI7SUFEQyxJQUFBLGlCQUFVLEVBQUMsRUFBRSxJQUFJLEVBQUUsTUFBTSxFQUFFLENBQUM7O3NDQUNoQjtBQUdiO0lBREMsSUFBQSxlQUFRLEdBQUU7OEJBQ0UsSUFBSTs0Q0FBQTtBQUdqQjtJQURDLElBQUEsZUFBUSxHQUFFOzhCQUNFLElBQUk7NENBQUE7QUFHakI7SUFEQyxJQUFBLGVBQVEsRUFBQyxFQUFFLE1BQU0sRUFBRSxFQUFFLEVBQUUsQ0FBQzs7MkNBQ0Q7QUFHeEI7SUFEQyxJQUFBLGVBQVEsRUFBQyxFQUFFLE9BQU8sRUFBRSxDQUFDLEVBQUUsQ0FBQzs7d0NBQ1Y7QUFHZjtJQURDLElBQUEsZUFBUSxFQUFDLEVBQUUsUUFBUSxFQUFFLElBQUksRUFBRSxNQUFNLEVBQUUsRUFBRSxFQUFFLENBQUM7O2lEQUNWO0FBUS9CO0lBTkMsSUFBQSxnQkFBUyxFQUFDO1FBQ1AsTUFBTSxFQUFFLEdBQUcsRUFBRSxDQUFDLG1CQUFRO1FBQ3RCLFNBQVMsRUFBRSxjQUFjO1FBQ3pCLFNBQVMsRUFBRSxnQkFBUyxDQUFDLGtCQUFrQjtRQUN2QyxLQUFLLEVBQUUsa0NBQWtDO0tBQzVDLENBQUM7OEJBQ1UsbUJBQVE7MkNBQUE7QUFRcEI7SUFOQyxJQUFBLGdCQUFTLEVBQUM7UUFDUCxNQUFNLEVBQUUsR0FBRyxFQUFFLENBQUMsbUJBQVE7UUFDdEIsU0FBUyxFQUFFLFlBQVk7UUFDdkIsU0FBUyxFQUFFLGdCQUFTLENBQUMsa0JBQWtCO1FBQ3ZDLEtBQUssRUFBRSxnQ0FBZ0M7S0FDMUMsQ0FBQzs4QkFDUSxtQkFBUTt5Q0FBQTtBQVFsQjtJQU5DLElBQUEsZ0JBQVMsRUFBQztRQUNQLE1BQU0sRUFBRSxHQUFHLEVBQUUsQ0FBQyxpQkFBTztRQUNyQixTQUFTLEVBQUUsWUFBWTtRQUN2QixTQUFTLEVBQUUsZ0JBQVMsQ0FBQyxrQkFBa0I7UUFDdkMsS0FBSyxFQUFFLGdDQUFnQztLQUMxQyxDQUFDOzhCQUNRLGlCQUFPO3lDQUFBO21CQXpDUixRQUFRO0lBUHBCLElBQUEsYUFBTSxFQUFDLEVBQUUsU0FBUyxFQUFFLGlCQUFpQixFQUFFLENBQUM7SUFDeEMsSUFBQSxhQUFNLEVBQUM7UUFDSixJQUFJLEVBQUUsMENBQTBDO1FBQ2hELFVBQVUsRUFBRSxDQUFDLFNBQVMsRUFBRSxXQUFXLEVBQUUsU0FBUyxFQUFFLFdBQVcsQ0FBQztLQUMvRCxDQUFDO0lBQ0QsSUFBQSxZQUFLLEVBQUMsRUFBRSxJQUFJLEVBQUUsa0NBQWtDLEVBQUUsVUFBVSxFQUFFLENBQUMsU0FBUyxFQUFFLFdBQVcsQ0FBQyxFQUFFLENBQUM7SUFDekYsSUFBQSxZQUFLLEVBQUMsRUFBRSxJQUFJLEVBQUUsNkJBQTZCLEVBQUUsVUFBVSxFQUFFLENBQUMsV0FBVyxFQUFFLFNBQVMsQ0FBQyxFQUFFLENBQUM7R0FDeEUsUUFBUSxDQTBDcEIiLCJuYW1lcyI6W10sInNvdXJjZXMiOlsiL2hvbWUvamMwMXJoby9naXQvc2thbGQvYmFja2VuZC9zcmMvZW50aXRpZXMvV2lraUVkZ2UudHMiXSwic291cmNlc0NvbnRlbnQiOlsiaW1wb3J0IHsgRGVmZXJNb2RlLCBFbnRpdHksIEluZGV4LCBNYW55VG9PbmUsIFByaW1hcnlLZXksIFByb3BlcnR5LCBVbmlxdWUgfSBmcm9tICdAbWlrcm8tb3JtL2NvcmUnXG5pbXBvcnQgeyBQcm9qZWN0IH0gZnJvbSAnQC9lbnRpdGllcy9Qcm9qZWN0J1xuaW1wb3J0IHsgV2lraU5vZGUgfSBmcm9tICdAL2VudGl0aWVzL1dpa2lOb2RlJ1xuXG5leHBvcnQgdHlwZSBXaWtpRWRnZVR5cGUgPVxuICAgIHwgJ2RlZmluZXMnXG4gICAgfCAncmVsYXRlc190bydcbiAgICB8ICdkZXBlbmRzX29uJ1xuICAgIHwgJ3BhcnRfb2YnXG4gICAgfCAnY29udHJhc3RzX3dpdGgnXG4gICAgfCAnc3VwZXJzZWRlcydcbiAgICB8ICdzdXBwb3J0ZWRfYnknXG4gICAgfCAnY29udHJhZGljdHMnXG4gICAgfCAnZGVyaXZlZF9mcm9tJ1xuICAgIHwgJ21lbnRpb25lZF9pbidcblxuQEVudGl0eSh7IHRhYmxlTmFtZTogJ3NrYWxkX3dpa2lfZWRnZScgfSlcbkBVbmlxdWUoe1xuICAgIG5hbWU6ICdza2FsZF93aWtpX2VkZ2VfcHJvamVjdF9mcm9tX3RvX3R5cGVfa2V5JyxcbiAgICBwcm9wZXJ0aWVzOiBbJ3Byb2plY3QnLCAnZnJvbV9ub2RlJywgJ3RvX25vZGUnLCAnZWRnZV90eXBlJ10sXG59KVxuQEluZGV4KHsgbmFtZTogJ3NrYWxkX3dpa2lfZWRnZV9wcm9qZWN0X3R5cGVfaWR4JywgcHJvcGVydGllczogWydwcm9qZWN0JywgJ2VkZ2VfdHlwZSddIH0pXG5ASW5kZXgoeyBuYW1lOiAnc2thbGRfd2lraV9lZGdlX2Zyb21fdG9faWR4JywgcHJvcGVydGllczogWydmcm9tX25vZGUnLCAndG9fbm9kZSddIH0pXG5leHBvcnQgY2xhc3MgV2lraUVkZ2Uge1xuICAgIEBQcmltYXJ5S2V5KHsgdHlwZTogJ3V1aWQnIH0pXG4gICAgdXVpZCE6IHN0cmluZ1xuXG4gICAgQFByb3BlcnR5KClcbiAgICBjcmVhdGVkX2F0ITogRGF0ZVxuXG4gICAgQFByb3BlcnR5KClcbiAgICB1cGRhdGVkX2F0ITogRGF0ZVxuXG4gICAgQFByb3BlcnR5KHsgbGVuZ3RoOiA1MCB9KVxuICAgIGVkZ2VfdHlwZSE6IFdpa2lFZGdlVHlwZVxuXG4gICAgQFByb3BlcnR5KHsgZGVmYXVsdDogMSB9KVxuICAgIHdlaWdodCE6IG51bWJlclxuXG4gICAgQFByb3BlcnR5KHsgbnVsbGFibGU6IHRydWUsIGxlbmd0aDogNTAgfSlcbiAgICBwcm92ZW5hbmNlX3R5cGU/OiBzdHJpbmcgfCBudWxsXG5cbiAgICBATWFueVRvT25lKHtcbiAgICAgICAgZW50aXR5OiAoKSA9PiBXaWtpTm9kZSxcbiAgICAgICAgZmllbGROYW1lOiAnZnJvbV9ub2RlX2lkJyxcbiAgICAgICAgZGVmZXJNb2RlOiBEZWZlck1vZGUuSU5JVElBTExZX0RFRkVSUkVELFxuICAgICAgICBpbmRleDogJ3NrYWxkX3dpa2lfZWRnZV9mcm9tX25vZGVfaWRfaWR4JyxcbiAgICB9KVxuICAgIGZyb21fbm9kZSE6IFdpa2lOb2RlXG5cbiAgICBATWFueVRvT25lKHtcbiAgICAgICAgZW50aXR5OiAoKSA9PiBXaWtpTm9kZSxcbiAgICAgICAgZmllbGROYW1lOiAndG9fbm9kZV9pZCcsXG4gICAgICAgIGRlZmVyTW9kZTogRGVmZXJNb2RlLklOSVRJQUxMWV9ERUZFUlJFRCxcbiAgICAgICAgaW5kZXg6ICdza2FsZF93aWtpX2VkZ2VfdG9fbm9kZV9pZF9pZHgnLFxuICAgIH0pXG4gICAgdG9fbm9kZSE6IFdpa2lOb2RlXG5cbiAgICBATWFueVRvT25lKHtcbiAgICAgICAgZW50aXR5OiAoKSA9PiBQcm9qZWN0LFxuICAgICAgICBmaWVsZE5hbWU6ICdwcm9qZWN0X2lkJyxcbiAgICAgICAgZGVmZXJNb2RlOiBEZWZlck1vZGUuSU5JVElBTExZX0RFRkVSUkVELFxuICAgICAgICBpbmRleDogJ3NrYWxkX3dpa2lfZWRnZV9wcm9qZWN0X2lkX2lkeCcsXG4gICAgfSlcbiAgICBwcm9qZWN0ITogUHJvamVjdFxufVxuIl0sInZlcnNpb24iOjN9

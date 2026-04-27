@@ -169,6 +169,10 @@ function buildMentionErrorMessage(errorMessage: string): string {
         return '백엔드 채팅 엔드포인트를 찾지 못했습니다. 배포 설정을 확인해 주세요.'
     }
 
+    if (/HTTP error:\s*5\d\d/i.test(normalized)) {
+        return '백엔드 서버 오류가 발생했습니다. 잠시 후 다시 시도해 주세요.'
+    }
+
     return '요청 처리 중 오류가 발생했습니다.'
 }
 

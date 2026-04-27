@@ -1,0 +1,90 @@
+713e226018e42dcd45a35a14fea7eb9b
+"use strict";
+var __decorate = (this && this.__decorate) || function (decorators, target, key, desc) {
+    var c = arguments.length, r = c < 3 ? target : desc === null ? desc = Object.getOwnPropertyDescriptor(target, key) : desc, d;
+    if (typeof Reflect === "object" && typeof Reflect.decorate === "function") r = Reflect.decorate(decorators, target, key, desc);
+    else for (var i = decorators.length - 1; i >= 0; i--) if (d = decorators[i]) r = (c < 3 ? d(r) : c > 3 ? d(target, key, r) : d(target, key)) || r;
+    return c > 3 && r && Object.defineProperty(target, key, r), r;
+};
+var __metadata = (this && this.__metadata) || function (k, v) {
+    if (typeof Reflect === "object" && typeof Reflect.metadata === "function") return Reflect.metadata(k, v);
+};
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.MemoChunk = void 0;
+const core_1 = require("@mikro-orm/core");
+const Memo_1 = require("@/entities/Memo");
+const Project_1 = require("@/entities/Project");
+const MemoParentChunk_1 = require("@/entities/MemoParentChunk");
+let MemoChunk = class MemoChunk {
+    uuid;
+    chunk_content;
+    chunk_index;
+    embedding;
+    memo_uuid;
+    project_uuid;
+    parent_chunk_uuid;
+    memo;
+    project;
+    parent_chunk;
+};
+exports.MemoChunk = MemoChunk;
+__decorate([
+    (0, core_1.PrimaryKey)({ type: 'uuid' }),
+    __metadata("design:type", String)
+], MemoChunk.prototype, "uuid", void 0);
+__decorate([
+    (0, core_1.Property)({ type: 'text' }),
+    __metadata("design:type", String)
+], MemoChunk.prototype, "chunk_content", void 0);
+__decorate([
+    (0, core_1.Property)(),
+    __metadata("design:type", Number)
+], MemoChunk.prototype, "chunk_index", void 0);
+__decorate([
+    (0, core_1.Property)({ columnType: 'vector(2048)', ignoreSchemaChanges: ['type'] }),
+    __metadata("design:type", Object)
+], MemoChunk.prototype, "embedding", void 0);
+__decorate([
+    (0, core_1.Property)({ type: 'uuid' }),
+    __metadata("design:type", String)
+], MemoChunk.prototype, "memo_uuid", void 0);
+__decorate([
+    (0, core_1.Property)({ type: 'uuid' }),
+    __metadata("design:type", String)
+], MemoChunk.prototype, "project_uuid", void 0);
+__decorate([
+    (0, core_1.Property)({ type: 'uuid', nullable: true }),
+    __metadata("design:type", String)
+], MemoChunk.prototype, "parent_chunk_uuid", void 0);
+__decorate([
+    (0, core_1.ManyToOne)({
+        entity: () => Memo_1.Memo,
+        fieldName: 'memo_id',
+        deferMode: core_1.DeferMode.INITIALLY_DEFERRED,
+        index: 'skald_memochunk_memo_id_0faad25b',
+    }),
+    __metadata("design:type", Memo_1.Memo)
+], MemoChunk.prototype, "memo", void 0);
+__decorate([
+    (0, core_1.ManyToOne)({
+        entity: () => Project_1.Project,
+        fieldName: 'project_id',
+        deferMode: core_1.DeferMode.INITIALLY_DEFERRED,
+        index: 'skald_memochunk_project_id_6ec66677',
+    }),
+    __metadata("design:type", Project_1.Project)
+], MemoChunk.prototype, "project", void 0);
+__decorate([
+    (0, core_1.ManyToOne)({
+        entity: () => MemoParentChunk_1.MemoParentChunk,
+        fieldName: 'parent_chunk_id',
+        deferMode: core_1.DeferMode.INITIALLY_DEFERRED,
+        nullable: true,
+        index: 'skald_memochunk_parent_chunk_id',
+    }),
+    __metadata("design:type", MemoParentChunk_1.MemoParentChunk)
+], MemoChunk.prototype, "parent_chunk", void 0);
+exports.MemoChunk = MemoChunk = __decorate([
+    (0, core_1.Entity)({ tableName: 'skald_memochunk' })
+], MemoChunk);
+//# sourceMappingURL=data:application/json;charset=utf-8;base64,eyJmaWxlIjoiL2hvbWUvamMwMXJoby9naXQvc2thbGQvYmFja2VuZC9zcmMvZW50aXRpZXMvTWVtb0NodW5rLnRzIiwibWFwcGluZ3MiOiI7Ozs7Ozs7Ozs7OztBQUFBLDBDQUFvRjtBQUNwRiwwQ0FBc0M7QUFDdEMsZ0RBQTRDO0FBQzVDLGdFQUE0RDtBQUdyRCxJQUFNLFNBQVMsR0FBZixNQUFNLFNBQVM7SUFFbEIsSUFBSSxDQUFTO0lBR2IsYUFBYSxDQUFTO0lBR3RCLFdBQVcsQ0FBUztJQUdwQixTQUFTLENBQVU7SUFHbkIsU0FBUyxDQUFTO0lBR2xCLFlBQVksQ0FBUztJQUdyQixpQkFBaUIsQ0FBUztJQVExQixJQUFJLENBQU87SUFRWCxPQUFPLENBQVU7SUFTakIsWUFBWSxDQUFrQjtDQUNqQyxDQUFBO0FBOUNZLDhCQUFTO0FBRWxCO0lBREMsSUFBQSxpQkFBVSxFQUFDLEVBQUUsSUFBSSxFQUFFLE1BQU0sRUFBRSxDQUFDOzt1Q0FDaEI7QUFHYjtJQURDLElBQUEsZUFBUSxFQUFDLEVBQUUsSUFBSSxFQUFFLE1BQU0sRUFBRSxDQUFDOztnREFDTDtBQUd0QjtJQURDLElBQUEsZUFBUSxHQUFFOzs4Q0FDUztBQUdwQjtJQURDLElBQUEsZUFBUSxFQUFDLEVBQUUsVUFBVSxFQUFFLGNBQWMsRUFBRSxtQkFBbUIsRUFBRSxDQUFDLE1BQU0sQ0FBQyxFQUFFLENBQUM7OzRDQUNyRDtBQUduQjtJQURDLElBQUEsZUFBUSxFQUFDLEVBQUUsSUFBSSxFQUFFLE1BQU0sRUFBRSxDQUFDOzs0Q0FDVDtBQUdsQjtJQURDLElBQUEsZUFBUSxFQUFDLEVBQUUsSUFBSSxFQUFFLE1BQU0sRUFBRSxDQUFDOzsrQ0FDTjtBQUdyQjtJQURDLElBQUEsZUFBUSxFQUFDLEVBQUUsSUFBSSxFQUFFLE1BQU0sRUFBRSxRQUFRLEVBQUUsSUFBSSxFQUFFLENBQUM7O29EQUNqQjtBQVExQjtJQU5DLElBQUEsZ0JBQVMsRUFBQztRQUNQLE1BQU0sRUFBRSxHQUFHLEVBQUUsQ0FBQyxXQUFJO1FBQ2xCLFNBQVMsRUFBRSxTQUFTO1FBQ3BCLFNBQVMsRUFBRSxnQkFBUyxDQUFDLGtCQUFrQjtRQUN2QyxLQUFLLEVBQUUsa0NBQWtDO0tBQzVDLENBQUM7OEJBQ0ssV0FBSTt1Q0FBQTtBQVFYO0lBTkMsSUFBQSxnQkFBUyxFQUFDO1FBQ1AsTUFBTSxFQUFFLEdBQUcsRUFBRSxDQUFDLGlCQUFPO1FBQ3JCLFNBQVMsRUFBRSxZQUFZO1FBQ3ZCLFNBQVMsRUFBRSxnQkFBUyxDQUFDLGtCQUFrQjtRQUN2QyxLQUFLLEVBQUUscUNBQXFDO0tBQy9DLENBQUM7OEJBQ1EsaUJBQU87MENBQUE7QUFTakI7SUFQQyxJQUFBLGdCQUFTLEVBQUM7UUFDUCxNQUFNLEVBQUUsR0FBRyxFQUFFLENBQUMsaUNBQWU7UUFDN0IsU0FBUyxFQUFFLGlCQUFpQjtRQUM1QixTQUFTLEVBQUUsZ0JBQVMsQ0FBQyxrQkFBa0I7UUFDdkMsUUFBUSxFQUFFLElBQUk7UUFDZCxLQUFLLEVBQUUsaUNBQWlDO0tBQzNDLENBQUM7OEJBQ2EsaUNBQWU7K0NBQUE7b0JBN0NyQixTQUFTO0lBRHJCLElBQUEsYUFBTSxFQUFDLEVBQUUsU0FBUyxFQUFFLGlCQUFpQixFQUFFLENBQUM7R0FDNUIsU0FBUyxDQThDckIiLCJuYW1lcyI6W10sInNvdXJjZXMiOlsiL2hvbWUvamMwMXJoby9naXQvc2thbGQvYmFja2VuZC9zcmMvZW50aXRpZXMvTWVtb0NodW5rLnRzIl0sInNvdXJjZXNDb250ZW50IjpbImltcG9ydCB7IERlZmVyTW9kZSwgRW50aXR5LCBNYW55VG9PbmUsIFByaW1hcnlLZXksIFByb3BlcnR5IH0gZnJvbSAnQG1pa3JvLW9ybS9jb3JlJ1xuaW1wb3J0IHsgTWVtbyB9IGZyb20gJ0AvZW50aXRpZXMvTWVtbydcbmltcG9ydCB7IFByb2plY3QgfSBmcm9tICdAL2VudGl0aWVzL1Byb2plY3QnXG5pbXBvcnQgeyBNZW1vUGFyZW50Q2h1bmsgfSBmcm9tICdAL2VudGl0aWVzL01lbW9QYXJlbnRDaHVuaydcblxuQEVudGl0eSh7IHRhYmxlTmFtZTogJ3NrYWxkX21lbW9jaHVuaycgfSlcbmV4cG9ydCBjbGFzcyBNZW1vQ2h1bmsge1xuICAgIEBQcmltYXJ5S2V5KHsgdHlwZTogJ3V1aWQnIH0pXG4gICAgdXVpZCE6IHN0cmluZ1xuXG4gICAgQFByb3BlcnR5KHsgdHlwZTogJ3RleHQnIH0pXG4gICAgY2h1bmtfY29udGVudCE6IHN0cmluZ1xuXG4gICAgQFByb3BlcnR5KClcbiAgICBjaHVua19pbmRleCE6IG51bWJlclxuXG4gICAgQFByb3BlcnR5KHsgY29sdW1uVHlwZTogJ3ZlY3RvcigyMDQ4KScsIGlnbm9yZVNjaGVtYUNoYW5nZXM6IFsndHlwZSddIH0pXG4gICAgZW1iZWRkaW5nITogdW5rbm93blxuXG4gICAgQFByb3BlcnR5KHsgdHlwZTogJ3V1aWQnIH0pXG4gICAgbWVtb191dWlkITogc3RyaW5nXG5cbiAgICBAUHJvcGVydHkoeyB0eXBlOiAndXVpZCcgfSlcbiAgICBwcm9qZWN0X3V1aWQhOiBzdHJpbmdcblxuICAgIEBQcm9wZXJ0eSh7IHR5cGU6ICd1dWlkJywgbnVsbGFibGU6IHRydWUgfSlcbiAgICBwYXJlbnRfY2h1bmtfdXVpZD86IHN0cmluZ1xuXG4gICAgQE1hbnlUb09uZSh7XG4gICAgICAgIGVudGl0eTogKCkgPT4gTWVtbyxcbiAgICAgICAgZmllbGROYW1lOiAnbWVtb19pZCcsXG4gICAgICAgIGRlZmVyTW9kZTogRGVmZXJNb2RlLklOSVRJQUxMWV9ERUZFUlJFRCxcbiAgICAgICAgaW5kZXg6ICdza2FsZF9tZW1vY2h1bmtfbWVtb19pZF8wZmFhZDI1YicsXG4gICAgfSlcbiAgICBtZW1vITogTWVtb1xuXG4gICAgQE1hbnlUb09uZSh7XG4gICAgICAgIGVudGl0eTogKCkgPT4gUHJvamVjdCxcbiAgICAgICAgZmllbGROYW1lOiAncHJvamVjdF9pZCcsXG4gICAgICAgIGRlZmVyTW9kZTogRGVmZXJNb2RlLklOSVRJQUxMWV9ERUZFUlJFRCxcbiAgICAgICAgaW5kZXg6ICdza2FsZF9tZW1vY2h1bmtfcHJvamVjdF9pZF82ZWM2NjY3NycsXG4gICAgfSlcbiAgICBwcm9qZWN0ITogUHJvamVjdFxuXG4gICAgQE1hbnlUb09uZSh7XG4gICAgICAgIGVudGl0eTogKCkgPT4gTWVtb1BhcmVudENodW5rLFxuICAgICAgICBmaWVsZE5hbWU6ICdwYXJlbnRfY2h1bmtfaWQnLFxuICAgICAgICBkZWZlck1vZGU6IERlZmVyTW9kZS5JTklUSUFMTFlfREVGRVJSRUQsXG4gICAgICAgIG51bGxhYmxlOiB0cnVlLFxuICAgICAgICBpbmRleDogJ3NrYWxkX21lbW9jaHVua19wYXJlbnRfY2h1bmtfaWQnLFxuICAgIH0pXG4gICAgcGFyZW50X2NodW5rPzogTWVtb1BhcmVudENodW5rXG59XG4iXSwidmVyc2lvbiI6M30=

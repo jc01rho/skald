@@ -1,0 +1,106 @@
+2631f495dee69da5ab2cc40c86bf99c4
+"use strict";
+var __decorate = (this && this.__decorate) || function (decorators, target, key, desc) {
+    var c = arguments.length, r = c < 3 ? target : desc === null ? desc = Object.getOwnPropertyDescriptor(target, key) : desc, d;
+    if (typeof Reflect === "object" && typeof Reflect.decorate === "function") r = Reflect.decorate(decorators, target, key, desc);
+    else for (var i = decorators.length - 1; i >= 0; i--) if (d = decorators[i]) r = (c < 3 ? d(r) : c > 3 ? d(target, key, r) : d(target, key)) || r;
+    return c > 3 && r && Object.defineProperty(target, key, r), r;
+};
+var __metadata = (this && this.__metadata) || function (k, v) {
+    if (typeof Reflect === "object" && typeof Reflect.metadata === "function") return Reflect.metadata(k, v);
+};
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.WikiSourceRef = void 0;
+const core_1 = require("@mikro-orm/core");
+const Memo_1 = require("@/entities/Memo");
+const MemoChunk_1 = require("@/entities/MemoChunk");
+const MemoSummary_1 = require("@/entities/MemoSummary");
+const Project_1 = require("@/entities/Project");
+const RawSourceDocument_1 = require("@/entities/RawSourceDocument");
+let WikiSourceRef = class WikiSourceRef {
+    uuid;
+    created_at;
+    source_kind;
+    locator_text;
+    excerpt;
+    memo;
+    memo_chunk;
+    memo_summary;
+    raw_source_document;
+    project;
+};
+exports.WikiSourceRef = WikiSourceRef;
+__decorate([
+    (0, core_1.PrimaryKey)({ type: 'uuid' }),
+    __metadata("design:type", String)
+], WikiSourceRef.prototype, "uuid", void 0);
+__decorate([
+    (0, core_1.Property)(),
+    __metadata("design:type", Date)
+], WikiSourceRef.prototype, "created_at", void 0);
+__decorate([
+    (0, core_1.Property)({ length: 50 }),
+    __metadata("design:type", String)
+], WikiSourceRef.prototype, "source_kind", void 0);
+__decorate([
+    (0, core_1.Property)({ nullable: true, type: 'text' }),
+    __metadata("design:type", Object)
+], WikiSourceRef.prototype, "locator_text", void 0);
+__decorate([
+    (0, core_1.Property)({ nullable: true, type: 'text' }),
+    __metadata("design:type", Object)
+], WikiSourceRef.prototype, "excerpt", void 0);
+__decorate([
+    (0, core_1.ManyToOne)({
+        entity: () => Memo_1.Memo,
+        fieldName: 'memo_id',
+        deferMode: core_1.DeferMode.INITIALLY_DEFERRED,
+        nullable: true,
+        index: 'skald_wiki_source_ref_memo_id_idx',
+    }),
+    __metadata("design:type", Object)
+], WikiSourceRef.prototype, "memo", void 0);
+__decorate([
+    (0, core_1.ManyToOne)({
+        entity: () => MemoChunk_1.MemoChunk,
+        fieldName: 'memo_chunk_id',
+        deferMode: core_1.DeferMode.INITIALLY_DEFERRED,
+        nullable: true,
+        index: 'skald_wiki_source_ref_chunk_id_idx',
+    }),
+    __metadata("design:type", Object)
+], WikiSourceRef.prototype, "memo_chunk", void 0);
+__decorate([
+    (0, core_1.ManyToOne)({
+        entity: () => MemoSummary_1.MemoSummary,
+        fieldName: 'memo_summary_id',
+        deferMode: core_1.DeferMode.INITIALLY_DEFERRED,
+        nullable: true,
+        index: 'skald_wiki_source_ref_summary_id_idx',
+    }),
+    __metadata("design:type", Object)
+], WikiSourceRef.prototype, "memo_summary", void 0);
+__decorate([
+    (0, core_1.ManyToOne)({
+        entity: () => RawSourceDocument_1.RawSourceDocument,
+        fieldName: 'raw_source_document_id',
+        deferMode: core_1.DeferMode.INITIALLY_DEFERRED,
+        nullable: true,
+        index: 'skald_wiki_source_ref_raw_source_document_id_idx',
+    }),
+    __metadata("design:type", Object)
+], WikiSourceRef.prototype, "raw_source_document", void 0);
+__decorate([
+    (0, core_1.ManyToOne)({
+        entity: () => Project_1.Project,
+        fieldName: 'project_id',
+        deferMode: core_1.DeferMode.INITIALLY_DEFERRED,
+        index: 'skald_wiki_source_ref_project_id_idx',
+    }),
+    __metadata("design:type", Project_1.Project)
+], WikiSourceRef.prototype, "project", void 0);
+exports.WikiSourceRef = WikiSourceRef = __decorate([
+    (0, core_1.Entity)({ tableName: 'skald_wiki_source_ref' }),
+    (0, core_1.Index)({ name: 'skald_wiki_source_ref_project_kind_idx', properties: ['project', 'source_kind'] })
+], WikiSourceRef);
+//# sourceMappingURL=data:application/json;charset=utf-8;base64,eyJmaWxlIjoiL2hvbWUvamMwMXJoby9naXQvc2thbGQvYmFja2VuZC9zcmMvZW50aXRpZXMvV2lraVNvdXJjZVJlZi50cyIsIm1hcHBpbmdzIjoiOzs7Ozs7Ozs7Ozs7QUFBQSwwQ0FBMkY7QUFDM0YsMENBQXNDO0FBQ3RDLG9EQUFnRDtBQUNoRCx3REFBb0Q7QUFDcEQsZ0RBQTRDO0FBQzVDLG9FQUFnRTtBQU16RCxJQUFNLGFBQWEsR0FBbkIsTUFBTSxhQUFhO0lBRXRCLElBQUksQ0FBUztJQUdiLFVBQVUsQ0FBTztJQUdqQixXQUFXLENBQWlCO0lBRzVCLFlBQVksQ0FBZ0I7SUFHNUIsT0FBTyxDQUFnQjtJQVN2QixJQUFJLENBQWM7SUFTbEIsVUFBVSxDQUFtQjtJQVM3QixZQUFZLENBQXFCO0lBU2pDLG1CQUFtQixDQUEyQjtJQVE5QyxPQUFPLENBQVU7Q0FDcEIsQ0FBQTtBQTNEWSxzQ0FBYTtBQUV0QjtJQURDLElBQUEsaUJBQVUsRUFBQyxFQUFFLElBQUksRUFBRSxNQUFNLEVBQUUsQ0FBQzs7MkNBQ2hCO0FBR2I7SUFEQyxJQUFBLGVBQVEsR0FBRTs4QkFDRSxJQUFJO2lEQUFBO0FBR2pCO0lBREMsSUFBQSxlQUFRLEVBQUMsRUFBRSxNQUFNLEVBQUUsRUFBRSxFQUFFLENBQUM7O2tEQUNHO0FBRzVCO0lBREMsSUFBQSxlQUFRLEVBQUMsRUFBRSxRQUFRLEVBQUUsSUFBSSxFQUFFLElBQUksRUFBRSxNQUFNLEVBQUUsQ0FBQzs7bURBQ2Y7QUFHNUI7SUFEQyxJQUFBLGVBQVEsRUFBQyxFQUFFLFFBQVEsRUFBRSxJQUFJLEVBQUUsSUFBSSxFQUFFLE1BQU0sRUFBRSxDQUFDOzs4Q0FDcEI7QUFTdkI7SUFQQyxJQUFBLGdCQUFTLEVBQUM7UUFDUCxNQUFNLEVBQUUsR0FBRyxFQUFFLENBQUMsV0FBSTtRQUNsQixTQUFTLEVBQUUsU0FBUztRQUNwQixTQUFTLEVBQUUsZ0JBQVMsQ0FBQyxrQkFBa0I7UUFDdkMsUUFBUSxFQUFFLElBQUk7UUFDZCxLQUFLLEVBQUUsbUNBQW1DO0tBQzdDLENBQUM7OzJDQUNnQjtBQVNsQjtJQVBDLElBQUEsZ0JBQVMsRUFBQztRQUNQLE1BQU0sRUFBRSxHQUFHLEVBQUUsQ0FBQyxxQkFBUztRQUN2QixTQUFTLEVBQUUsZUFBZTtRQUMxQixTQUFTLEVBQUUsZ0JBQVMsQ0FBQyxrQkFBa0I7UUFDdkMsUUFBUSxFQUFFLElBQUk7UUFDZCxLQUFLLEVBQUUsb0NBQW9DO0tBQzlDLENBQUM7O2lEQUMyQjtBQVM3QjtJQVBDLElBQUEsZ0JBQVMsRUFBQztRQUNQLE1BQU0sRUFBRSxHQUFHLEVBQUUsQ0FBQyx5QkFBVztRQUN6QixTQUFTLEVBQUUsaUJBQWlCO1FBQzVCLFNBQVMsRUFBRSxnQkFBUyxDQUFDLGtCQUFrQjtRQUN2QyxRQUFRLEVBQUUsSUFBSTtRQUNkLEtBQUssRUFBRSxzQ0FBc0M7S0FDaEQsQ0FBQzs7bURBQytCO0FBU2pDO0lBUEMsSUFBQSxnQkFBUyxFQUFDO1FBQ1AsTUFBTSxFQUFFLEdBQUcsRUFBRSxDQUFDLHFDQUFpQjtRQUMvQixTQUFTLEVBQUUsd0JBQXdCO1FBQ25DLFNBQVMsRUFBRSxnQkFBUyxDQUFDLGtCQUFrQjtRQUN2QyxRQUFRLEVBQUUsSUFBSTtRQUNkLEtBQUssRUFBRSxrREFBa0Q7S0FDNUQsQ0FBQzs7MERBQzRDO0FBUTlDO0lBTkMsSUFBQSxnQkFBUyxFQUFDO1FBQ1AsTUFBTSxFQUFFLEdBQUcsRUFBRSxDQUFDLGlCQUFPO1FBQ3JCLFNBQVMsRUFBRSxZQUFZO1FBQ3ZCLFNBQVMsRUFBRSxnQkFBUyxDQUFDLGtCQUFrQjtRQUN2QyxLQUFLLEVBQUUsc0NBQXNDO0tBQ2hELENBQUM7OEJBQ1EsaUJBQU87OENBQUE7d0JBMURSLGFBQWE7SUFGekIsSUFBQSxhQUFNLEVBQUMsRUFBRSxTQUFTLEVBQUUsdUJBQXVCLEVBQUUsQ0FBQztJQUM5QyxJQUFBLFlBQUssRUFBQyxFQUFFLElBQUksRUFBRSx3Q0FBd0MsRUFBRSxVQUFVLEVBQUUsQ0FBQyxTQUFTLEVBQUUsYUFBYSxDQUFDLEVBQUUsQ0FBQztHQUNyRixhQUFhLENBMkR6QiIsIm5hbWVzIjpbXSwic291cmNlcyI6WyIvaG9tZS9qYzAxcmhvL2dpdC9za2FsZC9iYWNrZW5kL3NyYy9lbnRpdGllcy9XaWtpU291cmNlUmVmLnRzIl0sInNvdXJjZXNDb250ZW50IjpbImltcG9ydCB7IERlZmVyTW9kZSwgRW50aXR5LCBJbmRleCwgTWFueVRvT25lLCBQcmltYXJ5S2V5LCBQcm9wZXJ0eSB9IGZyb20gJ0BtaWtyby1vcm0vY29yZSdcbmltcG9ydCB7IE1lbW8gfSBmcm9tICdAL2VudGl0aWVzL01lbW8nXG5pbXBvcnQgeyBNZW1vQ2h1bmsgfSBmcm9tICdAL2VudGl0aWVzL01lbW9DaHVuaydcbmltcG9ydCB7IE1lbW9TdW1tYXJ5IH0gZnJvbSAnQC9lbnRpdGllcy9NZW1vU3VtbWFyeSdcbmltcG9ydCB7IFByb2plY3QgfSBmcm9tICdAL2VudGl0aWVzL1Byb2plY3QnXG5pbXBvcnQgeyBSYXdTb3VyY2VEb2N1bWVudCB9IGZyb20gJ0AvZW50aXRpZXMvUmF3U291cmNlRG9jdW1lbnQnXG5cbmV4cG9ydCB0eXBlIFdpa2lTb3VyY2VLaW5kID0gJ21lbW8nIHwgJ21lbW9fY2h1bmsnIHwgJ21lbW9fc3VtbWFyeScgfCAncmF3X3NvdXJjZSdcblxuQEVudGl0eSh7IHRhYmxlTmFtZTogJ3NrYWxkX3dpa2lfc291cmNlX3JlZicgfSlcbkBJbmRleCh7IG5hbWU6ICdza2FsZF93aWtpX3NvdXJjZV9yZWZfcHJvamVjdF9raW5kX2lkeCcsIHByb3BlcnRpZXM6IFsncHJvamVjdCcsICdzb3VyY2Vfa2luZCddIH0pXG5leHBvcnQgY2xhc3MgV2lraVNvdXJjZVJlZiB7XG4gICAgQFByaW1hcnlLZXkoeyB0eXBlOiAndXVpZCcgfSlcbiAgICB1dWlkITogc3RyaW5nXG5cbiAgICBAUHJvcGVydHkoKVxuICAgIGNyZWF0ZWRfYXQhOiBEYXRlXG5cbiAgICBAUHJvcGVydHkoeyBsZW5ndGg6IDUwIH0pXG4gICAgc291cmNlX2tpbmQhOiBXaWtpU291cmNlS2luZFxuXG4gICAgQFByb3BlcnR5KHsgbnVsbGFibGU6IHRydWUsIHR5cGU6ICd0ZXh0JyB9KVxuICAgIGxvY2F0b3JfdGV4dD86IHN0cmluZyB8IG51bGxcblxuICAgIEBQcm9wZXJ0eSh7IG51bGxhYmxlOiB0cnVlLCB0eXBlOiAndGV4dCcgfSlcbiAgICBleGNlcnB0Pzogc3RyaW5nIHwgbnVsbFxuXG4gICAgQE1hbnlUb09uZSh7XG4gICAgICAgIGVudGl0eTogKCkgPT4gTWVtbyxcbiAgICAgICAgZmllbGROYW1lOiAnbWVtb19pZCcsXG4gICAgICAgIGRlZmVyTW9kZTogRGVmZXJNb2RlLklOSVRJQUxMWV9ERUZFUlJFRCxcbiAgICAgICAgbnVsbGFibGU6IHRydWUsXG4gICAgICAgIGluZGV4OiAnc2thbGRfd2lraV9zb3VyY2VfcmVmX21lbW9faWRfaWR4JyxcbiAgICB9KVxuICAgIG1lbW8/OiBNZW1vIHwgbnVsbFxuXG4gICAgQE1hbnlUb09uZSh7XG4gICAgICAgIGVudGl0eTogKCkgPT4gTWVtb0NodW5rLFxuICAgICAgICBmaWVsZE5hbWU6ICdtZW1vX2NodW5rX2lkJyxcbiAgICAgICAgZGVmZXJNb2RlOiBEZWZlck1vZGUuSU5JVElBTExZX0RFRkVSUkVELFxuICAgICAgICBudWxsYWJsZTogdHJ1ZSxcbiAgICAgICAgaW5kZXg6ICdza2FsZF93aWtpX3NvdXJjZV9yZWZfY2h1bmtfaWRfaWR4JyxcbiAgICB9KVxuICAgIG1lbW9fY2h1bms/OiBNZW1vQ2h1bmsgfCBudWxsXG5cbiAgICBATWFueVRvT25lKHtcbiAgICAgICAgZW50aXR5OiAoKSA9PiBNZW1vU3VtbWFyeSxcbiAgICAgICAgZmllbGROYW1lOiAnbWVtb19zdW1tYXJ5X2lkJyxcbiAgICAgICAgZGVmZXJNb2RlOiBEZWZlck1vZGUuSU5JVElBTExZX0RFRkVSUkVELFxuICAgICAgICBudWxsYWJsZTogdHJ1ZSxcbiAgICAgICAgaW5kZXg6ICdza2FsZF93aWtpX3NvdXJjZV9yZWZfc3VtbWFyeV9pZF9pZHgnLFxuICAgIH0pXG4gICAgbWVtb19zdW1tYXJ5PzogTWVtb1N1bW1hcnkgfCBudWxsXG5cbiAgICBATWFueVRvT25lKHtcbiAgICAgICAgZW50aXR5OiAoKSA9PiBSYXdTb3VyY2VEb2N1bWVudCxcbiAgICAgICAgZmllbGROYW1lOiAncmF3X3NvdXJjZV9kb2N1bWVudF9pZCcsXG4gICAgICAgIGRlZmVyTW9kZTogRGVmZXJNb2RlLklOSVRJQUxMWV9ERUZFUlJFRCxcbiAgICAgICAgbnVsbGFibGU6IHRydWUsXG4gICAgICAgIGluZGV4OiAnc2thbGRfd2lraV9zb3VyY2VfcmVmX3Jhd19zb3VyY2VfZG9jdW1lbnRfaWRfaWR4JyxcbiAgICB9KVxuICAgIHJhd19zb3VyY2VfZG9jdW1lbnQ/OiBSYXdTb3VyY2VEb2N1bWVudCB8IG51bGxcblxuICAgIEBNYW55VG9PbmUoe1xuICAgICAgICBlbnRpdHk6ICgpID0+IFByb2plY3QsXG4gICAgICAgIGZpZWxkTmFtZTogJ3Byb2plY3RfaWQnLFxuICAgICAgICBkZWZlck1vZGU6IERlZmVyTW9kZS5JTklUSUFMTFlfREVGRVJSRUQsXG4gICAgICAgIGluZGV4OiAnc2thbGRfd2lraV9zb3VyY2VfcmVmX3Byb2plY3RfaWRfaWR4JyxcbiAgICB9KVxuICAgIHByb2plY3QhOiBQcm9qZWN0XG59XG4iXSwidmVyc2lvbiI6M30=

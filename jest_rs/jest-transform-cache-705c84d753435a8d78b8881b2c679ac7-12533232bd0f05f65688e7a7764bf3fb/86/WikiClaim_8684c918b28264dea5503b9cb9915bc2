@@ -1,0 +1,97 @@
+d80e576cb830e9615343f16f3feb2d4e
+"use strict";
+var __decorate = (this && this.__decorate) || function (decorators, target, key, desc) {
+    var c = arguments.length, r = c < 3 ? target : desc === null ? desc = Object.getOwnPropertyDescriptor(target, key) : desc, d;
+    if (typeof Reflect === "object" && typeof Reflect.decorate === "function") r = Reflect.decorate(decorators, target, key, desc);
+    else for (var i = decorators.length - 1; i >= 0; i--) if (d = decorators[i]) r = (c < 3 ? d(r) : c > 3 ? d(target, key, r) : d(target, key)) || r;
+    return c > 3 && r && Object.defineProperty(target, key, r), r;
+};
+var __metadata = (this && this.__metadata) || function (k, v) {
+    if (typeof Reflect === "object" && typeof Reflect.metadata === "function") return Reflect.metadata(k, v);
+};
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.WikiClaim = void 0;
+const core_1 = require("@mikro-orm/core");
+const Project_1 = require("@/entities/Project");
+const WikiNode_1 = require("@/entities/WikiNode");
+const WikiPage_1 = require("@/entities/WikiPage");
+let WikiClaim = class WikiClaim {
+    uuid;
+    created_at;
+    updated_at;
+    claim_text;
+    claim_type;
+    confidence;
+    freshness;
+    contradiction_status;
+    page;
+    node;
+    project;
+};
+exports.WikiClaim = WikiClaim;
+__decorate([
+    (0, core_1.PrimaryKey)({ type: 'uuid' }),
+    __metadata("design:type", String)
+], WikiClaim.prototype, "uuid", void 0);
+__decorate([
+    (0, core_1.Property)(),
+    __metadata("design:type", Date)
+], WikiClaim.prototype, "created_at", void 0);
+__decorate([
+    (0, core_1.Property)(),
+    __metadata("design:type", Date)
+], WikiClaim.prototype, "updated_at", void 0);
+__decorate([
+    (0, core_1.Property)({ type: 'text' }),
+    __metadata("design:type", String)
+], WikiClaim.prototype, "claim_text", void 0);
+__decorate([
+    (0, core_1.Property)({ length: 50 }),
+    __metadata("design:type", String)
+], WikiClaim.prototype, "claim_type", void 0);
+__decorate([
+    (0, core_1.Property)({ default: 0.5 }),
+    __metadata("design:type", Number)
+], WikiClaim.prototype, "confidence", void 0);
+__decorate([
+    (0, core_1.Property)({ default: 0.5 }),
+    __metadata("design:type", Number)
+], WikiClaim.prototype, "freshness", void 0);
+__decorate([
+    (0, core_1.Property)({ length: 50, default: 'compatible' }),
+    __metadata("design:type", String)
+], WikiClaim.prototype, "contradiction_status", void 0);
+__decorate([
+    (0, core_1.ManyToOne)({
+        entity: () => WikiPage_1.WikiPage,
+        fieldName: 'page_id',
+        deferMode: core_1.DeferMode.INITIALLY_DEFERRED,
+        index: 'skald_wiki_claim_page_id_idx',
+    }),
+    __metadata("design:type", WikiPage_1.WikiPage)
+], WikiClaim.prototype, "page", void 0);
+__decorate([
+    (0, core_1.ManyToOne)({
+        entity: () => WikiNode_1.WikiNode,
+        fieldName: 'node_id',
+        deferMode: core_1.DeferMode.INITIALLY_DEFERRED,
+        nullable: true,
+        index: 'skald_wiki_claim_node_id_idx',
+    }),
+    __metadata("design:type", Object)
+], WikiClaim.prototype, "node", void 0);
+__decorate([
+    (0, core_1.ManyToOne)({
+        entity: () => Project_1.Project,
+        fieldName: 'project_id',
+        deferMode: core_1.DeferMode.INITIALLY_DEFERRED,
+        index: 'skald_wiki_claim_project_id_idx',
+    }),
+    __metadata("design:type", Project_1.Project)
+], WikiClaim.prototype, "project", void 0);
+exports.WikiClaim = WikiClaim = __decorate([
+    (0, core_1.Entity)({ tableName: 'skald_wiki_claim' }),
+    (0, core_1.Index)({ name: 'skald_wiki_claim_project_type_idx', properties: ['project', 'claim_type'] }),
+    (0, core_1.Index)({ name: 'skald_wiki_claim_page_idx', properties: ['page'] })
+], WikiClaim);
+//# sourceMappingURL=data:application/json;charset=utf-8;base64,eyJmaWxlIjoiL2hvbWUvamMwMXJoby9naXQvc2thbGQvYmFja2VuZC9zcmMvZW50aXRpZXMvV2lraUNsYWltLnRzIiwibWFwcGluZ3MiOiI7Ozs7Ozs7Ozs7OztBQUFBLDBDQUEyRjtBQUMzRixnREFBNEM7QUFDNUMsa0RBQThDO0FBQzlDLGtEQUE4QztBQVF2QyxJQUFNLFNBQVMsR0FBZixNQUFNLFNBQVM7SUFFbEIsSUFBSSxDQUFTO0lBR2IsVUFBVSxDQUFPO0lBR2pCLFVBQVUsQ0FBTztJQUdqQixVQUFVLENBQVM7SUFHbkIsVUFBVSxDQUFnQjtJQUcxQixVQUFVLENBQVM7SUFHbkIsU0FBUyxDQUFTO0lBR2xCLG9CQUFvQixDQUEwQjtJQVE5QyxJQUFJLENBQVc7SUFTZixJQUFJLENBQWtCO0lBUXRCLE9BQU8sQ0FBVTtDQUNwQixDQUFBO0FBakRZLDhCQUFTO0FBRWxCO0lBREMsSUFBQSxpQkFBVSxFQUFDLEVBQUUsSUFBSSxFQUFFLE1BQU0sRUFBRSxDQUFDOzt1Q0FDaEI7QUFHYjtJQURDLElBQUEsZUFBUSxHQUFFOzhCQUNFLElBQUk7NkNBQUE7QUFHakI7SUFEQyxJQUFBLGVBQVEsR0FBRTs4QkFDRSxJQUFJOzZDQUFBO0FBR2pCO0lBREMsSUFBQSxlQUFRLEVBQUMsRUFBRSxJQUFJLEVBQUUsTUFBTSxFQUFFLENBQUM7OzZDQUNSO0FBR25CO0lBREMsSUFBQSxlQUFRLEVBQUMsRUFBRSxNQUFNLEVBQUUsRUFBRSxFQUFFLENBQUM7OzZDQUNDO0FBRzFCO0lBREMsSUFBQSxlQUFRLEVBQUMsRUFBRSxPQUFPLEVBQUUsR0FBRyxFQUFFLENBQUM7OzZDQUNSO0FBR25CO0lBREMsSUFBQSxlQUFRLEVBQUMsRUFBRSxPQUFPLEVBQUUsR0FBRyxFQUFFLENBQUM7OzRDQUNUO0FBR2xCO0lBREMsSUFBQSxlQUFRLEVBQUMsRUFBRSxNQUFNLEVBQUUsRUFBRSxFQUFFLE9BQU8sRUFBRSxZQUFZLEVBQUUsQ0FBQzs7dURBQ0Y7QUFROUM7SUFOQyxJQUFBLGdCQUFTLEVBQUM7UUFDUCxNQUFNLEVBQUUsR0FBRyxFQUFFLENBQUMsbUJBQVE7UUFDdEIsU0FBUyxFQUFFLFNBQVM7UUFDcEIsU0FBUyxFQUFFLGdCQUFTLENBQUMsa0JBQWtCO1FBQ3ZDLEtBQUssRUFBRSw4QkFBOEI7S0FDeEMsQ0FBQzs4QkFDSyxtQkFBUTt1Q0FBQTtBQVNmO0lBUEMsSUFBQSxnQkFBUyxFQUFDO1FBQ1AsTUFBTSxFQUFFLEdBQUcsRUFBRSxDQUFDLG1CQUFRO1FBQ3RCLFNBQVMsRUFBRSxTQUFTO1FBQ3BCLFNBQVMsRUFBRSxnQkFBUyxDQUFDLGtCQUFrQjtRQUN2QyxRQUFRLEVBQUUsSUFBSTtRQUNkLEtBQUssRUFBRSw4QkFBOEI7S0FDeEMsQ0FBQzs7dUNBQ29CO0FBUXRCO0lBTkMsSUFBQSxnQkFBUyxFQUFDO1FBQ1AsTUFBTSxFQUFFLEdBQUcsRUFBRSxDQUFDLGlCQUFPO1FBQ3JCLFNBQVMsRUFBRSxZQUFZO1FBQ3ZCLFNBQVMsRUFBRSxnQkFBUyxDQUFDLGtCQUFrQjtRQUN2QyxLQUFLLEVBQUUsaUNBQWlDO0tBQzNDLENBQUM7OEJBQ1EsaUJBQU87MENBQUE7b0JBaERSLFNBQVM7SUFIckIsSUFBQSxhQUFNLEVBQUMsRUFBRSxTQUFTLEVBQUUsa0JBQWtCLEVBQUUsQ0FBQztJQUN6QyxJQUFBLFlBQUssRUFBQyxFQUFFLElBQUksRUFBRSxtQ0FBbUMsRUFBRSxVQUFVLEVBQUUsQ0FBQyxTQUFTLEVBQUUsWUFBWSxDQUFDLEVBQUUsQ0FBQztJQUMzRixJQUFBLFlBQUssRUFBQyxFQUFFLElBQUksRUFBRSwyQkFBMkIsRUFBRSxVQUFVLEVBQUUsQ0FBQyxNQUFNLENBQUMsRUFBRSxDQUFDO0dBQ3RELFNBQVMsQ0FpRHJCIiwibmFtZXMiOltdLCJzb3VyY2VzIjpbIi9ob21lL2pjMDFyaG8vZ2l0L3NrYWxkL2JhY2tlbmQvc3JjL2VudGl0aWVzL1dpa2lDbGFpbS50cyJdLCJzb3VyY2VzQ29udGVudCI6WyJpbXBvcnQgeyBEZWZlck1vZGUsIEVudGl0eSwgSW5kZXgsIE1hbnlUb09uZSwgUHJpbWFyeUtleSwgUHJvcGVydHkgfSBmcm9tICdAbWlrcm8tb3JtL2NvcmUnXG5pbXBvcnQgeyBQcm9qZWN0IH0gZnJvbSAnQC9lbnRpdGllcy9Qcm9qZWN0J1xuaW1wb3J0IHsgV2lraU5vZGUgfSBmcm9tICdAL2VudGl0aWVzL1dpa2lOb2RlJ1xuaW1wb3J0IHsgV2lraVBhZ2UgfSBmcm9tICdAL2VudGl0aWVzL1dpa2lQYWdlJ1xuXG5leHBvcnQgdHlwZSBXaWtpQ2xhaW1UeXBlID0gJ2ZhY3QnIHwgJ3N1bW1hcnknIHwgJ2ZhcScgfCAncmVsYXRpb25zaGlwJyB8ICdwb2xpY3knIHwgJ3Byb2Nlc3Nfc3RlcCdcbmV4cG9ydCB0eXBlIFdpa2lDb250cmFkaWN0aW9uU3RhdHVzID0gJ2NvbXBhdGlibGUnIHwgJ3N1cGVyc2VkZXMnIHwgJ2NvbnRyYWRpY3RzJyB8ICd1bmNlcnRhaW4nXG5cbkBFbnRpdHkoeyB0YWJsZU5hbWU6ICdza2FsZF93aWtpX2NsYWltJyB9KVxuQEluZGV4KHsgbmFtZTogJ3NrYWxkX3dpa2lfY2xhaW1fcHJvamVjdF90eXBlX2lkeCcsIHByb3BlcnRpZXM6IFsncHJvamVjdCcsICdjbGFpbV90eXBlJ10gfSlcbkBJbmRleCh7IG5hbWU6ICdza2FsZF93aWtpX2NsYWltX3BhZ2VfaWR4JywgcHJvcGVydGllczogWydwYWdlJ10gfSlcbmV4cG9ydCBjbGFzcyBXaWtpQ2xhaW0ge1xuICAgIEBQcmltYXJ5S2V5KHsgdHlwZTogJ3V1aWQnIH0pXG4gICAgdXVpZCE6IHN0cmluZ1xuXG4gICAgQFByb3BlcnR5KClcbiAgICBjcmVhdGVkX2F0ITogRGF0ZVxuXG4gICAgQFByb3BlcnR5KClcbiAgICB1cGRhdGVkX2F0ITogRGF0ZVxuXG4gICAgQFByb3BlcnR5KHsgdHlwZTogJ3RleHQnIH0pXG4gICAgY2xhaW1fdGV4dCE6IHN0cmluZ1xuXG4gICAgQFByb3BlcnR5KHsgbGVuZ3RoOiA1MCB9KVxuICAgIGNsYWltX3R5cGUhOiBXaWtpQ2xhaW1UeXBlXG5cbiAgICBAUHJvcGVydHkoeyBkZWZhdWx0OiAwLjUgfSlcbiAgICBjb25maWRlbmNlITogbnVtYmVyXG5cbiAgICBAUHJvcGVydHkoeyBkZWZhdWx0OiAwLjUgfSlcbiAgICBmcmVzaG5lc3MhOiBudW1iZXJcblxuICAgIEBQcm9wZXJ0eSh7IGxlbmd0aDogNTAsIGRlZmF1bHQ6ICdjb21wYXRpYmxlJyB9KVxuICAgIGNvbnRyYWRpY3Rpb25fc3RhdHVzITogV2lraUNvbnRyYWRpY3Rpb25TdGF0dXNcblxuICAgIEBNYW55VG9PbmUoe1xuICAgICAgICBlbnRpdHk6ICgpID0+IFdpa2lQYWdlLFxuICAgICAgICBmaWVsZE5hbWU6ICdwYWdlX2lkJyxcbiAgICAgICAgZGVmZXJNb2RlOiBEZWZlck1vZGUuSU5JVElBTExZX0RFRkVSUkVELFxuICAgICAgICBpbmRleDogJ3NrYWxkX3dpa2lfY2xhaW1fcGFnZV9pZF9pZHgnLFxuICAgIH0pXG4gICAgcGFnZSE6IFdpa2lQYWdlXG5cbiAgICBATWFueVRvT25lKHtcbiAgICAgICAgZW50aXR5OiAoKSA9PiBXaWtpTm9kZSxcbiAgICAgICAgZmllbGROYW1lOiAnbm9kZV9pZCcsXG4gICAgICAgIGRlZmVyTW9kZTogRGVmZXJNb2RlLklOSVRJQUxMWV9ERUZFUlJFRCxcbiAgICAgICAgbnVsbGFibGU6IHRydWUsXG4gICAgICAgIGluZGV4OiAnc2thbGRfd2lraV9jbGFpbV9ub2RlX2lkX2lkeCcsXG4gICAgfSlcbiAgICBub2RlPzogV2lraU5vZGUgfCBudWxsXG5cbiAgICBATWFueVRvT25lKHtcbiAgICAgICAgZW50aXR5OiAoKSA9PiBQcm9qZWN0LFxuICAgICAgICBmaWVsZE5hbWU6ICdwcm9qZWN0X2lkJyxcbiAgICAgICAgZGVmZXJNb2RlOiBEZWZlck1vZGUuSU5JVElBTExZX0RFRkVSUkVELFxuICAgICAgICBpbmRleDogJ3NrYWxkX3dpa2lfY2xhaW1fcHJvamVjdF9pZF9pZHgnLFxuICAgIH0pXG4gICAgcHJvamVjdCE6IFByb2plY3Rcbn1cbiJdLCJ2ZXJzaW9uIjozfQ==

@@ -7,6 +7,16 @@
 ## OVERVIEW
 
 작업이 끝나면 빌드가 가능한지 빌드 테스트를 하고, 성공했다면 커밋하고 푸쉬해줘
+
+lsp_diagnostics is 'filePath' and 'directory' are mutually exclusive — provide one or neither
+for example
+bad example: lsp_diagnostics [filePath=discord-bot/src/handlers/mentionHandler.ts, directory=__OMIT__, severity=all, waitMs=1000]
+'filePath' and 'directory' are mutually exclusive — provide one or neither
+
+devcenter 보고에 적절한 task 를 찾지 못했을경우, 적절한 스토리에 적절한 task를 생성해도 좋아.
+
+devcenter 보고는 평일에만 할수있어. 평일이 아니거나 목요일 14시-24시 사이라면 작업 대기 예정으로 기록해놓고 다음의 아무 실행떄 평일이라면 그때 보고 하도록 지연시켜줘. 평일이 아니거나 목요일 14시-24시 사이라면 프로젝트 내에 별도의 markdown 파일로 보고 내용을 기록해놓고, 다음 실행때 평일이라면 그 파일을 읽어서 보고하도록 해줘. 보고가 필요한 작업이 여러개라면 모두 기록해놓고, 다음 실행때 평일이라면 모두 보고하도록 해줘. 그 기록을 .opencode/devcenter-pending 에 저장하고, .opencode/devcenter-pending에 처리되지 않은 보고건이 있다면 보고하고 보고를 올리고 삭제해줘
+
 그리고 devcenter에 PROJECT-147 에서 적절한 story를 찾아 create task 및 그의 진행 상황 등록 으로 보고 해줘.
 이 프로젝트의 배포는 commit > push > gh action build wait > deploy with k8s/deploy.sh -y
 

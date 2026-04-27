@@ -1,0 +1,91 @@
+4af0d3f4c8b227a908d75c04b020d46e
+"use strict";
+var __decorate = (this && this.__decorate) || function (decorators, target, key, desc) {
+    var c = arguments.length, r = c < 3 ? target : desc === null ? desc = Object.getOwnPropertyDescriptor(target, key) : desc, d;
+    if (typeof Reflect === "object" && typeof Reflect.decorate === "function") r = Reflect.decorate(decorators, target, key, desc);
+    else for (var i = decorators.length - 1; i >= 0; i--) if (d = decorators[i]) r = (c < 3 ? d(r) : c > 3 ? d(target, key, r) : d(target, key)) || r;
+    return c > 3 && r && Object.defineProperty(target, key, r), r;
+};
+var __metadata = (this && this.__metadata) || function (k, v) {
+    if (typeof Reflect === "object" && typeof Reflect.metadata === "function") return Reflect.metadata(k, v);
+};
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.Project = void 0;
+const core_1 = require("@mikro-orm/core");
+const Organization_1 = require("@/entities/Organization");
+const User_1 = require("@/entities/User");
+let Project = class Project {
+    uuid;
+    created_at;
+    updated_at;
+    name;
+    organization;
+    owner;
+    chat_ui_enabled;
+    chat_ui_logo_url;
+    chat_ui_title;
+    chat_ui_rag_config;
+    chat_ui_slug;
+};
+exports.Project = Project;
+__decorate([
+    (0, core_1.PrimaryKey)({ type: 'uuid' }),
+    __metadata("design:type", String)
+], Project.prototype, "uuid", void 0);
+__decorate([
+    (0, core_1.Property)(),
+    __metadata("design:type", Date)
+], Project.prototype, "created_at", void 0);
+__decorate([
+    (0, core_1.Property)(),
+    __metadata("design:type", Date)
+], Project.prototype, "updated_at", void 0);
+__decorate([
+    (0, core_1.Property)(),
+    __metadata("design:type", String)
+], Project.prototype, "name", void 0);
+__decorate([
+    (0, core_1.ManyToOne)({
+        entity: () => Organization_1.Organization,
+        fieldName: 'organization_id',
+        deferMode: core_1.DeferMode.INITIALLY_DEFERRED,
+        index: 'skald_project_organization_id_826910ec',
+    }),
+    __metadata("design:type", Organization_1.Organization)
+], Project.prototype, "organization", void 0);
+__decorate([
+    (0, core_1.ManyToOne)({
+        entity: () => User_1.User,
+        deferMode: core_1.DeferMode.INITIALLY_DEFERRED,
+        index: 'skald_project_owner_id_5fc4828a',
+    }),
+    __metadata("design:type", User_1.User)
+], Project.prototype, "owner", void 0);
+__decorate([
+    (0, core_1.Property)({ default: false }),
+    __metadata("design:type", Boolean)
+], Project.prototype, "chat_ui_enabled", void 0);
+__decorate([
+    (0, core_1.Property)({ nullable: true }),
+    __metadata("design:type", Object)
+], Project.prototype, "chat_ui_logo_url", void 0);
+__decorate([
+    (0, core_1.Property)({ nullable: true }),
+    __metadata("design:type", Object)
+], Project.prototype, "chat_ui_title", void 0);
+__decorate([
+    (0, core_1.Property)({ type: 'jsonb', nullable: true }),
+    __metadata("design:type", Object)
+], Project.prototype, "chat_ui_rag_config", void 0);
+__decorate([
+    (0, core_1.Property)({
+        nullable: true,
+        unique: 'skald_project_chat_ui_slug_key',
+        index: 'skald_project_chat_ui_slug_idx',
+    }),
+    __metadata("design:type", Object)
+], Project.prototype, "chat_ui_slug", void 0);
+exports.Project = Project = __decorate([
+    (0, core_1.Entity)({ tableName: 'skald_project' })
+], Project);
+//# sourceMappingURL=data:application/json;charset=utf-8;base64,eyJmaWxlIjoiL2hvbWUvamMwMXJoby9naXQvc2thbGQvYmFja2VuZC9zcmMvZW50aXRpZXMvUHJvamVjdC50cyIsIm1hcHBpbmdzIjoiOzs7Ozs7Ozs7Ozs7QUFBQSwwQ0FBb0Y7QUFDcEYsMERBQXNEO0FBQ3RELDBDQUFzQztBQUkvQixJQUFNLE9BQU8sR0FBYixNQUFNLE9BQU87SUFFaEIsSUFBSSxDQUFTO0lBR2IsVUFBVSxDQUFPO0lBR2pCLFVBQVUsQ0FBTztJQUdqQixJQUFJLENBQVM7SUFRYixZQUFZLENBQWU7SUFPM0IsS0FBSyxDQUFPO0lBR1osZUFBZSxDQUFVO0lBR3pCLGdCQUFnQixDQUFnQjtJQUdoQyxhQUFhLENBQWdCO0lBRzdCLGtCQUFrQixDQUFtQjtJQU9yQyxZQUFZLENBQWdCO0NBQy9CLENBQUE7QUE5Q1ksMEJBQU87QUFFaEI7SUFEQyxJQUFBLGlCQUFVLEVBQUMsRUFBRSxJQUFJLEVBQUUsTUFBTSxFQUFFLENBQUM7O3FDQUNoQjtBQUdiO0lBREMsSUFBQSxlQUFRLEdBQUU7OEJBQ0UsSUFBSTsyQ0FBQTtBQUdqQjtJQURDLElBQUEsZUFBUSxHQUFFOzhCQUNFLElBQUk7MkNBQUE7QUFHakI7SUFEQyxJQUFBLGVBQVEsR0FBRTs7cUNBQ0U7QUFRYjtJQU5DLElBQUEsZ0JBQVMsRUFBQztRQUNQLE1BQU0sRUFBRSxHQUFHLEVBQUUsQ0FBQywyQkFBWTtRQUMxQixTQUFTLEVBQUUsaUJBQWlCO1FBQzVCLFNBQVMsRUFBRSxnQkFBUyxDQUFDLGtCQUFrQjtRQUN2QyxLQUFLLEVBQUUsd0NBQXdDO0tBQ2xELENBQUM7OEJBQ2EsMkJBQVk7NkNBQUE7QUFPM0I7SUFMQyxJQUFBLGdCQUFTLEVBQUM7UUFDUCxNQUFNLEVBQUUsR0FBRyxFQUFFLENBQUMsV0FBSTtRQUNsQixTQUFTLEVBQUUsZ0JBQVMsQ0FBQyxrQkFBa0I7UUFDdkMsS0FBSyxFQUFFLGlDQUFpQztLQUMzQyxDQUFDOzhCQUNNLFdBQUk7c0NBQUE7QUFHWjtJQURDLElBQUEsZUFBUSxFQUFDLEVBQUUsT0FBTyxFQUFFLEtBQUssRUFBRSxDQUFDOztnREFDSjtBQUd6QjtJQURDLElBQUEsZUFBUSxFQUFDLEVBQUUsUUFBUSxFQUFFLElBQUksRUFBRSxDQUFDOztpREFDRztBQUdoQztJQURDLElBQUEsZUFBUSxFQUFDLEVBQUUsUUFBUSxFQUFFLElBQUksRUFBRSxDQUFDOzs4Q0FDQTtBQUc3QjtJQURDLElBQUEsZUFBUSxFQUFDLEVBQUUsSUFBSSxFQUFFLE9BQU8sRUFBRSxRQUFRLEVBQUUsSUFBSSxFQUFFLENBQUM7O21EQUNQO0FBT3JDO0lBTEMsSUFBQSxlQUFRLEVBQUM7UUFDTixRQUFRLEVBQUUsSUFBSTtRQUNkLE1BQU0sRUFBRSxnQ0FBZ0M7UUFDeEMsS0FBSyxFQUFFLGdDQUFnQztLQUMxQyxDQUFDOzs2Q0FDMEI7a0JBN0NuQixPQUFPO0lBRG5CLElBQUEsYUFBTSxFQUFDLEVBQUUsU0FBUyxFQUFFLGVBQWUsRUFBRSxDQUFDO0dBQzFCLE9BQU8sQ0E4Q25CIiwibmFtZXMiOltdLCJzb3VyY2VzIjpbIi9ob21lL2pjMDFyaG8vZ2l0L3NrYWxkL2JhY2tlbmQvc3JjL2VudGl0aWVzL1Byb2plY3QudHMiXSwic291cmNlc0NvbnRlbnQiOlsiaW1wb3J0IHsgRGVmZXJNb2RlLCBFbnRpdHksIE1hbnlUb09uZSwgUHJpbWFyeUtleSwgUHJvcGVydHkgfSBmcm9tICdAbWlrcm8tb3JtL2NvcmUnXG5pbXBvcnQgeyBPcmdhbml6YXRpb24gfSBmcm9tICdAL2VudGl0aWVzL09yZ2FuaXphdGlvbidcbmltcG9ydCB7IFVzZXIgfSBmcm9tICdAL2VudGl0aWVzL1VzZXInXG5pbXBvcnQgeyBSQUdDb25maWcgfSBmcm9tICdAL2FnZW50cy9jaGF0QWdlbnQvcmFnR3JhcGgnXG5cbkBFbnRpdHkoeyB0YWJsZU5hbWU6ICdza2FsZF9wcm9qZWN0JyB9KVxuZXhwb3J0IGNsYXNzIFByb2plY3Qge1xuICAgIEBQcmltYXJ5S2V5KHsgdHlwZTogJ3V1aWQnIH0pXG4gICAgdXVpZCE6IHN0cmluZ1xuXG4gICAgQFByb3BlcnR5KClcbiAgICBjcmVhdGVkX2F0ITogRGF0ZVxuXG4gICAgQFByb3BlcnR5KClcbiAgICB1cGRhdGVkX2F0ITogRGF0ZVxuXG4gICAgQFByb3BlcnR5KClcbiAgICBuYW1lITogc3RyaW5nXG5cbiAgICBATWFueVRvT25lKHtcbiAgICAgICAgZW50aXR5OiAoKSA9PiBPcmdhbml6YXRpb24sXG4gICAgICAgIGZpZWxkTmFtZTogJ29yZ2FuaXphdGlvbl9pZCcsXG4gICAgICAgIGRlZmVyTW9kZTogRGVmZXJNb2RlLklOSVRJQUxMWV9ERUZFUlJFRCxcbiAgICAgICAgaW5kZXg6ICdza2FsZF9wcm9qZWN0X29yZ2FuaXphdGlvbl9pZF84MjY5MTBlYycsXG4gICAgfSlcbiAgICBvcmdhbml6YXRpb24hOiBPcmdhbml6YXRpb25cblxuICAgIEBNYW55VG9PbmUoe1xuICAgICAgICBlbnRpdHk6ICgpID0+IFVzZXIsXG4gICAgICAgIGRlZmVyTW9kZTogRGVmZXJNb2RlLklOSVRJQUxMWV9ERUZFUlJFRCxcbiAgICAgICAgaW5kZXg6ICdza2FsZF9wcm9qZWN0X293bmVyX2lkXzVmYzQ4MjhhJyxcbiAgICB9KVxuICAgIG93bmVyITogVXNlclxuXG4gICAgQFByb3BlcnR5KHsgZGVmYXVsdDogZmFsc2UgfSlcbiAgICBjaGF0X3VpX2VuYWJsZWQhOiBib29sZWFuXG5cbiAgICBAUHJvcGVydHkoeyBudWxsYWJsZTogdHJ1ZSB9KVxuICAgIGNoYXRfdWlfbG9nb191cmw/OiBzdHJpbmcgfCBudWxsXG5cbiAgICBAUHJvcGVydHkoeyBudWxsYWJsZTogdHJ1ZSB9KVxuICAgIGNoYXRfdWlfdGl0bGU/OiBzdHJpbmcgfCBudWxsXG5cbiAgICBAUHJvcGVydHkoeyB0eXBlOiAnanNvbmInLCBudWxsYWJsZTogdHJ1ZSB9KVxuICAgIGNoYXRfdWlfcmFnX2NvbmZpZz86IFJBR0NvbmZpZyB8IG51bGxcblxuICAgIEBQcm9wZXJ0eSh7XG4gICAgICAgIG51bGxhYmxlOiB0cnVlLFxuICAgICAgICB1bmlxdWU6ICdza2FsZF9wcm9qZWN0X2NoYXRfdWlfc2x1Z19rZXknLFxuICAgICAgICBpbmRleDogJ3NrYWxkX3Byb2plY3RfY2hhdF91aV9zbHVnX2lkeCcsXG4gICAgfSlcbiAgICBjaGF0X3VpX3NsdWc/OiBzdHJpbmcgfCBudWxsXG59XG4iXSwidmVyc2lvbiI6M30=

@@ -1,0 +1,97 @@
+35b06b77f3d9d412529a52a161562665
+"use strict";
+var __decorate = (this && this.__decorate) || function (decorators, target, key, desc) {
+    var c = arguments.length, r = c < 3 ? target : desc === null ? desc = Object.getOwnPropertyDescriptor(target, key) : desc, d;
+    if (typeof Reflect === "object" && typeof Reflect.decorate === "function") r = Reflect.decorate(decorators, target, key, desc);
+    else for (var i = decorators.length - 1; i >= 0; i--) if (d = decorators[i]) r = (c < 3 ? d(r) : c > 3 ? d(target, key, r) : d(target, key)) || r;
+    return c > 3 && r && Object.defineProperty(target, key, r), r;
+};
+var __metadata = (this && this.__metadata) || function (k, v) {
+    if (typeof Reflect === "object" && typeof Reflect.metadata === "function") return Reflect.metadata(k, v);
+};
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.Plan = void 0;
+const core_1 = require("@mikro-orm/core");
+let Plan = class Plan {
+    id;
+    slug;
+    name;
+    stripe_price_id;
+    monthly_price;
+    memo_operations_limit;
+    chat_queries_limit;
+    projects_limit;
+    features;
+    isActive;
+    isDefault;
+    createdAt;
+    updatedAt;
+};
+exports.Plan = Plan;
+__decorate([
+    (0, core_1.PrimaryKey)({ type: 'bigint', autoincrement: true }),
+    __metadata("design:type", Object)
+], Plan.prototype, "id", void 0);
+__decorate([
+    (0, core_1.Property)({ length: 50, unique: 'skald_plan_slug_key' }),
+    __metadata("design:type", String)
+], Plan.prototype, "slug", void 0);
+__decorate([
+    (0, core_1.Property)({ length: 100 }),
+    __metadata("design:type", String)
+], Plan.prototype, "name", void 0);
+__decorate([
+    (0, core_1.Property)({
+        nullable: true,
+        unique: 'skald_plan_stripe_price_id_key',
+    }),
+    __metadata("design:type", String)
+], Plan.prototype, "stripe_price_id", void 0);
+__decorate([
+    (0, core_1.Property)({ type: 'decimal', precision: 10, scale: 2 }),
+    __metadata("design:type", String)
+], Plan.prototype, "monthly_price", void 0);
+__decorate([
+    (0, core_1.Property)({ nullable: true }),
+    __metadata("design:type", Number)
+], Plan.prototype, "memo_operations_limit", void 0);
+__decorate([
+    (0, core_1.Property)({ nullable: true }),
+    __metadata("design:type", Number)
+], Plan.prototype, "chat_queries_limit", void 0);
+__decorate([
+    (0, core_1.Property)({ nullable: true }),
+    __metadata("design:type", Number)
+], Plan.prototype, "projects_limit", void 0);
+__decorate([
+    (0, core_1.Property)({ type: 'json' }),
+    __metadata("design:type", Object)
+], Plan.prototype, "features", void 0);
+__decorate([
+    (0, core_1.Property)(),
+    __metadata("design:type", Boolean)
+], Plan.prototype, "isActive", void 0);
+__decorate([
+    (0, core_1.Property)(),
+    __metadata("design:type", Boolean)
+], Plan.prototype, "isDefault", void 0);
+__decorate([
+    (0, core_1.Property)(),
+    __metadata("design:type", Date)
+], Plan.prototype, "createdAt", void 0);
+__decorate([
+    (0, core_1.Property)(),
+    __metadata("design:type", Date)
+], Plan.prototype, "updatedAt", void 0);
+exports.Plan = Plan = __decorate([
+    (0, core_1.Entity)({ tableName: 'skald_plan' }),
+    (0, core_1.Index)({
+        expression: 'CREATE INDEX skald_plan_slug_0a0cac0f_like ON public.skald_plan USING btree (slug varchar_pattern_ops);',
+        name: 'skald_plan_slug_0a0cac0f_like',
+    }),
+    (0, core_1.Index)({
+        expression: 'CREATE INDEX skald_plan_stripe_price_id_3080b1eb_like ON public.skald_plan USING btree (stripe_price_id varchar_pattern_ops);',
+        name: 'skald_plan_stripe_price_id_3080b1eb_like',
+    })
+], Plan);
+//# sourceMappingURL=data:application/json;charset=utf-8;base64,eyJmaWxlIjoiL2hvbWUvamMwMXJoby9naXQvc2thbGQvYmFja2VuZC9zcmMvZW50aXRpZXMvUGxhbi50cyIsIm1hcHBpbmdzIjoiOzs7Ozs7Ozs7Ozs7QUFBQSwwQ0FBK0U7QUFheEUsSUFBTSxJQUFJLEdBQVYsTUFBTSxJQUFJO0lBRWIsRUFBRSxDQUFlO0lBR2pCLElBQUksQ0FBUztJQUdiLElBQUksQ0FBUztJQU1iLGVBQWUsQ0FBUztJQUd4QixhQUFhLENBQVM7SUFHdEIscUJBQXFCLENBQVM7SUFHOUIsa0JBQWtCLENBQVM7SUFHM0IsY0FBYyxDQUFTO0lBR3ZCLFFBQVEsQ0FBTTtJQUdkLFFBQVEsQ0FBVTtJQUdsQixTQUFTLENBQVU7SUFHbkIsU0FBUyxDQUFPO0lBR2hCLFNBQVMsQ0FBTztDQUNuQixDQUFBO0FBMUNZLG9CQUFJO0FBRWI7SUFEQyxJQUFBLGlCQUFVLEVBQUMsRUFBRSxJQUFJLEVBQUUsUUFBUSxFQUFFLGFBQWEsRUFBRSxJQUFJLEVBQUUsQ0FBQzs7Z0NBQ25DO0FBR2pCO0lBREMsSUFBQSxlQUFRLEVBQUMsRUFBRSxNQUFNLEVBQUUsRUFBRSxFQUFFLE1BQU0sRUFBRSxxQkFBcUIsRUFBRSxDQUFDOztrQ0FDM0M7QUFHYjtJQURDLElBQUEsZUFBUSxFQUFDLEVBQUUsTUFBTSxFQUFFLEdBQUcsRUFBRSxDQUFDOztrQ0FDYjtBQU1iO0lBSkMsSUFBQSxlQUFRLEVBQUM7UUFDTixRQUFRLEVBQUUsSUFBSTtRQUNkLE1BQU0sRUFBRSxnQ0FBZ0M7S0FDM0MsQ0FBQzs7NkNBQ3NCO0FBR3hCO0lBREMsSUFBQSxlQUFRLEVBQUMsRUFBRSxJQUFJLEVBQUUsU0FBUyxFQUFFLFNBQVMsRUFBRSxFQUFFLEVBQUUsS0FBSyxFQUFFLENBQUMsRUFBRSxDQUFDOzsyQ0FDakM7QUFHdEI7SUFEQyxJQUFBLGVBQVEsRUFBQyxFQUFFLFFBQVEsRUFBRSxJQUFJLEVBQUUsQ0FBQzs7bURBQ0M7QUFHOUI7SUFEQyxJQUFBLGVBQVEsRUFBQyxFQUFFLFFBQVEsRUFBRSxJQUFJLEVBQUUsQ0FBQzs7Z0RBQ0Y7QUFHM0I7SUFEQyxJQUFBLGVBQVEsRUFBQyxFQUFFLFFBQVEsRUFBRSxJQUFJLEVBQUUsQ0FBQzs7NENBQ047QUFHdkI7SUFEQyxJQUFBLGVBQVEsRUFBQyxFQUFFLElBQUksRUFBRSxNQUFNLEVBQUUsQ0FBQzs7c0NBQ2I7QUFHZDtJQURDLElBQUEsZUFBUSxHQUFFOztzQ0FDTztBQUdsQjtJQURDLElBQUEsZUFBUSxHQUFFOzt1Q0FDUTtBQUduQjtJQURDLElBQUEsZUFBUSxHQUFFOzhCQUNDLElBQUk7dUNBQUE7QUFHaEI7SUFEQyxJQUFBLGVBQVEsR0FBRTs4QkFDQyxJQUFJO3VDQUFBO2VBekNQLElBQUk7SUFYaEIsSUFBQSxhQUFNLEVBQUMsRUFBRSxTQUFTLEVBQUUsWUFBWSxFQUFFLENBQUM7SUFDbkMsSUFBQSxZQUFLLEVBQUM7UUFDSCxVQUFVLEVBQ04seUdBQXlHO1FBQzdHLElBQUksRUFBRSwrQkFBK0I7S0FDeEMsQ0FBQztJQUNELElBQUEsWUFBSyxFQUFDO1FBQ0gsVUFBVSxFQUNOLCtIQUErSDtRQUNuSSxJQUFJLEVBQUUsMENBQTBDO0tBQ25ELENBQUM7R0FDVyxJQUFJLENBMENoQiIsIm5hbWVzIjpbXSwic291cmNlcyI6WyIvaG9tZS9qYzAxcmhvL2dpdC9za2FsZC9iYWNrZW5kL3NyYy9lbnRpdGllcy9QbGFuLnRzIl0sInNvdXJjZXNDb250ZW50IjpbImltcG9ydCB7IEVudGl0eSwgSW5kZXgsIHR5cGUgT3B0LCBQcmltYXJ5S2V5LCBQcm9wZXJ0eSB9IGZyb20gJ0BtaWtyby1vcm0vY29yZSdcblxuQEVudGl0eSh7IHRhYmxlTmFtZTogJ3NrYWxkX3BsYW4nIH0pXG5ASW5kZXgoe1xuICAgIGV4cHJlc3Npb246XG4gICAgICAgICdDUkVBVEUgSU5ERVggc2thbGRfcGxhbl9zbHVnXzBhMGNhYzBmX2xpa2UgT04gcHVibGljLnNrYWxkX3BsYW4gVVNJTkcgYnRyZWUgKHNsdWcgdmFyY2hhcl9wYXR0ZXJuX29wcyk7JyxcbiAgICBuYW1lOiAnc2thbGRfcGxhbl9zbHVnXzBhMGNhYzBmX2xpa2UnLFxufSlcbkBJbmRleCh7XG4gICAgZXhwcmVzc2lvbjpcbiAgICAgICAgJ0NSRUFURSBJTkRFWCBza2FsZF9wbGFuX3N0cmlwZV9wcmljZV9pZF8zMDgwYjFlYl9saWtlIE9OIHB1YmxpYy5za2FsZF9wbGFuIFVTSU5HIGJ0cmVlIChzdHJpcGVfcHJpY2VfaWQgdmFyY2hhcl9wYXR0ZXJuX29wcyk7JyxcbiAgICBuYW1lOiAnc2thbGRfcGxhbl9zdHJpcGVfcHJpY2VfaWRfMzA4MGIxZWJfbGlrZScsXG59KVxuZXhwb3J0IGNsYXNzIFBsYW4ge1xuICAgIEBQcmltYXJ5S2V5KHsgdHlwZTogJ2JpZ2ludCcsIGF1dG9pbmNyZW1lbnQ6IHRydWUgfSlcbiAgICBpZCE6IGJpZ2ludCAmIE9wdFxuXG4gICAgQFByb3BlcnR5KHsgbGVuZ3RoOiA1MCwgdW5pcXVlOiAnc2thbGRfcGxhbl9zbHVnX2tleScgfSlcbiAgICBzbHVnITogc3RyaW5nXG5cbiAgICBAUHJvcGVydHkoeyBsZW5ndGg6IDEwMCB9KVxuICAgIG5hbWUhOiBzdHJpbmdcblxuICAgIEBQcm9wZXJ0eSh7XG4gICAgICAgIG51bGxhYmxlOiB0cnVlLFxuICAgICAgICB1bmlxdWU6ICdza2FsZF9wbGFuX3N0cmlwZV9wcmljZV9pZF9rZXknLFxuICAgIH0pXG4gICAgc3RyaXBlX3ByaWNlX2lkPzogc3RyaW5nXG5cbiAgICBAUHJvcGVydHkoeyB0eXBlOiAnZGVjaW1hbCcsIHByZWNpc2lvbjogMTAsIHNjYWxlOiAyIH0pXG4gICAgbW9udGhseV9wcmljZSE6IHN0cmluZ1xuXG4gICAgQFByb3BlcnR5KHsgbnVsbGFibGU6IHRydWUgfSlcbiAgICBtZW1vX29wZXJhdGlvbnNfbGltaXQ/OiBudW1iZXJcblxuICAgIEBQcm9wZXJ0eSh7IG51bGxhYmxlOiB0cnVlIH0pXG4gICAgY2hhdF9xdWVyaWVzX2xpbWl0PzogbnVtYmVyXG5cbiAgICBAUHJvcGVydHkoeyBudWxsYWJsZTogdHJ1ZSB9KVxuICAgIHByb2plY3RzX2xpbWl0PzogbnVtYmVyXG5cbiAgICBAUHJvcGVydHkoeyB0eXBlOiAnanNvbicgfSlcbiAgICBmZWF0dXJlcyE6IGFueVxuXG4gICAgQFByb3BlcnR5KClcbiAgICBpc0FjdGl2ZSE6IGJvb2xlYW5cblxuICAgIEBQcm9wZXJ0eSgpXG4gICAgaXNEZWZhdWx0ITogYm9vbGVhblxuXG4gICAgQFByb3BlcnR5KClcbiAgICBjcmVhdGVkQXQhOiBEYXRlXG5cbiAgICBAUHJvcGVydHkoKVxuICAgIHVwZGF0ZWRBdCE6IERhdGVcbn1cbiJdLCJ2ZXJzaW9uIjozfQ==

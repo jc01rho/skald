@@ -1,0 +1,17 @@
+{
+  
+  "mcp": {
+    "sparrow-devcenter": {
+      
+      "enabled": true
+      
+    },
+    "jira": {
+      
+      "enabled": true
+      
+    }
+   },
+    
+  "$schema": "https://opencode.ai/config.json"
+}

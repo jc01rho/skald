@@ -1,0 +1,64 @@
+42f2f43242b863a7ef0c4520ab93b8f7
+"use strict";
+var __decorate = (this && this.__decorate) || function (decorators, target, key, desc) {
+    var c = arguments.length, r = c < 3 ? target : desc === null ? desc = Object.getOwnPropertyDescriptor(target, key) : desc, d;
+    if (typeof Reflect === "object" && typeof Reflect.decorate === "function") r = Reflect.decorate(decorators, target, key, desc);
+    else for (var i = decorators.length - 1; i >= 0; i--) if (d = decorators[i]) r = (c < 3 ? d(r) : c > 3 ? d(target, key, r) : d(target, key)) || r;
+    return c > 3 && r && Object.defineProperty(target, key, r), r;
+};
+var __metadata = (this && this.__metadata) || function (k, v) {
+    if (typeof Reflect === "object" && typeof Reflect.metadata === "function") return Reflect.metadata(k, v);
+};
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.WikiClaimSourceRef = void 0;
+const core_1 = require("@mikro-orm/core");
+const WikiClaim_1 = require("@/entities/WikiClaim");
+const WikiSourceRef_1 = require("@/entities/WikiSourceRef");
+let WikiClaimSourceRef = class WikiClaimSourceRef {
+    uuid;
+    support_type;
+    confidence;
+    excerpt;
+    claim;
+    source_ref;
+};
+exports.WikiClaimSourceRef = WikiClaimSourceRef;
+__decorate([
+    (0, core_1.PrimaryKey)({ type: 'uuid' }),
+    __metadata("design:type", String)
+], WikiClaimSourceRef.prototype, "uuid", void 0);
+__decorate([
+    (0, core_1.Property)({ length: 50 }),
+    __metadata("design:type", String)
+], WikiClaimSourceRef.prototype, "support_type", void 0);
+__decorate([
+    (0, core_1.Property)({ default: 0.5 }),
+    __metadata("design:type", Number)
+], WikiClaimSourceRef.prototype, "confidence", void 0);
+__decorate([
+    (0, core_1.Property)({ nullable: true, type: 'text' }),
+    __metadata("design:type", Object)
+], WikiClaimSourceRef.prototype, "excerpt", void 0);
+__decorate([
+    (0, core_1.ManyToOne)({
+        entity: () => WikiClaim_1.WikiClaim,
+        fieldName: 'claim_id',
+        deferMode: core_1.DeferMode.INITIALLY_DEFERRED,
+        index: 'skald_wiki_claim_source_ref_claim_id_idx',
+    }),
+    __metadata("design:type", WikiClaim_1.WikiClaim)
+], WikiClaimSourceRef.prototype, "claim", void 0);
+__decorate([
+    (0, core_1.ManyToOne)({
+        entity: () => WikiSourceRef_1.WikiSourceRef,
+        fieldName: 'source_ref_id',
+        deferMode: core_1.DeferMode.INITIALLY_DEFERRED,
+        index: 'skald_wiki_claim_source_ref_source_ref_id_idx',
+    }),
+    __metadata("design:type", WikiSourceRef_1.WikiSourceRef)
+], WikiClaimSourceRef.prototype, "source_ref", void 0);
+exports.WikiClaimSourceRef = WikiClaimSourceRef = __decorate([
+    (0, core_1.Entity)({ tableName: 'skald_wiki_claim_source_ref' }),
+    (0, core_1.Index)({ name: 'skald_wiki_claim_source_ref_claim_idx', properties: ['claim'] })
+], WikiClaimSourceRef);
+//# sourceMappingURL=data:application/json;charset=utf-8;base64,eyJmaWxlIjoiL2hvbWUvamMwMXJoby9naXQvc2thbGQvYmFja2VuZC9zcmMvZW50aXRpZXMvV2lraUNsYWltU291cmNlUmVmLnRzIiwibWFwcGluZ3MiOiI7Ozs7Ozs7Ozs7OztBQUFBLDBDQUEyRjtBQUMzRixvREFBZ0Q7QUFDaEQsNERBQXdEO0FBTWpELElBQU0sa0JBQWtCLEdBQXhCLE1BQU0sa0JBQWtCO0lBRTNCLElBQUksQ0FBUztJQUdiLFlBQVksQ0FBa0I7SUFHOUIsVUFBVSxDQUFTO0lBR25CLE9BQU8sQ0FBZ0I7SUFRdkIsS0FBSyxDQUFZO0lBUWpCLFVBQVUsQ0FBZ0I7Q0FDN0IsQ0FBQTtBQTVCWSxnREFBa0I7QUFFM0I7SUFEQyxJQUFBLGlCQUFVLEVBQUMsRUFBRSxJQUFJLEVBQUUsTUFBTSxFQUFFLENBQUM7O2dEQUNoQjtBQUdiO0lBREMsSUFBQSxlQUFRLEVBQUMsRUFBRSxNQUFNLEVBQUUsRUFBRSxFQUFFLENBQUM7O3dEQUNLO0FBRzlCO0lBREMsSUFBQSxlQUFRLEVBQUMsRUFBRSxPQUFPLEVBQUUsR0FBRyxFQUFFLENBQUM7O3NEQUNSO0FBR25CO0lBREMsSUFBQSxlQUFRLEVBQUMsRUFBRSxRQUFRLEVBQUUsSUFBSSxFQUFFLElBQUksRUFBRSxNQUFNLEVBQUUsQ0FBQzs7bURBQ3BCO0FBUXZCO0lBTkMsSUFBQSxnQkFBUyxFQUFDO1FBQ1AsTUFBTSxFQUFFLEdBQUcsRUFBRSxDQUFDLHFCQUFTO1FBQ3ZCLFNBQVMsRUFBRSxVQUFVO1FBQ3JCLFNBQVMsRUFBRSxnQkFBUyxDQUFDLGtCQUFrQjtRQUN2QyxLQUFLLEVBQUUsMENBQTBDO0tBQ3BELENBQUM7OEJBQ00scUJBQVM7aURBQUE7QUFRakI7SUFOQyxJQUFBLGdCQUFTLEVBQUM7UUFDUCxNQUFNLEVBQUUsR0FBRyxFQUFFLENBQUMsNkJBQWE7UUFDM0IsU0FBUyxFQUFFLGVBQWU7UUFDMUIsU0FBUyxFQUFFLGdCQUFTLENBQUMsa0JBQWtCO1FBQ3ZDLEtBQUssRUFBRSwrQ0FBK0M7S0FDekQsQ0FBQzs4QkFDVyw2QkFBYTtzREFBQTs2QkEzQmpCLGtCQUFrQjtJQUY5QixJQUFBLGFBQU0sRUFBQyxFQUFFLFNBQVMsRUFBRSw2QkFBNkIsRUFBRSxDQUFDO0lBQ3BELElBQUEsWUFBSyxFQUFDLEVBQUUsSUFBSSxFQUFFLHVDQUF1QyxFQUFFLFVBQVUsRUFBRSxDQUFDLE9BQU8sQ0FBQyxFQUFFLENBQUM7R0FDbkUsa0JBQWtCLENBNEI5QiIsIm5hbWVzIjpbXSwic291cmNlcyI6WyIvaG9tZS9qYzAxcmhvL2dpdC9za2FsZC9iYWNrZW5kL3NyYy9lbnRpdGllcy9XaWtpQ2xhaW1Tb3VyY2VSZWYudHMiXSwic291cmNlc0NvbnRlbnQiOlsiaW1wb3J0IHsgRGVmZXJNb2RlLCBFbnRpdHksIEluZGV4LCBNYW55VG9PbmUsIFByaW1hcnlLZXksIFByb3BlcnR5IH0gZnJvbSAnQG1pa3JvLW9ybS9jb3JlJ1xuaW1wb3J0IHsgV2lraUNsYWltIH0gZnJvbSAnQC9lbnRpdGllcy9XaWtpQ2xhaW0nXG5pbXBvcnQgeyBXaWtpU291cmNlUmVmIH0gZnJvbSAnQC9lbnRpdGllcy9XaWtpU291cmNlUmVmJ1xuXG5leHBvcnQgdHlwZSBXaWtpU3VwcG9ydFR5cGUgPSAnc3VwcG9ydHMnIHwgJ2NvbnRyYWRpY3RzJyB8ICdtZW50aW9ucydcblxuQEVudGl0eSh7IHRhYmxlTmFtZTogJ3NrYWxkX3dpa2lfY2xhaW1fc291cmNlX3JlZicgfSlcbkBJbmRleCh7IG5hbWU6ICdza2FsZF93aWtpX2NsYWltX3NvdXJjZV9yZWZfY2xhaW1faWR4JywgcHJvcGVydGllczogWydjbGFpbSddIH0pXG5leHBvcnQgY2xhc3MgV2lraUNsYWltU291cmNlUmVmIHtcbiAgICBAUHJpbWFyeUtleSh7IHR5cGU6ICd1dWlkJyB9KVxuICAgIHV1aWQhOiBzdHJpbmdcblxuICAgIEBQcm9wZXJ0eSh7IGxlbmd0aDogNTAgfSlcbiAgICBzdXBwb3J0X3R5cGUhOiBXaWtpU3VwcG9ydFR5cGVcblxuICAgIEBQcm9wZXJ0eSh7IGRlZmF1bHQ6IDAuNSB9KVxuICAgIGNvbmZpZGVuY2UhOiBudW1iZXJcblxuICAgIEBQcm9wZXJ0eSh7IG51bGxhYmxlOiB0cnVlLCB0eXBlOiAndGV4dCcgfSlcbiAgICBleGNlcnB0Pzogc3RyaW5nIHwgbnVsbFxuXG4gICAgQE1hbnlUb09uZSh7XG4gICAgICAgIGVudGl0eTogKCkgPT4gV2lraUNsYWltLFxuICAgICAgICBmaWVsZE5hbWU6ICdjbGFpbV9pZCcsXG4gICAgICAgIGRlZmVyTW9kZTogRGVmZXJNb2RlLklOSVRJQUxMWV9ERUZFUlJFRCxcbiAgICAgICAgaW5kZXg6ICdza2FsZF93aWtpX2NsYWltX3NvdXJjZV9yZWZfY2xhaW1faWRfaWR4JyxcbiAgICB9KVxuICAgIGNsYWltITogV2lraUNsYWltXG5cbiAgICBATWFueVRvT25lKHtcbiAgICAgICAgZW50aXR5OiAoKSA9PiBXaWtpU291cmNlUmVmLFxuICAgICAgICBmaWVsZE5hbWU6ICdzb3VyY2VfcmVmX2lkJyxcbiAgICAgICAgZGVmZXJNb2RlOiBEZWZlck1vZGUuSU5JVElBTExZX0RFRkVSUkVELFxuICAgICAgICBpbmRleDogJ3NrYWxkX3dpa2lfY2xhaW1fc291cmNlX3JlZl9zb3VyY2VfcmVmX2lkX2lkeCcsXG4gICAgfSlcbiAgICBzb3VyY2VfcmVmITogV2lraVNvdXJjZVJlZlxufVxuIl0sInZlcnNpb24iOjN9

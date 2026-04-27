@@ -1,0 +1,59 @@
+ee2817bfff0decc3a435dd50433bf541
+"use strict";
+var __decorate = (this && this.__decorate) || function (decorators, target, key, desc) {
+    var c = arguments.length, r = c < 3 ? target : desc === null ? desc = Object.getOwnPropertyDescriptor(target, key) : desc, d;
+    if (typeof Reflect === "object" && typeof Reflect.decorate === "function") r = Reflect.decorate(decorators, target, key, desc);
+    else for (var i = decorators.length - 1; i >= 0; i--) if (d = decorators[i]) r = (c < 3 ? d(r) : c > 3 ? d(target, key, r) : d(target, key)) || r;
+    return c > 3 && r && Object.defineProperty(target, key, r), r;
+};
+var __metadata = (this && this.__metadata) || function (k, v) {
+    if (typeof Reflect === "object" && typeof Reflect.metadata === "function") return Reflect.metadata(k, v);
+};
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.WikiPageLink = void 0;
+const core_1 = require("@mikro-orm/core");
+const WikiPage_1 = require("@/entities/WikiPage");
+let WikiPageLink = class WikiPageLink {
+    uuid;
+    link_type;
+    anchor_text;
+    from_page;
+    to_page;
+};
+exports.WikiPageLink = WikiPageLink;
+__decorate([
+    (0, core_1.PrimaryKey)({ type: 'uuid' }),
+    __metadata("design:type", String)
+], WikiPageLink.prototype, "uuid", void 0);
+__decorate([
+    (0, core_1.Property)({ length: 50 }),
+    __metadata("design:type", String)
+], WikiPageLink.prototype, "link_type", void 0);
+__decorate([
+    (0, core_1.Property)({ nullable: true, type: 'text' }),
+    __metadata("design:type", Object)
+], WikiPageLink.prototype, "anchor_text", void 0);
+__decorate([
+    (0, core_1.ManyToOne)({
+        entity: () => WikiPage_1.WikiPage,
+        fieldName: 'from_page_id',
+        deferMode: core_1.DeferMode.INITIALLY_DEFERRED,
+        index: 'skald_wiki_page_link_from_page_id_idx',
+    }),
+    __metadata("design:type", WikiPage_1.WikiPage)
+], WikiPageLink.prototype, "from_page", void 0);
+__decorate([
+    (0, core_1.ManyToOne)({
+        entity: () => WikiPage_1.WikiPage,
+        fieldName: 'to_page_id',
+        deferMode: core_1.DeferMode.INITIALLY_DEFERRED,
+        index: 'skald_wiki_page_link_to_page_id_idx',
+    }),
+    __metadata("design:type", WikiPage_1.WikiPage)
+], WikiPageLink.prototype, "to_page", void 0);
+exports.WikiPageLink = WikiPageLink = __decorate([
+    (0, core_1.Entity)({ tableName: 'skald_wiki_page_link' }),
+    (0, core_1.Unique)({ name: 'skald_wiki_page_link_from_to_type_key', properties: ['from_page', 'to_page', 'link_type'] }),
+    (0, core_1.Index)({ name: 'skald_wiki_page_link_from_to_idx', properties: ['from_page', 'to_page'] })
+], WikiPageLink);
+//# sourceMappingURL=data:application/json;charset=utf-8;base64,eyJmaWxlIjoiL2hvbWUvamMwMXJoby9naXQvc2thbGQvYmFja2VuZC9zcmMvZW50aXRpZXMvV2lraVBhZ2VMaW5rLnRzIiwibWFwcGluZ3MiOiI7Ozs7Ozs7Ozs7OztBQUFBLDBDQUFtRztBQUNuRyxrREFBOEM7QUFPdkMsSUFBTSxZQUFZLEdBQWxCLE1BQU0sWUFBWTtJQUVyQixJQUFJLENBQVM7SUFHYixTQUFTLENBQW1CO0lBRzVCLFdBQVcsQ0FBZ0I7SUFRM0IsU0FBUyxDQUFXO0lBUXBCLE9BQU8sQ0FBVztDQUNyQixDQUFBO0FBekJZLG9DQUFZO0FBRXJCO0lBREMsSUFBQSxpQkFBVSxFQUFDLEVBQUUsSUFBSSxFQUFFLE1BQU0sRUFBRSxDQUFDOzswQ0FDaEI7QUFHYjtJQURDLElBQUEsZUFBUSxFQUFDLEVBQUUsTUFBTSxFQUFFLEVBQUUsRUFBRSxDQUFDOzsrQ0FDRztBQUc1QjtJQURDLElBQUEsZUFBUSxFQUFDLEVBQUUsUUFBUSxFQUFFLElBQUksRUFBRSxJQUFJLEVBQUUsTUFBTSxFQUFFLENBQUM7O2lEQUNoQjtBQVEzQjtJQU5DLElBQUEsZ0JBQVMsRUFBQztRQUNQLE1BQU0sRUFBRSxHQUFHLEVBQUUsQ0FBQyxtQkFBUTtRQUN0QixTQUFTLEVBQUUsY0FBYztRQUN6QixTQUFTLEVBQUUsZ0JBQVMsQ0FBQyxrQkFBa0I7UUFDdkMsS0FBSyxFQUFFLHVDQUF1QztLQUNqRCxDQUFDOzhCQUNVLG1CQUFROytDQUFBO0FBUXBCO0lBTkMsSUFBQSxnQkFBUyxFQUFDO1FBQ1AsTUFBTSxFQUFFLEdBQUcsRUFBRSxDQUFDLG1CQUFRO1FBQ3RCLFNBQVMsRUFBRSxZQUFZO1FBQ3ZCLFNBQVMsRUFBRSxnQkFBUyxDQUFDLGtCQUFrQjtRQUN2QyxLQUFLLEVBQUUscUNBQXFDO0tBQy9DLENBQUM7OEJBQ1EsbUJBQVE7NkNBQUE7dUJBeEJULFlBQVk7SUFIeEIsSUFBQSxhQUFNLEVBQUMsRUFBRSxTQUFTLEVBQUUsc0JBQXNCLEVBQUUsQ0FBQztJQUM3QyxJQUFBLGFBQU0sRUFBQyxFQUFFLElBQUksRUFBRSx1Q0FBdUMsRUFBRSxVQUFVLEVBQUUsQ0FBQyxXQUFXLEVBQUUsU0FBUyxFQUFFLFdBQVcsQ0FBQyxFQUFFLENBQUM7SUFDNUcsSUFBQSxZQUFLLEVBQUMsRUFBRSxJQUFJLEVBQUUsa0NBQWtDLEVBQUUsVUFBVSxFQUFFLENBQUMsV0FBVyxFQUFFLFNBQVMsQ0FBQyxFQUFFLENBQUM7R0FDN0UsWUFBWSxDQXlCeEIiLCJuYW1lcyI6W10sInNvdXJjZXMiOlsiL2hvbWUvamMwMXJoby9naXQvc2thbGQvYmFja2VuZC9zcmMvZW50aXRpZXMvV2lraVBhZ2VMaW5rLnRzIl0sInNvdXJjZXNDb250ZW50IjpbImltcG9ydCB7IERlZmVyTW9kZSwgRW50aXR5LCBJbmRleCwgTWFueVRvT25lLCBQcmltYXJ5S2V5LCBQcm9wZXJ0eSwgVW5pcXVlIH0gZnJvbSAnQG1pa3JvLW9ybS9jb3JlJ1xuaW1wb3J0IHsgV2lraVBhZ2UgfSBmcm9tICdAL2VudGl0aWVzL1dpa2lQYWdlJ1xuXG5leHBvcnQgdHlwZSBXaWtpUGFnZUxpbmtUeXBlID0gJ3JlbGF0ZWQnIHwgJ3BhcmVudCcgfCAnY2hpbGQnIHwgJ3NlZV9hbHNvJyB8ICdzb3VyY2VfZGlnZXN0J1xuXG5ARW50aXR5KHsgdGFibGVOYW1lOiAnc2thbGRfd2lraV9wYWdlX2xpbmsnIH0pXG5AVW5pcXVlKHsgbmFtZTogJ3NrYWxkX3dpa2lfcGFnZV9saW5rX2Zyb21fdG9fdHlwZV9rZXknLCBwcm9wZXJ0aWVzOiBbJ2Zyb21fcGFnZScsICd0b19wYWdlJywgJ2xpbmtfdHlwZSddIH0pXG5ASW5kZXgoeyBuYW1lOiAnc2thbGRfd2lraV9wYWdlX2xpbmtfZnJvbV90b19pZHgnLCBwcm9wZXJ0aWVzOiBbJ2Zyb21fcGFnZScsICd0b19wYWdlJ10gfSlcbmV4cG9ydCBjbGFzcyBXaWtpUGFnZUxpbmsge1xuICAgIEBQcmltYXJ5S2V5KHsgdHlwZTogJ3V1aWQnIH0pXG4gICAgdXVpZCE6IHN0cmluZ1xuXG4gICAgQFByb3BlcnR5KHsgbGVuZ3RoOiA1MCB9KVxuICAgIGxpbmtfdHlwZSE6IFdpa2lQYWdlTGlua1R5cGVcblxuICAgIEBQcm9wZXJ0eSh7IG51bGxhYmxlOiB0cnVlLCB0eXBlOiAndGV4dCcgfSlcbiAgICBhbmNob3JfdGV4dD86IHN0cmluZyB8IG51bGxcblxuICAgIEBNYW55VG9PbmUoe1xuICAgICAgICBlbnRpdHk6ICgpID0+IFdpa2lQYWdlLFxuICAgICAgICBmaWVsZE5hbWU6ICdmcm9tX3BhZ2VfaWQnLFxuICAgICAgICBkZWZlck1vZGU6IERlZmVyTW9kZS5JTklUSUFMTFlfREVGRVJSRUQsXG4gICAgICAgIGluZGV4OiAnc2thbGRfd2lraV9wYWdlX2xpbmtfZnJvbV9wYWdlX2lkX2lkeCcsXG4gICAgfSlcbiAgICBmcm9tX3BhZ2UhOiBXaWtpUGFnZVxuXG4gICAgQE1hbnlUb09uZSh7XG4gICAgICAgIGVudGl0eTogKCkgPT4gV2lraVBhZ2UsXG4gICAgICAgIGZpZWxkTmFtZTogJ3RvX3BhZ2VfaWQnLFxuICAgICAgICBkZWZlck1vZGU6IERlZmVyTW9kZS5JTklUSUFMTFlfREVGRVJSRUQsXG4gICAgICAgIGluZGV4OiAnc2thbGRfd2lraV9wYWdlX2xpbmtfdG9fcGFnZV9pZF9pZHgnLFxuICAgIH0pXG4gICAgdG9fcGFnZSE6IFdpa2lQYWdlXG59XG4iXSwidmVyc2lvbiI6M30=

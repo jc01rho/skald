@@ -1,0 +1,52 @@
+8f19b185885e3c0b6be3eda8891bfb4a
+"use strict";
+var __decorate = (this && this.__decorate) || function (decorators, target, key, desc) {
+    var c = arguments.length, r = c < 3 ? target : desc === null ? desc = Object.getOwnPropertyDescriptor(target, key) : desc, d;
+    if (typeof Reflect === "object" && typeof Reflect.decorate === "function") r = Reflect.decorate(decorators, target, key, desc);
+    else for (var i = decorators.length - 1; i >= 0; i--) if (d = decorators[i]) r = (c < 3 ? d(r) : c > 3 ? d(target, key, r) : d(target, key)) || r;
+    return c > 3 && r && Object.defineProperty(target, key, r), r;
+};
+var __metadata = (this && this.__metadata) || function (k, v) {
+    if (typeof Reflect === "object" && typeof Reflect.metadata === "function") return Reflect.metadata(k, v);
+};
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.EvaluationDataset = void 0;
+const core_1 = require("@mikro-orm/core");
+const Project_1 = require("@/entities/Project");
+let EvaluationDataset = class EvaluationDataset {
+    uuid;
+    name;
+    description;
+    project;
+    created_at;
+};
+exports.EvaluationDataset = EvaluationDataset;
+__decorate([
+    (0, core_1.PrimaryKey)({ type: 'uuid' }),
+    __metadata("design:type", String)
+], EvaluationDataset.prototype, "uuid", void 0);
+__decorate([
+    (0, core_1.Property)(),
+    __metadata("design:type", String)
+], EvaluationDataset.prototype, "name", void 0);
+__decorate([
+    (0, core_1.Property)({ nullable: true }),
+    __metadata("design:type", String)
+], EvaluationDataset.prototype, "description", void 0);
+__decorate([
+    (0, core_1.ManyToOne)({
+        entity: () => Project_1.Project,
+        fieldName: 'project_id',
+        deferMode: core_1.DeferMode.INITIALLY_DEFERRED,
+        index: 'skald_evaluationdataset_project_id_idx',
+    }),
+    __metadata("design:type", Project_1.Project)
+], EvaluationDataset.prototype, "project", void 0);
+__decorate([
+    (0, core_1.Property)(),
+    __metadata("design:type", Date)
+], EvaluationDataset.prototype, "created_at", void 0);
+exports.EvaluationDataset = EvaluationDataset = __decorate([
+    (0, core_1.Entity)({ tableName: 'skald_evaluationdataset' })
+], EvaluationDataset);
+//# sourceMappingURL=data:application/json;charset=utf-8;base64,eyJmaWxlIjoiL2hvbWUvamMwMXJoby9naXQvc2thbGQvYmFja2VuZC9zcmMvZW50aXRpZXMvRXZhbHVhdGlvbkRhdGFzZXQudHMiLCJtYXBwaW5ncyI6Ijs7Ozs7Ozs7Ozs7O0FBQUEsMENBQW9GO0FBQ3BGLGdEQUE0QztBQUdyQyxJQUFNLGlCQUFpQixHQUF2QixNQUFNLGlCQUFpQjtJQUUxQixJQUFJLENBQVM7SUFHYixJQUFJLENBQVM7SUFHYixXQUFXLENBQVM7SUFRcEIsT0FBTyxDQUFVO0lBR2pCLFVBQVUsQ0FBTztDQUNwQixDQUFBO0FBcEJZLDhDQUFpQjtBQUUxQjtJQURDLElBQUEsaUJBQVUsRUFBQyxFQUFFLElBQUksRUFBRSxNQUFNLEVBQUUsQ0FBQzs7K0NBQ2hCO0FBR2I7SUFEQyxJQUFBLGVBQVEsR0FBRTs7K0NBQ0U7QUFHYjtJQURDLElBQUEsZUFBUSxFQUFDLEVBQUUsUUFBUSxFQUFFLElBQUksRUFBRSxDQUFDOztzREFDVDtBQVFwQjtJQU5DLElBQUEsZ0JBQVMsRUFBQztRQUNQLE1BQU0sRUFBRSxHQUFHLEVBQUUsQ0FBQyxpQkFBTztRQUNyQixTQUFTLEVBQUUsWUFBWTtRQUN2QixTQUFTLEVBQUUsZ0JBQVMsQ0FBQyxrQkFBa0I7UUFDdkMsS0FBSyxFQUFFLHdDQUF3QztLQUNsRCxDQUFDOzhCQUNRLGlCQUFPO2tEQUFBO0FBR2pCO0lBREMsSUFBQSxlQUFRLEdBQUU7OEJBQ0UsSUFBSTtxREFBQTs0QkFuQlIsaUJBQWlCO0lBRDdCLElBQUEsYUFBTSxFQUFDLEVBQUUsU0FBUyxFQUFFLHlCQUF5QixFQUFFLENBQUM7R0FDcEMsaUJBQWlCLENBb0I3QiIsIm5hbWVzIjpbXSwic291cmNlcyI6WyIvaG9tZS9qYzAxcmhvL2dpdC9za2FsZC9iYWNrZW5kL3NyYy9lbnRpdGllcy9FdmFsdWF0aW9uRGF0YXNldC50cyJdLCJzb3VyY2VzQ29udGVudCI6WyJpbXBvcnQgeyBEZWZlck1vZGUsIEVudGl0eSwgTWFueVRvT25lLCBQcmltYXJ5S2V5LCBQcm9wZXJ0eSB9IGZyb20gJ0BtaWtyby1vcm0vY29yZSdcbmltcG9ydCB7IFByb2plY3QgfSBmcm9tICdAL2VudGl0aWVzL1Byb2plY3QnXG5cbkBFbnRpdHkoeyB0YWJsZU5hbWU6ICdza2FsZF9ldmFsdWF0aW9uZGF0YXNldCcgfSlcbmV4cG9ydCBjbGFzcyBFdmFsdWF0aW9uRGF0YXNldCB7XG4gICAgQFByaW1hcnlLZXkoeyB0eXBlOiAndXVpZCcgfSlcbiAgICB1dWlkITogc3RyaW5nXG5cbiAgICBAUHJvcGVydHkoKVxuICAgIG5hbWUhOiBzdHJpbmdcblxuICAgIEBQcm9wZXJ0eSh7IG51bGxhYmxlOiB0cnVlIH0pXG4gICAgZGVzY3JpcHRpb24/OiBzdHJpbmdcblxuICAgIEBNYW55VG9PbmUoe1xuICAgICAgICBlbnRpdHk6ICgpID0+IFByb2plY3QsXG4gICAgICAgIGZpZWxkTmFtZTogJ3Byb2plY3RfaWQnLFxuICAgICAgICBkZWZlck1vZGU6IERlZmVyTW9kZS5JTklUSUFMTFlfREVGRVJSRUQsXG4gICAgICAgIGluZGV4OiAnc2thbGRfZXZhbHVhdGlvbmRhdGFzZXRfcHJvamVjdF9pZF9pZHgnLFxuICAgIH0pXG4gICAgcHJvamVjdCE6IFByb2plY3RcblxuICAgIEBQcm9wZXJ0eSgpXG4gICAgY3JlYXRlZF9hdCE6IERhdGVcbn1cbiJdLCJ2ZXJzaW9uIjozfQ==

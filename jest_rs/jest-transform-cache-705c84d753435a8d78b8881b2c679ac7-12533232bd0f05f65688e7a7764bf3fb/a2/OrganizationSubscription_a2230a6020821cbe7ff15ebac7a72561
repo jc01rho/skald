@@ -1,0 +1,146 @@
+f72dc677f35a48ca2d8c7d05437ee4ad
+"use strict";
+var __decorate = (this && this.__decorate) || function (decorators, target, key, desc) {
+    var c = arguments.length, r = c < 3 ? target : desc === null ? desc = Object.getOwnPropertyDescriptor(target, key) : desc, d;
+    if (typeof Reflect === "object" && typeof Reflect.decorate === "function") r = Reflect.decorate(decorators, target, key, desc);
+    else for (var i = decorators.length - 1; i >= 0; i--) if (d = decorators[i]) r = (c < 3 ? d(r) : c > 3 ? d(target, key, r) : d(target, key)) || r;
+    return c > 3 && r && Object.defineProperty(target, key, r), r;
+};
+var __metadata = (this && this.__metadata) || function (k, v) {
+    if (typeof Reflect === "object" && typeof Reflect.metadata === "function") return Reflect.metadata(k, v);
+};
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.OrganizationSubscription = void 0;
+const core_1 = require("@mikro-orm/core");
+const Organization_1 = require("@/entities/Organization");
+const Plan_1 = require("@/entities/Plan");
+let OrganizationSubscription = class OrganizationSubscription {
+    id;
+    stripe_customer_id;
+    stripe_subscription_id;
+    status;
+    current_period_start;
+    current_period_end;
+    cancel_at_period_end;
+    canceled_at;
+    trial_start;
+    trial_end;
+    created_at;
+    updated_at;
+    organization;
+    plan;
+    scheduled_change_date;
+    scheduled_plan;
+    stripe_schedule_id;
+};
+exports.OrganizationSubscription = OrganizationSubscription;
+__decorate([
+    (0, core_1.PrimaryKey)({ type: 'bigint', autoincrement: true }),
+    __metadata("design:type", Object)
+], OrganizationSubscription.prototype, "id", void 0);
+__decorate([
+    (0, core_1.Property)({
+        nullable: true,
+        index: 'skald_organ_stripe__787c7f_idx',
+        unique: 'skald_organizationsubscription_stripe_customer_id_key',
+    }),
+    __metadata("design:type", String)
+], OrganizationSubscription.prototype, "stripe_customer_id", void 0);
+__decorate([
+    (0, core_1.Property)({
+        nullable: true,
+        index: 'skald_organ_stripe__4bbed4_idx',
+        unique: 'skald_organizationsubscription_stripe_subscription_id_key',
+    }),
+    __metadata("design:type", String)
+], OrganizationSubscription.prototype, "stripe_subscription_id", void 0);
+__decorate([
+    (0, core_1.Property)({ length: 50, index: 'skald_organ_status_b30bd1_idx' }),
+    __metadata("design:type", String)
+], OrganizationSubscription.prototype, "status", void 0);
+__decorate([
+    (0, core_1.Property)(),
+    __metadata("design:type", Date)
+], OrganizationSubscription.prototype, "current_period_start", void 0);
+__decorate([
+    (0, core_1.Property)(),
+    __metadata("design:type", Date)
+], OrganizationSubscription.prototype, "current_period_end", void 0);
+__decorate([
+    (0, core_1.Property)(),
+    __metadata("design:type", Boolean)
+], OrganizationSubscription.prototype, "cancel_at_period_end", void 0);
+__decorate([
+    (0, core_1.Property)({ nullable: true }),
+    __metadata("design:type", Date)
+], OrganizationSubscription.prototype, "canceled_at", void 0);
+__decorate([
+    (0, core_1.Property)({ nullable: true }),
+    __metadata("design:type", Date)
+], OrganizationSubscription.prototype, "trial_start", void 0);
+__decorate([
+    (0, core_1.Property)({ nullable: true }),
+    __metadata("design:type", Date)
+], OrganizationSubscription.prototype, "trial_end", void 0);
+__decorate([
+    (0, core_1.Property)(),
+    __metadata("design:type", Date)
+], OrganizationSubscription.prototype, "created_at", void 0);
+__decorate([
+    (0, core_1.Property)(),
+    __metadata("design:type", Date)
+], OrganizationSubscription.prototype, "updated_at", void 0);
+__decorate([
+    (0, core_1.OneToOne)({
+        entity: () => Organization_1.Organization,
+        fieldName: 'organization_id',
+        deferMode: core_1.DeferMode.INITIALLY_DEFERRED,
+        unique: 'skald_organizationsubscription_organization_id_key',
+    }),
+    __metadata("design:type", Organization_1.Organization)
+], OrganizationSubscription.prototype, "organization", void 0);
+__decorate([
+    (0, core_1.ManyToOne)({
+        entity: () => Plan_1.Plan,
+        deferMode: core_1.DeferMode.INITIALLY_DEFERRED,
+        index: 'skald_organizationsubscription_plan_id_f66eaa4c',
+    }),
+    __metadata("design:type", Plan_1.Plan)
+], OrganizationSubscription.prototype, "plan", void 0);
+__decorate([
+    (0, core_1.Property)({ nullable: true }),
+    __metadata("design:type", Date)
+], OrganizationSubscription.prototype, "scheduled_change_date", void 0);
+__decorate([
+    (0, core_1.ManyToOne)({
+        entity: () => Plan_1.Plan,
+        nullable: true,
+        deferMode: core_1.DeferMode.INITIALLY_DEFERRED,
+        index: 'skald_organizationsubscription_scheduled_plan_id_607e5f4d',
+    }),
+    __metadata("design:type", Plan_1.Plan)
+], OrganizationSubscription.prototype, "scheduled_plan", void 0);
+__decorate([
+    (0, core_1.Property)({
+        nullable: true,
+        index: 'skald_organ_stripe__fb7b46_idx',
+        unique: 'skald_organizationsubscription_stripe_schedule_id_key',
+    }),
+    __metadata("design:type", String)
+], OrganizationSubscription.prototype, "stripe_schedule_id", void 0);
+exports.OrganizationSubscription = OrganizationSubscription = __decorate([
+    (0, core_1.Entity)({ tableName: 'skald_organizationsubscription' }),
+    (0, core_1.Index)({
+        expression: 'CREATE INDEX skald_organizationsubscription_stripe_customer_id_aa0de48c_like ON public.skald_organizationsubscription USING btree (stripe_customer_id varchar_pattern_ops);',
+        name: 'skald_organizationsubscription_stripe_customer_id_aa0de48c_like',
+    }),
+    (0, core_1.Index)({
+        expression: 'CREATE INDEX skald_organizationsubscr_stripe_subscription_id_e67d0e5c_like ON public.skald_organizationsubscription USING btree (stripe_subscription_id varchar_pattern_ops);',
+        name: 'skald_organizationsubscr_stripe_subscription_id_e67d0e5c_like',
+    }),
+    (0, core_1.Index)({
+        expression: 'CREATE INDEX skald_organizationsubscription_stripe_schedule_id_3e51e1c3_like ON public.skald_organizationsubscription USING btree (stripe_schedule_id varchar_pattern_ops);',
+        name: 'skald_organizationsubscription_stripe_schedule_id_3e51e1c3_like',
+    })
+], OrganizationSubscription);
+//# sourceMappingURL=data:application/json;charset=utf-8;base64,eyJmaWxlIjoiL2hvbWUvamMwMXJoby9naXQvc2thbGQvYmFja2VuZC9zcmMvZW50aXRpZXMvT3JnYW5pemF0aW9uU3Vic2NyaXB0aW9uLnRzIiwibWFwcGluZ3MiOiI7Ozs7Ozs7Ozs7OztBQUFBLDBDQUErRztBQUMvRywwREFBc0Q7QUFDdEQsMENBQXNDO0FBa0IvQixJQUFNLHdCQUF3QixHQUE5QixNQUFNLHdCQUF3QjtJQUVqQyxFQUFFLENBQWU7SUFPakIsa0JBQWtCLENBQVM7SUFPM0Isc0JBQXNCLENBQVM7SUFHL0IsTUFBTSxDQUFTO0lBR2Ysb0JBQW9CLENBQU87SUFHM0Isa0JBQWtCLENBQU87SUFHekIsb0JBQW9CLENBQVU7SUFHOUIsV0FBVyxDQUFPO0lBR2xCLFdBQVcsQ0FBTztJQUdsQixTQUFTLENBQU87SUFHaEIsVUFBVSxDQUFPO0lBR2pCLFVBQVUsQ0FBTztJQVFqQixZQUFZLENBQWU7SUFPM0IsSUFBSSxDQUFPO0lBR1gscUJBQXFCLENBQU87SUFRNUIsY0FBYyxDQUFPO0lBT3JCLGtCQUFrQixDQUFTO0NBQzlCLENBQUE7QUE3RVksNERBQXdCO0FBRWpDO0lBREMsSUFBQSxpQkFBVSxFQUFDLEVBQUUsSUFBSSxFQUFFLFFBQVEsRUFBRSxhQUFhLEVBQUUsSUFBSSxFQUFFLENBQUM7O29EQUNuQztBQU9qQjtJQUxDLElBQUEsZUFBUSxFQUFDO1FBQ04sUUFBUSxFQUFFLElBQUk7UUFDZCxLQUFLLEVBQUUsZ0NBQWdDO1FBQ3ZDLE1BQU0sRUFBRSx1REFBdUQ7S0FDbEUsQ0FBQzs7b0VBQ3lCO0FBTzNCO0lBTEMsSUFBQSxlQUFRLEVBQUM7UUFDTixRQUFRLEVBQUUsSUFBSTtRQUNkLEtBQUssRUFBRSxnQ0FBZ0M7UUFDdkMsTUFBTSxFQUFFLDJEQUEyRDtLQUN0RSxDQUFDOzt3RUFDNkI7QUFHL0I7SUFEQyxJQUFBLGVBQVEsRUFBQyxFQUFFLE1BQU0sRUFBRSxFQUFFLEVBQUUsS0FBSyxFQUFFLCtCQUErQixFQUFFLENBQUM7O3dEQUNsRDtBQUdmO0lBREMsSUFBQSxlQUFRLEdBQUU7OEJBQ1ksSUFBSTtzRUFBQTtBQUczQjtJQURDLElBQUEsZUFBUSxHQUFFOzhCQUNVLElBQUk7b0VBQUE7QUFHekI7SUFEQyxJQUFBLGVBQVEsR0FBRTs7c0VBQ21CO0FBRzlCO0lBREMsSUFBQSxlQUFRLEVBQUMsRUFBRSxRQUFRLEVBQUUsSUFBSSxFQUFFLENBQUM7OEJBQ2YsSUFBSTs2REFBQTtBQUdsQjtJQURDLElBQUEsZUFBUSxFQUFDLEVBQUUsUUFBUSxFQUFFLElBQUksRUFBRSxDQUFDOzhCQUNmLElBQUk7NkRBQUE7QUFHbEI7SUFEQyxJQUFBLGVBQVEsRUFBQyxFQUFFLFFBQVEsRUFBRSxJQUFJLEVBQUUsQ0FBQzs4QkFDakIsSUFBSTsyREFBQTtBQUdoQjtJQURDLElBQUEsZUFBUSxHQUFFOzhCQUNFLElBQUk7NERBQUE7QUFHakI7SUFEQyxJQUFBLGVBQVEsR0FBRTs4QkFDRSxJQUFJOzREQUFBO0FBUWpCO0lBTkMsSUFBQSxlQUFRLEVBQUM7UUFDTixNQUFNLEVBQUUsR0FBRyxFQUFFLENBQUMsMkJBQVk7UUFDMUIsU0FBUyxFQUFFLGlCQUFpQjtRQUM1QixTQUFTLEVBQUUsZ0JBQVMsQ0FBQyxrQkFBa0I7UUFDdkMsTUFBTSxFQUFFLG9EQUFvRDtLQUMvRCxDQUFDOzhCQUNhLDJCQUFZOzhEQUFBO0FBTzNCO0lBTEMsSUFBQSxnQkFBUyxFQUFDO1FBQ1AsTUFBTSxFQUFFLEdBQUcsRUFBRSxDQUFDLFdBQUk7UUFDbEIsU0FBUyxFQUFFLGdCQUFTLENBQUMsa0JBQWtCO1FBQ3ZDLEtBQUssRUFBRSxpREFBaUQ7S0FDM0QsQ0FBQzs4QkFDSyxXQUFJO3NEQUFBO0FBR1g7SUFEQyxJQUFBLGVBQVEsRUFBQyxFQUFFLFFBQVEsRUFBRSxJQUFJLEVBQUUsQ0FBQzs4QkFDTCxJQUFJO3VFQUFBO0FBUTVCO0lBTkMsSUFBQSxnQkFBUyxFQUFDO1FBQ1AsTUFBTSxFQUFFLEdBQUcsRUFBRSxDQUFDLFdBQUk7UUFDbEIsUUFBUSxFQUFFLElBQUk7UUFDZCxTQUFTLEVBQUUsZ0JBQVMsQ0FBQyxrQkFBa0I7UUFDdkMsS0FBSyxFQUFFLDJEQUEyRDtLQUNyRSxDQUFDOzhCQUNlLFdBQUk7Z0VBQUE7QUFPckI7SUFMQyxJQUFBLGVBQVEsRUFBQztRQUNOLFFBQVEsRUFBRSxJQUFJO1FBQ2QsS0FBSyxFQUFFLGdDQUFnQztRQUN2QyxNQUFNLEVBQUUsdURBQXVEO0tBQ2xFLENBQUM7O29FQUN5QjttQ0E1RWxCLHdCQUF3QjtJQWhCcEMsSUFBQSxhQUFNLEVBQUMsRUFBRSxTQUFTLEVBQUUsZ0NBQWdDLEVBQUUsQ0FBQztJQUN2RCxJQUFBLFlBQUssRUFBQztRQUNILFVBQVUsRUFDTiw2S0FBNks7UUFDakwsSUFBSSxFQUFFLGlFQUFpRTtLQUMxRSxDQUFDO0lBQ0QsSUFBQSxZQUFLLEVBQUM7UUFDSCxVQUFVLEVBQ04sK0tBQStLO1FBQ25MLElBQUksRUFBRSwrREFBK0Q7S0FDeEUsQ0FBQztJQUNELElBQUEsWUFBSyxFQUFDO1FBQ0gsVUFBVSxFQUNOLDZLQUE2SztRQUNqTCxJQUFJLEVBQUUsaUVBQWlFO0tBQzFFLENBQUM7R0FDVyx3QkFBd0IsQ0E2RXBDIiwibmFtZXMiOltdLCJzb3VyY2VzIjpbIi9ob21lL2pjMDFyaG8vZ2l0L3NrYWxkL2JhY2tlbmQvc3JjL2VudGl0aWVzL09yZ2FuaXphdGlvblN1YnNjcmlwdGlvbi50cyJdLCJzb3VyY2VzQ29udGVudCI6WyJpbXBvcnQgeyBEZWZlck1vZGUsIEVudGl0eSwgSW5kZXgsIE1hbnlUb09uZSwgT25lVG9PbmUsIHR5cGUgT3B0LCBQcmltYXJ5S2V5LCBQcm9wZXJ0eSB9IGZyb20gJ0BtaWtyby1vcm0vY29yZSdcbmltcG9ydCB7IE9yZ2FuaXphdGlvbiB9IGZyb20gJ0AvZW50aXRpZXMvT3JnYW5pemF0aW9uJ1xuaW1wb3J0IHsgUGxhbiB9IGZyb20gJ0AvZW50aXRpZXMvUGxhbidcblxuQEVudGl0eSh7IHRhYmxlTmFtZTogJ3NrYWxkX29yZ2FuaXphdGlvbnN1YnNjcmlwdGlvbicgfSlcbkBJbmRleCh7XG4gICAgZXhwcmVzc2lvbjpcbiAgICAgICAgJ0NSRUFURSBJTkRFWCBza2FsZF9vcmdhbml6YXRpb25zdWJzY3JpcHRpb25fc3RyaXBlX2N1c3RvbWVyX2lkX2FhMGRlNDhjX2xpa2UgT04gcHVibGljLnNrYWxkX29yZ2FuaXphdGlvbnN1YnNjcmlwdGlvbiBVU0lORyBidHJlZSAoc3RyaXBlX2N1c3RvbWVyX2lkIHZhcmNoYXJfcGF0dGVybl9vcHMpOycsXG4gICAgbmFtZTogJ3NrYWxkX29yZ2FuaXphdGlvbnN1YnNjcmlwdGlvbl9zdHJpcGVfY3VzdG9tZXJfaWRfYWEwZGU0OGNfbGlrZScsXG59KVxuQEluZGV4KHtcbiAgICBleHByZXNzaW9uOlxuICAgICAgICAnQ1JFQVRFIElOREVYIHNrYWxkX29yZ2FuaXphdGlvbnN1YnNjcl9zdHJpcGVfc3Vic2NyaXB0aW9uX2lkX2U2N2QwZTVjX2xpa2UgT04gcHVibGljLnNrYWxkX29yZ2FuaXphdGlvbnN1YnNjcmlwdGlvbiBVU0lORyBidHJlZSAoc3RyaXBlX3N1YnNjcmlwdGlvbl9pZCB2YXJjaGFyX3BhdHRlcm5fb3BzKTsnLFxuICAgIG5hbWU6ICdza2FsZF9vcmdhbml6YXRpb25zdWJzY3Jfc3RyaXBlX3N1YnNjcmlwdGlvbl9pZF9lNjdkMGU1Y19saWtlJyxcbn0pXG5ASW5kZXgoe1xuICAgIGV4cHJlc3Npb246XG4gICAgICAgICdDUkVBVEUgSU5ERVggc2thbGRfb3JnYW5pemF0aW9uc3Vic2NyaXB0aW9uX3N0cmlwZV9zY2hlZHVsZV9pZF8zZTUxZTFjM19saWtlIE9OIHB1YmxpYy5za2FsZF9vcmdhbml6YXRpb25zdWJzY3JpcHRpb24gVVNJTkcgYnRyZWUgKHN0cmlwZV9zY2hlZHVsZV9pZCB2YXJjaGFyX3BhdHRlcm5fb3BzKTsnLFxuICAgIG5hbWU6ICdza2FsZF9vcmdhbml6YXRpb25zdWJzY3JpcHRpb25fc3RyaXBlX3NjaGVkdWxlX2lkXzNlNTFlMWMzX2xpa2UnLFxufSlcbmV4cG9ydCBjbGFzcyBPcmdhbml6YXRpb25TdWJzY3JpcHRpb24ge1xuICAgIEBQcmltYXJ5S2V5KHsgdHlwZTogJ2JpZ2ludCcsIGF1dG9pbmNyZW1lbnQ6IHRydWUgfSlcbiAgICBpZCE6IGJpZ2ludCAmIE9wdFxuXG4gICAgQFByb3BlcnR5KHtcbiAgICAgICAgbnVsbGFibGU6IHRydWUsXG4gICAgICAgIGluZGV4OiAnc2thbGRfb3JnYW5fc3RyaXBlX183ODdjN2ZfaWR4JyxcbiAgICAgICAgdW5pcXVlOiAnc2thbGRfb3JnYW5pemF0aW9uc3Vic2NyaXB0aW9uX3N0cmlwZV9jdXN0b21lcl9pZF9rZXknLFxuICAgIH0pXG4gICAgc3RyaXBlX2N1c3RvbWVyX2lkPzogc3RyaW5nXG5cbiAgICBAUHJvcGVydHkoe1xuICAgICAgICBudWxsYWJsZTogdHJ1ZSxcbiAgICAgICAgaW5kZXg6ICdza2FsZF9vcmdhbl9zdHJpcGVfXzRiYmVkNF9pZHgnLFxuICAgICAgICB1bmlxdWU6ICdza2FsZF9vcmdhbml6YXRpb25zdWJzY3JpcHRpb25fc3RyaXBlX3N1YnNjcmlwdGlvbl9pZF9rZXknLFxuICAgIH0pXG4gICAgc3RyaXBlX3N1YnNjcmlwdGlvbl9pZD86IHN0cmluZ1xuXG4gICAgQFByb3BlcnR5KHsgbGVuZ3RoOiA1MCwgaW5kZXg6ICdza2FsZF9vcmdhbl9zdGF0dXNfYjMwYmQxX2lkeCcgfSlcbiAgICBzdGF0dXMhOiBzdHJpbmdcblxuICAgIEBQcm9wZXJ0eSgpXG4gICAgY3VycmVudF9wZXJpb2Rfc3RhcnQhOiBEYXRlXG5cbiAgICBAUHJvcGVydHkoKVxuICAgIGN1cnJlbnRfcGVyaW9kX2VuZCE6IERhdGVcblxuICAgIEBQcm9wZXJ0eSgpXG4gICAgY2FuY2VsX2F0X3BlcmlvZF9lbmQhOiBib29sZWFuXG5cbiAgICBAUHJvcGVydHkoeyBudWxsYWJsZTogdHJ1ZSB9KVxuICAgIGNhbmNlbGVkX2F0PzogRGF0ZVxuXG4gICAgQFByb3BlcnR5KHsgbnVsbGFibGU6IHRydWUgfSlcbiAgICB0cmlhbF9zdGFydD86IERhdGVcblxuICAgIEBQcm9wZXJ0eSh7IG51bGxhYmxlOiB0cnVlIH0pXG4gICAgdHJpYWxfZW5kPzogRGF0ZVxuXG4gICAgQFByb3BlcnR5KClcbiAgICBjcmVhdGVkX2F0ITogRGF0ZVxuXG4gICAgQFByb3BlcnR5KClcbiAgICB1cGRhdGVkX2F0ITogRGF0ZVxuXG4gICAgQE9uZVRvT25lKHtcbiAgICAgICAgZW50aXR5OiAoKSA9PiBPcmdhbml6YXRpb24sXG4gICAgICAgIGZpZWxkTmFtZTogJ29yZ2FuaXphdGlvbl9pZCcsXG4gICAgICAgIGRlZmVyTW9kZTogRGVmZXJNb2RlLklOSVRJQUxMWV9ERUZFUlJFRCxcbiAgICAgICAgdW5pcXVlOiAnc2thbGRfb3JnYW5pemF0aW9uc3Vic2NyaXB0aW9uX29yZ2FuaXphdGlvbl9pZF9rZXknLFxuICAgIH0pXG4gICAgb3JnYW5pemF0aW9uITogT3JnYW5pemF0aW9uXG5cbiAgICBATWFueVRvT25lKHtcbiAgICAgICAgZW50aXR5OiAoKSA9PiBQbGFuLFxuICAgICAgICBkZWZlck1vZGU6IERlZmVyTW9kZS5JTklUSUFMTFlfREVGRVJSRUQsXG4gICAgICAgIGluZGV4OiAnc2thbGRfb3JnYW5pemF0aW9uc3Vic2NyaXB0aW9uX3BsYW5faWRfZjY2ZWFhNGMnLFxuICAgIH0pXG4gICAgcGxhbiE6IFBsYW5cblxuICAgIEBQcm9wZXJ0eSh7IG51bGxhYmxlOiB0cnVlIH0pXG4gICAgc2NoZWR1bGVkX2NoYW5nZV9kYXRlPzogRGF0ZVxuXG4gICAgQE1hbnlUb09uZSh7XG4gICAgICAgIGVudGl0eTogKCkgPT4gUGxhbixcbiAgICAgICAgbnVsbGFibGU6IHRydWUsXG4gICAgICAgIGRlZmVyTW9kZTogRGVmZXJNb2RlLklOSVRJQUxMWV9ERUZFUlJFRCxcbiAgICAgICAgaW5kZXg6ICdza2FsZF9vcmdhbml6YXRpb25zdWJzY3JpcHRpb25fc2NoZWR1bGVkX3BsYW5faWRfNjA3ZTVmNGQnLFxuICAgIH0pXG4gICAgc2NoZWR1bGVkX3BsYW4/OiBQbGFuXG5cbiAgICBAUHJvcGVydHkoe1xuICAgICAgICBudWxsYWJsZTogdHJ1ZSxcbiAgICAgICAgaW5kZXg6ICdza2FsZF9vcmdhbl9zdHJpcGVfX2ZiN2I0Nl9pZHgnLFxuICAgICAgICB1bmlxdWU6ICdza2FsZF9vcmdhbml6YXRpb25zdWJzY3JpcHRpb25fc3RyaXBlX3NjaGVkdWxlX2lkX2tleScsXG4gICAgfSlcbiAgICBzdHJpcGVfc2NoZWR1bGVfaWQ/OiBzdHJpbmdcbn1cbiJdLCJ2ZXJzaW9uIjozfQ==

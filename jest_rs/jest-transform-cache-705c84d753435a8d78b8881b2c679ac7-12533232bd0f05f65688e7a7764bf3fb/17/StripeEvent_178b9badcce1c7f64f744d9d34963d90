@@ -1,0 +1,66 @@
+f2195a0b81fde31db7f0a55ebd2da93c
+"use strict";
+var __decorate = (this && this.__decorate) || function (decorators, target, key, desc) {
+    var c = arguments.length, r = c < 3 ? target : desc === null ? desc = Object.getOwnPropertyDescriptor(target, key) : desc, d;
+    if (typeof Reflect === "object" && typeof Reflect.decorate === "function") r = Reflect.decorate(decorators, target, key, desc);
+    else for (var i = decorators.length - 1; i >= 0; i--) if (d = decorators[i]) r = (c < 3 ? d(r) : c > 3 ? d(target, key, r) : d(target, key)) || r;
+    return c > 3 && r && Object.defineProperty(target, key, r), r;
+};
+var __metadata = (this && this.__metadata) || function (k, v) {
+    if (typeof Reflect === "object" && typeof Reflect.metadata === "function") return Reflect.metadata(k, v);
+};
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.StripeEvent = void 0;
+const core_1 = require("@mikro-orm/core");
+let StripeEvent = class StripeEvent {
+    id;
+    stripe_event_id;
+    event_type;
+    payload;
+    processed;
+    processing_error;
+    created_at;
+    processed_at;
+};
+exports.StripeEvent = StripeEvent;
+__decorate([
+    (0, core_1.PrimaryKey)({ type: 'bigint', autoincrement: true }),
+    __metadata("design:type", Object)
+], StripeEvent.prototype, "id", void 0);
+__decorate([
+    (0, core_1.Property)({ index: 'skald_strip_stripe__efbcc3_idx', unique: 'skald_stripeevent_stripe_event_id_key' }),
+    __metadata("design:type", String)
+], StripeEvent.prototype, "stripe_event_id", void 0);
+__decorate([
+    (0, core_1.Property)({ length: 100 }),
+    __metadata("design:type", String)
+], StripeEvent.prototype, "event_type", void 0);
+__decorate([
+    (0, core_1.Property)({ type: 'json' }),
+    __metadata("design:type", Object)
+], StripeEvent.prototype, "payload", void 0);
+__decorate([
+    (0, core_1.Property)(),
+    __metadata("design:type", Boolean)
+], StripeEvent.prototype, "processed", void 0);
+__decorate([
+    (0, core_1.Property)({ type: 'text', nullable: true }),
+    __metadata("design:type", String)
+], StripeEvent.prototype, "processing_error", void 0);
+__decorate([
+    (0, core_1.Property)(),
+    __metadata("design:type", Date)
+], StripeEvent.prototype, "created_at", void 0);
+__decorate([
+    (0, core_1.Property)({ nullable: true }),
+    __metadata("design:type", Date)
+], StripeEvent.prototype, "processed_at", void 0);
+exports.StripeEvent = StripeEvent = __decorate([
+    (0, core_1.Entity)({ tableName: 'skald_stripeevent' }),
+    (0, core_1.Index)({ name: 'skald_strip_event_t_1ffd58_idx', properties: ['event_type', 'processed'] }),
+    (0, core_1.Index)({
+        expression: 'CREATE INDEX skald_stripeevent_stripe_event_id_5dfbba10_like ON public.skald_stripeevent USING btree (stripe_event_id varchar_pattern_ops);',
+        name: 'skald_stripeevent_stripe_event_id_5dfbba10_like',
+    })
+], StripeEvent);
+//# sourceMappingURL=data:application/json;charset=utf-8;base64,eyJmaWxlIjoiL2hvbWUvamMwMXJoby9naXQvc2thbGQvYmFja2VuZC9zcmMvZW50aXRpZXMvU3RyaXBlRXZlbnQudHMiLCJtYXBwaW5ncyI6Ijs7Ozs7Ozs7Ozs7O0FBQUEsMENBQStFO0FBU3hFLElBQU0sV0FBVyxHQUFqQixNQUFNLFdBQVc7SUFFcEIsRUFBRSxDQUFlO0lBR2pCLGVBQWUsQ0FBUztJQUd4QixVQUFVLENBQVM7SUFHbkIsT0FBTyxDQUFNO0lBR2IsU0FBUyxDQUFVO0lBR25CLGdCQUFnQixDQUFTO0lBR3pCLFVBQVUsQ0FBTztJQUdqQixZQUFZLENBQU87Q0FDdEIsQ0FBQTtBQXhCWSxrQ0FBVztBQUVwQjtJQURDLElBQUEsaUJBQVUsRUFBQyxFQUFFLElBQUksRUFBRSxRQUFRLEVBQUUsYUFBYSxFQUFFLElBQUksRUFBRSxDQUFDOzt1Q0FDbkM7QUFHakI7SUFEQyxJQUFBLGVBQVEsRUFBQyxFQUFFLEtBQUssRUFBRSxnQ0FBZ0MsRUFBRSxNQUFNLEVBQUUsdUNBQXVDLEVBQUUsQ0FBQzs7b0RBQy9FO0FBR3hCO0lBREMsSUFBQSxlQUFRLEVBQUMsRUFBRSxNQUFNLEVBQUUsR0FBRyxFQUFFLENBQUM7OytDQUNQO0FBR25CO0lBREMsSUFBQSxlQUFRLEVBQUMsRUFBRSxJQUFJLEVBQUUsTUFBTSxFQUFFLENBQUM7OzRDQUNkO0FBR2I7SUFEQyxJQUFBLGVBQVEsR0FBRTs7OENBQ1E7QUFHbkI7SUFEQyxJQUFBLGVBQVEsRUFBQyxFQUFFLElBQUksRUFBRSxNQUFNLEVBQUUsUUFBUSxFQUFFLElBQUksRUFBRSxDQUFDOztxREFDbEI7QUFHekI7SUFEQyxJQUFBLGVBQVEsR0FBRTs4QkFDRSxJQUFJOytDQUFBO0FBR2pCO0lBREMsSUFBQSxlQUFRLEVBQUMsRUFBRSxRQUFRLEVBQUUsSUFBSSxFQUFFLENBQUM7OEJBQ2QsSUFBSTtpREFBQTtzQkF2QlYsV0FBVztJQVB2QixJQUFBLGFBQU0sRUFBQyxFQUFFLFNBQVMsRUFBRSxtQkFBbUIsRUFBRSxDQUFDO0lBQzFDLElBQUEsWUFBSyxFQUFDLEVBQUUsSUFBSSxFQUFFLGdDQUFnQyxFQUFFLFVBQVUsRUFBRSxDQUFDLFlBQVksRUFBRSxXQUFXLENBQUMsRUFBRSxDQUFDO0lBQzFGLElBQUEsWUFBSyxFQUFDO1FBQ0gsVUFBVSxFQUNOLDZJQUE2STtRQUNqSixJQUFJLEVBQUUsaURBQWlEO0tBQzFELENBQUM7R0FDVyxXQUFXLENBd0J2QiIsIm5hbWVzIjpbXSwic291cmNlcyI6WyIvaG9tZS9qYzAxcmhvL2dpdC9za2FsZC9iYWNrZW5kL3NyYy9lbnRpdGllcy9TdHJpcGVFdmVudC50cyJdLCJzb3VyY2VzQ29udGVudCI6WyJpbXBvcnQgeyBFbnRpdHksIEluZGV4LCB0eXBlIE9wdCwgUHJpbWFyeUtleSwgUHJvcGVydHkgfSBmcm9tICdAbWlrcm8tb3JtL2NvcmUnXG5cbkBFbnRpdHkoeyB0YWJsZU5hbWU6ICdza2FsZF9zdHJpcGVldmVudCcgfSlcbkBJbmRleCh7IG5hbWU6ICdza2FsZF9zdHJpcF9ldmVudF90XzFmZmQ1OF9pZHgnLCBwcm9wZXJ0aWVzOiBbJ2V2ZW50X3R5cGUnLCAncHJvY2Vzc2VkJ10gfSlcbkBJbmRleCh7XG4gICAgZXhwcmVzc2lvbjpcbiAgICAgICAgJ0NSRUFURSBJTkRFWCBza2FsZF9zdHJpcGVldmVudF9zdHJpcGVfZXZlbnRfaWRfNWRmYmJhMTBfbGlrZSBPTiBwdWJsaWMuc2thbGRfc3RyaXBlZXZlbnQgVVNJTkcgYnRyZWUgKHN0cmlwZV9ldmVudF9pZCB2YXJjaGFyX3BhdHRlcm5fb3BzKTsnLFxuICAgIG5hbWU6ICdza2FsZF9zdHJpcGVldmVudF9zdHJpcGVfZXZlbnRfaWRfNWRmYmJhMTBfbGlrZScsXG59KVxuZXhwb3J0IGNsYXNzIFN0cmlwZUV2ZW50IHtcbiAgICBAUHJpbWFyeUtleSh7IHR5cGU6ICdiaWdpbnQnLCBhdXRvaW5jcmVtZW50OiB0cnVlIH0pXG4gICAgaWQhOiBiaWdpbnQgJiBPcHRcblxuICAgIEBQcm9wZXJ0eSh7IGluZGV4OiAnc2thbGRfc3RyaXBfc3RyaXBlX19lZmJjYzNfaWR4JywgdW5pcXVlOiAnc2thbGRfc3RyaXBlZXZlbnRfc3RyaXBlX2V2ZW50X2lkX2tleScgfSlcbiAgICBzdHJpcGVfZXZlbnRfaWQhOiBzdHJpbmdcblxuICAgIEBQcm9wZXJ0eSh7IGxlbmd0aDogMTAwIH0pXG4gICAgZXZlbnRfdHlwZSE6IHN0cmluZ1xuXG4gICAgQFByb3BlcnR5KHsgdHlwZTogJ2pzb24nIH0pXG4gICAgcGF5bG9hZCE6IGFueVxuXG4gICAgQFByb3BlcnR5KClcbiAgICBwcm9jZXNzZWQhOiBib29sZWFuXG5cbiAgICBAUHJvcGVydHkoeyB0eXBlOiAndGV4dCcsIG51bGxhYmxlOiB0cnVlIH0pXG4gICAgcHJvY2Vzc2luZ19lcnJvcj86IHN0cmluZ1xuXG4gICAgQFByb3BlcnR5KClcbiAgICBjcmVhdGVkX2F0ITogRGF0ZVxuXG4gICAgQFByb3BlcnR5KHsgbnVsbGFibGU6IHRydWUgfSlcbiAgICBwcm9jZXNzZWRfYXQ/OiBEYXRlXG59XG4iXSwidmVyc2lvbiI6M30=

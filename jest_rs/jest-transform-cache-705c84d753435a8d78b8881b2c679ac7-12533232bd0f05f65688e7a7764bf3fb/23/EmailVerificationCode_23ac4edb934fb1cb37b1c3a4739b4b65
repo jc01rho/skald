@@ -1,0 +1,56 @@
+2455d3c241f73a764cd7da0719d9511e
+"use strict";
+var __decorate = (this && this.__decorate) || function (decorators, target, key, desc) {
+    var c = arguments.length, r = c < 3 ? target : desc === null ? desc = Object.getOwnPropertyDescriptor(target, key) : desc, d;
+    if (typeof Reflect === "object" && typeof Reflect.decorate === "function") r = Reflect.decorate(decorators, target, key, desc);
+    else for (var i = decorators.length - 1; i >= 0; i--) if (d = decorators[i]) r = (c < 3 ? d(r) : c > 3 ? d(target, key, r) : d(target, key)) || r;
+    return c > 3 && r && Object.defineProperty(target, key, r), r;
+};
+var __metadata = (this && this.__metadata) || function (k, v) {
+    if (typeof Reflect === "object" && typeof Reflect.metadata === "function") return Reflect.metadata(k, v);
+};
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.EmailVerificationCode = void 0;
+const core_1 = require("@mikro-orm/core");
+const User_1 = require("@/entities/User");
+let EmailVerificationCode = class EmailVerificationCode {
+    id;
+    code;
+    created_at;
+    expires_at;
+    attempts;
+    user;
+};
+exports.EmailVerificationCode = EmailVerificationCode;
+__decorate([
+    (0, core_1.PrimaryKey)({ type: 'bigint', autoincrement: true }),
+    __metadata("design:type", Object)
+], EmailVerificationCode.prototype, "id", void 0);
+__decorate([
+    (0, core_1.Property)({ length: 6, index: 'skald_email_code_27ca5e_idx' }),
+    __metadata("design:type", String)
+], EmailVerificationCode.prototype, "code", void 0);
+__decorate([
+    (0, core_1.Property)(),
+    __metadata("design:type", Date)
+], EmailVerificationCode.prototype, "created_at", void 0);
+__decorate([
+    (0, core_1.Property)(),
+    __metadata("design:type", Date)
+], EmailVerificationCode.prototype, "expires_at", void 0);
+__decorate([
+    (0, core_1.Property)(),
+    __metadata("design:type", Number)
+], EmailVerificationCode.prototype, "attempts", void 0);
+__decorate([
+    (0, core_1.OneToOne)({
+        entity: () => User_1.User,
+        deferMode: core_1.DeferMode.INITIALLY_DEFERRED,
+        unique: 'skald_emailverificationcode_user_id_key',
+    }),
+    __metadata("design:type", User_1.User)
+], EmailVerificationCode.prototype, "user", void 0);
+exports.EmailVerificationCode = EmailVerificationCode = __decorate([
+    (0, core_1.Entity)({ tableName: 'skald_emailverificationcode' })
+], EmailVerificationCode);
+//# sourceMappingURL=data:application/json;charset=utf-8;base64,eyJmaWxlIjoiL2hvbWUvamMwMXJoby9naXQvc2thbGQvYmFja2VuZC9zcmMvZW50aXRpZXMvRW1haWxWZXJpZmljYXRpb25Db2RlLnRzIiwibWFwcGluZ3MiOiI7Ozs7Ozs7Ozs7OztBQUFBLDBDQUE2RjtBQUM3RiwwQ0FBc0M7QUFHL0IsSUFBTSxxQkFBcUIsR0FBM0IsTUFBTSxxQkFBcUI7SUFFOUIsRUFBRSxDQUFlO0lBR2pCLElBQUksQ0FBUztJQUdiLFVBQVUsQ0FBTztJQUdqQixVQUFVLENBQU87SUFHakIsUUFBUSxDQUFTO0lBT2pCLElBQUksQ0FBTztDQUNkLENBQUE7QUF0Qlksc0RBQXFCO0FBRTlCO0lBREMsSUFBQSxpQkFBVSxFQUFDLEVBQUUsSUFBSSxFQUFFLFFBQVEsRUFBRSxhQUFhLEVBQUUsSUFBSSxFQUFFLENBQUM7O2lEQUNuQztBQUdqQjtJQURDLElBQUEsZUFBUSxFQUFDLEVBQUUsTUFBTSxFQUFFLENBQUMsRUFBRSxLQUFLLEVBQUUsNkJBQTZCLEVBQUUsQ0FBQzs7bURBQ2pEO0FBR2I7SUFEQyxJQUFBLGVBQVEsR0FBRTs4QkFDRSxJQUFJO3lEQUFBO0FBR2pCO0lBREMsSUFBQSxlQUFRLEdBQUU7OEJBQ0UsSUFBSTt5REFBQTtBQUdqQjtJQURDLElBQUEsZUFBUSxHQUFFOzt1REFDTTtBQU9qQjtJQUxDLElBQUEsZUFBUSxFQUFDO1FBQ04sTUFBTSxFQUFFLEdBQUcsRUFBRSxDQUFDLFdBQUk7UUFDbEIsU0FBUyxFQUFFLGdCQUFTLENBQUMsa0JBQWtCO1FBQ3ZDLE1BQU0sRUFBRSx5Q0FBeUM7S0FDcEQsQ0FBQzs4QkFDSyxXQUFJO21EQUFBO2dDQXJCRixxQkFBcUI7SUFEakMsSUFBQSxhQUFNLEVBQUMsRUFBRSxTQUFTLEVBQUUsNkJBQTZCLEVBQUUsQ0FBQztHQUN4QyxxQkFBcUIsQ0FzQmpDIiwibmFtZXMiOltdLCJzb3VyY2VzIjpbIi9ob21lL2pjMDFyaG8vZ2l0L3NrYWxkL2JhY2tlbmQvc3JjL2VudGl0aWVzL0VtYWlsVmVyaWZpY2F0aW9uQ29kZS50cyJdLCJzb3VyY2VzQ29udGVudCI6WyJpbXBvcnQgeyBEZWZlck1vZGUsIEVudGl0eSwgT25lVG9PbmUsIHR5cGUgT3B0LCBQcmltYXJ5S2V5LCBQcm9wZXJ0eSB9IGZyb20gJ0BtaWtyby1vcm0vY29yZSdcbmltcG9ydCB7IFVzZXIgfSBmcm9tICdAL2VudGl0aWVzL1VzZXInXG5cbkBFbnRpdHkoeyB0YWJsZU5hbWU6ICdza2FsZF9lbWFpbHZlcmlmaWNhdGlvbmNvZGUnIH0pXG5leHBvcnQgY2xhc3MgRW1haWxWZXJpZmljYXRpb25Db2RlIHtcbiAgICBAUHJpbWFyeUtleSh7IHR5cGU6ICdiaWdpbnQnLCBhdXRvaW5jcmVtZW50OiB0cnVlIH0pXG4gICAgaWQhOiBiaWdpbnQgJiBPcHRcblxuICAgIEBQcm9wZXJ0eSh7IGxlbmd0aDogNiwgaW5kZXg6ICdza2FsZF9lbWFpbF9jb2RlXzI3Y2E1ZV9pZHgnIH0pXG4gICAgY29kZSE6IHN0cmluZ1xuXG4gICAgQFByb3BlcnR5KClcbiAgICBjcmVhdGVkX2F0ITogRGF0ZVxuXG4gICAgQFByb3BlcnR5KClcbiAgICBleHBpcmVzX2F0ITogRGF0ZVxuXG4gICAgQFByb3BlcnR5KClcbiAgICBhdHRlbXB0cyE6IG51bWJlclxuXG4gICAgQE9uZVRvT25lKHtcbiAgICAgICAgZW50aXR5OiAoKSA9PiBVc2VyLFxuICAgICAgICBkZWZlck1vZGU6IERlZmVyTW9kZS5JTklUSUFMTFlfREVGRVJSRUQsXG4gICAgICAgIHVuaXF1ZTogJ3NrYWxkX2VtYWlsdmVyaWZpY2F0aW9uY29kZV91c2VyX2lkX2tleScsXG4gICAgfSlcbiAgICB1c2VyITogVXNlclxufVxuIl0sInZlcnNpb24iOjN9

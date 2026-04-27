@@ -1,0 +1,79 @@
+11e9e2acbf253a31351597e77ded47a3
+"use strict";
+var __decorate = (this && this.__decorate) || function (decorators, target, key, desc) {
+    var c = arguments.length, r = c < 3 ? target : desc === null ? desc = Object.getOwnPropertyDescriptor(target, key) : desc, d;
+    if (typeof Reflect === "object" && typeof Reflect.decorate === "function") r = Reflect.decorate(decorators, target, key, desc);
+    else for (var i = decorators.length - 1; i >= 0; i--) if (d = decorators[i]) r = (c < 3 ? d(r) : c > 3 ? d(target, key, r) : d(target, key)) || r;
+    return c > 3 && r && Object.defineProperty(target, key, r), r;
+};
+var __metadata = (this && this.__metadata) || function (k, v) {
+    if (typeof Reflect === "object" && typeof Reflect.metadata === "function") return Reflect.metadata(k, v);
+};
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.MemoParentChunk = void 0;
+const core_1 = require("@mikro-orm/core");
+const Memo_1 = require("@/entities/Memo");
+const Project_1 = require("@/entities/Project");
+/**
+ * Parent chunk for parent-child chunking strategy.
+ *
+ * Parent chunks are larger (2048 chars) and store context for LLM responses.
+ * They do NOT have embeddings - only child chunks are searchable.
+ *
+ * Retrieval flow:
+ * 1. Search child chunks (MemoChunk) via vector similarity
+ * 2. Fetch parent chunk for matched children
+ * 3. Use parent chunk content as LLM context
+ */
+let MemoParentChunk = class MemoParentChunk {
+    uuid;
+    chunk_content;
+    chunk_index;
+    memo_uuid;
+    project_uuid;
+    memo;
+    project;
+};
+exports.MemoParentChunk = MemoParentChunk;
+__decorate([
+    (0, core_1.PrimaryKey)({ type: 'uuid' }),
+    __metadata("design:type", String)
+], MemoParentChunk.prototype, "uuid", void 0);
+__decorate([
+    (0, core_1.Property)({ type: 'text' }),
+    __metadata("design:type", String)
+], MemoParentChunk.prototype, "chunk_content", void 0);
+__decorate([
+    (0, core_1.Property)(),
+    __metadata("design:type", Number)
+], MemoParentChunk.prototype, "chunk_index", void 0);
+__decorate([
+    (0, core_1.Property)({ type: 'uuid' }),
+    __metadata("design:type", String)
+], MemoParentChunk.prototype, "memo_uuid", void 0);
+__decorate([
+    (0, core_1.Property)({ type: 'uuid' }),
+    __metadata("design:type", String)
+], MemoParentChunk.prototype, "project_uuid", void 0);
+__decorate([
+    (0, core_1.ManyToOne)({
+        entity: () => Memo_1.Memo,
+        fieldName: 'memo_id',
+        deferMode: core_1.DeferMode.INITIALLY_DEFERRED,
+        index: 'skald_memoparentchunk_memo_id',
+    }),
+    __metadata("design:type", Memo_1.Memo)
+], MemoParentChunk.prototype, "memo", void 0);
+__decorate([
+    (0, core_1.ManyToOne)({
+        entity: () => Project_1.Project,
+        fieldName: 'project_id',
+        deferMode: core_1.DeferMode.INITIALLY_DEFERRED,
+        index: 'skald_memoparentchunk_project_id',
+    }),
+    __metadata("design:type", Project_1.Project)
+], MemoParentChunk.prototype, "project", void 0);
+exports.MemoParentChunk = MemoParentChunk = __decorate([
+    (0, core_1.Entity)({ tableName: 'skald_memoparentchunk' })
+], MemoParentChunk);
+//# sourceMappingURL=data:application/json;charset=utf-8;base64,eyJmaWxlIjoiL2hvbWUvamMwMXJoby9naXQvc2thbGQvYmFja2VuZC9zcmMvZW50aXRpZXMvTWVtb1BhcmVudENodW5rLnRzIiwibWFwcGluZ3MiOiI7Ozs7Ozs7Ozs7OztBQUFBLDBDQUFvRjtBQUNwRiwwQ0FBc0M7QUFDdEMsZ0RBQTRDO0FBRTVDOzs7Ozs7Ozs7O0dBVUc7QUFFSSxJQUFNLGVBQWUsR0FBckIsTUFBTSxlQUFlO0lBRXhCLElBQUksQ0FBUztJQUdiLGFBQWEsQ0FBUztJQUd0QixXQUFXLENBQVM7SUFHcEIsU0FBUyxDQUFTO0lBR2xCLFlBQVksQ0FBUztJQVFyQixJQUFJLENBQU87SUFRWCxPQUFPLENBQVU7Q0FDcEIsQ0FBQTtBQS9CWSwwQ0FBZTtBQUV4QjtJQURDLElBQUEsaUJBQVUsRUFBQyxFQUFFLElBQUksRUFBRSxNQUFNLEVBQUUsQ0FBQzs7NkNBQ2hCO0FBR2I7SUFEQyxJQUFBLGVBQVEsRUFBQyxFQUFFLElBQUksRUFBRSxNQUFNLEVBQUUsQ0FBQzs7c0RBQ0w7QUFHdEI7SUFEQyxJQUFBLGVBQVEsR0FBRTs7b0RBQ1M7QUFHcEI7SUFEQyxJQUFBLGVBQVEsRUFBQyxFQUFFLElBQUksRUFBRSxNQUFNLEVBQUUsQ0FBQzs7a0RBQ1Q7QUFHbEI7SUFEQyxJQUFBLGVBQVEsRUFBQyxFQUFFLElBQUksRUFBRSxNQUFNLEVBQUUsQ0FBQzs7cURBQ047QUFRckI7SUFOQyxJQUFBLGdCQUFTLEVBQUM7UUFDUCxNQUFNLEVBQUUsR0FBRyxFQUFFLENBQUMsV0FBSTtRQUNsQixTQUFTLEVBQUUsU0FBUztRQUNwQixTQUFTLEVBQUUsZ0JBQVMsQ0FBQyxrQkFBa0I7UUFDdkMsS0FBSyxFQUFFLCtCQUErQjtLQUN6QyxDQUFDOzhCQUNLLFdBQUk7NkNBQUE7QUFRWDtJQU5DLElBQUEsZ0JBQVMsRUFBQztRQUNQLE1BQU0sRUFBRSxHQUFHLEVBQUUsQ0FBQyxpQkFBTztRQUNyQixTQUFTLEVBQUUsWUFBWTtRQUN2QixTQUFTLEVBQUUsZ0JBQVMsQ0FBQyxrQkFBa0I7UUFDdkMsS0FBSyxFQUFFLGtDQUFrQztLQUM1QyxDQUFDOzhCQUNRLGlCQUFPO2dEQUFBOzBCQTlCUixlQUFlO0lBRDNCLElBQUEsYUFBTSxFQUFDLEVBQUUsU0FBUyxFQUFFLHVCQUF1QixFQUFFLENBQUM7R0FDbEMsZUFBZSxDQStCM0IiLCJuYW1lcyI6W10sInNvdXJjZXMiOlsiL2hvbWUvamMwMXJoby9naXQvc2thbGQvYmFja2VuZC9zcmMvZW50aXRpZXMvTWVtb1BhcmVudENodW5rLnRzIl0sInNvdXJjZXNDb250ZW50IjpbImltcG9ydCB7IERlZmVyTW9kZSwgRW50aXR5LCBNYW55VG9PbmUsIFByaW1hcnlLZXksIFByb3BlcnR5IH0gZnJvbSAnQG1pa3JvLW9ybS9jb3JlJ1xuaW1wb3J0IHsgTWVtbyB9IGZyb20gJ0AvZW50aXRpZXMvTWVtbydcbmltcG9ydCB7IFByb2plY3QgfSBmcm9tICdAL2VudGl0aWVzL1Byb2plY3QnXG5cbi8qKlxuICogUGFyZW50IGNodW5rIGZvciBwYXJlbnQtY2hpbGQgY2h1bmtpbmcgc3RyYXRlZ3kuXG4gKlxuICogUGFyZW50IGNodW5rcyBhcmUgbGFyZ2VyICgyMDQ4IGNoYXJzKSBhbmQgc3RvcmUgY29udGV4dCBmb3IgTExNIHJlc3BvbnNlcy5cbiAqIFRoZXkgZG8gTk9UIGhhdmUgZW1iZWRkaW5ncyAtIG9ubHkgY2hpbGQgY2h1bmtzIGFyZSBzZWFyY2hhYmxlLlxuICpcbiAqIFJldHJpZXZhbCBmbG93OlxuICogMS4gU2VhcmNoIGNoaWxkIGNodW5rcyAoTWVtb0NodW5rKSB2aWEgdmVjdG9yIHNpbWlsYXJpdHlcbiAqIDIuIEZldGNoIHBhcmVudCBjaHVuayBmb3IgbWF0Y2hlZCBjaGlsZHJlblxuICogMy4gVXNlIHBhcmVudCBjaHVuayBjb250ZW50IGFzIExMTSBjb250ZXh0XG4gKi9cbkBFbnRpdHkoeyB0YWJsZU5hbWU6ICdza2FsZF9tZW1vcGFyZW50Y2h1bmsnIH0pXG5leHBvcnQgY2xhc3MgTWVtb1BhcmVudENodW5rIHtcbiAgICBAUHJpbWFyeUtleSh7IHR5cGU6ICd1dWlkJyB9KVxuICAgIHV1aWQhOiBzdHJpbmdcblxuICAgIEBQcm9wZXJ0eSh7IHR5cGU6ICd0ZXh0JyB9KVxuICAgIGNodW5rX2NvbnRlbnQhOiBzdHJpbmdcblxuICAgIEBQcm9wZXJ0eSgpXG4gICAgY2h1bmtfaW5kZXghOiBudW1iZXJcblxuICAgIEBQcm9wZXJ0eSh7IHR5cGU6ICd1dWlkJyB9KVxuICAgIG1lbW9fdXVpZCE6IHN0cmluZ1xuXG4gICAgQFByb3BlcnR5KHsgdHlwZTogJ3V1aWQnIH0pXG4gICAgcHJvamVjdF91dWlkITogc3RyaW5nXG5cbiAgICBATWFueVRvT25lKHtcbiAgICAgICAgZW50aXR5OiAoKSA9PiBNZW1vLFxuICAgICAgICBmaWVsZE5hbWU6ICdtZW1vX2lkJyxcbiAgICAgICAgZGVmZXJNb2RlOiBEZWZlck1vZGUuSU5JVElBTExZX0RFRkVSUkVELFxuICAgICAgICBpbmRleDogJ3NrYWxkX21lbW9wYXJlbnRjaHVua19tZW1vX2lkJyxcbiAgICB9KVxuICAgIG1lbW8hOiBNZW1vXG5cbiAgICBATWFueVRvT25lKHtcbiAgICAgICAgZW50aXR5OiAoKSA9PiBQcm9qZWN0LFxuICAgICAgICBmaWVsZE5hbWU6ICdwcm9qZWN0X2lkJyxcbiAgICAgICAgZGVmZXJNb2RlOiBEZWZlck1vZGUuSU5JVElBTExZX0RFRkVSUkVELFxuICAgICAgICBpbmRleDogJ3NrYWxkX21lbW9wYXJlbnRjaHVua19wcm9qZWN0X2lkJyxcbiAgICB9KVxuICAgIHByb2plY3QhOiBQcm9qZWN0XG59XG4iXSwidmVyc2lvbiI6M30=

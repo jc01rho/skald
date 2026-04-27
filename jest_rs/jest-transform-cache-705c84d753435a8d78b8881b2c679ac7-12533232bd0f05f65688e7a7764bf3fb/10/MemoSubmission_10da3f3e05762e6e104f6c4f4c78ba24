@@ -1,0 +1,136 @@
+7055ce61d54caf87d2cb25938bf52b07
+"use strict";
+var __decorate = (this && this.__decorate) || function (decorators, target, key, desc) {
+    var c = arguments.length, r = c < 3 ? target : desc === null ? desc = Object.getOwnPropertyDescriptor(target, key) : desc, d;
+    if (typeof Reflect === "object" && typeof Reflect.decorate === "function") r = Reflect.decorate(decorators, target, key, desc);
+    else for (var i = decorators.length - 1; i >= 0; i--) if (d = decorators[i]) r = (c < 3 ? d(r) : c > 3 ? d(target, key, r) : d(target, key)) || r;
+    return c > 3 && r && Object.defineProperty(target, key, r), r;
+};
+var __metadata = (this && this.__metadata) || function (k, v) {
+    if (typeof Reflect === "object" && typeof Reflect.metadata === "function") return Reflect.metadata(k, v);
+};
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.MemoSubmission = void 0;
+const core_1 = require("@mikro-orm/core");
+const Project_1 = require("@/entities/Project");
+const User_1 = require("@/entities/User");
+let MemoSubmission = class MemoSubmission {
+    uuid;
+    created_at;
+    updated_at;
+    title;
+    content;
+    summary;
+    metadata;
+    tags;
+    source;
+    type;
+    reference_id;
+    submitter_name;
+    submitter_email;
+    file_name;
+    expiration_date;
+    status;
+    reviewed_at;
+    rejection_reason;
+    project;
+    reviewer;
+};
+exports.MemoSubmission = MemoSubmission;
+__decorate([
+    (0, core_1.PrimaryKey)({ type: 'uuid' }),
+    __metadata("design:type", String)
+], MemoSubmission.prototype, "uuid", void 0);
+__decorate([
+    (0, core_1.Property)(),
+    __metadata("design:type", Date)
+], MemoSubmission.prototype, "created_at", void 0);
+__decorate([
+    (0, core_1.Property)(),
+    __metadata("design:type", Date)
+], MemoSubmission.prototype, "updated_at", void 0);
+__decorate([
+    (0, core_1.Property)(),
+    __metadata("design:type", String)
+], MemoSubmission.prototype, "title", void 0);
+__decorate([
+    (0, core_1.Property)({ type: 'text' }),
+    __metadata("design:type", String)
+], MemoSubmission.prototype, "content", void 0);
+__decorate([
+    (0, core_1.Property)({ nullable: true, type: 'text' }),
+    __metadata("design:type", Object)
+], MemoSubmission.prototype, "summary", void 0);
+__decorate([
+    (0, core_1.Property)({ nullable: true, type: 'json' }),
+    __metadata("design:type", Object)
+], MemoSubmission.prototype, "metadata", void 0);
+__decorate([
+    (0, core_1.Property)({ nullable: true, type: 'json' }),
+    __metadata("design:type", Object)
+], MemoSubmission.prototype, "tags", void 0);
+__decorate([
+    (0, core_1.Property)({ nullable: true }),
+    __metadata("design:type", Object)
+], MemoSubmission.prototype, "source", void 0);
+__decorate([
+    (0, core_1.Property)({ nullable: true }),
+    __metadata("design:type", Object)
+], MemoSubmission.prototype, "type", void 0);
+__decorate([
+    (0, core_1.Property)({ nullable: true }),
+    __metadata("design:type", Object)
+], MemoSubmission.prototype, "reference_id", void 0);
+__decorate([
+    (0, core_1.Property)({ nullable: true }),
+    __metadata("design:type", Object)
+], MemoSubmission.prototype, "submitter_name", void 0);
+__decorate([
+    (0, core_1.Property)({ nullable: true }),
+    __metadata("design:type", Object)
+], MemoSubmission.prototype, "submitter_email", void 0);
+__decorate([
+    (0, core_1.Property)({ nullable: true }),
+    __metadata("design:type", Object)
+], MemoSubmission.prototype, "file_name", void 0);
+__decorate([
+    (0, core_1.Property)({ nullable: true }),
+    __metadata("design:type", Object)
+], MemoSubmission.prototype, "expiration_date", void 0);
+__decorate([
+    (0, core_1.Property)({ default: 'pending' }),
+    __metadata("design:type", String)
+], MemoSubmission.prototype, "status", void 0);
+__decorate([
+    (0, core_1.Property)({ nullable: true }),
+    __metadata("design:type", Date)
+], MemoSubmission.prototype, "reviewed_at", void 0);
+__decorate([
+    (0, core_1.Property)({ nullable: true, type: 'text' }),
+    __metadata("design:type", String)
+], MemoSubmission.prototype, "rejection_reason", void 0);
+__decorate([
+    (0, core_1.ManyToOne)({
+        entity: () => Project_1.Project,
+        fieldName: 'project_id',
+        deferMode: core_1.DeferMode.INITIALLY_DEFERRED,
+        index: 'skald_memo_submission_project_id_idx',
+    }),
+    __metadata("design:type", Project_1.Project)
+], MemoSubmission.prototype, "project", void 0);
+__decorate([
+    (0, core_1.ManyToOne)({
+        entity: () => User_1.User,
+        fieldName: 'reviewed_by',
+        deferMode: core_1.DeferMode.INITIALLY_DEFERRED,
+        nullable: true,
+        index: 'skald_memo_submission_reviewed_by_idx',
+    }),
+    __metadata("design:type", User_1.User)
+], MemoSubmission.prototype, "reviewer", void 0);
+exports.MemoSubmission = MemoSubmission = __decorate([
+    (0, core_1.Entity)({ tableName: 'skald_memo_submission' }),
+    (0, core_1.Index)({ name: 'skald_memo_submission_project_status_idx', properties: ['project', 'status'] }),
+    (0, core_1.Index)({ name: 'skald_memo_submission_created_at_idx', properties: ['created_at'] })
+], MemoSubmission);
+//# sourceMappingURL=data:application/json;charset=utf-8;base64,eyJmaWxlIjoiL2hvbWUvamMwMXJoby9naXQvc2thbGQvYmFja2VuZC9zcmMvZW50aXRpZXMvTWVtb1N1Ym1pc3Npb24udHMiLCJtYXBwaW5ncyI6Ijs7Ozs7Ozs7Ozs7O0FBQUEsMENBQTJGO0FBQzNGLGdEQUE0QztBQUM1QywwQ0FBc0M7QUFPL0IsSUFBTSxjQUFjLEdBQXBCLE1BQU0sY0FBYztJQUV2QixJQUFJLENBQVM7SUFHYixVQUFVLENBQU87SUFHakIsVUFBVSxDQUFPO0lBR2pCLEtBQUssQ0FBUztJQUdkLE9BQU8sQ0FBUztJQUdoQixPQUFPLENBQWdCO0lBR3ZCLFFBQVEsQ0FBaUM7SUFHekMsSUFBSSxDQUFrQjtJQUd0QixNQUFNLENBQWdCO0lBR3RCLElBQUksQ0FBZ0I7SUFHcEIsWUFBWSxDQUFnQjtJQUc1QixjQUFjLENBQWdCO0lBRzlCLGVBQWUsQ0FBZ0I7SUFHL0IsU0FBUyxDQUFnQjtJQUd6QixlQUFlLENBQWM7SUFHN0IsTUFBTSxDQUF1QjtJQUc3QixXQUFXLENBQU87SUFHbEIsZ0JBQWdCLENBQVM7SUFRekIsT0FBTyxDQUFVO0lBU2pCLFFBQVEsQ0FBTztDQUNsQixDQUFBO0FBdkVZLHdDQUFjO0FBRXZCO0lBREMsSUFBQSxpQkFBVSxFQUFDLEVBQUUsSUFBSSxFQUFFLE1BQU0sRUFBRSxDQUFDOzs0Q0FDaEI7QUFHYjtJQURDLElBQUEsZUFBUSxHQUFFOzhCQUNFLElBQUk7a0RBQUE7QUFHakI7SUFEQyxJQUFBLGVBQVEsR0FBRTs4QkFDRSxJQUFJO2tEQUFBO0FBR2pCO0lBREMsSUFBQSxlQUFRLEdBQUU7OzZDQUNHO0FBR2Q7SUFEQyxJQUFBLGVBQVEsRUFBQyxFQUFFLElBQUksRUFBRSxNQUFNLEVBQUUsQ0FBQzs7K0NBQ1g7QUFHaEI7SUFEQyxJQUFBLGVBQVEsRUFBQyxFQUFFLFFBQVEsRUFBRSxJQUFJLEVBQUUsSUFBSSxFQUFFLE1BQU0sRUFBRSxDQUFDOzsrQ0FDcEI7QUFHdkI7SUFEQyxJQUFBLGVBQVEsRUFBQyxFQUFFLFFBQVEsRUFBRSxJQUFJLEVBQUUsSUFBSSxFQUFFLE1BQU0sRUFBRSxDQUFDOztnREFDRjtBQUd6QztJQURDLElBQUEsZUFBUSxFQUFDLEVBQUUsUUFBUSxFQUFFLElBQUksRUFBRSxJQUFJLEVBQUUsTUFBTSxFQUFFLENBQUM7OzRDQUNyQjtBQUd0QjtJQURDLElBQUEsZUFBUSxFQUFDLEVBQUUsUUFBUSxFQUFFLElBQUksRUFBRSxDQUFDOzs4Q0FDUDtBQUd0QjtJQURDLElBQUEsZUFBUSxFQUFDLEVBQUUsUUFBUSxFQUFFLElBQUksRUFBRSxDQUFDOzs0Q0FDVDtBQUdwQjtJQURDLElBQUEsZUFBUSxFQUFDLEVBQUUsUUFBUSxFQUFFLElBQUksRUFBRSxDQUFDOztvREFDRDtBQUc1QjtJQURDLElBQUEsZUFBUSxFQUFDLEVBQUUsUUFBUSxFQUFFLElBQUksRUFBRSxDQUFDOztzREFDQztBQUc5QjtJQURDLElBQUEsZUFBUSxFQUFDLEVBQUUsUUFBUSxFQUFFLElBQUksRUFBRSxDQUFDOzt1REFDRTtBQUcvQjtJQURDLElBQUEsZUFBUSxFQUFDLEVBQUUsUUFBUSxFQUFFLElBQUksRUFBRSxDQUFDOztpREFDSjtBQUd6QjtJQURDLElBQUEsZUFBUSxFQUFDLEVBQUUsUUFBUSxFQUFFLElBQUksRUFBRSxDQUFDOzt1REFDQTtBQUc3QjtJQURDLElBQUEsZUFBUSxFQUFDLEVBQUUsT0FBTyxFQUFFLFNBQVMsRUFBRSxDQUFDOzs4Q0FDSjtBQUc3QjtJQURDLElBQUEsZUFBUSxFQUFDLEVBQUUsUUFBUSxFQUFFLElBQUksRUFBRSxDQUFDOzhCQUNmLElBQUk7bURBQUE7QUFHbEI7SUFEQyxJQUFBLGVBQVEsRUFBQyxFQUFFLFFBQVEsRUFBRSxJQUFJLEVBQUUsSUFBSSxFQUFFLE1BQU0sRUFBRSxDQUFDOzt3REFDbEI7QUFRekI7SUFOQyxJQUFBLGdCQUFTLEVBQUM7UUFDUCxNQUFNLEVBQUUsR0FBRyxFQUFFLENBQUMsaUJBQU87UUFDckIsU0FBUyxFQUFFLFlBQVk7UUFDdkIsU0FBUyxFQUFFLGdCQUFTLENBQUMsa0JBQWtCO1FBQ3ZDLEtBQUssRUFBRSxzQ0FBc0M7S0FDaEQsQ0FBQzs4QkFDUSxpQkFBTzsrQ0FBQTtBQVNqQjtJQVBDLElBQUEsZ0JBQVMsRUFBQztRQUNQLE1BQU0sRUFBRSxHQUFHLEVBQUUsQ0FBQyxXQUFJO1FBQ2xCLFNBQVMsRUFBRSxhQUFhO1FBQ3hCLFNBQVMsRUFBRSxnQkFBUyxDQUFDLGtCQUFrQjtRQUN2QyxRQUFRLEVBQUUsSUFBSTtRQUNkLEtBQUssRUFBRSx1Q0FBdUM7S0FDakQsQ0FBQzs4QkFDUyxXQUFJO2dEQUFBO3lCQXRFTixjQUFjO0lBSDFCLElBQUEsYUFBTSxFQUFDLEVBQUUsU0FBUyxFQUFFLHVCQUF1QixFQUFFLENBQUM7SUFDOUMsSUFBQSxZQUFLLEVBQUMsRUFBRSxJQUFJLEVBQUUsMENBQTBDLEVBQUUsVUFBVSxFQUFFLENBQUMsU0FBUyxFQUFFLFFBQVEsQ0FBQyxFQUFFLENBQUM7SUFDOUYsSUFBQSxZQUFLLEVBQUMsRUFBRSxJQUFJLEVBQUUsc0NBQXNDLEVBQUUsVUFBVSxFQUFFLENBQUMsWUFBWSxDQUFDLEVBQUUsQ0FBQztHQUN2RSxjQUFjLENBdUUxQiIsIm5hbWVzIjpbXSwic291cmNlcyI6WyIvaG9tZS9qYzAxcmhvL2dpdC9za2FsZC9iYWNrZW5kL3NyYy9lbnRpdGllcy9NZW1vU3VibWlzc2lvbi50cyJdLCJzb3VyY2VzQ29udGVudCI6WyJpbXBvcnQgeyBEZWZlck1vZGUsIEVudGl0eSwgSW5kZXgsIE1hbnlUb09uZSwgUHJpbWFyeUtleSwgUHJvcGVydHkgfSBmcm9tICdAbWlrcm8tb3JtL2NvcmUnXG5pbXBvcnQgeyBQcm9qZWN0IH0gZnJvbSAnQC9lbnRpdGllcy9Qcm9qZWN0J1xuaW1wb3J0IHsgVXNlciB9IGZyb20gJ0AvZW50aXRpZXMvVXNlcidcblxuZXhwb3J0IHR5cGUgTWVtb1N1Ym1pc3Npb25TdGF0dXMgPSAncGVuZGluZycgfCAnYXBwcm92ZWQnIHwgJ3JlamVjdGVkJ1xuXG5ARW50aXR5KHsgdGFibGVOYW1lOiAnc2thbGRfbWVtb19zdWJtaXNzaW9uJyB9KVxuQEluZGV4KHsgbmFtZTogJ3NrYWxkX21lbW9fc3VibWlzc2lvbl9wcm9qZWN0X3N0YXR1c19pZHgnLCBwcm9wZXJ0aWVzOiBbJ3Byb2plY3QnLCAnc3RhdHVzJ10gfSlcbkBJbmRleCh7IG5hbWU6ICdza2FsZF9tZW1vX3N1Ym1pc3Npb25fY3JlYXRlZF9hdF9pZHgnLCBwcm9wZXJ0aWVzOiBbJ2NyZWF0ZWRfYXQnXSB9KVxuZXhwb3J0IGNsYXNzIE1lbW9TdWJtaXNzaW9uIHtcbiAgICBAUHJpbWFyeUtleSh7IHR5cGU6ICd1dWlkJyB9KVxuICAgIHV1aWQhOiBzdHJpbmdcblxuICAgIEBQcm9wZXJ0eSgpXG4gICAgY3JlYXRlZF9hdCE6IERhdGVcblxuICAgIEBQcm9wZXJ0eSgpXG4gICAgdXBkYXRlZF9hdCE6IERhdGVcblxuICAgIEBQcm9wZXJ0eSgpXG4gICAgdGl0bGUhOiBzdHJpbmdcblxuICAgIEBQcm9wZXJ0eSh7IHR5cGU6ICd0ZXh0JyB9KVxuICAgIGNvbnRlbnQhOiBzdHJpbmdcblxuICAgIEBQcm9wZXJ0eSh7IG51bGxhYmxlOiB0cnVlLCB0eXBlOiAndGV4dCcgfSlcbiAgICBzdW1tYXJ5Pzogc3RyaW5nIHwgbnVsbFxuXG4gICAgQFByb3BlcnR5KHsgbnVsbGFibGU6IHRydWUsIHR5cGU6ICdqc29uJyB9KVxuICAgIG1ldGFkYXRhPzogUmVjb3JkPHN0cmluZywgdW5rbm93bj4gfCBudWxsXG5cbiAgICBAUHJvcGVydHkoeyBudWxsYWJsZTogdHJ1ZSwgdHlwZTogJ2pzb24nIH0pXG4gICAgdGFncz86IHN0cmluZ1tdIHwgbnVsbFxuXG4gICAgQFByb3BlcnR5KHsgbnVsbGFibGU6IHRydWUgfSlcbiAgICBzb3VyY2U/OiBzdHJpbmcgfCBudWxsXG5cbiAgICBAUHJvcGVydHkoeyBudWxsYWJsZTogdHJ1ZSB9KVxuICAgIHR5cGU/OiBzdHJpbmcgfCBudWxsXG5cbiAgICBAUHJvcGVydHkoeyBudWxsYWJsZTogdHJ1ZSB9KVxuICAgIHJlZmVyZW5jZV9pZD86IHN0cmluZyB8IG51bGxcblxuICAgIEBQcm9wZXJ0eSh7IG51bGxhYmxlOiB0cnVlIH0pXG4gICAgc3VibWl0dGVyX25hbWU/OiBzdHJpbmcgfCBudWxsXG5cbiAgICBAUHJvcGVydHkoeyBudWxsYWJsZTogdHJ1ZSB9KVxuICAgIHN1Ym1pdHRlcl9lbWFpbD86IHN0cmluZyB8IG51bGxcblxuICAgIEBQcm9wZXJ0eSh7IG51bGxhYmxlOiB0cnVlIH0pXG4gICAgZmlsZV9uYW1lPzogc3RyaW5nIHwgbnVsbFxuXG4gICAgQFByb3BlcnR5KHsgbnVsbGFibGU6IHRydWUgfSlcbiAgICBleHBpcmF0aW9uX2RhdGU/OiBEYXRlIHwgbnVsbFxuXG4gICAgQFByb3BlcnR5KHsgZGVmYXVsdDogJ3BlbmRpbmcnIH0pXG4gICAgc3RhdHVzITogTWVtb1N1Ym1pc3Npb25TdGF0dXNcblxuICAgIEBQcm9wZXJ0eSh7IG51bGxhYmxlOiB0cnVlIH0pXG4gICAgcmV2aWV3ZWRfYXQ/OiBEYXRlXG5cbiAgICBAUHJvcGVydHkoeyBudWxsYWJsZTogdHJ1ZSwgdHlwZTogJ3RleHQnIH0pXG4gICAgcmVqZWN0aW9uX3JlYXNvbj86IHN0cmluZ1xuXG4gICAgQE1hbnlUb09uZSh7XG4gICAgICAgIGVudGl0eTogKCkgPT4gUHJvamVjdCxcbiAgICAgICAgZmllbGROYW1lOiAncHJvamVjdF9pZCcsXG4gICAgICAgIGRlZmVyTW9kZTogRGVmZXJNb2RlLklOSVRJQUxMWV9ERUZFUlJFRCxcbiAgICAgICAgaW5kZXg6ICdza2FsZF9tZW1vX3N1Ym1pc3Npb25fcHJvamVjdF9pZF9pZHgnLFxuICAgIH0pXG4gICAgcHJvamVjdCE6IFByb2plY3RcblxuICAgIEBNYW55VG9PbmUoe1xuICAgICAgICBlbnRpdHk6ICgpID0+IFVzZXIsXG4gICAgICAgIGZpZWxkTmFtZTogJ3Jldmlld2VkX2J5JyxcbiAgICAgICAgZGVmZXJNb2RlOiBEZWZlck1vZGUuSU5JVElBTExZX0RFRkVSUkVELFxuICAgICAgICBudWxsYWJsZTogdHJ1ZSxcbiAgICAgICAgaW5kZXg6ICdza2FsZF9tZW1vX3N1Ym1pc3Npb25fcmV2aWV3ZWRfYnlfaWR4JyxcbiAgICB9KVxuICAgIHJldmlld2VyPzogVXNlclxufVxuIl0sInZlcnNpb24iOjN9

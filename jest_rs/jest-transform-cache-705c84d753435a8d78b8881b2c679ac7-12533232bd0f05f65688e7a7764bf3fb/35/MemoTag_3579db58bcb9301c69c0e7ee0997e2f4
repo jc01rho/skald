@@ -1,0 +1,53 @@
+cf0a57d01eafaeba821b7d229afbad59
+"use strict";
+var __decorate = (this && this.__decorate) || function (decorators, target, key, desc) {
+    var c = arguments.length, r = c < 3 ? target : desc === null ? desc = Object.getOwnPropertyDescriptor(target, key) : desc, d;
+    if (typeof Reflect === "object" && typeof Reflect.decorate === "function") r = Reflect.decorate(decorators, target, key, desc);
+    else for (var i = decorators.length - 1; i >= 0; i--) if (d = decorators[i]) r = (c < 3 ? d(r) : c > 3 ? d(target, key, r) : d(target, key)) || r;
+    return c > 3 && r && Object.defineProperty(target, key, r), r;
+};
+var __metadata = (this && this.__metadata) || function (k, v) {
+    if (typeof Reflect === "object" && typeof Reflect.metadata === "function") return Reflect.metadata(k, v);
+};
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.MemoTag = void 0;
+const core_1 = require("@mikro-orm/core");
+const Memo_1 = require("@/entities/Memo");
+const Project_1 = require("@/entities/Project");
+let MemoTag = class MemoTag {
+    uuid;
+    tag;
+    memo;
+    project;
+};
+exports.MemoTag = MemoTag;
+__decorate([
+    (0, core_1.PrimaryKey)({ type: 'uuid' }),
+    __metadata("design:type", String)
+], MemoTag.prototype, "uuid", void 0);
+__decorate([
+    (0, core_1.Property)({ type: 'text' }),
+    __metadata("design:type", String)
+], MemoTag.prototype, "tag", void 0);
+__decorate([
+    (0, core_1.ManyToOne)({
+        entity: () => Memo_1.Memo,
+        fieldName: 'memo_id',
+        deferMode: core_1.DeferMode.INITIALLY_DEFERRED,
+        index: 'skald_memotag_memo_id_a7433d48',
+    }),
+    __metadata("design:type", Memo_1.Memo)
+], MemoTag.prototype, "memo", void 0);
+__decorate([
+    (0, core_1.ManyToOne)({
+        entity: () => Project_1.Project,
+        fieldName: 'project_id',
+        deferMode: core_1.DeferMode.INITIALLY_DEFERRED,
+        index: 'skald_memotag_project_id_968368ae',
+    }),
+    __metadata("design:type", Project_1.Project)
+], MemoTag.prototype, "project", void 0);
+exports.MemoTag = MemoTag = __decorate([
+    (0, core_1.Entity)({ tableName: 'skald_memotag' })
+], MemoTag);
+//# sourceMappingURL=data:application/json;charset=utf-8;base64,eyJmaWxlIjoiL2hvbWUvamMwMXJoby9naXQvc2thbGQvYmFja2VuZC9zcmMvZW50aXRpZXMvTWVtb1RhZy50cyIsIm1hcHBpbmdzIjoiOzs7Ozs7Ozs7Ozs7QUFBQSwwQ0FBb0Y7QUFDcEYsMENBQXNDO0FBQ3RDLGdEQUE0QztBQUdyQyxJQUFNLE9BQU8sR0FBYixNQUFNLE9BQU87SUFFaEIsSUFBSSxDQUFTO0lBR2IsR0FBRyxDQUFTO0lBUVosSUFBSSxDQUFPO0lBUVgsT0FBTyxDQUFVO0NBQ3BCLENBQUE7QUF0QlksMEJBQU87QUFFaEI7SUFEQyxJQUFBLGlCQUFVLEVBQUMsRUFBRSxJQUFJLEVBQUUsTUFBTSxFQUFFLENBQUM7O3FDQUNoQjtBQUdiO0lBREMsSUFBQSxlQUFRLEVBQUMsRUFBRSxJQUFJLEVBQUUsTUFBTSxFQUFFLENBQUM7O29DQUNmO0FBUVo7SUFOQyxJQUFBLGdCQUFTLEVBQUM7UUFDUCxNQUFNLEVBQUUsR0FBRyxFQUFFLENBQUMsV0FBSTtRQUNsQixTQUFTLEVBQUUsU0FBUztRQUNwQixTQUFTLEVBQUUsZ0JBQVMsQ0FBQyxrQkFBa0I7UUFDdkMsS0FBSyxFQUFFLGdDQUFnQztLQUMxQyxDQUFDOzhCQUNLLFdBQUk7cUNBQUE7QUFRWDtJQU5DLElBQUEsZ0JBQVMsRUFBQztRQUNQLE1BQU0sRUFBRSxHQUFHLEVBQUUsQ0FBQyxpQkFBTztRQUNyQixTQUFTLEVBQUUsWUFBWTtRQUN2QixTQUFTLEVBQUUsZ0JBQVMsQ0FBQyxrQkFBa0I7UUFDdkMsS0FBSyxFQUFFLG1DQUFtQztLQUM3QyxDQUFDOzhCQUNRLGlCQUFPO3dDQUFBO2tCQXJCUixPQUFPO0lBRG5CLElBQUEsYUFBTSxFQUFDLEVBQUUsU0FBUyxFQUFFLGVBQWUsRUFBRSxDQUFDO0dBQzFCLE9BQU8sQ0FzQm5CIiwibmFtZXMiOltdLCJzb3VyY2VzIjpbIi9ob21lL2pjMDFyaG8vZ2l0L3NrYWxkL2JhY2tlbmQvc3JjL2VudGl0aWVzL01lbW9UYWcudHMiXSwic291cmNlc0NvbnRlbnQiOlsiaW1wb3J0IHsgRGVmZXJNb2RlLCBFbnRpdHksIE1hbnlUb09uZSwgUHJpbWFyeUtleSwgUHJvcGVydHkgfSBmcm9tICdAbWlrcm8tb3JtL2NvcmUnXG5pbXBvcnQgeyBNZW1vIH0gZnJvbSAnQC9lbnRpdGllcy9NZW1vJ1xuaW1wb3J0IHsgUHJvamVjdCB9IGZyb20gJ0AvZW50aXRpZXMvUHJvamVjdCdcblxuQEVudGl0eSh7IHRhYmxlTmFtZTogJ3NrYWxkX21lbW90YWcnIH0pXG5leHBvcnQgY2xhc3MgTWVtb1RhZyB7XG4gICAgQFByaW1hcnlLZXkoeyB0eXBlOiAndXVpZCcgfSlcbiAgICB1dWlkITogc3RyaW5nXG5cbiAgICBAUHJvcGVydHkoeyB0eXBlOiAndGV4dCcgfSlcbiAgICB0YWchOiBzdHJpbmdcblxuICAgIEBNYW55VG9PbmUoe1xuICAgICAgICBlbnRpdHk6ICgpID0+IE1lbW8sXG4gICAgICAgIGZpZWxkTmFtZTogJ21lbW9faWQnLFxuICAgICAgICBkZWZlck1vZGU6IERlZmVyTW9kZS5JTklUSUFMTFlfREVGRVJSRUQsXG4gICAgICAgIGluZGV4OiAnc2thbGRfbWVtb3RhZ19tZW1vX2lkX2E3NDMzZDQ4JyxcbiAgICB9KVxuICAgIG1lbW8hOiBNZW1vXG5cbiAgICBATWFueVRvT25lKHtcbiAgICAgICAgZW50aXR5OiAoKSA9PiBQcm9qZWN0LFxuICAgICAgICBmaWVsZE5hbWU6ICdwcm9qZWN0X2lkJyxcbiAgICAgICAgZGVmZXJNb2RlOiBEZWZlck1vZGUuSU5JVElBTExZX0RFRkVSUkVELFxuICAgICAgICBpbmRleDogJ3NrYWxkX21lbW90YWdfcHJvamVjdF9pZF85NjgzNjhhZScsXG4gICAgfSlcbiAgICBwcm9qZWN0ITogUHJvamVjdFxufVxuIl0sInZlcnNpb24iOjN9

@@ -1,0 +1,84 @@
+9ed790ee21f026e26ad51a2cde632e13
+"use strict";
+var __decorate = (this && this.__decorate) || function (decorators, target, key, desc) {
+    var c = arguments.length, r = c < 3 ? target : desc === null ? desc = Object.getOwnPropertyDescriptor(target, key) : desc, d;
+    if (typeof Reflect === "object" && typeof Reflect.decorate === "function") r = Reflect.decorate(decorators, target, key, desc);
+    else for (var i = decorators.length - 1; i >= 0; i--) if (d = decorators[i]) r = (c < 3 ? d(r) : c > 3 ? d(target, key, r) : d(target, key)) || r;
+    return c > 3 && r && Object.defineProperty(target, key, r), r;
+};
+var __metadata = (this && this.__metadata) || function (k, v) {
+    if (typeof Reflect === "object" && typeof Reflect.metadata === "function") return Reflect.metadata(k, v);
+};
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.ExperimentResult = void 0;
+const core_1 = require("@mikro-orm/core");
+const Experiment_1 = require("./Experiment");
+const EvaluationDatasetQuestion_1 = require("./EvaluationDatasetQuestion");
+let ExperimentResult = class ExperimentResult {
+    uuid;
+    experiment;
+    evaluationDatasetQuestion;
+    total_answer_time_ms;
+    time_to_first_token_ms;
+    answer;
+    llm_answer_rating;
+    // later support handling what user rated the answer etc
+    human_answer_rating;
+    metadata;
+    created_at;
+};
+exports.ExperimentResult = ExperimentResult;
+__decorate([
+    (0, core_1.PrimaryKey)({ type: 'uuid' }),
+    __metadata("design:type", String)
+], ExperimentResult.prototype, "uuid", void 0);
+__decorate([
+    (0, core_1.ManyToOne)({
+        entity: () => Experiment_1.Experiment,
+        fieldName: 'experiment_id',
+        deferMode: core_1.DeferMode.INITIALLY_DEFERRED,
+        index: 'skald_experimentresult_experiment_id_idx',
+    }),
+    __metadata("design:type", Experiment_1.Experiment)
+], ExperimentResult.prototype, "experiment", void 0);
+__decorate([
+    (0, core_1.ManyToOne)({
+        entity: () => EvaluationDatasetQuestion_1.EvaluationDatasetQuestion,
+        fieldName: 'evaluation_dataset_question_id',
+        deferMode: core_1.DeferMode.INITIALLY_DEFERRED,
+        index: 'skald_experimentresult_evaluation_dataset_question_id_idx',
+    }),
+    __metadata("design:type", EvaluationDatasetQuestion_1.EvaluationDatasetQuestion)
+], ExperimentResult.prototype, "evaluationDatasetQuestion", void 0);
+__decorate([
+    (0, core_1.Property)({ nullable: true }),
+    __metadata("design:type", Number)
+], ExperimentResult.prototype, "total_answer_time_ms", void 0);
+__decorate([
+    (0, core_1.Property)({ nullable: true }),
+    __metadata("design:type", Number)
+], ExperimentResult.prototype, "time_to_first_token_ms", void 0);
+__decorate([
+    (0, core_1.Property)({ type: 'text' }),
+    __metadata("design:type", String)
+], ExperimentResult.prototype, "answer", void 0);
+__decorate([
+    (0, core_1.Property)({ nullable: true }),
+    __metadata("design:type", Number)
+], ExperimentResult.prototype, "llm_answer_rating", void 0);
+__decorate([
+    (0, core_1.Property)({ nullable: true }),
+    __metadata("design:type", Number)
+], ExperimentResult.prototype, "human_answer_rating", void 0);
+__decorate([
+    (0, core_1.Property)({ type: 'json', nullable: true }),
+    __metadata("design:type", Object)
+], ExperimentResult.prototype, "metadata", void 0);
+__decorate([
+    (0, core_1.Property)(),
+    __metadata("design:type", Date)
+], ExperimentResult.prototype, "created_at", void 0);
+exports.ExperimentResult = ExperimentResult = __decorate([
+    (0, core_1.Entity)({ tableName: 'skald_experimentresult' })
+], ExperimentResult);
+//# sourceMappingURL=data:application/json;charset=utf-8;base64,eyJmaWxlIjoiL2hvbWUvamMwMXJoby9naXQvc2thbGQvYmFja2VuZC9zcmMvZW50aXRpZXMvRXhwZXJpbWVudFJlc3VsdC50cyIsIm1hcHBpbmdzIjoiOzs7Ozs7Ozs7Ozs7QUFBQSwwQ0FBb0Y7QUFDcEYsNkNBQXlDO0FBQ3pDLDJFQUF1RTtBQUdoRSxJQUFNLGdCQUFnQixHQUF0QixNQUFNLGdCQUFnQjtJQUV6QixJQUFJLENBQVM7SUFRYixVQUFVLENBQWE7SUFRdkIseUJBQXlCLENBQTRCO0lBR3JELG9CQUFvQixDQUFTO0lBRzdCLHNCQUFzQixDQUFTO0lBRy9CLE1BQU0sQ0FBUztJQUdmLGlCQUFpQixDQUFTO0lBRTFCLHdEQUF3RDtJQUV4RCxtQkFBbUIsQ0FBUztJQUc1QixRQUFRLENBQXNCO0lBRzlCLFVBQVUsQ0FBTztDQUNwQixDQUFBO0FBekNZLDRDQUFnQjtBQUV6QjtJQURDLElBQUEsaUJBQVUsRUFBQyxFQUFFLElBQUksRUFBRSxNQUFNLEVBQUUsQ0FBQzs7OENBQ2hCO0FBUWI7SUFOQyxJQUFBLGdCQUFTLEVBQUM7UUFDUCxNQUFNLEVBQUUsR0FBRyxFQUFFLENBQUMsdUJBQVU7UUFDeEIsU0FBUyxFQUFFLGVBQWU7UUFDMUIsU0FBUyxFQUFFLGdCQUFTLENBQUMsa0JBQWtCO1FBQ3ZDLEtBQUssRUFBRSwwQ0FBMEM7S0FDcEQsQ0FBQzs4QkFDVyx1QkFBVTtvREFBQTtBQVF2QjtJQU5DLElBQUEsZ0JBQVMsRUFBQztRQUNQLE1BQU0sRUFBRSxHQUFHLEVBQUUsQ0FBQyxxREFBeUI7UUFDdkMsU0FBUyxFQUFFLGdDQUFnQztRQUMzQyxTQUFTLEVBQUUsZ0JBQVMsQ0FBQyxrQkFBa0I7UUFDdkMsS0FBSyxFQUFFLDJEQUEyRDtLQUNyRSxDQUFDOzhCQUMwQixxREFBeUI7bUVBQUE7QUFHckQ7SUFEQyxJQUFBLGVBQVEsRUFBQyxFQUFFLFFBQVEsRUFBRSxJQUFJLEVBQUUsQ0FBQzs7OERBQ0E7QUFHN0I7SUFEQyxJQUFBLGVBQVEsRUFBQyxFQUFFLFFBQVEsRUFBRSxJQUFJLEVBQUUsQ0FBQzs7Z0VBQ0U7QUFHL0I7SUFEQyxJQUFBLGVBQVEsRUFBQyxFQUFFLElBQUksRUFBRSxNQUFNLEVBQUUsQ0FBQzs7Z0RBQ1o7QUFHZjtJQURDLElBQUEsZUFBUSxFQUFDLEVBQUUsUUFBUSxFQUFFLElBQUksRUFBRSxDQUFDOzsyREFDSDtBQUkxQjtJQURDLElBQUEsZUFBUSxFQUFDLEVBQUUsUUFBUSxFQUFFLElBQUksRUFBRSxDQUFDOzs2REFDRDtBQUc1QjtJQURDLElBQUEsZUFBUSxFQUFDLEVBQUUsSUFBSSxFQUFFLE1BQU0sRUFBRSxRQUFRLEVBQUUsSUFBSSxFQUFFLENBQUM7O2tEQUNiO0FBRzlCO0lBREMsSUFBQSxlQUFRLEdBQUU7OEJBQ0UsSUFBSTtvREFBQTsyQkF4Q1IsZ0JBQWdCO0lBRDVCLElBQUEsYUFBTSxFQUFDLEVBQUUsU0FBUyxFQUFFLHdCQUF3QixFQUFFLENBQUM7R0FDbkMsZ0JBQWdCLENBeUM1QiIsIm5hbWVzIjpbXSwic291cmNlcyI6WyIvaG9tZS9qYzAxcmhvL2dpdC9za2FsZC9iYWNrZW5kL3NyYy9lbnRpdGllcy9FeHBlcmltZW50UmVzdWx0LnRzIl0sInNvdXJjZXNDb250ZW50IjpbImltcG9ydCB7IERlZmVyTW9kZSwgRW50aXR5LCBNYW55VG9PbmUsIFByaW1hcnlLZXksIFByb3BlcnR5IH0gZnJvbSAnQG1pa3JvLW9ybS9jb3JlJ1xuaW1wb3J0IHsgRXhwZXJpbWVudCB9IGZyb20gJy4vRXhwZXJpbWVudCdcbmltcG9ydCB7IEV2YWx1YXRpb25EYXRhc2V0UXVlc3Rpb24gfSBmcm9tICcuL0V2YWx1YXRpb25EYXRhc2V0UXVlc3Rpb24nXG5cbkBFbnRpdHkoeyB0YWJsZU5hbWU6ICdza2FsZF9leHBlcmltZW50cmVzdWx0JyB9KVxuZXhwb3J0IGNsYXNzIEV4cGVyaW1lbnRSZXN1bHQge1xuICAgIEBQcmltYXJ5S2V5KHsgdHlwZTogJ3V1aWQnIH0pXG4gICAgdXVpZCE6IHN0cmluZ1xuXG4gICAgQE1hbnlUb09uZSh7XG4gICAgICAgIGVudGl0eTogKCkgPT4gRXhwZXJpbWVudCxcbiAgICAgICAgZmllbGROYW1lOiAnZXhwZXJpbWVudF9pZCcsXG4gICAgICAgIGRlZmVyTW9kZTogRGVmZXJNb2RlLklOSVRJQUxMWV9ERUZFUlJFRCxcbiAgICAgICAgaW5kZXg6ICdza2FsZF9leHBlcmltZW50cmVzdWx0X2V4cGVyaW1lbnRfaWRfaWR4JyxcbiAgICB9KVxuICAgIGV4cGVyaW1lbnQhOiBFeHBlcmltZW50XG5cbiAgICBATWFueVRvT25lKHtcbiAgICAgICAgZW50aXR5OiAoKSA9PiBFdmFsdWF0aW9uRGF0YXNldFF1ZXN0aW9uLFxuICAgICAgICBmaWVsZE5hbWU6ICdldmFsdWF0aW9uX2RhdGFzZXRfcXVlc3Rpb25faWQnLFxuICAgICAgICBkZWZlck1vZGU6IERlZmVyTW9kZS5JTklUSUFMTFlfREVGRVJSRUQsXG4gICAgICAgIGluZGV4OiAnc2thbGRfZXhwZXJpbWVudHJlc3VsdF9ldmFsdWF0aW9uX2RhdGFzZXRfcXVlc3Rpb25faWRfaWR4JyxcbiAgICB9KVxuICAgIGV2YWx1YXRpb25EYXRhc2V0UXVlc3Rpb24hOiBFdmFsdWF0aW9uRGF0YXNldFF1ZXN0aW9uXG5cbiAgICBAUHJvcGVydHkoeyBudWxsYWJsZTogdHJ1ZSB9KVxuICAgIHRvdGFsX2Fuc3dlcl90aW1lX21zPzogbnVtYmVyXG5cbiAgICBAUHJvcGVydHkoeyBudWxsYWJsZTogdHJ1ZSB9KVxuICAgIHRpbWVfdG9fZmlyc3RfdG9rZW5fbXM/OiBudW1iZXJcblxuICAgIEBQcm9wZXJ0eSh7IHR5cGU6ICd0ZXh0JyB9KVxuICAgIGFuc3dlciE6IHN0cmluZ1xuXG4gICAgQFByb3BlcnR5KHsgbnVsbGFibGU6IHRydWUgfSlcbiAgICBsbG1fYW5zd2VyX3JhdGluZz86IG51bWJlclxuXG4gICAgLy8gbGF0ZXIgc3VwcG9ydCBoYW5kbGluZyB3aGF0IHVzZXIgcmF0ZWQgdGhlIGFuc3dlciBldGNcbiAgICBAUHJvcGVydHkoeyBudWxsYWJsZTogdHJ1ZSB9KVxuICAgIGh1bWFuX2Fuc3dlcl9yYXRpbmc/OiBudW1iZXJcblxuICAgIEBQcm9wZXJ0eSh7IHR5cGU6ICdqc29uJywgbnVsbGFibGU6IHRydWUgfSlcbiAgICBtZXRhZGF0YT86IFJlY29yZDxzdHJpbmcsIGFueT5cblxuICAgIEBQcm9wZXJ0eSgpXG4gICAgY3JlYXRlZF9hdCE6IERhdGVcbn1cbiJdLCJ2ZXJzaW9uIjozfQ==

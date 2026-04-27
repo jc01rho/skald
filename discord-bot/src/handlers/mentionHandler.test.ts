@@ -83,6 +83,15 @@ test('maps backend availability errors to user-friendly mention message', () => 
     )
 })
 
+test('maps backend HTTP server errors to user-friendly mention message', () => {
+    for (const status of [500, 502, 503, 504]) {
+        assert.equal(
+            __testables__.buildMentionErrorMessage(`HTTP error: ${status}`),
+            '백엔드 서버 오류가 발생했습니다. 잠시 후 다시 시도해 주세요.'
+        )
+    }
+})
+
 test('parses references event payload from string content', () => {
     assert.deepEqual(__testables__.parseReferencesEventContent(JSON.stringify(references)), references)
 })

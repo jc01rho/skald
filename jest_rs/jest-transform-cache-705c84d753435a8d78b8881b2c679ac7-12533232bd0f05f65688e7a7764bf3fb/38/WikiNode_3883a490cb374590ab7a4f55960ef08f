@@ -1,0 +1,84 @@
+7e63c433f7d0b8b424a571d73339f6bc
+"use strict";
+var __decorate = (this && this.__decorate) || function (decorators, target, key, desc) {
+    var c = arguments.length, r = c < 3 ? target : desc === null ? desc = Object.getOwnPropertyDescriptor(target, key) : desc, d;
+    if (typeof Reflect === "object" && typeof Reflect.decorate === "function") r = Reflect.decorate(decorators, target, key, desc);
+    else for (var i = decorators.length - 1; i >= 0; i--) if (d = decorators[i]) r = (c < 3 ? d(r) : c > 3 ? d(target, key, r) : d(target, key)) || r;
+    return c > 3 && r && Object.defineProperty(target, key, r), r;
+};
+var __metadata = (this && this.__metadata) || function (k, v) {
+    if (typeof Reflect === "object" && typeof Reflect.metadata === "function") return Reflect.metadata(k, v);
+};
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.WikiNode = void 0;
+const core_1 = require("@mikro-orm/core");
+const Project_1 = require("@/entities/Project");
+let WikiNode = class WikiNode {
+    uuid;
+    created_at;
+    updated_at;
+    node_type;
+    canonical_name;
+    display_name;
+    description;
+    metadata = {};
+    confidence;
+    freshness;
+    project;
+};
+exports.WikiNode = WikiNode;
+__decorate([
+    (0, core_1.PrimaryKey)({ type: 'uuid' }),
+    __metadata("design:type", String)
+], WikiNode.prototype, "uuid", void 0);
+__decorate([
+    (0, core_1.Property)(),
+    __metadata("design:type", Date)
+], WikiNode.prototype, "created_at", void 0);
+__decorate([
+    (0, core_1.Property)(),
+    __metadata("design:type", Date)
+], WikiNode.prototype, "updated_at", void 0);
+__decorate([
+    (0, core_1.Property)({ length: 50 }),
+    __metadata("design:type", String)
+], WikiNode.prototype, "node_type", void 0);
+__decorate([
+    (0, core_1.Property)({ length: 255 }),
+    __metadata("design:type", String)
+], WikiNode.prototype, "canonical_name", void 0);
+__decorate([
+    (0, core_1.Property)({ length: 255 }),
+    __metadata("design:type", String)
+], WikiNode.prototype, "display_name", void 0);
+__decorate([
+    (0, core_1.Property)({ nullable: true, type: 'text' }),
+    __metadata("design:type", Object)
+], WikiNode.prototype, "description", void 0);
+__decorate([
+    (0, core_1.Property)({ type: 'json' }),
+    __metadata("design:type", Object)
+], WikiNode.prototype, "metadata", void 0);
+__decorate([
+    (0, core_1.Property)({ default: 0.5 }),
+    __metadata("design:type", Number)
+], WikiNode.prototype, "confidence", void 0);
+__decorate([
+    (0, core_1.Property)({ default: 0.5 }),
+    __metadata("design:type", Number)
+], WikiNode.prototype, "freshness", void 0);
+__decorate([
+    (0, core_1.ManyToOne)({
+        entity: () => Project_1.Project,
+        fieldName: 'project_id',
+        deferMode: core_1.DeferMode.INITIALLY_DEFERRED,
+        index: 'skald_wiki_node_project_id_idx',
+    }),
+    __metadata("design:type", Project_1.Project)
+], WikiNode.prototype, "project", void 0);
+exports.WikiNode = WikiNode = __decorate([
+    (0, core_1.Entity)({ tableName: 'skald_wiki_node' }),
+    (0, core_1.Unique)({ name: 'skald_wiki_node_project_type_canonical_key', properties: ['project', 'node_type', 'canonical_name'] }),
+    (0, core_1.Index)({ name: 'skald_wiki_node_project_type_idx', properties: ['project', 'node_type'] })
+], WikiNode);
+//# sourceMappingURL=data:application/json;charset=utf-8;base64,eyJmaWxlIjoiL2hvbWUvamMwMXJoby9naXQvc2thbGQvYmFja2VuZC9zcmMvZW50aXRpZXMvV2lraU5vZGUudHMiLCJtYXBwaW5ncyI6Ijs7Ozs7Ozs7Ozs7O0FBQUEsMENBQW1HO0FBQ25HLGdEQUE0QztBQU9yQyxJQUFNLFFBQVEsR0FBZCxNQUFNLFFBQVE7SUFFakIsSUFBSSxDQUFTO0lBR2IsVUFBVSxDQUFPO0lBR2pCLFVBQVUsQ0FBTztJQUdqQixTQUFTLENBQWU7SUFHeEIsY0FBYyxDQUFTO0lBR3ZCLFlBQVksQ0FBUztJQUdyQixXQUFXLENBQWdCO0lBRzNCLFFBQVEsR0FBNEIsRUFBRSxDQUFBO0lBR3RDLFVBQVUsQ0FBUztJQUduQixTQUFTLENBQVM7SUFRbEIsT0FBTyxDQUFVO0NBQ3BCLENBQUE7QUF0Q1ksNEJBQVE7QUFFakI7SUFEQyxJQUFBLGlCQUFVLEVBQUMsRUFBRSxJQUFJLEVBQUUsTUFBTSxFQUFFLENBQUM7O3NDQUNoQjtBQUdiO0lBREMsSUFBQSxlQUFRLEdBQUU7OEJBQ0UsSUFBSTs0Q0FBQTtBQUdqQjtJQURDLElBQUEsZUFBUSxHQUFFOzhCQUNFLElBQUk7NENBQUE7QUFHakI7SUFEQyxJQUFBLGVBQVEsRUFBQyxFQUFFLE1BQU0sRUFBRSxFQUFFLEVBQUUsQ0FBQzs7MkNBQ0Q7QUFHeEI7SUFEQyxJQUFBLGVBQVEsRUFBQyxFQUFFLE1BQU0sRUFBRSxHQUFHLEVBQUUsQ0FBQzs7Z0RBQ0g7QUFHdkI7SUFEQyxJQUFBLGVBQVEsRUFBQyxFQUFFLE1BQU0sRUFBRSxHQUFHLEVBQUUsQ0FBQzs7OENBQ0w7QUFHckI7SUFEQyxJQUFBLGVBQVEsRUFBQyxFQUFFLFFBQVEsRUFBRSxJQUFJLEVBQUUsSUFBSSxFQUFFLE1BQU0sRUFBRSxDQUFDOzs2Q0FDaEI7QUFHM0I7SUFEQyxJQUFBLGVBQVEsRUFBQyxFQUFFLElBQUksRUFBRSxNQUFNLEVBQUUsQ0FBQzs7MENBQ1c7QUFHdEM7SUFEQyxJQUFBLGVBQVEsRUFBQyxFQUFFLE9BQU8sRUFBRSxHQUFHLEVBQUUsQ0FBQzs7NENBQ1I7QUFHbkI7SUFEQyxJQUFBLGVBQVEsRUFBQyxFQUFFLE9BQU8sRUFBRSxHQUFHLEVBQUUsQ0FBQzs7MkNBQ1Q7QUFRbEI7SUFOQyxJQUFBLGdCQUFTLEVBQUM7UUFDUCxNQUFNLEVBQUUsR0FBRyxFQUFFLENBQUMsaUJBQU87UUFDckIsU0FBUyxFQUFFLFlBQVk7UUFDdkIsU0FBUyxFQUFFLGdCQUFTLENBQUMsa0JBQWtCO1FBQ3ZDLEtBQUssRUFBRSxnQ0FBZ0M7S0FDMUMsQ0FBQzs4QkFDUSxpQkFBTzt5Q0FBQTttQkFyQ1IsUUFBUTtJQUhwQixJQUFBLGFBQU0sRUFBQyxFQUFFLFNBQVMsRUFBRSxpQkFBaUIsRUFBRSxDQUFDO0lBQ3hDLElBQUEsYUFBTSxFQUFDLEVBQUUsSUFBSSxFQUFFLDRDQUE0QyxFQUFFLFVBQVUsRUFBRSxDQUFDLFNBQVMsRUFBRSxXQUFXLEVBQUUsZ0JBQWdCLENBQUMsRUFBRSxDQUFDO0lBQ3RILElBQUEsWUFBSyxFQUFDLEVBQUUsSUFBSSxFQUFFLGtDQUFrQyxFQUFFLFVBQVUsRUFBRSxDQUFDLFNBQVMsRUFBRSxXQUFXLENBQUMsRUFBRSxDQUFDO0dBQzdFLFFBQVEsQ0FzQ3BCIiwibmFtZXMiOltdLCJzb3VyY2VzIjpbIi9ob21lL2pjMDFyaG8vZ2l0L3NrYWxkL2JhY2tlbmQvc3JjL2VudGl0aWVzL1dpa2lOb2RlLnRzIl0sInNvdXJjZXNDb250ZW50IjpbImltcG9ydCB7IERlZmVyTW9kZSwgRW50aXR5LCBJbmRleCwgTWFueVRvT25lLCBQcmltYXJ5S2V5LCBQcm9wZXJ0eSwgVW5pcXVlIH0gZnJvbSAnQG1pa3JvLW9ybS9jb3JlJ1xuaW1wb3J0IHsgUHJvamVjdCB9IGZyb20gJ0AvZW50aXRpZXMvUHJvamVjdCdcblxuZXhwb3J0IHR5cGUgV2lraU5vZGVUeXBlID0gJ2NvbmNlcHQnIHwgJ2VudGl0eScgfCAncHJvY2VzcycgfCAndG9waWMnIHwgJ3BvbGljeScgfCAnYXJ0aWZhY3QnIHwgJ21ldHJpYycgfCAnZXZlbnQnXG5cbkBFbnRpdHkoeyB0YWJsZU5hbWU6ICdza2FsZF93aWtpX25vZGUnIH0pXG5AVW5pcXVlKHsgbmFtZTogJ3NrYWxkX3dpa2lfbm9kZV9wcm9qZWN0X3R5cGVfY2Fub25pY2FsX2tleScsIHByb3BlcnRpZXM6IFsncHJvamVjdCcsICdub2RlX3R5cGUnLCAnY2Fub25pY2FsX25hbWUnXSB9KVxuQEluZGV4KHsgbmFtZTogJ3NrYWxkX3dpa2lfbm9kZV9wcm9qZWN0X3R5cGVfaWR4JywgcHJvcGVydGllczogWydwcm9qZWN0JywgJ25vZGVfdHlwZSddIH0pXG5leHBvcnQgY2xhc3MgV2lraU5vZGUge1xuICAgIEBQcmltYXJ5S2V5KHsgdHlwZTogJ3V1aWQnIH0pXG4gICAgdXVpZCE6IHN0cmluZ1xuXG4gICAgQFByb3BlcnR5KClcbiAgICBjcmVhdGVkX2F0ITogRGF0ZVxuXG4gICAgQFByb3BlcnR5KClcbiAgICB1cGRhdGVkX2F0ITogRGF0ZVxuXG4gICAgQFByb3BlcnR5KHsgbGVuZ3RoOiA1MCB9KVxuICAgIG5vZGVfdHlwZSE6IFdpa2lOb2RlVHlwZVxuXG4gICAgQFByb3BlcnR5KHsgbGVuZ3RoOiAyNTUgfSlcbiAgICBjYW5vbmljYWxfbmFtZSE6IHN0cmluZ1xuXG4gICAgQFByb3BlcnR5KHsgbGVuZ3RoOiAyNTUgfSlcbiAgICBkaXNwbGF5X25hbWUhOiBzdHJpbmdcblxuICAgIEBQcm9wZXJ0eSh7IG51bGxhYmxlOiB0cnVlLCB0eXBlOiAndGV4dCcgfSlcbiAgICBkZXNjcmlwdGlvbj86IHN0cmluZyB8IG51bGxcblxuICAgIEBQcm9wZXJ0eSh7IHR5cGU6ICdqc29uJyB9KVxuICAgIG1ldGFkYXRhOiBSZWNvcmQ8c3RyaW5nLCB1bmtub3duPiA9IHt9XG5cbiAgICBAUHJvcGVydHkoeyBkZWZhdWx0OiAwLjUgfSlcbiAgICBjb25maWRlbmNlITogbnVtYmVyXG5cbiAgICBAUHJvcGVydHkoeyBkZWZhdWx0OiAwLjUgfSlcbiAgICBmcmVzaG5lc3MhOiBudW1iZXJcblxuICAgIEBNYW55VG9PbmUoe1xuICAgICAgICBlbnRpdHk6ICgpID0+IFByb2plY3QsXG4gICAgICAgIGZpZWxkTmFtZTogJ3Byb2plY3RfaWQnLFxuICAgICAgICBkZWZlck1vZGU6IERlZmVyTW9kZS5JTklUSUFMTFlfREVGRVJSRUQsXG4gICAgICAgIGluZGV4OiAnc2thbGRfd2lraV9ub2RlX3Byb2plY3RfaWRfaWR4JyxcbiAgICB9KVxuICAgIHByb2plY3QhOiBQcm9qZWN0XG59XG4iXSwidmVyc2lvbiI6M30=

@@ -1,0 +1,86 @@
+a0a12500369ac780adb69eec86c8b480
+"use strict";
+var __decorate = (this && this.__decorate) || function (decorators, target, key, desc) {
+    var c = arguments.length, r = c < 3 ? target : desc === null ? desc = Object.getOwnPropertyDescriptor(target, key) : desc, d;
+    if (typeof Reflect === "object" && typeof Reflect.decorate === "function") r = Reflect.decorate(decorators, target, key, desc);
+    else for (var i = decorators.length - 1; i >= 0; i--) if (d = decorators[i]) r = (c < 3 ? d(r) : c > 3 ? d(target, key, r) : d(target, key)) || r;
+    return c > 3 && r && Object.defineProperty(target, key, r), r;
+};
+var __metadata = (this && this.__metadata) || function (k, v) {
+    if (typeof Reflect === "object" && typeof Reflect.metadata === "function") return Reflect.metadata(k, v);
+};
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.RawSourceDocument = void 0;
+const core_1 = require("@mikro-orm/core");
+const Project_1 = require("@/entities/Project");
+let RawSourceDocument = class RawSourceDocument {
+    uuid;
+    created_at;
+    updated_at;
+    source_type;
+    external_reference;
+    title;
+    description;
+    metadata;
+    project;
+    contents = new core_1.Collection(this);
+};
+exports.RawSourceDocument = RawSourceDocument;
+__decorate([
+    (0, core_1.PrimaryKey)({ type: 'uuid' }),
+    __metadata("design:type", String)
+], RawSourceDocument.prototype, "uuid", void 0);
+__decorate([
+    (0, core_1.Property)(),
+    __metadata("design:type", Date)
+], RawSourceDocument.prototype, "created_at", void 0);
+__decorate([
+    (0, core_1.Property)(),
+    __metadata("design:type", Date)
+], RawSourceDocument.prototype, "updated_at", void 0);
+__decorate([
+    (0, core_1.Property)({ length: 100 }),
+    __metadata("design:type", String)
+], RawSourceDocument.prototype, "source_type", void 0);
+__decorate([
+    (0, core_1.Property)({ nullable: true, length: 255 }),
+    __metadata("design:type", Object)
+], RawSourceDocument.prototype, "external_reference", void 0);
+__decorate([
+    (0, core_1.Property)({ type: 'text' }),
+    __metadata("design:type", String)
+], RawSourceDocument.prototype, "title", void 0);
+__decorate([
+    (0, core_1.Property)({ nullable: true, type: 'text' }),
+    __metadata("design:type", Object)
+], RawSourceDocument.prototype, "description", void 0);
+__decorate([
+    (0, core_1.Property)({ type: 'json', nullable: true }),
+    __metadata("design:type", Object)
+], RawSourceDocument.prototype, "metadata", void 0);
+__decorate([
+    (0, core_1.ManyToOne)({
+        entity: () => Project_1.Project,
+        fieldName: 'project_id',
+        deferMode: core_1.DeferMode.INITIALLY_DEFERRED,
+        index: 'skald_raw_source_document_project_id_idx',
+    }),
+    __metadata("design:type", Project_1.Project)
+], RawSourceDocument.prototype, "project", void 0);
+__decorate([
+    (0, core_1.OneToMany)({
+        entity: 'RawSourceContent',
+        mappedBy: 'raw_source_document',
+    }),
+    __metadata("design:type", Object)
+], RawSourceDocument.prototype, "contents", void 0);
+exports.RawSourceDocument = RawSourceDocument = __decorate([
+    (0, core_1.Entity)({ tableName: 'skald_raw_source_document' }),
+    (0, core_1.Unique)({
+        name: 'skald_raw_source_document_project_source_reference_key',
+        properties: ['project', 'source_type', 'external_reference'],
+    }),
+    (0, core_1.Index)({ name: 'skald_raw_source_document_project_source_idx', properties: ['project', 'source_type'] }),
+    (0, core_1.Index)({ name: 'skald_raw_source_document_project_ref_idx', properties: ['project', 'external_reference'] })
+], RawSourceDocument);
+//# sourceMappingURL=data:application/json;charset=utf-8;base64,eyJmaWxlIjoiL2hvbWUvamMwMXJoby9naXQvc2thbGQvYmFja2VuZC9zcmMvZW50aXRpZXMvUmF3U291cmNlRG9jdW1lbnQudHMiLCJtYXBwaW5ncyI6Ijs7Ozs7Ozs7Ozs7O0FBQUEsMENBVXdCO0FBQ3hCLGdEQUE0QztBQVlyQyxJQUFNLGlCQUFpQixHQUF2QixNQUFNLGlCQUFpQjtJQUUxQixJQUFJLENBQVM7SUFHYixVQUFVLENBQU87SUFHakIsVUFBVSxDQUFPO0lBR2pCLFdBQVcsQ0FBYTtJQUd4QixrQkFBa0IsQ0FBZ0I7SUFHbEMsS0FBSyxDQUFTO0lBR2QsV0FBVyxDQUFnQjtJQUczQixRQUFRLENBQWlDO0lBUXpDLE9BQU8sQ0FBVTtJQU1qQixRQUFRLEdBQUcsSUFBSSxpQkFBVSxDQUFtQixJQUFJLENBQUMsQ0FBQTtDQUNwRCxDQUFBO0FBdENZLDhDQUFpQjtBQUUxQjtJQURDLElBQUEsaUJBQVUsRUFBQyxFQUFFLElBQUksRUFBRSxNQUFNLEVBQUUsQ0FBQzs7K0NBQ2hCO0FBR2I7SUFEQyxJQUFBLGVBQVEsR0FBRTs4QkFDRSxJQUFJO3FEQUFBO0FBR2pCO0lBREMsSUFBQSxlQUFRLEdBQUU7OEJBQ0UsSUFBSTtxREFBQTtBQUdqQjtJQURDLElBQUEsZUFBUSxFQUFDLEVBQUUsTUFBTSxFQUFFLEdBQUcsRUFBRSxDQUFDOztzREFDRjtBQUd4QjtJQURDLElBQUEsZUFBUSxFQUFDLEVBQUUsUUFBUSxFQUFFLElBQUksRUFBRSxNQUFNLEVBQUUsR0FBRyxFQUFFLENBQUM7OzZEQUNSO0FBR2xDO0lBREMsSUFBQSxlQUFRLEVBQUMsRUFBRSxJQUFJLEVBQUUsTUFBTSxFQUFFLENBQUM7O2dEQUNiO0FBR2Q7SUFEQyxJQUFBLGVBQVEsRUFBQyxFQUFFLFFBQVEsRUFBRSxJQUFJLEVBQUUsSUFBSSxFQUFFLE1BQU0sRUFBRSxDQUFDOztzREFDaEI7QUFHM0I7SUFEQyxJQUFBLGVBQVEsRUFBQyxFQUFFLElBQUksRUFBRSxNQUFNLEVBQUUsUUFBUSxFQUFFLElBQUksRUFBRSxDQUFDOzttREFDRjtBQVF6QztJQU5DLElBQUEsZ0JBQVMsRUFBQztRQUNQLE1BQU0sRUFBRSxHQUFHLEVBQUUsQ0FBQyxpQkFBTztRQUNyQixTQUFTLEVBQUUsWUFBWTtRQUN2QixTQUFTLEVBQUUsZ0JBQVMsQ0FBQyxrQkFBa0I7UUFDdkMsS0FBSyxFQUFFLDBDQUEwQztLQUNwRCxDQUFDOzhCQUNRLGlCQUFPO2tEQUFBO0FBTWpCO0lBSkMsSUFBQSxnQkFBUyxFQUFDO1FBQ1AsTUFBTSxFQUFFLGtCQUFrQjtRQUMxQixRQUFRLEVBQUUscUJBQXFCO0tBQ2xDLENBQUM7O21EQUMrQzs0QkFyQ3hDLGlCQUFpQjtJQVA3QixJQUFBLGFBQU0sRUFBQyxFQUFFLFNBQVMsRUFBRSwyQkFBMkIsRUFBRSxDQUFDO0lBQ2xELElBQUEsYUFBTSxFQUFDO1FBQ0osSUFBSSxFQUFFLHdEQUF3RDtRQUM5RCxVQUFVLEVBQUUsQ0FBQyxTQUFTLEVBQUUsYUFBYSxFQUFFLG9CQUFvQixDQUFDO0tBQy9ELENBQUM7SUFDRCxJQUFBLFlBQUssRUFBQyxFQUFFLElBQUksRUFBRSw4Q0FBOEMsRUFBRSxVQUFVLEVBQUUsQ0FBQyxTQUFTLEVBQUUsYUFBYSxDQUFDLEVBQUUsQ0FBQztJQUN2RyxJQUFBLFlBQUssRUFBQyxFQUFFLElBQUksRUFBRSwyQ0FBMkMsRUFBRSxVQUFVLEVBQUUsQ0FBQyxTQUFTLEVBQUUsb0JBQW9CLENBQUMsRUFBRSxDQUFDO0dBQy9GLGlCQUFpQixDQXNDN0IiLCJuYW1lcyI6W10sInNvdXJjZXMiOlsiL2hvbWUvamMwMXJoby9naXQvc2thbGQvYmFja2VuZC9zcmMvZW50aXRpZXMvUmF3U291cmNlRG9jdW1lbnQudHMiXSwic291cmNlc0NvbnRlbnQiOlsiaW1wb3J0IHtcbiAgICBDb2xsZWN0aW9uLFxuICAgIERlZmVyTW9kZSxcbiAgICBFbnRpdHksXG4gICAgSW5kZXgsXG4gICAgTWFueVRvT25lLFxuICAgIE9uZVRvTWFueSxcbiAgICBQcmltYXJ5S2V5LFxuICAgIFByb3BlcnR5LFxuICAgIFVuaXF1ZSxcbn0gZnJvbSAnQG1pa3JvLW9ybS9jb3JlJ1xuaW1wb3J0IHsgUHJvamVjdCB9IGZyb20gJ0AvZW50aXRpZXMvUHJvamVjdCdcbmltcG9ydCB0eXBlIHsgUmF3U291cmNlQ29udGVudCB9IGZyb20gJ0AvZW50aXRpZXMvUmF3U291cmNlQ29udGVudCdcblxuZXhwb3J0IHR5cGUgU291cmNlVHlwZSA9ICdtZW1vJyB8ICdkb2N1bWVudCcgfCAnZXh0ZXJuYWwnXG5cbkBFbnRpdHkoeyB0YWJsZU5hbWU6ICdza2FsZF9yYXdfc291cmNlX2RvY3VtZW50JyB9KVxuQFVuaXF1ZSh7XG4gICAgbmFtZTogJ3NrYWxkX3Jhd19zb3VyY2VfZG9jdW1lbnRfcHJvamVjdF9zb3VyY2VfcmVmZXJlbmNlX2tleScsXG4gICAgcHJvcGVydGllczogWydwcm9qZWN0JywgJ3NvdXJjZV90eXBlJywgJ2V4dGVybmFsX3JlZmVyZW5jZSddLFxufSlcbkBJbmRleCh7IG5hbWU6ICdza2FsZF9yYXdfc291cmNlX2RvY3VtZW50X3Byb2plY3Rfc291cmNlX2lkeCcsIHByb3BlcnRpZXM6IFsncHJvamVjdCcsICdzb3VyY2VfdHlwZSddIH0pXG5ASW5kZXgoeyBuYW1lOiAnc2thbGRfcmF3X3NvdXJjZV9kb2N1bWVudF9wcm9qZWN0X3JlZl9pZHgnLCBwcm9wZXJ0aWVzOiBbJ3Byb2plY3QnLCAnZXh0ZXJuYWxfcmVmZXJlbmNlJ10gfSlcbmV4cG9ydCBjbGFzcyBSYXdTb3VyY2VEb2N1bWVudCB7XG4gICAgQFByaW1hcnlLZXkoeyB0eXBlOiAndXVpZCcgfSlcbiAgICB1dWlkITogc3RyaW5nXG5cbiAgICBAUHJvcGVydHkoKVxuICAgIGNyZWF0ZWRfYXQhOiBEYXRlXG5cbiAgICBAUHJvcGVydHkoKVxuICAgIHVwZGF0ZWRfYXQhOiBEYXRlXG5cbiAgICBAUHJvcGVydHkoeyBsZW5ndGg6IDEwMCB9KVxuICAgIHNvdXJjZV90eXBlITogU291cmNlVHlwZVxuXG4gICAgQFByb3BlcnR5KHsgbnVsbGFibGU6IHRydWUsIGxlbmd0aDogMjU1IH0pXG4gICAgZXh0ZXJuYWxfcmVmZXJlbmNlPzogc3RyaW5nIHwgbnVsbFxuXG4gICAgQFByb3BlcnR5KHsgdHlwZTogJ3RleHQnIH0pXG4gICAgdGl0bGUhOiBzdHJpbmdcblxuICAgIEBQcm9wZXJ0eSh7IG51bGxhYmxlOiB0cnVlLCB0eXBlOiAndGV4dCcgfSlcbiAgICBkZXNjcmlwdGlvbj86IHN0cmluZyB8IG51bGxcblxuICAgIEBQcm9wZXJ0eSh7IHR5cGU6ICdqc29uJywgbnVsbGFibGU6IHRydWUgfSlcbiAgICBtZXRhZGF0YT86IFJlY29yZDxzdHJpbmcsIHVua25vd24+IHwgbnVsbFxuXG4gICAgQE1hbnlUb09uZSh7XG4gICAgICAgIGVudGl0eTogKCkgPT4gUHJvamVjdCxcbiAgICAgICAgZmllbGROYW1lOiAncHJvamVjdF9pZCcsXG4gICAgICAgIGRlZmVyTW9kZTogRGVmZXJNb2RlLklOSVRJQUxMWV9ERUZFUlJFRCxcbiAgICAgICAgaW5kZXg6ICdza2FsZF9yYXdfc291cmNlX2RvY3VtZW50X3Byb2plY3RfaWRfaWR4JyxcbiAgICB9KVxuICAgIHByb2plY3QhOiBQcm9qZWN0XG5cbiAgICBAT25lVG9NYW55KHtcbiAgICAgICAgZW50aXR5OiAnUmF3U291cmNlQ29udGVudCcsXG4gICAgICAgIG1hcHBlZEJ5OiAncmF3X3NvdXJjZV9kb2N1bWVudCcsXG4gICAgfSlcbiAgICBjb250ZW50cyA9IG5ldyBDb2xsZWN0aW9uPFJhd1NvdXJjZUNvbnRlbnQ+KHRoaXMpXG59XG4iXSwidmVyc2lvbiI6M30=
