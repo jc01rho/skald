@@ -55,7 +55,7 @@ services:
             - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
             - CLI_PROXY_API_KEY=${CLI_PROXY_API_KEY:-}
             - CLI_PROXY_API_BASE_URL=${CLI_PROXY_API_BASE_URL:-http://cli-proxy-service:8317/v1}
-            - CLI_PROXY_API_MODEL=${CLI_PROXY_API_MODEL:-deepseek-v3.2-reasoner}
+            - CLI_PROXY_API_MODEL=${CLI_PROXY_API_MODEL:-parrot}
             - INTER_PROCESS_QUEUE=rabbitmq
             - RABBITMQ_HOST=${RABBITMQ_HOST:-rabbitmq}
             - RABBITMQ_PORT=${RABBITMQ_PORT:-5672}
@@ -99,7 +99,7 @@ services:
             - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
             - CLI_PROXY_API_KEY=${CLI_PROXY_API_KEY:-}
             - CLI_PROXY_API_BASE_URL=${CLI_PROXY_API_BASE_URL:-http://cli-proxy-service:8317/v1}
-            - CLI_PROXY_API_MODEL=${CLI_PROXY_API_MODEL:-deepseek-v3.2-reasoner}
+            - CLI_PROXY_API_MODEL=${CLI_PROXY_API_MODEL:-parrot}
             - INTER_PROCESS_QUEUE=rabbitmq
             - RABBITMQ_HOST=${RABBITMQ_HOST:-rabbitmq}
             - RABBITMQ_PORT=${RABBITMQ_PORT:-5672}
