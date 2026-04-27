@@ -1,9 +1,10 @@
 """Main FastAPI application entry point."""
 
+import asyncio
 import logging
 import time
 from collections.abc import AsyncGenerator
-from contextlib import asynccontextmanager
+from contextlib import asynccontextmanager, suppress
 
 import structlog
 from fastapi import FastAPI, Request, Response
@@ -18,7 +19,7 @@ from skald_worker.metrics import (
     http_requests_total,
     init_metrics,
 )
-from skald_worker.scheduler import start_scheduler, stop_scheduler
+from skald_worker.scheduler import bootstrap_initial_full_sync, start_scheduler, stop_scheduler
 
 
 def configure_logging() -> None:
@@ -66,12 +67,18 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
 
     # Start scheduler
     start_scheduler()
+    bootstrap_task = asyncio.create_task(bootstrap_initial_full_sync())
 
-    yield
-
-    # Shutdown
-    logger.info("Shutting down Skald Worker")
-    stop_scheduler()
+    try:
+        yield
+    finally:
+        # Shutdown
+        logger.info("Shutting down Skald Worker")
+        if not bootstrap_task.done():
+            bootstrap_task.cancel()
+            with suppress(asyncio.CancelledError):
+                await bootstrap_task
+        stop_scheduler()
 
 
 # Configure logging before creating app

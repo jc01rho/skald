@@ -656,6 +656,26 @@ describe('Memo API Tests', () => {
             expect(response.body.page).toBe(1)
         })
 
+        it('should filter memos by source', async () => {
+            const user = await createTestUser(orm, 'test@example.com', 'password123')
+            const org = await createTestOrganization(orm, 'Test Org', user)
+            await createTestOrganizationMembership(orm, user, org)
+            const project = await createTestProject(orm, 'Test Project', org, user)
+            await createTestMemo(orm, project, { title: 'Notion Memo', content: 'Content 1', source: 'notion' })
+            await createTestMemo(orm, project, { title: 'SPMS Memo', content: 'Content 2', source: 'functions' })
+            const token = generateAccessToken('test@example.com')
+
+            const response = await request(app)
+                .get('/api/memos')
+                .set('Cookie', [`accessToken=${token}`])
+                .query({ project_id: project.uuid, source: 'notion', page_size: 1 })
+
+            expect(response.status).toBe(200)
+            expect(response.body.results).toHaveLength(1)
+            expect(response.body.count).toBe(1)
+            expect(response.body.results[0].title).toBe('Notion Memo')
+        })
+
         it('should paginate memos', async () => {
             const user = await createTestUser(orm, 'test@example.com', 'password123')
             const org = await createTestOrganization(orm, 'Test Org', user)

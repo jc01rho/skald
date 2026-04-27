@@ -503,7 +503,7 @@ class NotionCollector:
             )
             return "failed", None
 
-    async def sync_all(self) -> dict[str, int]:
+    async def sync_all(self, force_full: bool = False) -> dict[str, int]:
         """Sync a root wiki page and its child pages to Skald."""
         if not self.token:
             logger.warning("No notion_token configured, skipping Notion sync")
@@ -516,7 +516,7 @@ class NotionCollector:
         sync_manager = get_sync_state_manager()
         sync_manager.record_sync_start("notion")
 
-        last_sync_time = sync_manager.get_last_sync_time("notion")
+        last_sync_time = None if force_full else sync_manager.get_last_sync_time("notion")
         processed = 0
         failed = 0
         skipped = 0
@@ -527,6 +527,7 @@ class NotionCollector:
             max_depth=self.max_depth,
             max_pages=self.max_pages,
             incremental=last_sync_time is not None,
+            force_full=force_full,
         )
 
         try:

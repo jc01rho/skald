@@ -13,6 +13,7 @@ from skald_worker.collectors.jira_collector import get_jira_collector
 from skald_worker.collectors.notion_collector import get_notion_collector
 from skald_worker.collectors.release_collector import get_release_collector
 from skald_worker.collectors.userdata_collector import get_userdata_collector
+from skald_worker.clients.skald import get_skald_client
 from skald_worker.config import settings
 
 logger = structlog.get_logger(__name__)
@@ -20,6 +21,7 @@ logger = structlog.get_logger(__name__)
 # Global scheduler instance
 _scheduler: AsyncIOScheduler | None = None
 _last_runs: dict[str, datetime] = {}
+SPMS_BOOTSTRAP_SOURCES = ("functions", "techs", "information", "troubleshoots")
 
 
 async def jira_sync_job() -> None:
@@ -115,6 +117,62 @@ async def notion_sync_job() -> None:
         )
     except Exception as e:
         logger.error("Scheduled Notion sync failed", error=str(e))
+
+
+async def bootstrap_initial_full_sync() -> None:
+    """Run full SPMS and Notion sync when the target DB has no source data."""
+    skald = get_skald_client()
+
+    try:
+        if settings.docs_enabled and settings.spms_base_url:
+            await _bootstrap_initial_spms_sync(skald)
+    except Exception as e:
+        logger.error("Initial full SPMS sync failed", error=str(e))
+
+    try:
+        if settings.notion_enabled and settings.notion_token and settings.notion_root_page_id:
+            await _bootstrap_initial_notion_sync(skald)
+    except Exception as e:
+        logger.error("Initial full Notion sync failed", error=str(e))
+
+
+async def _bootstrap_initial_spms_sync(skald) -> None:
+    """Run full SPMS sync when no SPMS source data exists."""
+    spms_counts = {
+        source: await skald.count_memos(source=source)
+        for source in SPMS_BOOTSTRAP_SOURCES
+    }
+    if all(count == 0 for count in spms_counts.values()):
+        logger.info("Starting initial full SPMS sync", source_counts=spms_counts)
+        collector = get_docs_collector()
+        result = await collector.sync_all(updated_since=None)
+        _last_runs["docs_bootstrap"] = datetime.now()
+        total = result.get("total", result)
+        logger.info(
+            "Initial full SPMS sync completed",
+            processed=total.get("processed", 0),
+            failed=total.get("failed", 0),
+            skipped=total.get("skipped", 0),
+        )
+    else:
+        logger.info("Skipping initial full SPMS sync; source data exists", source_counts=spms_counts)
+
+
+async def _bootstrap_initial_notion_sync(skald) -> None:
+    """Run full Notion sync when no Notion source data exists."""
+    notion_count = await skald.count_memos(source="notion")
+    if notion_count == 0:
+        logger.info("Starting initial full Notion sync", source_count=notion_count)
+        collector = get_notion_collector()
+        result = await collector.sync_all(force_full=True)
+        _last_runs["notion_bootstrap"] = datetime.now()
+        logger.info(
+            "Initial full Notion sync completed",
+            processed=result.get("processed", 0),
+            failed=result.get("failed", 0),
+        )
+    else:
+        logger.info("Skipping initial full Notion sync; source data exists", source_count=notion_count)
 
 
 def start_scheduler() -> AsyncIOScheduler:

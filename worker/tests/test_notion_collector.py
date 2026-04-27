@@ -1,6 +1,7 @@
 """Tests for Notion collector discovery behavior."""
 
 import pytest
+from unittest.mock import AsyncMock
 
 from skald_worker.collectors.notion_collector import NotionCollector
 
@@ -275,3 +276,45 @@ class TestNotionCollector:
         assert result == {"memo_uuid": "memo-short"}
         assert len(client.calls) == 1
         assert client.calls[0]["content"] == exact_threshold_content
+
+    @pytest.mark.asyncio
+    async def test_sync_all_force_full_ignores_last_sync_time(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        collector = NotionCollector(
+            token="test-token",
+            root_page_id="root-page",
+        )
+
+        seen_cutoff_times = []
+
+        class SyncManager:
+            def record_sync_start(self, source: str) -> None:
+                assert source == "notion"
+
+            def get_last_sync_time(self, source: str):
+                assert source == "notion"
+                return "should-not-be-used"
+
+            def record_sync_success(self, source: str, **kwargs) -> None:
+                assert source == "notion"
+
+            def record_sync_failure(self, source: str, error: str) -> None:  # pragma: no cover
+                raise AssertionError(error)
+
+        async def fake_sync_page(page_id: str, **kwargs):
+            seen_cutoff_times.append(kwargs.get("cutoff_time"))
+            return "processed", {"page_id": page_id}
+
+        monkeypatch.setattr(
+            "skald_worker.collectors.notion_collector.get_sync_state_manager",
+            lambda: SyncManager(),
+        )
+        monkeypatch.setattr(collector, "_sync_page", fake_sync_page)
+        monkeypatch.setattr(collector, "discover_child_pages", AsyncMock(return_value=[]))
+
+        result = await collector.sync_all(force_full=True)
+
+        assert result == {"processed": 1, "failed": 0}
+        assert seen_cutoff_times == [None]

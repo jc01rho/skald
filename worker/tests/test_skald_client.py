@@ -116,6 +116,42 @@ class TestSkaldClient:
         assert client.circuit_breaker.get_status()["failure_count"] == 0
 
     @pytest.mark.asyncio
+    async def test_count_memos_with_source_filter(self, client):
+        """Test counting memos with an optional source filter."""
+        mock_response = MagicMock()
+        mock_response.json.return_value = {"count": 42, "results": []}
+
+        with patch.object(client, "_request_with_retry", new_callable=AsyncMock) as mock_request:
+            mock_request.return_value = mock_response
+
+            result = await client.count_memos(source="notion")
+
+            mock_request.assert_called_once_with(
+                "GET",
+                "/api/v1/memo",
+                params={"page": 1, "page_size": 1, "source": "notion"},
+            )
+            assert result == 42
+
+    @pytest.mark.asyncio
+    async def test_count_memos_without_source_filter(self, client):
+        """Test counting all memos without a source filter."""
+        mock_response = MagicMock()
+        mock_response.json.return_value = {"count": 0, "results": []}
+
+        with patch.object(client, "_request_with_retry", new_callable=AsyncMock) as mock_request:
+            mock_request.return_value = mock_response
+
+            result = await client.count_memos()
+
+            mock_request.assert_called_once_with(
+                "GET",
+                "/api/v1/memo",
+                params={"page": 1, "page_size": 1},
+            )
+            assert result == 0
+
+    @pytest.mark.asyncio
     async def test_upsert_memo_creates_new(self, client, sample_memo):
         """Test upsert creates new memo when none exists."""
         mock_response = MagicMock()

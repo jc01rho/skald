@@ -361,6 +361,7 @@ export const listMemos = async (req: Request, res: Response) => {
     const page = parseInt(req.query.page as string) || 1
     const pageSize = parseInt(req.query.page_size as string) || 20
     const maxPageSize = 100
+    const source = typeof req.query.source === 'string' ? req.query.source.trim() : ''
 
     if (pageSize > maxPageSize) {
         return res.status(400).json({ error: `page_size must be less than or equal to ${maxPageSize}` })
@@ -371,15 +372,13 @@ export const listMemos = async (req: Request, res: Response) => {
     }
 
     const offset = (page - 1) * pageSize
+    const whereClause = source ? { project, source } : { project }
 
-    const [memos, totalCount] = await DI.memos.findAndCount(
-        { project },
-        {
-            orderBy: { created_at: 'DESC' },
-            limit: pageSize,
-            offset: offset,
-        }
-    )
+    const [memos, totalCount] = await DI.memos.findAndCount(whereClause, {
+        orderBy: { created_at: 'DESC' },
+        limit: pageSize,
+        offset: offset,
+    })
 
     // Load summaries for all memos
     const memoSummaries = await DI.memoSummaries.find({

@@ -38,9 +38,10 @@ class TestAPIRoutes:
             from fastapi import FastAPI
             from skald_worker.api.routes import router
 
-            app = FastAPI()
-            app.include_router(router)
-            return app
+            with patch("skald_worker.api.routes.settings", mock_settings):
+                app = FastAPI()
+                app.include_router(router)
+                yield app
 
     @pytest.fixture
     def client(self, app):

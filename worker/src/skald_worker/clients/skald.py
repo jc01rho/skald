@@ -265,6 +265,16 @@ class SkaldClient:
                 max_wait=self.retry_max_wait,
             )
 
+    async def count_memos(self, source: str | None = None) -> int:
+        """Count memos in the configured Skald project."""
+        params: dict[str, Any] = {"page": 1, "page_size": 1}
+        if source:
+            params["source"] = source
+
+        response = await self._request_with_retry("GET", "/api/v1/memo", params=params)
+        data = response.json()
+        return int(data.get("count", 0))
+
     async def upsert_memo(
         self,
         title: str,
