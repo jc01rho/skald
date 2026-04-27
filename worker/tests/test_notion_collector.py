@@ -171,7 +171,7 @@ class TestNotionCollector:
         assert result is None
 
     @pytest.mark.asyncio
-    async def test_sync_page_allows_short_non_empty_markdown(
+    async def test_sync_page_skips_short_non_empty_markdown(
         self,
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
@@ -199,6 +199,55 @@ class TestNotionCollector:
             assert page_id == "short-page"
             return [{"type": "paragraph", "paragraph": {"rich_text": []}}]
 
+        class UnexpectedClient:
+            async def upsert_memo(self, **kwargs):  # pragma: no cover - should never run
+                raise AssertionError("upsert_memo should not be called for short pages")
+
+        monkeypatch.setattr(collector, "fetch_page", fake_fetch_page)
+        monkeypatch.setattr(collector, "fetch_all_block_children", fake_fetch_all_block_children)
+        monkeypatch.setattr(
+            "skald_worker.collectors.notion_collector.blocks_to_markdown",
+            lambda _blocks: short_content,
+        )
+        monkeypatch.setattr(
+            "skald_worker.collectors.notion_collector.get_skald_client",
+            lambda: UnexpectedClient(),
+        )
+
+        status, result = await collector._sync_page("short-page")
+
+        assert status == "skipped"
+        assert result is None
+
+    @pytest.mark.asyncio
+    async def test_sync_page_processes_markdown_at_300_chars(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        collector = NotionCollector(
+            token="test-token",
+            root_page_id="root-page",
+        )
+
+        exact_threshold_content = "가" * 300
+
+        async def fake_fetch_page(page_id: str) -> dict:
+            assert page_id == "threshold-page"
+            return {
+                "id": page_id,
+                "last_edited_time": "2026-04-10T00:00:00.000Z",
+                "properties": {
+                    "Name": {
+                        "type": "title",
+                        "title": [{"plain_text": "Threshold page"}],
+                    }
+                },
+            }
+
+        async def fake_fetch_all_block_children(page_id: str) -> list[dict]:
+            assert page_id == "threshold-page"
+            return [{"type": "paragraph", "paragraph": {"rich_text": []}}]
+
         class RecordingClient:
             def __init__(self) -> None:
                 self.calls: list[dict] = []
@@ -213,16 +262,16 @@ class TestNotionCollector:
         monkeypatch.setattr(collector, "fetch_all_block_children", fake_fetch_all_block_children)
         monkeypatch.setattr(
             "skald_worker.collectors.notion_collector.blocks_to_markdown",
-            lambda _blocks: short_content,
+            lambda _blocks: exact_threshold_content,
         )
         monkeypatch.setattr(
             "skald_worker.collectors.notion_collector.get_skald_client",
             lambda: client,
         )
 
-        status, result = await collector._sync_page("short-page")
+        status, result = await collector._sync_page("threshold-page")
 
         assert status == "processed"
         assert result == {"memo_uuid": "memo-short"}
         assert len(client.calls) == 1
-        assert client.calls[0]["content"] == short_content
+        assert client.calls[0]["content"] == exact_threshold_content

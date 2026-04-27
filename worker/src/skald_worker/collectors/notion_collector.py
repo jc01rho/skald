@@ -27,6 +27,7 @@ logger = structlog.get_logger(__name__)
 DEFAULT_MAX_RETRIES = 3
 DEFAULT_RETRY_MIN_WAIT = 1.0
 DEFAULT_RETRY_MAX_WAIT = 30.0
+MIN_MARKDOWN_CONTENT_LENGTH = 300
 
 SyncStatus = Literal["processed", "skipped", "failed"]
 
@@ -463,11 +464,13 @@ class NotionCollector:
             markdown_content = blocks_to_markdown(blocks)
             trimmed_content = markdown_content.strip()
 
-            if not trimmed_content:
+            if len(trimmed_content) < MIN_MARKDOWN_CONTENT_LENGTH:
                 logger.info(
-                    "Skipping empty Notion page",
+                    "Skipping short Notion page",
                     page_id=page_id,
                     title=title,
+                    content_length=len(trimmed_content),
+                    minimum_length=MIN_MARKDOWN_CONTENT_LENGTH,
                 )
                 return "skipped", None
 
