@@ -157,7 +157,7 @@ function buildMentionErrorMessage(errorMessage: string): string {
         return '백엔드 응답이 제한 시간 안에 도착하지 않았습니다. 잠시 후 다시 시도해 주세요.'
     }
 
-    if (/HTTP error:\s*401/i.test(normalized)) {
+    if (/^Unauthorized$/i.test(normalized) || /HTTP error:\s*401/i.test(normalized)) {
         return '백엔드 인증에 실패했습니다. 봇 설정을 확인해 주세요.'
     }
 

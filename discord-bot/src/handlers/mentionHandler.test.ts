@@ -92,6 +92,13 @@ test('maps backend HTTP server errors to user-friendly mention message', () => {
     }
 })
 
+test('maps plain unauthorized stream errors to auth failure message', () => {
+    assert.equal(
+        __testables__.buildMentionErrorMessage('Unauthorized'),
+        '백엔드 인증에 실패했습니다. 봇 설정을 확인해 주세요.'
+    )
+})
+
 test('parses references event payload from string content', () => {
     assert.deepEqual(__testables__.parseReferencesEventContent(JSON.stringify(references)), references)
 })
