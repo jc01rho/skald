@@ -1,69 +1,37 @@
-# SHARED UTILITIES
+# BACKEND LIBRARY UTILITIES
 
-**Generated:** 2026-04-15
-**Domain:** Core Utilities (Score 15)
+**Generated:** 2026-04-29
+**Domain:** Infrastructure + Retrieval Helpers (Score 13)
 
 ## OVERVIEW
 
-Cross-cutting backend utilities: logging, database/Redis connections, DI, parsing.
+Shared backend helpers cover logging, persistence, auth utilities, retrieval/scoring, queues, caching, and usage metering.
 
 ## WHERE TO LOOK
 
-| Utility    | File              | Purpose                    |
-| ---------- | ----------------- | -------------------------- |
-| Logging    | logger.ts         | Pino logger with redaction |
-| PostgreSQL | postgresClient.ts | Connection validation      |
-| Redis      | redisClient.ts    | Connection validation      |
-| Filters    | filterUtils.ts    | Memo filter parsing        |
-| Chat       | chatUtils.ts      | Chat message creation      |
-| RAG        | ragUtils.ts       | RAG config validation      |
-| PostHog    | posthogUtils.ts   | Analytics tracking         |
-| DI         | di.ts             | Dependency injection       |
+| Area | Files | Notes |
+| --- | --- | --- |
+| Logging/errors | `logger.ts`, `errors.ts` | structured logging and typed failures |
+| DB/cache | `postgresClient.ts`, `redisClient.ts`, `ragCache.ts` | PostgreSQL/Redis connectivity and RAG cache |
+| Retrieval | `fastRetrieve.ts`, `searchGraph.ts`, `referenceResults.ts`, `retrievalValidator.ts`, `hnswOptimization.ts` | search graph, preview retrieval, validation |
+| Scoring/ranking | `scoringService.ts`, `searchRanking.ts`, `selfRagEvaluator.ts`, `contextReorder.ts`, `ragMetrics.ts`, `complexityCalculator.ts` | quality and context ordering |
+| Query helpers | `queryNormalization.ts`, `queryRouter.ts`, `keyExtractor.ts`, `languageDetector.ts` | release/error-code and routing normalization |
+| Memo processing | `createMemoUtils.ts`, `chunkProcessor.ts`, `memoSourceUrl.ts`, `memoStatusUtils.ts`, `lazyReprocessService.ts` | content creation/reprocessing |
+| Auth/user | `passwordUtils.ts`, `googleOAuthUtils.ts`, `emailUtils.ts`, `tokenUtils.ts` | login, OAuth, mail, tokens |
+| Storage/queues | `s3Utils.ts`, `sqsClient.ts`, `wikiQueueClient.ts`, `asyncUtils.ts` | object storage and async queues |
+| Usage | `usageTrackingUtils.ts`, `usageAlertEmail.ts`, `embeddingVersion.ts`, `hashUtils.ts` | billing, alerts, embedding/hash metadata |
 
 ## CONVENTIONS
 
-**Logger**
-
-```typescript
-import { logger } from '@/lib/logger'
-logger.info({ context }, 'Message')
-logger.error({ err }, 'Error message')
-```
-
-- Dev: console fallback
-- Prod: Pino with automatic redaction
-
-**Connection Validation**
-
-```typescript
-await canConnectToPostgres() // Exits on failure
-await canConnectToRedis() // Exits on failure
-```
-
-**Redaction Paths**
-
-- `password`, `token`, `apiKey`, `authorization`, `cookie`, `stripe_key`
-
-**DI Pattern**
-
-```typescript
-import { DI } from '@/di'
-const entity = await DI.em.findOne(...)
-const service = DI.someService
-```
-
-**Utility Functions**
-
-- Pure functions for parsing/validation
-- Exported as named functions
+- `logger` is the only logging surface; no `console.log`.
+- Query normalization should add variants while preserving the original query.
+- Reference assembly must merge exact-lookup hits with reranked results so cited evidence remains available.
+- Wiki traversal DB reads use forked MikroORM `EntityManager` when outside request context.
+- Hash/idempotency helpers should gate expensive processing before queue enqueue.
 
 ## ANTI-PATTERNS
 
-- NEVER use console.log directly (use logger)
-- NEVER skip connection validation at startup
-- NEVER inline complex parsing logic (use lib utilities)
-
-## LLM ENDPOINT POLICY
-
-- 모든 모델 호출(Gemini 포함)은 **코드 하드코딩 금지**이며, 환경변수(`CLI_PROXY_API_BASE_URL`, `GEMINI_API_BASE_URL`)로만 지정합니다.
-- `CLI_PROXY_API_BASE_URL`와 `GEMINI_API_BASE_URL`는 동일한 값을 사용해야 합니다.
+- Do not make provider SDK calls from `lib/`; model calls belong in services/agents via `LLMService`.
+- Do not make cache hits bypass reference-required chat requests.
+- Do not assume vector index settings are safe for every collection; keep HNSW tuning explicit.
+- Do not introduce new queue clients without documenting deployment env/config implications.
