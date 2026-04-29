@@ -1,52 +1,53 @@
-# PYTHON WORKER SERVICE
+# SKALD WORKER RUNTIME
 
-**Generated:** 2026-01-12
-**Domain:** Data Collection Layer (Score 12)
+**Generated:** 2026-04-29
+**Domain:** Python Collector Worker (Score 15)
 
 ## OVERVIEW
 
-FastAPI worker for external data collection (Jira, docs) with circuit breaker pattern and retry logic.
+FastAPI-based worker process for source ingestion, scheduled sync, metrics, and Skald backend callbacks.
 
 ## STRUCTURE
 
-```
+```text
 skald_worker/
-├── api/           # FastAPI routes + schemas
-├── clients/       # External API clients (Skald backend)
-├── collectors/    # Data collectors (Jira, docs)
-├── middleware/    # Auth middleware
-├── main.py        # FastAPI entry point
-├── config.py      # Environment config
-├── circuit_breaker.py  # Fault tolerance
-├── retry.py       # Retry logic
-└── errors.py      # Custom exceptions
+├── main.py          # FastAPI app and lifecycle
+├── config.py        # pydantic-settings env model
+├── scheduler.py     # scheduled sync orchestration
+├── sync_state.py    # idempotency/state tracking
+├── metrics.py       # Prometheus metrics
+├── api/clients/middleware/ # HTTP routes, backend client, auth middleware
+├── circuit_breaker.py, retry.py, errors.py # fault tolerance and shared errors
+├── collectors/      # Jira/docs/Notion/release/userdata collectors
+└── utils/           # Notion block rendering and shared helpers
 ```
 
 ## WHERE TO LOOK
 
-| Task           | Location                     | Notes                    |
-| -------------- | ---------------------------- | ------------------------ |
-| API routes     | api/routes.py                | FastAPI endpoints        |
-| Jira sync      | collectors/jira_collector.py | Jira issue collection    |
-| Docs sync      | collectors/docs_collector.py | Documentation collection |
-| Backend client | clients/skald.py             | Skald API integration    |
-| Auth           | middleware/auth.py           | Request authentication   |
+| Task | Location | Notes |
+| --- | --- | --- |
+| Runtime entry | `main.py` | app startup, health, scheduler lifecycle |
+| Env settings | `config.py` | pydantic-settings source of truth |
+| Scheduling | `scheduler.py` | periodic/bootstrap sync jobs |
+| Idempotency | `sync_state.py` | sync state persistence |
+| Metrics | `metrics.py` | Prometheus counters/timers |
+| Fault tolerance | `circuit_breaker.py`, `retry.py`, `errors.py` | external API resilience |
+| Backend client/API | `clients/`, `api/`, `middleware/` | Skald API integration and worker endpoints |
+| Collectors | `collectors/` | source-specific ingestion |
+| Notion rendering | `utils/notion_blocks.py` | nullable-rich-text-safe Markdown conversion |
 
 ## CONVENTIONS
 
-- **Linting:** Ruff (E, F, I, UP, B, SIM), 120 char lines
-- **Circuit Breaker:** Use for external API calls
-- **Retry:** Exponential backoff for transient failures
-- **Config:** Pydantic settings from environment
-- **Testing:** pytest with conftest.py fixtures
+- Run from `worker/` with `uv run python -m skald_worker.main`.
+- Test/lint from `worker/`: `uv run pytest`, `uv run ruff check .`.
+- Runtime dependencies live in `worker/pyproject.toml` `[project].dependencies`.
+- Bootstrap sync checks for empty databases and can trigger full sync on startup.
+- `SKALD_BASE_URL` points to backend (`http://api-service:8000` in cluster).
+- Notion integration requires target pages/databases to be explicitly shared with the integration.
 
 ## ANTI-PATTERNS
 
-- NEVER call external APIs without circuit breaker
-- NEVER skip retry logic for network calls
-- NEVER hardcode config values - use config.py
-
-## LLM ENDPOINT POLICY
-
-- 모든 모델 호출(Gemini 포함)은 **코드 하드코딩 금지**이며, 환경변수(`CLI_PROXY_API_BASE_URL`, `GEMINI_API_BASE_URL`)로만 지정합니다.
-- `CLI_PROXY_API_BASE_URL`와 `GEMINI_API_BASE_URL`는 동일한 값을 사용해야 합니다.
+- Do not assume private Notion workspace content is visible just because a token exists.
+- Do not treat Notion rich_text/text/link/equation fields as non-null.
+- Do not store live tokens in tracked `worker/k8s` templates.
+- Do not run full pytest without dev/test extras and then treat import failures as product regressions.

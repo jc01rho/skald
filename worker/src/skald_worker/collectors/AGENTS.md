@@ -1,36 +1,32 @@
-# DATA COLLECTORS
+# WORKER COLLECTORS
 
-**Generated:** 2026-04-15
-**Domain:** External Data Ingestion (Score 12)
+**Generated:** 2026-04-29
+**Domain:** Source Ingestion Connectors (Score 13)
 
 ## OVERVIEW
 
-Worker collectors for external data sources (Jira, docs, Notion, release notes, user data). Each collector is a specialized Python module with sync and health check capabilities.
+Collectors normalize external systems into backend memo/source payloads. Keep source-specific auth, pagination, and retry behavior local to each collector.
 
 ## WHERE TO LOOK
 
-| Collector          | File                    | Source Type          |
-| ------------------ | ---------------------- | ------------------- |
-| Jira               | jira_collector.py     | Jira REST API       |
-| Docs               | docs_collector.py      | HTML/markdown URL  |
-| Notion             | notion_collector.py   | Notion API         |
-| Release            | release_collector.py   | GitHub releases    |
-| User data          | userdata_collector.py | Custom API       |
+| Source | Location | Notes |
+| --- | --- | --- |
+| Jira | `jira_collector.py` | issue/project ingestion |
+| Docs/web | docs collector files | website/document collection |
+| Notion | Notion collector files + `../utils/notion_blocks.py` | SDK retries, block rendering |
+| Release/user data | release/userdata collector files | release memo surfaces and user content |
+| Base/shared | base collector files | common payload contracts |
 
 ## CONVENTIONS
 
-- Each collector: `class Collector` with `sync()`, `health()`, `get_source_type()`
-- Sync returns `{ processed, failed, skipped }` counts
-- Error handling: retry logic + circuit breaker pattern
-- Rate limiting via asyncio.Semaphore
+- Collector env toggles are modeled in `config.py`; `worker/.env.example` sets `JIRA_ENABLED=false`.
+- Notion collector uses internal `tenacity.AsyncRetrying` because shared retry helpers are `httpx`-centric.
+- Release memos should include metadata `product_id='sparrow'`, `version`, `release_date`, and a `## 릴리즈 노트` section.
+- Source payloads should preserve stable identifiers for idempotent backend updates.
 
 ## ANTI-PATTERNS
 
-- NEVER hardcode credentials (use config/env)
-- NEVER skip error handling in sync loops
-- NEVER assume source availability
-
-## LLM ENDPOINT POLICY
-
-- 모든 모델 호출(Gemini 포함)은 **코드 하드코딩 금지**이며, 환경변수(`CLI_PROXY_API_BASE_URL`, `GEMINI_API_BASE_URL`)로만 지정합니다.
-- `CLI_PROXY_API_BASE_URL`와 `GEMINI_API_BASE_URL`는 동일한 값을 사용해야 합니다.
+- Do not copy production secrets into `.env.example` or tracked k8s templates.
+- Do not assume Notion response block payloads are fully populated; render nullable fields defensively.
+- Do not add a collector without corresponding settings and deployment config review.
+- Do not bypass backend memo APIs with direct DB writes from the worker.
