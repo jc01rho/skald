@@ -1,40 +1,35 @@
 # BACKEND AGENTS
 
-**Generated:** 2026-04-15
-**Domain:** Core AI/Logic (Score 15)
+**Generated:** 2026-04-29
+**Domain:** RAG/LLM Orchestration (Score 12)
 
 ## OVERVIEW
 
-LangGraph-powered RAG pipeline for chat orchestration and specialized agents for memo ingestion (summarization, tagging).
+Agent code performs query understanding, retrieval strategy selection, preview answer generation, and full RAG answer synthesis.
 
 ## WHERE TO LOOK
 
-| Task            | Location                  | Notes                                                     |
-| --------------- | ------------------------- | --------------------------------------------------------- |
-| RAG pipeline    | chatAgent/ragGraph.ts     | Core RAG pipeline definition using `StateGraph`           |
-| Chat streaming  | chatAgent/chatAgent.ts    | Streaming implementation for chat                         |
-| Query rewriting | chatAgent/queryRewrite.ts | Standalone utility for context-aware query enhancement    |
-| Prompts         | chatAgent/prompts.ts      | Core RAG instructions, citation rules                     |
-| Memo summaries  | memoSummaryAgent.ts       | Specialized agent for generating concise memo summaries   |
-| Memo tags       | memoTagsAgent.ts          | Specialized agent for extracting relevant tags from memos |
-| LLM evaluation  | llmJudgeAgent.ts          | RAG evaluation agent comparing actual vs expected answers |
+| Flow | Location | Notes |
+| --- | --- | --- |
+| Full chat graph | `chatAgent/ragGraph.ts` | LangGraph retrieval/rerank/context/answer pipeline |
+| Preview answer | `chatAgent/previewAgent.ts` | fast first response before full RAG completes |
+| Chat prompts | `chatAgent/prompts.ts` | retrieved evidence + user-provided evidence contracts |
+| Query routing | `adaptiveRagRouter.ts`, `queryUnderstandingAgent.ts` | complexity/intent/identifier understanding |
+| Memo enrichment | `memoSummaryAgent.ts`, `memoTagsAgent.ts` | summaries and tag extraction for memo processing |
+| LLM judging | `llmJudgeAgent.ts` | expected-vs-actual answer evaluation |
 
 ## CONVENTIONS
 
-- **State Management:** Use `Annotation.Root` from `@langchain/langgraph` for state schema in graphs
-- **LLM Access:** Always use `LLMService.getLLM()` with specific `purpose` ('chat', 'classification', etc.)
-- **Structured Output:** Ingestion agents MUST use `withStructuredOutput` for reliable JSON extraction
-- **Streaming:** Chat responses use `AsyncGenerator<StreamChunk>` to handle multi-model response normalization
+- Prompt contracts prefer partial answers when any related evidence exists.
+- Low-confidence handling is mode-based guidance, not blanket abstention.
+- Exact literal anchors (error codes/release versions) must suppress generic refusal and preserve child-chunk evidence.
+- Lightweight query decomposition keeps the original query and adds supplemental variants only.
+- Preview staging should be fast and conservative; final RAG remains authoritative.
+- User-provided evidence is context, not retrieval citation.
 
-## UNIQUE STYLES
+## ANTI-PATTERNS
 
-- **Linear Graph Flow:** RAG pipeline follows a fixed sequence: `history` -> `rewrite` -> `search` -> `properties` -> `rerank` -> `prompt`
-- **Node Self-Control:** Nodes decide whether to execute based on `ragConfig` (e.g., skipping reranking if disabled)
-- **Concurrent Reranking:** The `rerank` node processes chunk batches (max 25) in parallel to stay within reranker token limits
-- **Citation Protocol:** Prompt instructions enforce strict `[[N]]` citation format for source referencing
-- **Reference Injection:** Appends a `references` chunk to SSE stream after final response token
-
-## LLM ENDPOINT POLICY
-
-- 모든 모델 호출(Gemini 포함)은 **코드 하드코딩 금지**이며, 환경변수(`CLI_PROXY_API_BASE_URL`, `GEMINI_API_BASE_URL`)로만 지정합니다.
-- `CLI_PROXY_API_BASE_URL`와 `GEMINI_API_BASE_URL`는 동일한 값을 사용해야 합니다.
+- Do not bypass `LLMService` for model calls.
+- Do not replace child chunks with parent chunks when that hides exact answer snippets.
+- Do not treat wiki as a primary Discord search index; Discord uses wiki as second-stage context.
+- Do not introduce nonzero-temperature variance into deterministic routing/classification paths unless explicitly justified.

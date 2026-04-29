@@ -1,73 +1,41 @@
-# BACKEND API LAYER
+# BACKEND API ROUTES
 
-**Generated:** 2026-04-15
-**Domain:** Core API (Score 15)
+**Generated:** 2026-04-29
+**Domain:** Express Route Handlers (Score 13)
 
 ## OVERVIEW
 
-Express route handlers for all REST endpoints, including streaming chat with SSE.
+Each file owns one API surface. Handlers combine middleware arrays, zod validation, DI repositories/services, and explicit error responses.
 
 ## WHERE TO LOOK
 
-| Endpoint                 | File                 | Purpose                         |
-| ------------------------ | -------------------- | ------------------------------- |
-| `/api/chat`              | chat.ts              | RAG chat with streaming support |
-| `/api/memo`              | memo.ts              | Memo CRUD operations            |
-| `/api/auth`              | auth.ts              | Auth (login, signup)            |
-| `/api/auth/google`       | googleAuth.ts        | Google OAuth flow               |
-| `/api/organization`      | organization.ts      | Multi-tenant management         |
-| `/api/project`           | project.ts           | Project CRUD                    |
-| `/api/evaluationDataset` | evaluationDataset.ts | Evaluation datasets             |
-| `/api/experiment`        | experiment.ts        | A/B testing                     |
+| Surface | File | Notes |
+| --- | --- | --- |
+| Chat/SSE | `chat.ts` | flush SSE headers before async work; preview + references events |
+| Public wiki | `publicWiki.ts`, `wiki.ts` | public/shared wiki readers |
+| Auth/session | `auth.ts`, `googleAuth.ts` | email/password and Google OAuth login |
+| Memo CRUD | `memo.ts` | document/manual memo paths |
+| Memo submissions | `memoSubmission.ts` | approved product IDs, preview enrichment, public review |
+| Search | `search.ts` | query endpoints and retrieval diagnostics |
+| Projects | `project.ts` | project config, API keys, chat UI slug |
+| Users/auth | `user.ts`, `emailVerification.ts`, `passwordReset.ts`, `onboarding.ts` | email/password/OAuth/profile setup |
+| Admin/config | `admin.ts`, `config.ts`, `health.ts` | runtime/admin checks |
+| Billing | `plan.ts`, `subscription.ts`, `stripe_webhook.ts` | plans, usage, Stripe webhook |
+| Evaluation | `evaluationDataset.ts`, `experiment.ts` | datasets, experiments, result APIs |
+| Jira/docs/notion | `jira.ts`, `docs.ts`, `notion.ts` | source-specific integration APIs |
 
 ## CONVENTIONS
 
-**Route Pattern**
-
-```typescript
-export const handlerName = async (req: Request, res: Response) => {
-    // Handler logic
-    return res.status(200).json({ data })
-}
-export const router = express.Router({ mergeParams: true })
-router.get('/path', [middleware], handlerName)
-```
-
-**Middleware Application**
-
-- Array syntax: `[rateLimiter, trackUsage], handler`
-- Auth middleware populates `req.context.requestUser`
-- Rate limiting: per-endpoint via chatRateLimiter
-
-**Streaming (Chat)**
-
-- SSE headers sent BEFORE RAG graph invocation
-- `_setStreamingResponseHeaders()` sets `text/event-stream`
-- Response sent immediately: `res.write(': ping\n\n')`
-
-**Error Handling**
-
-```typescript
-return res.status(400).json({ error: 'Error message' })
-```
-
-**Validation**
-
-- Request body validation via `zod.parse()`
-- Filter parsing: `parseFilter()` in lib/filterUtils.ts
-
-**Request Context**
-
-- `req.context.requestUser.userInstance` - Auth user
-- `req.context.requestUser.project` - Current project
+- Route exports are `express.Router({ mergeParams: true })` when nested under project/public routes.
+- Validate request bodies/query with `zod`; coerce/normalize at API boundary.
+- Use DI repositories/services from `backend/src/di.ts`; do not instantiate ORM repositories ad hoc.
+- SSE handlers must set/flush headers before retrieval or LLM work starts.
+- Chat references must keep exact lookup hits citeable, even if reranking changes order.
+- `user_context` accepts only string or plain object; reject arrays and other non-object values with 400.
 
 ## ANTI-PATTERNS
 
-- NEVER send SSE headers after invoking async work
-- NEVER skip middleware arrays in route definitions
-- NEVER return plain objects - always use `res.status().json()`
-
-## LLM ENDPOINT POLICY
-
-- 모든 모델 호출(Gemini 포함)은 **코드 하드코딩 금지**이며, 환경변수(`CLI_PROXY_API_BASE_URL`, `GEMINI_API_BASE_URL`)로만 지정합니다.
-- `CLI_PROXY_API_BASE_URL`와 `GEMINI_API_BASE_URL`는 동일한 값을 사용해야 합니다.
+- Do not call provider SDKs directly from routes; route → service/agent → `LLMService`.
+- Do not accept free-text product IDs for memo submission approval; use allowed `PRODUCT_ID_VALUES`.
+- Do not cache chat responses when references are required.
+- Do not swallow webhook or upload errors silently; log with `logger` and return explicit status.
