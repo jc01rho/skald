@@ -1,28 +1,28 @@
-# WORKER KUBERNETES MANIFESTS
+# WORKER K8S SOURCE MANIFESTS
 
-**Generated:** 2026-03-09
-**Domain:** Worker Deployment (Score 9)
+**Generated:** 2026-04-29
+**Domain:** Worker Config/Secret Templates (Score 9)
 
 ## OVERVIEW
 
-Worker ConfigMap/Secret source manifests live here. Root `k8s/deploy.sh` uses this directory as the fallback source for worker configuration.
+Worker config/secret local manifest source that root deploy can consume as fallback. Normal runtime Deployment/Service/SA live in root `k8s/`.
 
 ## WHERE TO LOOK
 
-| Task                     | Location                                                 | Notes                                  |
-| ------------------------ | -------------------------------------------------------- | -------------------------------------- |
-| Worker env defaults      | `configmap.yaml`                                         | Non-secret worker runtime settings     |
-| Worker credentials       | `secret.yaml`                                            | `skald-worker-secrets` source manifest |
-| Standalone worker deploy | `deployment.yaml`, `service.yaml`, `serviceaccount.yaml` | Worker-only Kubernetes apply path      |
-| Root deploy integration  | `../../k8s/deploy.sh`                                    | Fallback path consumer                 |
+| File | Purpose | Notes |
+| --- | --- | --- |
+| `configmap.local.yaml` | non-secret worker env | feature toggles, backend URL, schedules |
+| `secret.local.yaml` | local secret manifest | ignored live credential source |
+| `deployment.yaml`, `service.yaml`, `serviceaccount.yaml` | standalone worker apply path | root `k8s/` owns normal runtime deployment |
+| local ignored secret files | live credentials | created outside git |
 
 ## CONVENTIONS
 
-- Root deploy flow first checks `k8s/worker-configmap.local.yaml`, then `k8s/worker-configmap.yaml`, then this directory's `configmap.yaml`.
-- Secret lookup follows the same precedence ending at this directory's `secret.yaml`.
-- Root runtime manifests for the worker still live in `k8s/worker-deployment.yaml`, `k8s/worker-service.yaml`, and `k8s/worker-serviceaccount.yaml`.
+- Root `k8s/deploy.sh` can apply these manifests as fallbacks.
+- Live worker config updates require updating `skald-worker-config`/`skald-worker-secrets` and restarting `deployment/skald-worker`.
+- Base URLs and feature toggles belong in ConfigMap; tokens/passwords belong in Secret.
 
 ## ANTI-PATTERNS
 
-- NEVER assume `k8s/worker-configmap.yaml` or `k8s/worker-secret.yaml` exists in the repo root; the tracked fallback source is this directory.
-- NEVER update worker config keys in only one place if root `k8s/` deployment docs also reference the same behavior.
+- Do not add real `NOTION_TOKEN`, Jira token, or backend API keys to tracked files.
+- Do not assume root `k8s/worker-secret.local.yaml` and this directory are interchangeable; document which manifest is live.
