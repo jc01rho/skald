@@ -1,43 +1,41 @@
 # FRONTEND COMPONENTS
 
-**Generated:** 2026-04-15
+**Generated:** 2026-04-29
 **Domain:** Core UI (Score 15)
 
 ## OVERVIEW
 
-React UI components divided into reusable shadcn/ui primitives and modular feature-specific components.
+Reusable shadcn/Radix primitives plus feature-specific React component folders.
 
 ## WHERE TO LOOK
 
-- **Base UI Primitives:** `ui/` - Reusable Radix-based components (Button, Input, Dialog, etc.)
-- **Layout & Shell:** `AppLayout/` - Main application structure, sidebar, and page headers
-- **RAG & Chat:** `Playground/` - Chat interface, RAG configuration, and retrieval visualization
-- **Ingestion/Memos:** `Memos/` - Document management table, upload modals, and detailed views
-- **Analytics/Eval:** `Evaluate/` - Dataset management and experiment tracking/results
-- **Subscription:** `Subscription/` - Pricing cards, usage dashboards, and plan management
-- **Organization:** `Organization/` - Team member management, invites, and settings
-- **Common Utils:** `utils/` - Component-specific formatters (dates, strings)
+| Area | Location | Notes |
+| --- | --- | --- |
+| Base primitives | `ui/` | Radix/shadcn components; prefer reuse |
+| App shell | `AppLayout/` | sidebar/header/page frame |
+| Chat/RAG | `Playground/`, `Chats/`, `PublicChat/` | chat UI, streaming, public chat |
+| Wiki | `PublicWiki/` | public wiki reader widgets |
+| Memos | `Memos/` | upload/list/detail/modals |
+| Manual submission | `MemoSubmission*`, `PublicMemoSubmission*` | review/public submission flows |
+| Getting started | `GettingStarted/`, `Onboarding*` | setup flows |
+| Auth/account | `SignupFlow.tsx`, `SignupForm/`, `VerifyEmailForm/`, `GoogleAuthButton/`, `CompleteProfileForm/`, `AuthPromo/` | login/signup/profile verification UI |
+| Admin | `Admin/` | administrative screens |
+| Evaluation | `Evaluate/` | datasets/experiments/results |
+| Subscription | `Subscription/` | plan/usage/billing views |
+| Organization | `Organization/` | membership/invite/settings |
+| Utilities | `utils/` | component-local formatting helpers |
 
 ## CONVENTIONS
 
-- **Atomic UI:** Use `ui/` primitives for all basic elements; avoid custom HTML tags for standard UI
-- **Feature Isolation:** Keep feature-specific logic (forms, modals, tables) inside their respective folders
-- **State Selection:** `useState` for transient UI state (e.g., `isHovered`, `activeTab`); Zustand for anything else
-- **API Guard:** All data fetching must go through `@/lib/api.ts`. No raw axios/fetch in components
-- **Modals:** Each feature folder should manage its own modals (e.g., `Memos/CreateMemoModal.tsx`)
-- **Prop Types:** Use TypeScript interfaces for all component props; prefer `@/lib/types` for domain models
-- **Styling:** Strict Tailwind CSS. Follow `cn()` utility pattern from shadcn for class merging
+- Use `ui/` primitives for standard buttons, inputs, dialogs, tabs, switches, and tables.
+- Feature folders own their forms, modals, empty states, and table helpers.
+- Domain DTOs come from `@/lib/types`; component props get explicit TypeScript interfaces.
+- Tailwind classes are merged with `cn()`; inline styles only for calculated dynamic positions/sizes.
+- Long streaming/chat UI updates should flow through stores and editor helpers, not ad-hoc timers in components.
 
 ## ANTI-PATTERNS
 
-- **Prop Drilling:** Don't pass state down more than 2 levels; use Zustand or React Context if deeper
-- **Direct Styles:** No CSS-in-JS or inline `style` tags unless calculating dynamic positions/sizes
-- **Big Components:** Files >300 lines should be broken down into smaller sub-components in the same folder
-- **Logic Overload:** Components should focus on rendering; move heavy data processing to `utils/` or stores
-- **Reinventing UI:** Don't build a new button or dialog if one exists in `ui/`
-- **Axios in Components:** Never import `axios` directly in a component file
-
-## LLM ENDPOINT POLICY
-
-- 모든 모델 호출(Gemini 포함)은 **코드 하드코딩 금지**이며, 환경변수(`CLI_PROXY_API_BASE_URL`, `GEMINI_API_BASE_URL`)로만 지정합니다.
-- `CLI_PROXY_API_BASE_URL`와 `GEMINI_API_BASE_URL`는 동일한 값을 사용해야 합니다.
+- No raw `axios`/`fetch` imports in component files.
+- Do not create duplicate primitive components when `ui/` already has one.
+- Avoid feature components above ~300 lines; split into same-folder subcomponents.
+- Do not pass shared state more than 2-3 levels; use store selectors.
