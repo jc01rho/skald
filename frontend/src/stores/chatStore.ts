@@ -288,7 +288,9 @@ export const useChatStore = create<ChatState>()(
                                 console.error('Failed to parse references:', error)
                             }
                         } else if (data.type === 'done') {
-                            const activeMessage = get().messages.find((message) => message.id === activeAssistantMessageId)
+                            const activeMessage = get().messages.find(
+                                (message) => message.id === activeAssistantMessageId
+                            )
 
                             if (
                                 activeAssistantMessageId !== assistantMessageId &&
@@ -297,7 +299,9 @@ export const useChatStore = create<ChatState>()(
                                 !activeMessage.references
                             ) {
                                 set((state) => ({
-                                    messages: state.messages.filter((message) => message.id !== activeAssistantMessageId),
+                                    messages: state.messages.filter(
+                                        (message) => message.id !== activeAssistantMessageId
+                                    ),
                                     isStreaming: false,
                                     currentStreamingMessageId: null,
                                 }))
@@ -344,7 +348,8 @@ export const useChatStore = create<ChatState>()(
                     return persistedState
                 }
 
-                const { userContext: _userContext, ...rest } = persistedState
+                const rest = { ...persistedState }
+                delete rest.userContext
                 return rest
             },
             partialize: (state) => ({

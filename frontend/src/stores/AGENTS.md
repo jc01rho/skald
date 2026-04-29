@@ -1,78 +1,42 @@
 # FRONTEND STATE MANAGEMENT
 
-**Generated:** 2026-04-15
-**Domain:** State Management (Score 15)
+**Generated:** 2026-04-29
+**Domain:** Zustand State (Score 15)
 
 ## OVERVIEW
 
-Zustand stores for frontend state management, organized by domain.
+Domain-specific Zustand stores coordinate shared frontend state and API side effects.
 
 ## WHERE TO LOOK
 
-| Store        | File                        | State                    |
-| ------------ | --------------------------- | ------------------------ |
-| Auth         | authStore.ts                | User, login/logout, org  |
-| Chat         | chatStore.ts                | Chat sessions, streaming |
-| Project      | projectStore.ts             | Current project, list    |
-| Memo         | memoStore.ts                | Memo CRUD, filters       |
-| Evaluation   | evaluateDatasetsStore.ts    | Dataset management       |
-| Experiments  | evaluateExperimentsStore.ts | A/B testing              |
-| Organization | organizationStore.ts        | Org management           |
-| Subscription | subscriptionStore.ts        | Billing/Stripe           |
-| Public Chat  | publicChatStore.ts          | Shared chats             |
+| Store | File | State |
+| --- | --- | --- |
+| Auth | `authStore.ts` | user, login/logout, org membership |
+| Chat | `chatStore.ts` | chat sessions, SSE, runtime `userContext` |
+| Chat list | `chatsListStore.ts` | chat sidebar/list loading |
+| Public chat | `publicChatStore.ts` | shared/public chat SSE state |
+| Project | `projectStore.ts` | current project and project list |
+| Memo | `memoStore.ts` | memo CRUD, upload, filters |
+| Memo submission | `memoSubmissionStore.ts`, `memoSubmissionReviewStore.ts`, `publicMemoSubmissionStore.ts` | manual submission/review/public flows |
+| LLM config | `llmConfigStore.ts` | selectable model/runtime config |
+| Evaluation datasets | `evaluateDatasetsStore.ts` | dataset management |
+| Experiments | `evaluateExperimentsStore.ts` | experiment tracking |
+| Organization | `organizationStore.ts` | members/invites/settings |
+| Subscription | `subscriptionStore.ts` | plans, usage, Stripe state |
+| Upgrade prompt | `upgradePromptStore.ts` | global 402/limit prompt |
+| Onboarding | `onboardingStore.ts` | setup checklist/progress |
 
 ## CONVENTIONS
 
-**Store Pattern**
-
-```typescript
-import { create } from 'zustand'
-
-interface State {
-    state: Type
-    action: () => Promise<void>
-}
-export const useStore = create<State>((set) => ({
-    state: initial,
-    action: async () => { ... }
-}))
-```
-
-**Actions**
-
-- Always call `api.ts` (NEVER direct axios)
-- Use `set()` to update state
-- Async actions return Promise<void>
-
-**Cross-Store Dependencies**
-
-```typescript
-import { useOtherStore } from './otherStore'
-await useOtherStore.getState().action()
-```
-
-**First Load Pattern**
-
-```typescript
-firstLoad: boolean // Track initial state
-```
-
-**Notifications**
-
-- Toast via `sonner`: `toast.error('Message')`
-
-**Persistence**
-
-- Some state via `frontend/src/lib/localStorage.ts`
+- Store actions call `@/lib/api.ts`; components call store actions for shared data.
+- Cross-store coordination uses `useOtherStore.getState().action()` inside actions.
+- Async actions return `Promise<void>` or typed results; state updates use `set()`.
+- Persist only intentional settings. `chatStore` keeps `userContext` runtime-only and cleans old persisted values via migration.
+- Toast user-visible failures via `sonner` when the store owns the action.
 
 ## ANTI-PATTERNS
 
-- NEVER use `useState` for shared state - use Zustand stores
-- NEVER put business logic in stores - keep them minimal
-- NEVER access store state directly from other stores - use selectors
-- NEVER make API calls directly in components (use store actions)
-
-## LLM ENDPOINT POLICY
-
-- 모든 모델 호출(Gemini 포함)은 **코드 하드코딩 금지**이며, 환경변수(`CLI_PROXY_API_BASE_URL`, `GEMINI_API_BASE_URL`)로만 지정합니다.
-- `CLI_PROXY_API_BASE_URL`와 `GEMINI_API_BASE_URL`는 동일한 값을 사용해야 합니다.
+- Never use Zustand for purely local hover/open/active-tab state.
+- Never make raw HTTP calls from stores; wrap through `api.ts`.
+- Never persist secrets, API keys, or free-form `userContext`.
+- Never mutate nested state in place; return new arrays/objects.
