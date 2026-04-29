@@ -1,92 +1,100 @@
 # PROJECT KNOWLEDGE BASE
 
-**Generated:** 2026-04-15
-**Commit:** d46758e
+**Generated:** 2026-04-29
+**Commit:** a4d360b
 **Branch:** main
 
 ## OVERVIEW
 
-작업이 끝나면 빌드가 가능한지 빌드 테스트를 하고, 성공했다면 커밋하고 푸쉬해줘
+작업이 끝나면 빌드가 가능한지 빌드 테스트를 하고, 성공했다면 커밋하고 푸쉬해줘.
 
-lsp_diagnostics is 'filePath' and 'directory' are mutually exclusive — provide one or neither
-for example
-bad example: lsp_diagnostics [filePath=discord-bot/src/handlers/mentionHandler.ts, directory=__OMIT__, severity=all, waitMs=1000]
-'filePath' and 'directory' are mutually exclusive — provide one or neither
+`lsp_diagnostics`에서 `filePath`와 `directory`는 상호 배타적입니다. 하나만 제공하거나 둘 다 생략하세요.
 
-devcenter 보고에 적절한 task 를 찾지 못했을경우, 적절한 스토리에 적절한 task를 생성해도 좋아.
+DevCenter 보고에 적절한 task를 찾지 못했을 경우, PROJECT-147의 적절한 Story 아래에 task를 생성하고 진행 상황을 등록해도 됩니다. DevCenter 보고는 평일에만 가능하며, 평일이 아니거나 목요일 14시-24시 사이라면 `.opencode/devcenter-pending`에 Markdown으로 지연 기록 후 다음 허용 시간대 실행에서 보고하고 삭제하세요.
 
-devcenter 보고는 평일에만 할수있어. 평일이 아니거나 목요일 14시-24시 사이라면 작업 대기 예정으로 기록해놓고 다음의 아무 실행떄 평일이라면 그때 보고 하도록 지연시켜줘. 평일이 아니거나 목요일 14시-24시 사이라면 프로젝트 내에 별도의 markdown 파일로 보고 내용을 기록해놓고, 다음 실행때 평일이라면 그 파일을 읽어서 보고하도록 해줘. 보고가 필요한 작업이 여러개라면 모두 기록해놓고, 다음 실행때 평일이라면 모두 보고하도록 해줘. 그 기록을 .opencode/devcenter-pending 에 저장하고, .opencode/devcenter-pending에 처리되지 않은 보고건이 있다면 보고하고 보고를 올리고 삭제해줘
+배포 순서: `commit` → `push` → GitHub Actions build 확인 → `k8s/deploy.sh -y`.
 
-그리고 devcenter에 PROJECT-147 에서 적절한 story를 찾아 create task 및 그의 진행 상황 등록 으로 보고 해줘.
-이 프로젝트의 배포는 commit > push > gh action build wait > deploy with k8s/deploy.sh -y
-
-Skald는 프로덕션 RAG 플랫폼입니다. 루트는 React/Vite 프론트엔드이고, `backend/`(TS API), `worker/`(Python 수집기), `embedding-service/`(Python 임베딩), `k8s/`(배포)로 분리된 **inverted monorepo** 구조입니다.
+Skald는 프로덕션 RAG 플랫폼입니다. 루트는 React/Vite 프론트엔드이고, `backend/`(TS API), `worker/`(Python 수집기), `embedding-service/`(Python 임베딩/리랭크), `discord-bot/`(Discord 통합), `k8s/`(배포)로 분리된 **inverted monorepo** 구조입니다.
 
 ## STRUCTURE
 
 ```text
 skald/
-├── backend/                # Express + MikroORM + LangGraph
-│   └── src/
-│       ├── api/            # REST endpoints
-│       ├── agents/         # RAG agents (chatAgent/ragGraph.ts)
-│       ├── entities/       # DB models
-│       ├── lib/            # shared infra utils
-│       └── services/       # LLM/embedding/rerank/billing
-├── frontend/
-│   └── src/                # React app source (root package is frontend)
-├── worker/
-│   └── src/skald_worker/   # FastAPI collector worker
-├── embedding-service/      # FastAPI embedding microservice
-├── discord-bot/            # Discord integration
-├── k8s/                    # Kubernetes manifests + deploy.sh
+├── backend/                # Express + MikroORM + LangGraph/RAG
+├── frontend/src/           # React app source; root package.json owns frontend commands
+├── worker/                 # FastAPI collector worker + worker k8s source manifests
+├── embedding-service/      # FastAPI embeddings/reranking/chat proxy microservice
+├── discord-bot/            # Discord mention integration runtime
+├── k8s/                    # Kubernetes manifests + deploy.sh orchestration
+├── api-refernces/          # API lookup docs only; not production source
+├── rag-reference/          # external/research reference material; do not copy blindly
 └── ee/                     # Enterprise-only extensions (separate license)
 ```
 
 ## WHERE TO LOOK
 
-| Task             | Location                                   | Notes                                         |
-| ---------------- | ------------------------------------------ | --------------------------------------------- |
-| API 엔드포인트   | `backend/src/api/*.ts`                     | 미들웨어 배열 + zod 검증 패턴                 |
-| RAG 파이프라인   | `backend/src/agents/chatAgent/ragGraph.ts` | 핵심 검색/리랭크/스트리밍 플로우              |
-| LLM 호출         | `backend/src/services/llmService.ts`       | 공급자 직접 호출 금지, 여기만 사용            |
-| 공용 인프라 유틸 | `backend/src/lib/`                         | logger/redis/postgres/DI                      |
-| 프론트 상태      | `frontend/src/stores/*.ts`                 | 공유 상태는 Zustand                           |
-| 프론트 API 호출  | `frontend/src/lib/api.ts`                  | 컴포넌트 direct fetch/axios 금지              |
-| 워커 수집기      | `worker/src/skald_worker/collectors/`      | Jira/docs ingest                              |
-| 임베딩 서비스    | `embedding-service/main.py`                | 단일 서비스 진입점                            |
-| 배포             | `k8s/deploy.sh`, `k8s/*.yaml`              | 단계적 배포 + 롤아웃 확인                     |
-| 워커 배포 설정   | `worker/k8s/*.yaml`, `k8s/worker-*.yaml`   | worker config/secret는 `worker/k8s` 원본 사용 |
+| Task | Location | Notes |
+| --- | --- | --- |
+| Frontend API client | `frontend/src/lib/api.ts` | CSRF/auth/SSE 포함 단일 HTTP 경로 |
+| Frontend routing/pages | `frontend/src/routes.tsx`, `frontend/src/pages/` | pages are thin route entry points |
+| Frontend shared state | `frontend/src/stores/*.ts` | Zustand only for shared state |
+| Backend route handlers | `backend/src/api/*.ts` | middleware array + zod validation |
+| Chat/RAG graph | `backend/src/agents/chatAgent/ragGraph.ts` | retrieval, rerank, low-confidence guidance, wiki traversal |
+| Preview response | `backend/src/agents/chatAgent/previewAgent.ts` | fast first answer before full RAG |
+| Query routing/understanding | `backend/src/agents/adaptiveRagRouter.ts`, `backend/src/agents/queryUnderstandingAgent.ts` | lightweight routing/classification |
+| LLM access | `backend/src/services/llmService.ts` | provider calls must go through here |
+| Wiki compiler | `backend/src/services/wiki/` | DB-backed wiki materialization |
+| Public wiki API/UI | `backend/src/api/publicWiki.ts`, `backend/src/api/wiki.ts`, `frontend/src/pages/PublicWikiGraphPage.tsx` | shared/public wiki readers |
+| Async memo processing | `backend/src/memoProcessingServer/` | memo agents + queue consumers |
+| Backend entities | `backend/src/entities/` | MikroORM models and pgvector-backed data |
+| Backend infra utilities | `backend/src/lib/` | logger, DB/Redis, retrieval utilities, queue clients |
+| Worker collectors | `worker/src/skald_worker/collectors/` | Jira/docs/Notion/release/userdata ingest |
+| Worker runtime config | `worker/src/skald_worker/config.py` | pydantic-settings env source |
+| Embedding/rerank API | `embedding-service/main.py` | single-file FastAPI service hotspot |
+| Discord mention flow | `discord-bot/src/handlers/mentionHandler.ts` | query → Skald stream → Discord edit flow |
+| Deployment | `k8s/deploy.sh`, `k8s/*.yaml` | staged apply, rollout/readiness checks |
+| Worker deploy config | `worker/k8s/*.yaml`, `k8s/worker-*.yaml` | config/secret source lives under `worker/k8s/` |
 
 ## CODE MAP
 
-| Symbol            | Type            | Location                                   | Role                         |
-| ----------------- | --------------- | ------------------------------------------ | ---------------------------- |
-| `getModeFromArgs` | function        | `backend/src/index.ts`                     | backend dual-mode 분기       |
-| `DI` / `initDI`   | object/function | `backend/src/di.ts`                        | MikroORM repository DI       |
-| `ragGraph`        | LangGraph flow  | `backend/src/agents/chatAgent/ragGraph.ts` | RAG 검색/리랭크 파이프라인   |
-| `api`             | axios client    | `frontend/src/lib/api.ts`                  | CSRF/인증 포함 단일 API 경로 |
-| `app`             | FastAPI app     | `worker/src/skald_worker/main.py`          | worker 서비스 진입점         |
+| Symbol | Type | Location | Role |
+| --- | --- | --- | --- |
+| `getModeFromArgs` | function | `backend/src/index.ts` | backend `express-server` / `memo-processing-server` / `wiki-processing-server` 분기 |
+| `DI` / `initDI` | object/function | `backend/src/di.ts` | MikroORM repository/service DI |
+| `ragGraph` | LangGraph flow | `backend/src/agents/chatAgent/ragGraph.ts` | RAG 검색/리랭크/프롬프트/위키 traversal |
+| `previewAgent` | agent | `backend/src/agents/chatAgent/previewAgent.ts` | 스트리밍 전 1차 답변 생성 |
+| `adaptiveRagRouter` | router | `backend/src/agents/adaptiveRagRouter.ts` | 질의 복잡도/전략 라우팅 |
+| `queryUnderstandingAgent` | agent | `backend/src/agents/queryUnderstandingAgent.ts` | query intent/identifier 이해 |
+| `WikiCompilerService` | service | `backend/src/services/wiki/wikiCompilerService.ts` | WikiPage/Revision/Claim/Node/Edge materialization |
+| `api` | axios client | `frontend/src/lib/api.ts` | CSRF/인증/스트리밍 포함 단일 API 경로 |
+| `chatStore` / `publicChatStore` | Zustand stores | `frontend/src/stores/` | chat SSE state and preview promotion |
+| `app` | FastAPI app | `worker/src/skald_worker/main.py` | collector worker service entry point |
+| `DiscordStreamEditor` | class | `discord-bot/src/discord/DiscordStreamEditor.ts` | throttled Discord streaming edits |
 
 ## CONVENTIONS (DEVIATIONS ONLY)
 
-- **Inverted monorepo**: 루트 `package.json`이 프론트엔드용입니다.
-- **Dual backend mode**: `backend/src/index.ts`가 `--mode=express-server` / `--mode=memo-processing-server`를 처리합니다.
-- **LLM provider policy**: 백엔드는 CLI Proxy API 체인 중심으로 동작하며 호출은 `LLMService`를 통해서만 수행합니다.
-- **Testing policy**: backend Jest는 `maxWorkers=1` 직렬 실행입니다(DB 안전성).
-- **Frontend state policy**: 공유 상태는 Zustand, `useState`는 컴포넌트 로컬 상태에만 허용됩니다.
-- **K8s worker config ownership**: root `k8s/`는 worker Deployment/Service/ServiceAccount를 들고 있고, worker ConfigMap/Secret 원본은 `worker/k8s/`에 있습니다. `k8s/deploy.sh`는 `worker-configmap.local.yaml` → `worker-configmap.yaml` → `../worker/k8s/configmap.yaml` 순으로 fallback 합니다.
-- **RabbitMQ self-host/K8s defaults**: 문서화된 self-host/K8s 경로에서는 RabbitMQ 사용자명이 `skald`, secret 템플릿의 `RABBITMQ_PASSWORD`/`RABBITMQ_DEFAULT_PASS`도 `skald` 기준입니다. vhost 기본값은 `/` 입니다.
+- **Inverted monorepo**: root `package.json` is the frontend package; backend/discord-bot/worker/embedding-service have separate manifests.
+- **Backend modes**: `backend/src/index.ts` accepts `--mode=express-server`, `--mode=memo-processing-server`, `--mode=wiki-processing-server`.
+- **LLM endpoint policy**: no hardcoded model endpoint URLs. `CLI_PROXY_API_BASE_URL` and `GEMINI_API_BASE_URL` are env-driven and must use the same value.
+- **LLM provider policy**: backend provider calls go through `LLMService`; direct SDK calls elsewhere are forbidden.
+- **Backend test policy**: Jest uses serial execution (`maxWorkers=1`) because DB tests share PostgreSQL state.
+- **Frontend state policy**: shared state lives in Zustand stores; `useState` is only for local UI state.
+- **K8s worker ownership**: root `k8s/` owns worker runtime Deployment/Service/SA; worker ConfigMap/Secret source manifests live in `worker/k8s/` and are consumed by deploy fallback.
+- **RabbitMQ self-host defaults**: user `skald`, password `skald`, vhost `/` for new-node bootstrap only; existing PVCs can preserve old broker users.
+- **Reference folders**: `api-refernces/` and `rag-reference/` are lookup/research material, not production implementation patterns.
 
 ## ANTI-PATTERNS (PROJECT-SPECIFIC)
 
-- `frontend/src/lib/api.ts` 우회 금지 (컴포넌트에서 direct axios/fetch 금지)
-- 공유 상태를 `useState`로 관리 금지 (`frontend/src/stores/` 패턴 사용)
-- LLM SDK 직접 호출 금지 (`backend/src/services/llmService.ts` 경유)
-- `console.log` 사용 금지 (`backend/src/lib/logger.ts` 사용)
-- SSE 헤더를 async 작업 뒤에 설정 금지 (`backend/src/api/chat.ts`)
-- 병렬 DB 테스트 금지 (`backend/jest.config.js`에서 직렬 실행)
-- K8s secret 실파일 커밋 금지 (`k8s/secret.yaml.example` 템플릿만 추적)
+- `frontend/src/lib/api.ts` 우회 금지: components/stores에서 raw `fetch`/`axios` 직접 사용 금지.
+- 공유 상태를 `useState`로 관리 금지; `frontend/src/stores/` 패턴 사용.
+- LLM SDK 직접 호출 금지; `backend/src/services/llmService.ts` 경유.
+- `console.log` 사용 금지; `backend/src/lib/logger.ts` 사용.
+- SSE 헤더를 async 작업 뒤에 설정 금지; `backend/src/api/chat.ts`에서 먼저 flush.
+- 병렬 DB 테스트 금지; backend Jest 직렬 실행 유지.
+- K8s Secret 실파일 커밋 금지; 추적 템플릿은 placeholder만 유지.
+- Kubernetes mutable image tag 배포 시 `kubectl apply`만으로 새 Pod가 보장된다고 가정 금지; rollout 또는 불변 태그 필요.
+- PostgreSQL PVC는 credential repair/undeploy 중 기본 보존; 운영 데이터 삭제 금지.
+- `rag-reference/` 코드를 명시적 요청 없이 production source로 복사 금지.
 
 ## COMMANDS
 
@@ -94,6 +102,7 @@ skald/
 # frontend (root)
 pnpm dev
 pnpm build
+pnpm lint
 
 # backend
 cd backend && pnpm dev:express-server
@@ -103,9 +112,14 @@ cd backend && pnpm test
 
 # worker
 cd worker && uv run python -m skald_worker.main
+cd worker && uv run pytest
+cd worker && uv run ruff check .
 
 # embedding-service
 cd embedding-service && uv run uvicorn main:app --host 0.0.0.0 --port 8001
+
+# discord-bot
+cd discord-bot && pnpm build
 
 # k8s
 cd k8s && ./deploy.sh -y
@@ -113,288 +127,9 @@ cd k8s && ./deploy.sh -y
 
 ## NOTES
 
-- GitHub Actions로 컨테이너 빌드 워크플로우가 존재합니다 (`.github/workflows/*`).
-- `ee/`는 MIT 범위 밖의 별도 라이선스 코드입니다.
-- 하위 AGENTS는 중복 설명보다 해당 도메인의 비표준 제약만 기록해야 합니다.
-- RabbitMQ 기본 자격증명/기본 사용자 생성 설정은 신규 노드(빈 데이터 디렉터리) 부팅 시에만 적용됩니다. 기존 RabbitMQ PVC가 있으면 secret 값만 바꿔도 실제 브로커 계정은 그대로일 수 있습니다.
-
-## LLM ENDPOINT POLICY
-
-- 모든 모델 호출(Gemini 포함)은 **코드 하드코딩 금지**이며, 환경변수(`CLI_PROXY_API_BASE_URL`, `GEMINI_API_BASE_URL`)로만 지정합니다.
-- `CLI_PROXY_API_BASE_URL`와 `GEMINI_API_BASE_URL`는 동일한 값을 사용해야 합니다.
-
-# Memorix — Automatic Memory Rules
-
-You have access to Memorix memory tools. Follow these rules to maintain persistent context across sessions.
-
-## RULE 1: Session Start — Load Context
-
-At the **beginning of every conversation**, BEFORE responding to the user:
-
-1. Call `memorix_session_start` to get the previous session summary and key memories (this is a direct read, not a search — no fragmentation risk)
-2. Then call `memorix_search` with a query related to the user's first message for additional context
-3. If search results are found, use `memorix_detail` to fetch the most relevant ones
-4. Reference relevant memories naturally — the user should feel you "remember" them
-
-## RULE 2: Store Important Context
-
-**Proactively** call `memorix_store` when any of the following happen:
-
-### What MUST be recorded:
-
-- Architecture/design decisions → type: `decision`
-- Bug identified and fixed → type: `problem-solution`
-- Unexpected behavior or gotcha → type: `gotcha`
-- Config changed (env vars, ports, deps) → type: `what-changed`
-- Feature completed or milestone → type: `what-changed`
-- Trade-off discussed with conclusion → type: `trade-off`
-
-### What should NOT be recorded:
-
-- Simple file reads, greetings, trivial commands (ls, pwd, git status)
-
-### Use topicKey for evolving topics:
-
-For decisions, architecture docs, or any topic that evolves over time, ALWAYS use `topicKey` parameter.
-This ensures the memory is UPDATED instead of creating duplicates.
-Use `memorix_suggest_topic_key` to generate a stable key.
-
-Example: `topicKey: "architecture/auth-model"` — subsequent stores with the same key update the existing memory.
-
-### Track progress with the progress parameter:
-
-When working on features or tasks, include the `progress` parameter:
-
-```json
-{
-    "progress": {
-        "feature": "user authentication",
-        "status": "in-progress",
-        "completion": 60
-    }
-}
-```
-
-Status values: `in-progress`, `completed`, `blocked`
-
-## RULE 3: Resolve Completed Memories
-
-When a task is completed, a bug is fixed, or information becomes outdated:
-
-1. Call `memorix_resolve` with the observation IDs to mark them as resolved
-2. Resolved memories are hidden from default search, preventing context pollution
-
-This is critical — without resolving, old bug reports and completed tasks will keep appearing in future searches.
-
-## RULE 4: Session End — Store Decision Chain Summary
-
-When the conversation is ending, create a **decision chain summary** (not just a checklist):
-
-1. Call `memorix_store` with type `session-request` and `topicKey: "session/latest-summary"`:
-
-    **Required structure:**
-
-    ```
-    ## Goal
-    [What we were working on — specific, not vague]
-
-    ## Key Decisions & Reasoning
-    - Chose X because Y. Rejected Z because [reason].
-    - [Every architectural/design decision with WHY]
-
-    ## What Changed
-    - [File path] — [what changed and why]
-
-    ## Current State
-    - [What works now, what's pending]
-    - [Any blockers or risks]
-
-    ## Next Steps
-    - [Concrete next actions, in priority order]
-    ```
-
-    **Critical: Include the "Key Decisions & Reasoning" section.** Without it, the next AI session will lack the context to understand WHY things were done a certain way and may suggest conflicting approaches.
-
-2. Call `memorix_resolve` on any memories for tasks completed in this session
-
-## RULE 5: Compact Awareness
-
-Memorix automatically compacts memories on store:
-
-- **With LLM API configured:** Smart dedup — extracts facts, compares with existing, merges or skips duplicates
-- **Without LLM (free mode):** Heuristic dedup — uses similarity scores to detect and merge duplicate memories
-- **You don't need to manually deduplicate.** Just store naturally and compact handles the rest.
-- If you notice excessive duplicate memories, call `memorix_deduplicate` for batch cleanup.
-
-## Guidelines
-
-- **Use concise titles** (~5-10 words) and structured facts
-- **Include file paths** in filesModified when relevant
-- **Include related concepts** for better searchability
-- **Always use topicKey** for recurring topics to prevent duplicates
-- **Always resolve** completed tasks and fixed bugs
-- **Always include reasoning** — "chose X because Y" is 10x more valuable than "did X"
-- Search defaults to `status="active"` — use `status="all"` to include resolved memories
-
-<!-- gitnexus:start -->
-
-# GitNexus — Code Intelligence
-
-This project is indexed by GitNexus as **skald** (3260 symbols, 6851 relationships, 172 execution flows). Use the GitNexus MCP tools to understand code, assess impact, and navigate safely.
-
-> If any GitNexus tool warns the index is stale, run `npx gitnexus analyze` in terminal first.
-
-## Always Do
-
-- **MUST run impact analysis before editing any symbol.** Before modifying a function, class, or method, run `gitnexus_impact({target: "symbolName", direction: "upstream"})` and report the blast radius (direct callers, affected processes, risk level) to the user.
-- **MUST run `gitnexus_detect_changes()` before committing** to verify your changes only affect expected symbols and execution flows.
-- **MUST warn the user** if impact analysis returns HIGH or CRITICAL risk before proceeding with edits.
-- When exploring unfamiliar code, use `gitnexus_query({query: "concept"})` to find execution flows instead of grepping. It returns process-grouped results ranked by relevance.
-- When you need full context on a specific symbol — callers, callees, which execution flows it participates in — use `gitnexus_context({name: "symbolName"})`.
-
-## When Debugging
-
-1. `gitnexus_query({query: "<error or symptom>"})` — find execution flows related to the issue
-2. `gitnexus_context({name: "<suspect function>"})` — see all callers, callees, and process participation
-3. `READ gitnexus://repo/skald/process/{processName}` — trace the full execution flow step by step
-4. For regressions: `gitnexus_detect_changes({scope: "compare", base_ref: "main"})` — see what your branch changed
-
-## When Refactoring
-
-- **Renaming**: MUST use `gitnexus_rename({symbol_name: "old", new_name: "new", dry_run: true})` first. Review the preview — graph edits are safe, text_search edits need manual review. Then run with `dry_run: false`.
-- **Extracting/Splitting**: MUST run `gitnexus_context({name: "target"})` to see all incoming/outgoing refs, then `gitnexus_impact({target: "target", direction: "upstream"})` to find all external callers before moving code.
-- After any refactor: run `gitnexus_detect_changes({scope: "all"})` to verify only expected files changed.
-
-## Never Do
-
-- NEVER edit a function, class, or method without first running `gitnexus_impact` on it.
-- NEVER ignore HIGH or CRITICAL risk warnings from impact analysis.
-- NEVER rename symbols with find-and-replace — use `gitnexus_rename` which understands the call graph.
-- NEVER commit changes without running `gitnexus_detect_changes()` to check affected scope.
-
-## Tools Quick Reference
-
-| Tool             | When to use                   | Command                                                                 |
-| ---------------- | ----------------------------- | ----------------------------------------------------------------------- |
-| `query`          | Find code by concept          | `gitnexus_query({query: "auth validation"})`                            |
-| `context`        | 360-degree view of one symbol | `gitnexus_context({name: "validateUser"})`                              |
-| `impact`         | Blast radius before editing   | `gitnexus_impact({target: "X", direction: "upstream"})`                 |
-| `detect_changes` | Pre-commit scope check        | `gitnexus_detect_changes({scope: "staged"})`                            |
-| `rename`         | Safe multi-file rename        | `gitnexus_rename({symbol_name: "old", new_name: "new", dry_run: true})` |
-| `cypher`         | Custom graph queries          | `gitnexus_cypher({query: "MATCH ..."})`                                 |
-
-## Impact Risk Levels
-
-| Depth | Meaning                               | Action                |
-| ----- | ------------------------------------- | --------------------- |
-| d=1   | WILL BREAK — direct callers/importers | MUST update these     |
-| d=2   | LIKELY AFFECTED — indirect deps       | Should test           |
-| d=3   | MAY NEED TESTING — transitive         | Test if critical path |
-
-## Resources
-
-| Resource                               | Use for                                  |
-| -------------------------------------- | ---------------------------------------- |
-| `gitnexus://repo/skald/context`        | Codebase overview, check index freshness |
-| `gitnexus://repo/skald/clusters`       | All functional areas                     |
-| `gitnexus://repo/skald/processes`      | All execution flows                      |
-| `gitnexus://repo/skald/process/{name}` | Step-by-step execution trace             |
-
-## Self-Check Before Finishing
-
-Before completing any code modification task, verify:
-
-1. `gitnexus_impact` was run for all modified symbols
-2. No HIGH/CRITICAL risk warnings were ignored
-3. `gitnexus_detect_changes()` confirms changes match expected scope
-4. All d=1 (WILL BREAK) dependents were updated
-
-## Keeping the Index Fresh
-
-After committing code changes, the GitNexus index becomes stale. Re-run analyze to update it:
-
-```bash
-npx gitnexus analyze
-```
-
-If the index previously included embeddings, preserve them by adding `--embeddings`:
-
-```bash
-npx gitnexus analyze --embeddings
-```
-
-To check whether embeddings exist, inspect `.gitnexus/meta.json` — the `stats.embeddings` field shows the count (0 means no embeddings). **Running analyze without `--embeddings` will delete any previously generated embeddings.**
-
-> Claude Code users: A PostToolUse hook handles this automatically after `git commit` and `git merge`.
-
-## CLI
-
-| Task                                         | Read this skill file                                        |
-| -------------------------------------------- | ----------------------------------------------------------- |
-| Understand architecture / "How does X work?" | `.claude/skills/gitnexus/gitnexus-exploring/SKILL.md`       |
-| Blast radius / "What breaks if I change X?"  | `.claude/skills/gitnexus/gitnexus-impact-analysis/SKILL.md` |
-| Trace bugs / "Why is X failing?"             | `.claude/skills/gitnexus/gitnexus-debugging/SKILL.md`       |
-| Rename / extract / split / refactor          | `.claude/skills/gitnexus/gitnexus-refactoring/SKILL.md`     |
-| Tools, resources, schema reference           | `.claude/skills/gitnexus/gitnexus-guide/SKILL.md`           |
-| Index, status, clean, wiki CLI commands      | `.claude/skills/gitnexus/gitnexus-cli/SKILL.md`             |
-
-<!-- gitnexus:end -->
-
-# context-mode — MANDATORY routing rules
-
-You have context-mode MCP tools available. These rules are NOT optional — they protect your context window from flooding. A single unrouted command can dump 56 KB into context and waste the entire session.
-
-## BLOCKED commands — do NOT attempt these
-
-### curl / wget — BLOCKED
-Any shell command containing `curl` or `wget` will be intercepted and blocked by the context-mode plugin. Do NOT retry.
-Instead use:
-- `context-mode_ctx_fetch_and_index(url, source)` to fetch and index web pages
-- `context-mode_ctx_execute(language: "javascript", code: "const r = await fetch(...)")` to run HTTP calls in sandbox
-
-### Inline HTTP — BLOCKED
-Any shell command containing `fetch('http`, `requests.get(`, `requests.post(`, `http.get(`, or `http.request(` will be intercepted and blocked. Do NOT retry with shell.
-Instead use:
-- `context-mode_ctx_execute(language, code)` to run HTTP calls in sandbox — only stdout enters context
-
-### Direct web fetching — BLOCKED
-Do NOT use any direct URL fetching tool. Use the sandbox equivalent.
-Instead use:
-- `context-mode_ctx_fetch_and_index(url, source)` then `context-mode_ctx_search(queries)` to query the indexed content
-
-## REDIRECTED tools — use sandbox equivalents
-
-### Shell (>20 lines output)
-Shell is ONLY for: `git`, `mkdir`, `rm`, `mv`, `cd`, `ls`, `npm install`, `pip install`, and other short-output commands.
-For everything else, use:
-- `context-mode_ctx_batch_execute(commands, queries)` — run multiple commands + search in ONE call
-- `context-mode_ctx_execute(language: "shell", code: "...")` — run in sandbox, only stdout enters context
-
-### File reading (for analysis)
-If you are reading a file to **edit** it → reading is correct (edit needs content in context).
-If you are reading to **analyze, explore, or summarize** → use `context-mode_ctx_execute_file(path, language, code)` instead. Only your printed summary enters context.
-
-### grep / search (large results)
-Search results can flood context. Use `context-mode_ctx_execute(language: "shell", code: "grep ...")` to run searches in sandbox. Only your printed summary enters context.
-
-## Tool selection hierarchy
-
-1. **GATHER**: `context-mode_ctx_batch_execute(commands, queries)` — Primary tool. Runs all commands, auto-indexes output, returns search results. ONE call replaces 30+ individual calls.
-2. **FOLLOW-UP**: `context-mode_ctx_search(queries: ["q1", "q2", ...])` — Query indexed content. Pass ALL questions as array in ONE call.
-3. **PROCESSING**: `context-mode_ctx_execute(language, code)` | `context-mode_ctx_execute_file(path, language, code)` — Sandbox execution. Only stdout enters context.
-4. **WEB**: `context-mode_ctx_fetch_and_index(url, source)` then `context-mode_ctx_search(queries)` — Fetch, chunk, index, query. Raw HTML never enters context.
-5. **INDEX**: `context-mode_ctx_index(content, source)` — Store content in FTS5 knowledge base for later search.
-
-## Output constraints
-
-- Keep responses under 500 words.
-- Write artifacts (code, configs, PRDs) to FILES — never return them as inline text. Return only: file path + 1-line description.
-- When indexing content, use descriptive source labels so others can `search(source: "label")` later.
-
-## ctx commands
-
-| Command | Action |
-|---------|--------|
-| `ctx stats` | Call the `stats` MCP tool and display the full output verbatim |
-| `ctx doctor` | Call the `doctor` MCP tool, run the returned shell command, display as checklist |
-| `ctx upgrade` | Call the `upgrade` MCP tool, run the returned shell command, display as checklist |
+- GitHub Actions container build workflows live in `.github/workflows/`.
+- `ee/` is outside the MIT core scope.
+- Child AGENTS.md files must document only domain-specific deviations and must not repeat global policies from this root file.
+- Live worker secrets must stay in ignored local manifests or Kubernetes Secret, never tracked templates.
+- Root `.gitignore` ignores `.env` and `.env.*` while allowing `.env.example` and `.env.prod.example`.
+- `k8s/deploy.sh` needs the root app secret file `k8s/secret.yaml`; `k8s/worker-secret.local.yaml` does not satisfy that check.
