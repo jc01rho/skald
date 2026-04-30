@@ -29,6 +29,9 @@ Rules:
 - Do not invent unsupported claims.
 - Every claim must remain traceable to the provided source.
 - Produce compact, deterministic JSON only.
+- Write all human-readable generated fields in natural Korean by default: title, summary, bodyMarkdown, claimText, displayName, description, notes.
+- Do not use Chinese/Japanese vocabulary or CJK-only script fragments in Korean output. For example, write "안내" or "가이드", never "导航" or "に表示".
+- Keep source product names and established English technical terms as-is when they are already present in the source.
 - Prefer updating or creating at most 3 pages for a single source.
 - Markdown is the readable projection, but page/claim/node/edge objects are the machine representation.
 - If information is weak or ambiguous, lower confidence and keep contradiction_status conservative.

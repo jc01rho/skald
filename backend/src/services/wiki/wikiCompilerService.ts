@@ -23,6 +23,7 @@ import { WikiSourceRef } from '@/entities/WikiSourceRef'
 import { logger } from '@/lib/logger'
 import { publishWikiRefresh } from '@/lib/wikiQueueClient'
 import { LLMService } from '@/services/llmService'
+import { sanitizeWikiCompileOutput } from '@/services/wiki/wikiLanguageSanitizer'
 import { buildWikiCompileUserPrompt, WIKI_COMPILE_SYSTEM_PROMPT } from '@/services/wiki/wikiCompilePrompts'
 import {
     WIKI_ASYNC_MODE,
@@ -533,7 +534,7 @@ export class WikiCompilerService {
                 temperature: 0,
             })
 
-            const parsed = asCompileOutput(response.content?.toString() || '{}')
+            const parsed = sanitizeWikiCompileOutput(asCompileOutput(response.content?.toString() || '{}'))
 
             for (const pageDelta of parsed.pages.slice(0, 3)) {
                 const slug = normalizeSlug(pageDelta.slug || pageDelta.title)
