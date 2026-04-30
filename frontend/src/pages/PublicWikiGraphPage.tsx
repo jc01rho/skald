@@ -77,6 +77,9 @@ const PAGE_TYPE_ORDER = [
 ] as const
 
 const LARGE_PAGE_GROUP_THRESHOLD = 12
+const GRAPH_RENDER_NODE_LIMIT = 180
+const GRAPH_RENDER_EDGE_LIMIT = 280
+const GRAPH_DENSE_THRESHOLD = 400
 
 const findDefaultPageNode = (nodes: PublicWikiGraphNode[]) =>
     nodes.find((node) => node.page_type === 'index_page') ?? nodes[0] ?? null
@@ -137,6 +140,86 @@ const getPageTypeGroupKey = (pageType?: string | null) => {
 const getSearchableText = (node: PublicWikiGraphNode) => {
     const pageTypeMeta = getPageTypeMeta(node.page_type)
     return [node.title, node.slug, pageTypeMeta.label].filter(Boolean).join(' ').toLowerCase()
+}
+
+const scoreGraphNode = (node: PublicWikiGraphNode, graphMode: GraphMode) => {
+    const confidence = Number.isFinite(node.confidence) ? node.confidence : 0
+    const freshness = Number.isFinite(node.freshness) ? node.freshness : 0
+    const typeBoost =
+        graphMode === 'page'
+            ? node.page_type === 'index_page'
+                ? 0.35
+                : node.page_type === 'process_page'
+                  ? 0.12
+                  : 0
+            : node.node_type === 'process'
+              ? 0.14
+              : node.node_type === 'concept'
+                ? 0.08
+                : 0
+
+    return confidence * 0.7 + freshness * 0.3 + typeBoost
+}
+
+const buildFocusedGraphSlice = (
+    graph: PublicWikiGraphResponse,
+    graphMode: GraphMode,
+    selectedNodeId: string | null
+) => {
+    const selectedNode = graph.nodes.find((node) => node.id === selectedNodeId) ?? graph.nodes[0] ?? null
+    if (!selectedNode) {
+        return { nodes: [] as PublicWikiGraphNode[], edges: [] as PublicWikiGraphEdge[] }
+    }
+
+    const selectedEdgeCandidates = graph.edges.filter(
+        (edge) => edge.source === selectedNode.id || edge.target === selectedNode.id
+    )
+    const neighborScores = new Map<string, number>()
+    for (const edge of selectedEdgeCandidates) {
+        const neighborId = edge.source === selectedNode.id ? edge.target : edge.source
+        neighborScores.set(neighborId, Math.max(neighborScores.get(neighborId) ?? 0, edge.weight ?? 1))
+    }
+
+    const nodeById = new Map(graph.nodes.map((node) => [node.id, node]))
+    const neighborNodes = [...neighborScores.entries()]
+        .map(([nodeId, edgeScore]) => {
+            const node = nodeById.get(nodeId)
+            return node ? { node, score: edgeScore + scoreGraphNode(node, graphMode) } : null
+        })
+        .filter((entry): entry is { node: PublicWikiGraphNode; score: number } => entry !== null)
+        .sort((left, right) => right.score - left.score)
+        .slice(0, GRAPH_RENDER_NODE_LIMIT - 1)
+        .map((entry) => entry.node)
+
+    const nodes = [selectedNode, ...neighborNodes]
+    const nodeIds = new Set(nodes.map((node) => node.id))
+    const edges = graph.edges
+        .filter((edge) => nodeIds.has(edge.source) && nodeIds.has(edge.target))
+        .sort((left, right) => (right.weight ?? 1) - (left.weight ?? 1))
+        .slice(0, GRAPH_RENDER_EDGE_LIMIT)
+
+    return { nodes, edges }
+}
+
+const buildOverviewGraphSlice = (
+    graph: PublicWikiGraphResponse,
+    graphMode: GraphMode,
+    selectedNodeId: string | null
+) => {
+    const selectedNode = graph.nodes.find((node) => node.id === selectedNodeId) ?? null
+    const rankedNodes = [...graph.nodes]
+        .sort((left, right) => scoreGraphNode(right, graphMode) - scoreGraphNode(left, graphMode))
+        .slice(0, GRAPH_RENDER_NODE_LIMIT)
+    const nodes = selectedNode
+        ? [selectedNode, ...rankedNodes.filter((node) => node.id !== selectedNode.id)].slice(0, GRAPH_RENDER_NODE_LIMIT)
+        : rankedNodes
+    const nodeIds = new Set(nodes.map((node) => node.id))
+    const edges = graph.edges
+        .filter((edge) => nodeIds.has(edge.source) && nodeIds.has(edge.target))
+        .sort((left, right) => (right.weight ?? 1) - (left.weight ?? 1))
+        .slice(0, GRAPH_RENDER_EDGE_LIMIT)
+
+    return { nodes, edges }
 }
 
 export const PublicWikiGraphPage = () => {
@@ -209,7 +292,7 @@ export const PublicWikiGraphPage = () => {
         }
 
         loadPublicWiki()
-    }, [slug])
+    }, [pageSlug, slug])
 
     useEffect(() => {
         setPageSearchQuery('')
@@ -270,6 +353,24 @@ export const PublicWikiGraphPage = () => {
             null,
         [pageGraph, selectedPageId]
     )
+    const currentSelectedNodeId = graphMode === 'page' ? selectedPageId : selectedNodeId
+    const graphIsDense = (activeGraph?.nodes.length ?? 0) > GRAPH_DENSE_THRESHOLD
+    const renderGraph = useMemo(() => {
+        if (!activeGraph) {
+            return null
+        }
+
+        const slice = focusMode
+            ? buildFocusedGraphSlice(activeGraph, graphMode, currentSelectedNodeId)
+            : buildOverviewGraphSlice(activeGraph, graphMode, currentSelectedNodeId)
+
+        return {
+            ...activeGraph,
+            nodes: slice.nodes,
+            edges: slice.edges,
+            isCapped: slice.nodes.length < activeGraph.nodes.length || slice.edges.length < activeGraph.edges.length,
+        }
+    }, [activeGraph, currentSelectedNodeId, focusMode, graphMode])
 
     useEffect(() => {
         if (!slug || viewMode !== 'text' || !selectedPageNode?.slug) {
@@ -347,7 +448,6 @@ export const PublicWikiGraphPage = () => {
         )
     }
 
-    const currentSelectedNodeId = graphMode === 'page' ? selectedPageId : selectedNodeId
     const pageCount = pageGraph?.stats.nodes ?? 0
     const selectedPageMeta = getPageTypeMeta(selectedPageNode?.page_type)
     const matchingPageCount = filteredSecondaryPageNodes.length
@@ -365,6 +465,14 @@ export const PublicWikiGraphPage = () => {
                                         <>
                                             <Badge variant="outline">nodes {activeGraph.stats.nodes}</Badge>
                                             <Badge variant="outline">edges {activeGraph.stats.edges}</Badge>
+                                            {renderGraph?.isCapped ? (
+                                                <Badge
+                                                    variant="outline"
+                                                    className="border-amber-200 bg-amber-50 text-amber-700"
+                                                >
+                                                    optimized {renderGraph.nodes.length}/{activeGraph.stats.nodes} nodes
+                                                </Badge>
+                                            ) : null}
                                         </>
                                     ) : null}
                                 </div>
@@ -754,7 +862,7 @@ export const PublicWikiGraphPage = () => {
                             />
                         </div>
                     </div>
-                ) : !activeGraph ? (
+                ) : !activeGraph || !renderGraph ? (
                     <Alert>
                         <AlertCircle className="h-4 w-4" />
                         <AlertTitle>그래프 데이터가 아직 준비되지 않았습니다</AlertTitle>
@@ -770,35 +878,51 @@ export const PublicWikiGraphPage = () => {
                         </AlertDescription>
                     </Alert>
                 ) : (
-                    <PublicWikiGraphView
-                        graphMode={graphMode}
-                        title={graphMode === 'page' ? 'Page graph view' : 'Node / edge graph view'}
-                        description={
-                            graphMode === 'page'
-                                ? 'Wiki page 사이의 링크 구조를 차분한 레이아웃으로 보여주고, 선택한 페이지 중심으로 읽기 쉽게 강조합니다.'
-                                : 'Wiki node 와 edge 사이의 관계를 선택 개체 중심으로 재구성해 복잡도를 낮춰 보여줍니다.'
-                        }
-                        nodes={activeGraph.nodes}
-                        edges={activeGraph.edges}
-                        selectedNodeId={currentSelectedNodeId}
-                        focusMode={focusMode}
-                        onToggleFocusMode={() => setFocusMode((current) => !current)}
-                        onResetSelection={() => {
-                            setFocusMode(false)
-                            if (graphMode === 'page') {
-                                setSelectedPageId(findDefaultPageNode(activeGraph.nodes)?.id ?? null)
-                            } else {
-                                setSelectedNodeId(activeGraph.nodes[0]?.id ?? null)
+                    <div className="space-y-4">
+                        {renderGraph.isCapped ? (
+                            <Alert className="border-amber-200 bg-amber-50 text-amber-950">
+                                <AlertCircle className="h-4 w-4 text-amber-700" />
+                                <AlertTitle>대규모 wiki라 그래프를 최적화해 표시합니다</AlertTitle>
+                                <AlertDescription>
+                                    전체 {activeGraph.stats.nodes}개 노드와 {activeGraph.stats.edges}개 연결 중 현재
+                                    화면에는 {renderGraph.nodes.length}개 노드와 {renderGraph.edges.length}개 연결만
+                                    렌더링합니다.
+                                    {graphIsDense
+                                        ? ' Chrome 성능을 보호하기 위해 높은 신뢰도 항목 또는 선택 항목의 1-hop 이웃을 우선 표시합니다.'
+                                        : ' Focused view를 켜면 선택 항목 주변 연결만 더 좁혀 볼 수 있습니다.'}
+                                </AlertDescription>
+                            </Alert>
+                        ) : null}
+                        <PublicWikiGraphView
+                            graphMode={graphMode}
+                            title={graphMode === 'page' ? 'Page graph view' : 'Node / edge graph view'}
+                            description={
+                                graphMode === 'page'
+                                    ? 'Wiki page 사이의 링크 구조를 성능 안전 범위 안에서 보여주고, 선택한 페이지 중심으로 읽기 쉽게 강조합니다.'
+                                    : 'Wiki node 와 edge 관계를 선택 개체 중심으로 재구성해 복잡도를 낮춰 보여줍니다.'
                             }
-                        }}
-                        onSelectNode={(nodeId) => {
-                            if (graphMode === 'page') {
-                                setSelectedPageId(nodeId)
-                            } else {
-                                setSelectedNodeId(nodeId)
-                            }
-                        }}
-                    />
+                            nodes={renderGraph.nodes}
+                            edges={renderGraph.edges}
+                            selectedNodeId={currentSelectedNodeId}
+                            focusMode={focusMode}
+                            onToggleFocusMode={() => setFocusMode((current) => !current)}
+                            onResetSelection={() => {
+                                setFocusMode(false)
+                                if (graphMode === 'page') {
+                                    setSelectedPageId(findDefaultPageNode(activeGraph.nodes)?.id ?? null)
+                                } else {
+                                    setSelectedNodeId(activeGraph.nodes[0]?.id ?? null)
+                                }
+                            }}
+                            onSelectNode={(nodeId) => {
+                                if (graphMode === 'page') {
+                                    setSelectedPageId(nodeId)
+                                } else {
+                                    setSelectedNodeId(nodeId)
+                                }
+                            }}
+                        />
+                    </div>
                 )}
             </div>
         </div>
