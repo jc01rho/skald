@@ -70,21 +70,21 @@ export const PublicWikiTextView = ({ page, loading, emptyMessage, projectSlug }:
     const PageTypeIcon = pageTypeMeta.icon
 
     return (
-        <Card className="overflow-hidden border-slate-200/80 shadow-sm">
-            <CardHeader className="border-b bg-white/80 text-slate-900 backdrop-blur">
-                <div className="flex flex-wrap items-center gap-2 text-sm text-slate-500">
-                    <span className="inline-flex items-center gap-2 rounded-full bg-slate-100 px-3 py-1 text-slate-700">
+        <Card className="overflow-hidden border-teal-200/70 bg-white/88 shadow-[0_24px_80px_rgba(15,118,110,0.11)] backdrop-blur">
+            <CardHeader className="border-b border-teal-100 bg-[linear-gradient(135deg,rgba(240,253,250,0.92),rgba(255,251,235,0.86))] text-teal-950 backdrop-blur">
+                <div className="flex flex-wrap items-center gap-2 text-sm text-teal-800/70">
+                    <span className="inline-flex items-center gap-2 rounded-full border border-teal-200 bg-teal-50 px-3 py-1 text-teal-800">
                         <PageTypeIcon className="h-3.5 w-3.5" />
                         {pageTypeMeta.label}
                     </span>
                     {page?.page_type === 'index_page' ? (
-                        <Badge className="rounded-full bg-sky-600 text-white hover:bg-sky-600">Start here</Badge>
+                        <Badge className="rounded-full bg-amber-600 text-white hover:bg-amber-600">Start here</Badge>
                     ) : null}
                 </div>
-                <CardTitle className="text-2xl leading-tight text-slate-900 sm:text-[2rem]">
+                <CardTitle className="text-2xl leading-tight text-teal-950 sm:text-[2rem]">
                     {page?.title || '페이지를 선택해 주세요'}
                 </CardTitle>
-                <CardDescription className="text-slate-600">
+                <CardDescription className="text-teal-900/70">
                     {page
                         ? `Last updated ${new Date(page.updated_at).toLocaleString('en-US', {
                               year: 'numeric',
@@ -96,35 +96,35 @@ export const PublicWikiTextView = ({ page, loading, emptyMessage, projectSlug }:
                         : emptyMessage}
                 </CardDescription>
             </CardHeader>
-            <CardContent className="bg-[linear-gradient(180deg,rgba(248,250,252,0.94),rgba(255,255,255,1))] p-6 text-slate-900 sm:p-8">
+            <CardContent className="bg-[linear-gradient(180deg,rgba(255,247,237,0.66),rgba(255,255,255,0.96))] p-6 text-stone-900 sm:p-8">
                 {loading ? (
-                    <div className="flex min-h-[320px] items-center justify-center gap-3 text-sm text-slate-500">
+                    <div className="flex min-h-[320px] items-center justify-center gap-3 text-sm text-teal-700/75">
                         <Loader2 className="h-4 w-4 animate-spin" />
                         텍스트를 불러오는 중입니다.
                     </div>
                 ) : !page ? (
-                    <div className="flex min-h-[320px] flex-col items-center justify-center gap-3 rounded-2xl border border-dashed border-slate-200 bg-white/70 px-6 text-center text-sm text-slate-500">
-                        <Sparkles className="h-5 w-5 text-slate-400" />
+                    <div className="flex min-h-[320px] flex-col items-center justify-center gap-3 rounded-2xl border border-dashed border-amber-200 bg-amber-50/70 px-6 text-center text-sm text-amber-700">
+                        <Sparkles className="h-5 w-5 text-amber-500" />
                         {emptyMessage}
                     </div>
                 ) : (
                     <div className="space-y-6">
                         {page.summary ? (
-                            <div className="rounded-2xl border border-slate-200/80 bg-white/90 p-5 shadow-sm">
-                                <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
+                            <div className="rounded-2xl border border-amber-200/80 bg-amber-50/70 p-5 shadow-sm shadow-amber-900/5">
+                                <p className="text-xs font-semibold uppercase tracking-[0.18em] text-amber-700/80">
                                     Summary
                                 </p>
                                 <p
-                                    className={`mt-3 leading-7 text-slate-700 ${page.page_type === 'index_page' ? 'text-base sm:text-[1.05rem]' : 'text-sm'}`}
+                                    className={`mt-3 leading-7 text-stone-800 ${page.page_type === 'index_page' ? 'text-base sm:text-[1.05rem]' : 'text-sm'}`}
                                 >
                                     {page.summary}
                                 </p>
                             </div>
                         ) : null}
 
-                        <div className="rounded-[28px] border border-slate-200/80 bg-white p-6 shadow-[0_18px_60px_rgba(15,23,42,0.06)] sm:p-8">
+                        <div className="rounded-[28px] border border-teal-100 bg-white/92 p-6 shadow-[0_18px_60px_rgba(15,118,110,0.08)] sm:p-8">
                             <div
-                                className={`react-markdown prose prose-slate mx-auto text-[15px] leading-7 ${page.page_type === 'index_page' ? 'prose-lg max-w-3xl' : 'max-w-prose'}`}
+                                className={`react-markdown prose prose-stone mx-auto text-[15px] leading-7 prose-a:text-teal-700 prose-a:decoration-teal-300 prose-strong:text-teal-950 prose-headings:text-teal-950 ${page.page_type === 'index_page' ? 'prose-lg max-w-3xl' : 'max-w-prose'}`}
                             >
                                 <ReactMarkdown
                                     components={{

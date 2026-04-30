@@ -453,22 +453,34 @@ export const PublicWikiGraphPage = () => {
     const matchingPageCount = filteredSecondaryPageNodes.length
 
     return (
-        <div className="min-h-screen bg-slate-50/60">
+        <div className="min-h-screen bg-[radial-gradient(circle_at_12%_8%,rgba(20,184,166,0.18),transparent_30%),radial-gradient(circle_at_88%_12%,rgba(245,158,11,0.18),transparent_28%),linear-gradient(180deg,#fff7ed_0%,#f0fdfa_48%,#f8fafc_100%)]">
             <div className="mx-auto flex w-full max-w-7xl flex-col gap-6 px-4 py-8 sm:px-6 lg:px-8">
-                <Card>
-                    <CardHeader className="border-b">
+                <Card className="overflow-hidden border-teal-200/70 bg-white/82 shadow-[0_24px_90px_rgba(15,118,110,0.14)] backdrop-blur">
+                    <CardHeader className="border-b border-teal-100/80 bg-[linear-gradient(135deg,rgba(240,253,250,0.96),rgba(255,251,235,0.9))]">
                         <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
                             <div className="space-y-3">
                                 <div className="flex flex-wrap items-center gap-3">
-                                    <Badge variant="secondary">Public Wiki</Badge>
+                                    <Badge className="border border-teal-200 bg-teal-700 text-teal-50 hover:bg-teal-700">
+                                        Public Wiki
+                                    </Badge>
                                     {activeGraph && viewMode !== 'text' ? (
                                         <>
-                                            <Badge variant="outline">nodes {activeGraph.stats.nodes}</Badge>
-                                            <Badge variant="outline">edges {activeGraph.stats.edges}</Badge>
+                                            <Badge
+                                                variant="outline"
+                                                className="border-teal-200 bg-white/70 text-teal-800"
+                                            >
+                                                nodes {activeGraph.stats.nodes}
+                                            </Badge>
+                                            <Badge
+                                                variant="outline"
+                                                className="border-amber-200 bg-white/70 text-amber-800"
+                                            >
+                                                edges {activeGraph.stats.edges}
+                                            </Badge>
                                             {renderGraph?.isCapped ? (
                                                 <Badge
                                                     variant="outline"
-                                                    className="border-amber-200 bg-amber-50 text-amber-700"
+                                                    className="border-amber-300 bg-amber-100/90 text-amber-800"
                                                 >
                                                     optimized {renderGraph.nodes.length}/{activeGraph.stats.nodes} nodes
                                                 </Badge>
@@ -477,10 +489,10 @@ export const PublicWikiGraphPage = () => {
                                     ) : null}
                                 </div>
                                 <div>
-                                    <CardTitle className="text-3xl">
+                                    <CardTitle className="text-3xl text-teal-950">
                                         {config?.title || activeGraph?.project.title || 'Public Wiki'}
                                     </CardTitle>
-                                    <CardDescription className="mt-2 max-w-3xl text-base">
+                                    <CardDescription className="mt-2 max-w-3xl text-base text-teal-900/70">
                                         {viewMode === 'text'
                                             ? `${config?.title || activeGraph?.project.title || 'Public Wiki'} · ${pageCount} pages`
                                             : '익명으로 탐색 가능한 wiki graph view입니다. 페이지 수준 연결과 개념/프로세스 수준 연결을 전환해서 볼 수 있습니다.'}
@@ -492,6 +504,11 @@ export const PublicWikiGraphPage = () => {
                                 <Button
                                     type="button"
                                     variant={viewMode === 'graph' && graphMode === 'page' ? 'default' : 'outline'}
+                                    className={cn(
+                                        viewMode === 'graph' && graphMode === 'page'
+                                            ? 'bg-teal-700 text-white hover:bg-teal-800'
+                                            : 'border-teal-200 bg-white/70 text-teal-800 hover:bg-teal-50 hover:text-teal-950'
+                                    )}
                                     onClick={() => {
                                         setViewMode('graph')
                                         setGraphMode('page')
@@ -503,6 +520,11 @@ export const PublicWikiGraphPage = () => {
                                 <Button
                                     type="button"
                                     variant={viewMode === 'graph' && graphMode === 'node' ? 'default' : 'outline'}
+                                    className={cn(
+                                        viewMode === 'graph' && graphMode === 'node'
+                                            ? 'bg-teal-700 text-white hover:bg-teal-800'
+                                            : 'border-teal-200 bg-white/70 text-teal-800 hover:bg-teal-50 hover:text-teal-950'
+                                    )}
                                     onClick={() => {
                                         setViewMode('graph')
                                         setGraphMode('node')
@@ -514,6 +536,11 @@ export const PublicWikiGraphPage = () => {
                                 <Button
                                     type="button"
                                     variant={viewMode === 'text' ? 'default' : 'outline'}
+                                    className={cn(
+                                        viewMode === 'text'
+                                            ? 'bg-amber-600 text-white hover:bg-amber-700'
+                                            : 'border-amber-200 bg-white/70 text-amber-800 hover:bg-amber-50 hover:text-amber-950'
+                                    )}
                                     onClick={() => {
                                         setGraphMode('page')
                                         setViewMode('text')
@@ -528,37 +555,40 @@ export const PublicWikiGraphPage = () => {
                     </CardHeader>
                     <CardContent className="pt-6">
                         {viewMode === 'text' ? (
-                            <div className="flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
-                                <span className="font-medium text-foreground">
+                            <div className="flex flex-wrap items-center gap-2 text-sm text-teal-900/70">
+                                <span className="font-medium text-teal-950">
                                     {config?.title || activeGraph?.project.title || 'Public Wiki'}
                                 </span>
-                                <ChevronRight className="h-3.5 w-3.5" />
-                                <span className="font-medium text-foreground">
+                                <ChevronRight className="h-3.5 w-3.5 text-amber-500" />
+                                <span className="font-medium text-teal-950">
                                     {selectedPageNode?.title || selectedPageNode?.slug || 'Wiki Home'}
                                 </span>
-                                <Badge variant="outline" className="rounded-full">
+                                <Badge
+                                    variant="outline"
+                                    className="rounded-full border-amber-200 bg-amber-50 text-amber-800"
+                                >
                                     {selectedPageMeta.label}
                                 </Badge>
                             </div>
                         ) : (
-                            <div className="grid gap-3 text-sm text-muted-foreground sm:grid-cols-4">
-                                <div className="rounded-lg border bg-background p-4">
-                                    <p className="font-medium text-foreground">접근 키</p>
-                                    <p className="mt-1 break-all">{slug}</p>
+                            <div className="grid gap-3 text-sm text-teal-900/70 sm:grid-cols-4">
+                                <div className="rounded-2xl border border-teal-200/80 bg-teal-50/70 p-4">
+                                    <p className="font-medium text-teal-950">접근 키</p>
+                                    <p className="mt-1 break-all text-teal-800">{slug}</p>
                                 </div>
-                                <div className="rounded-lg border bg-background p-4">
-                                    <p className="font-medium text-foreground">프로젝트</p>
-                                    <p className="mt-1">{activeGraph?.project.name || '-'}</p>
+                                <div className="rounded-2xl border border-amber-200/80 bg-amber-50/70 p-4">
+                                    <p className="font-medium text-amber-950">프로젝트</p>
+                                    <p className="mt-1 text-amber-800">{activeGraph?.project.name || '-'}</p>
                                 </div>
-                                <div className="rounded-lg border bg-background p-4">
-                                    <p className="font-medium text-foreground">현재 모드</p>
-                                    <p className="mt-1">
+                                <div className="rounded-2xl border border-emerald-200/80 bg-emerald-50/70 p-4">
+                                    <p className="font-medium text-emerald-950">현재 모드</p>
+                                    <p className="mt-1 text-emerald-800">
                                         {graphMode === 'page' ? '페이지 간 연결' : '개념/프로세스 연결'}
                                     </p>
                                 </div>
-                                <div className="rounded-lg border bg-background p-4">
-                                    <p className="font-medium text-foreground">포커스</p>
-                                    <p className="mt-1">{focusMode ? '선택 항목 중심' : '전체 구조'}</p>
+                                <div className="rounded-2xl border border-orange-200/80 bg-orange-50/70 p-4">
+                                    <p className="font-medium text-orange-950">포커스</p>
+                                    <p className="mt-1 text-orange-800">{focusMode ? '선택 항목 중심' : '전체 구조'}</p>
                                 </div>
                             </div>
                         )}
@@ -575,11 +605,11 @@ export const PublicWikiGraphPage = () => {
 
                 {viewMode === 'text' ? (
                     <div className="grid gap-6 lg:grid-cols-[280px_minmax(0,1fr)]">
-                        <Card className="h-fit overflow-hidden border-slate-200/80 lg:sticky lg:top-8">
-                            <CardHeader className="border-b bg-[linear-gradient(135deg,rgba(248,250,252,0.98),rgba(255,255,255,0.9))] text-slate-900">
+                        <Card className="h-fit overflow-hidden border-teal-200/70 bg-white/86 shadow-[0_18px_60px_rgba(15,118,110,0.12)] backdrop-blur lg:sticky lg:top-8">
+                            <CardHeader className="border-b border-teal-100 bg-[linear-gradient(135deg,rgba(204,251,241,0.5),rgba(254,243,199,0.58))] text-teal-950">
                                 <div className="space-y-1">
                                     <CardTitle>{config?.title || 'Public Wiki'}</CardTitle>
-                                    <CardDescription className="text-slate-600">
+                                    <CardDescription className="text-teal-900/70">
                                         {activeGraph?.project.name || '공개 wiki'} · {pageCount} pages
                                     </CardDescription>
                                 </div>
@@ -587,7 +617,7 @@ export const PublicWikiGraphPage = () => {
                             <CardContent className="max-h-[calc(100vh-9rem)] space-y-6 overflow-y-auto pt-6">
                                 {homePageNode ? (
                                     <div className="space-y-3">
-                                        <div className="flex items-center gap-2 px-1 text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
+                                        <div className="flex items-center gap-2 px-1 text-xs font-semibold uppercase tracking-[0.18em] text-teal-700/80">
                                             <Home className="h-3.5 w-3.5" />
                                             Home
                                         </div>
@@ -597,8 +627,8 @@ export const PublicWikiGraphPage = () => {
                                             className={cn(
                                                 'h-auto w-full justify-start rounded-2xl border px-4 py-4 text-left shadow-none transition-colors',
                                                 homePageNode.id === selectedPageNode?.id
-                                                    ? 'border-slate-900 bg-slate-900 text-white hover:bg-slate-900 hover:text-white'
-                                                    : 'border-sky-200/80 bg-sky-50/70 text-sky-900 hover:border-sky-300 hover:bg-sky-100 hover:text-sky-950'
+                                                    ? 'border-teal-700 bg-teal-700 text-white shadow-[0_12px_30px_rgba(15,118,110,0.22)] hover:bg-teal-800 hover:text-white'
+                                                    : 'border-teal-200/80 bg-teal-50/80 text-teal-900 hover:border-teal-300 hover:bg-teal-100 hover:text-teal-950'
                                             )}
                                             onClick={() => setSelectedPageId(homePageNode.id)}
                                         >
@@ -608,7 +638,7 @@ export const PublicWikiGraphPage = () => {
                                                         'mt-0.5 rounded-xl p-2',
                                                         homePageNode.id === selectedPageNode?.id
                                                             ? 'bg-white/15 text-white'
-                                                            : 'bg-white text-sky-700 shadow-sm'
+                                                            : 'bg-white text-teal-700 shadow-sm'
                                                     )}
                                                 >
                                                     <Home className="h-4 w-4" />
@@ -622,7 +652,7 @@ export const PublicWikiGraphPage = () => {
                                                             'text-xs',
                                                             homePageNode.id === selectedPageNode?.id
                                                                 ? 'text-white/75'
-                                                                : 'text-sky-700/80'
+                                                                : 'text-teal-700/80'
                                                         )}
                                                     >
                                                         시작 문서 · {homePageNode.slug}
@@ -635,7 +665,7 @@ export const PublicWikiGraphPage = () => {
 
                                 {secondaryPageNodes.length > 0 ? (
                                     <div className="space-y-3">
-                                        <div className="flex items-center justify-between gap-2 px-1 text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
+                                        <div className="flex items-center justify-between gap-2 px-1 text-xs font-semibold uppercase tracking-[0.18em] text-teal-700/80">
                                             <div className="flex items-center gap-2">
                                                 <FileText className="h-3.5 w-3.5" />
                                                 Library
@@ -643,17 +673,17 @@ export const PublicWikiGraphPage = () => {
                                             <span>{secondaryPageNodes.length} pages</span>
                                         </div>
 
-                                        <div className="rounded-2xl border border-slate-200/80 bg-white/90 p-3 shadow-sm">
+                                        <div className="rounded-2xl border border-teal-200/80 bg-white/88 p-3 shadow-sm shadow-teal-900/5">
                                             <div className="relative">
-                                                <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+                                                <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-teal-500" />
                                                 <Input
                                                     value={pageSearchQuery}
                                                     onChange={(event) => setPageSearchQuery(event.target.value)}
                                                     placeholder="페이지 제목이나 slug로 찾기"
-                                                    className="h-11 rounded-xl border-slate-200 bg-white pl-9 text-sm text-slate-900 placeholder:text-slate-400"
+                                                    className="h-11 rounded-xl border-teal-200 bg-teal-50/40 pl-9 text-sm text-teal-950 placeholder:text-teal-500/70 focus-visible:ring-teal-600"
                                                 />
                                             </div>
-                                            <p className="mt-2 px-1 text-xs text-slate-500">
+                                            <p className="mt-2 px-1 text-xs text-teal-700/75">
                                                 {normalizedPageSearchQuery
                                                     ? `${matchingPageCount}개의 페이지가 검색되었습니다.`
                                                     : '대규모 wiki에서는 문서 타입별로 접어 보거나 검색으로 바로 이동할 수 있습니다.'}
@@ -675,8 +705,8 @@ export const PublicWikiGraphPage = () => {
                                                                 className={cn(
                                                                     'h-auto w-full justify-start rounded-2xl border px-4 py-3 text-left shadow-none transition-colors',
                                                                     node.id === selectedPageNode?.id
-                                                                        ? 'border-slate-900 bg-slate-900 text-white hover:bg-slate-900 hover:text-white'
-                                                                        : 'border-slate-200/80 bg-white text-slate-700 hover:border-slate-300 hover:bg-slate-50 hover:text-slate-900'
+                                                                        ? 'border-teal-700 bg-teal-700 text-white shadow-[0_12px_30px_rgba(15,118,110,0.2)] hover:bg-teal-800 hover:text-white'
+                                                                        : 'border-teal-100 bg-white/86 text-teal-900 hover:border-teal-300 hover:bg-teal-50 hover:text-teal-950'
                                                                 )}
                                                                 onClick={() => setSelectedPageId(node.id)}
                                                             >
@@ -686,7 +716,7 @@ export const PublicWikiGraphPage = () => {
                                                                             'mt-0.5 rounded-xl p-2',
                                                                             node.id === selectedPageNode?.id
                                                                                 ? 'bg-white/15 text-white'
-                                                                                : 'bg-slate-100 text-slate-700'
+                                                                                : 'bg-teal-50 text-teal-700'
                                                                         )}
                                                                     >
                                                                         <PageTypeIcon className="h-4 w-4" />
@@ -700,7 +730,7 @@ export const PublicWikiGraphPage = () => {
                                                                                 'flex flex-wrap items-center gap-2 text-xs',
                                                                                 node.id === selectedPageNode?.id
                                                                                     ? 'text-white/75'
-                                                                                    : 'text-slate-500'
+                                                                                    : 'text-teal-700/70'
                                                                             )}
                                                                         >
                                                                             <span>{node.slug}</span>
@@ -709,7 +739,7 @@ export const PublicWikiGraphPage = () => {
                                                                                     'rounded-full border px-2 py-0.5',
                                                                                     node.id === selectedPageNode?.id
                                                                                         ? 'border-white/20 bg-white/10 text-white'
-                                                                                        : 'border-slate-200 bg-slate-50 text-slate-600'
+                                                                                        : 'border-amber-200 bg-amber-50 text-amber-800'
                                                                                 )}
                                                                             >
                                                                                 {pageTypeMeta.label}
@@ -722,7 +752,7 @@ export const PublicWikiGraphPage = () => {
                                                     })}
                                                 </div>
                                             ) : (
-                                                <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50/70 px-4 py-6 text-center text-sm text-slate-500">
+                                                <div className="rounded-2xl border border-dashed border-amber-200 bg-amber-50/70 px-4 py-6 text-center text-sm text-amber-700">
                                                     검색어와 일치하는 공개 wiki 페이지가 없습니다.
                                                 </div>
                                             )
@@ -741,18 +771,18 @@ export const PublicWikiGraphPage = () => {
                                                         <details
                                                             key={group.key}
                                                             open={shouldOpen}
-                                                            className="overflow-hidden rounded-2xl border border-slate-200/80 bg-white shadow-sm"
+                                                            className="overflow-hidden rounded-2xl border border-teal-100 bg-white/86 shadow-sm shadow-teal-900/5"
                                                         >
                                                             <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-4 py-3 text-left [&::-webkit-details-marker]:hidden">
                                                                 <div className="flex min-w-0 items-center gap-3">
-                                                                    <div className="rounded-xl bg-slate-100 p-2 text-slate-700">
+                                                                    <div className="rounded-xl bg-amber-50 p-2 text-amber-700">
                                                                         <GroupIcon className="h-4 w-4" />
                                                                     </div>
                                                                     <div className="min-w-0">
-                                                                        <div className="font-medium text-slate-900">
+                                                                        <div className="font-medium text-teal-950">
                                                                             {group.label}
                                                                         </div>
-                                                                        <div className="text-xs text-slate-500">
+                                                                        <div className="text-xs text-teal-700/65">
                                                                             {group.nodes.length >
                                                                             LARGE_PAGE_GROUP_THRESHOLD
                                                                                 ? '기본 접힘 · 큰 컬렉션'
@@ -760,11 +790,11 @@ export const PublicWikiGraphPage = () => {
                                                                         </div>
                                                                     </div>
                                                                 </div>
-                                                                <span className="rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-xs font-medium text-slate-600">
+                                                                <span className="rounded-full border border-teal-200 bg-teal-50 px-2.5 py-1 text-xs font-medium text-teal-700">
                                                                     {group.nodes.length}
                                                                 </span>
                                                             </summary>
-                                                            <div className="border-t border-slate-100 px-2 pb-2 pt-1">
+                                                            <div className="border-t border-teal-50 px-2 pb-2 pt-1">
                                                                 <div className="space-y-2">
                                                                     {group.nodes.map((node) => {
                                                                         const pageTypeMeta = getPageTypeMeta(
@@ -780,8 +810,8 @@ export const PublicWikiGraphPage = () => {
                                                                                 className={cn(
                                                                                     'h-auto w-full justify-start rounded-2xl border px-4 py-3 text-left shadow-none transition-colors',
                                                                                     node.id === selectedPageNode?.id
-                                                                                        ? 'border-slate-900 bg-slate-900 text-white hover:bg-slate-900 hover:text-white'
-                                                                                        : 'border-slate-200/80 bg-white text-slate-700 hover:border-slate-300 hover:bg-slate-50 hover:text-slate-900'
+                                                                                        ? 'border-teal-700 bg-teal-700 text-white shadow-[0_12px_30px_rgba(15,118,110,0.2)] hover:bg-teal-800 hover:text-white'
+                                                                                        : 'border-teal-100 bg-white/86 text-teal-900 hover:border-teal-300 hover:bg-teal-50 hover:text-teal-950'
                                                                                 )}
                                                                                 onClick={() =>
                                                                                     setSelectedPageId(node.id)
@@ -794,7 +824,7 @@ export const PublicWikiGraphPage = () => {
                                                                                             node.id ===
                                                                                                 selectedPageNode?.id
                                                                                                 ? 'bg-white/15 text-white'
-                                                                                                : 'bg-slate-100 text-slate-700'
+                                                                                                : 'bg-teal-50 text-teal-700'
                                                                                         )}
                                                                                     >
                                                                                         <PageTypeIcon className="h-4 w-4" />
@@ -809,7 +839,7 @@ export const PublicWikiGraphPage = () => {
                                                                                                 node.id ===
                                                                                                     selectedPageNode?.id
                                                                                                     ? 'text-white/75'
-                                                                                                    : 'text-slate-500'
+                                                                                                    : 'text-teal-700/70'
                                                                                             )}
                                                                                         >
                                                                                             <span>{node.slug}</span>
@@ -819,7 +849,7 @@ export const PublicWikiGraphPage = () => {
                                                                                                     node.id ===
                                                                                                         selectedPageNode?.id
                                                                                                         ? 'border-white/20 bg-white/10 text-white'
-                                                                                                        : 'border-slate-200 bg-slate-50 text-slate-600'
+                                                                                                        : 'border-amber-200 bg-amber-50 text-amber-800'
                                                                                                 )}
                                                                                             >
                                                                                                 {pageTypeMeta.label}
