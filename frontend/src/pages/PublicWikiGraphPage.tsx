@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { useParams } from 'react-router-dom'
+import { useParams, useSearchParams } from 'react-router-dom'
 import {
     AlertCircle,
     BookOpenText,
@@ -224,10 +224,19 @@ const buildOverviewGraphSlice = (
 
 export const PublicWikiGraphPage = () => {
     const { slug, pageSlug } = useParams<{ slug: string; pageSlug?: string }>()
+    const [searchParams, setSearchParams] = useSearchParams()
+    const viewParam = searchParams.get('view')
+
     const [isChecking, setIsChecking] = useState(true)
     const [isAvailable, setIsAvailable] = useState(false)
-    const [graphMode, setGraphMode] = useState<GraphMode>('page')
-    const [viewMode, setViewMode] = useState<ViewMode>('text')
+    const [graphMode, setGraphMode] = useState<GraphMode>(() => {
+        if (viewParam === 'node') return 'node'
+        return 'page'
+    })
+    const [viewMode, setViewMode] = useState<ViewMode>(() => {
+        if (viewParam === 'graph' || viewParam === 'node') return 'graph'
+        return 'text'
+    })
     const [focusMode, setFocusMode] = useState(false)
     const [config, setConfig] = useState<PublicWikiConfig | null>(null)
     const [pageGraph, setPageGraph] = useState<PublicWikiGraphResponse | null>(null)
@@ -512,6 +521,7 @@ export const PublicWikiGraphPage = () => {
                                     onClick={() => {
                                         setViewMode('graph')
                                         setGraphMode('page')
+                                        setSearchParams({ view: 'graph' }, { replace: true })
                                     }}
                                 >
                                     <Network className="mr-2 h-4 w-4" />
@@ -528,6 +538,7 @@ export const PublicWikiGraphPage = () => {
                                     onClick={() => {
                                         setViewMode('graph')
                                         setGraphMode('node')
+                                        setSearchParams({ view: 'node' }, { replace: true })
                                     }}
                                 >
                                     <ScanSearch className="mr-2 h-4 w-4" />
@@ -544,6 +555,7 @@ export const PublicWikiGraphPage = () => {
                                     onClick={() => {
                                         setGraphMode('page')
                                         setViewMode('text')
+                                        setSearchParams({}, { replace: true })
                                     }}
                                     disabled={!pageCount}
                                 >

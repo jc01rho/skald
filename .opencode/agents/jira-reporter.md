@@ -1,7 +1,7 @@
 ---
 description: Jira 이슈 생성, 상태 업데이트, 댓글 작성, 진행 보고를 전담하며 Jira 관련 작업만 호출받아 수행하는 전용 에이전트
 mode: subagent
-model: local-proxy/glm-5
+model: local-proxy/lower-coding
 tools:
   jira*: true
   bash: false
