@@ -1,9 +1,12 @@
-import { useMemo } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { Focus, Orbit, Sparkles } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { cn } from '@/lib/utils'
+import { MultiGraph } from 'graphology'
+import forceAtlas2 from 'graphology-layout-forceatlas2'
+import Sigma from 'sigma'
 
 type GraphMode = 'page' | 'node'
 
@@ -42,27 +45,6 @@ interface PublicWikiGraphViewProps {
     onToggleFocusMode: () => void
     onResetSelection: () => void
 }
-
-const CANVAS_WIDTH = 1080
-const CANVAS_HEIGHT = 620
-const NODE_RADIUS = 26
-
-type PositionedGraphNode = PublicWikiGraphNode & { x: number; y: number; clusterKey: string }
-type PositionedGraphEdge = PublicWikiGraphEdge & { x1: number; y1: number; x2: number; y2: number }
-
-interface ClusterRegion {
-    key: string
-    label: string
-    count: number
-    x: number
-    y: number
-    rx: number
-    ry: number
-    fill: string
-    stroke: string
-}
-
-const clamp = (value: number, min: number, max: number) => Math.min(Math.max(value, min), max)
 
 const toLabel = (node: PublicWikiGraphNode, graphMode: GraphMode) => {
     if (graphMode === 'page') {
@@ -184,27 +166,6 @@ const getClusterSortWeight = (clusterKey: string) => {
     return index === -1 ? order.length : index
 }
 
-const getClusterCenter = (index: number, total: number, focusMode: boolean) => {
-    if (focusMode) {
-        const radiusX = 310
-        const radiusY = 190
-        const angle = (Math.PI * 2 * index) / Math.max(total, 1) - Math.PI / 2
-        return {
-            x: CANVAS_WIDTH / 2 + radiusX * Math.cos(angle),
-            y: CANVAS_HEIGHT / 2 + radiusY * Math.sin(angle),
-        }
-    }
-
-    const columns = Math.min(3, Math.max(1, total))
-    const rows = Math.ceil(total / columns)
-    const column = index % columns
-    const row = Math.floor(index / columns)
-    return {
-        x: ((column + 1) * CANVAS_WIDTH) / (columns + 1),
-        y: ((row + 1) * CANVAS_HEIGHT) / (rows + 1),
-    }
-}
-
 const buildNeighborMap = (edges: PublicWikiGraphEdge[]) => {
     const map = new Map<string, Set<string>>()
     for (const edge of edges) {
@@ -214,6 +175,18 @@ const buildNeighborMap = (edges: PublicWikiGraphEdge[]) => {
         map.get(edge.target)?.add(edge.source)
     }
     return map
+}
+
+const getSeededPosition = (index: number, total: number, clusterIndex: number, clusterTotal: number) => {
+    const clusterAngle = (Math.PI * 2 * clusterIndex) / Math.max(clusterTotal, 1) - Math.PI / 2
+    const clusterRadius = 34
+    const localAngle = (Math.PI * (3 - Math.sqrt(5)) * index) % (Math.PI * 2)
+    const localRadius = Math.sqrt((index + 1) / Math.max(total, 1)) * 18
+
+    return {
+        x: Math.cos(clusterAngle) * clusterRadius + Math.cos(localAngle) * localRadius,
+        y: Math.sin(clusterAngle) * clusterRadius + Math.sin(localAngle) * localRadius,
+    }
 }
 
 export const PublicWikiGraphView = ({
@@ -228,6 +201,17 @@ export const PublicWikiGraphView = ({
     onToggleFocusMode,
     onResetSelection,
 }: PublicWikiGraphViewProps) => {
+    const containerRef = useRef<HTMLDivElement>(null)
+    const sigmaRef = useRef<Sigma | null>(null)
+    const onSelectNodeRef = useRef(onSelectNode)
+    const onResetSelectionRef = useRef(onResetSelection)
+    const [hoveredNode, setHoveredNode] = useState<string | null>(null)
+
+    useEffect(() => {
+        onSelectNodeRef.current = onSelectNode
+        onResetSelectionRef.current = onResetSelection
+    }, [onSelectNode, onResetSelection])
+
     const neighborMap = useMemo(() => buildNeighborMap(edges), [edges])
 
     const selectedNode = nodes.find((node) => node.id === selectedNodeId) ?? nodes[0] ?? null
@@ -236,97 +220,182 @@ export const PublicWikiGraphView = ({
             selectedNode ? new Set([selectedNode.id, ...(neighborMap.get(selectedNode.id) || [])]) : new Set<string>(),
         [neighborMap, selectedNode]
     )
+    const hoveredNeighborhood = useMemo(
+        () => (hoveredNode ? new Set([hoveredNode, ...(neighborMap.get(hoveredNode) || [])]) : new Set<string>()),
+        [neighborMap, hoveredNode]
+    )
 
-    const graphLayout = useMemo(() => {
-        if (nodes.length === 0) {
-            return {
-                positionedNodes: [] as PositionedGraphNode[],
-                positionedEdges: [] as PositionedGraphEdge[],
-                clusters: [] as ClusterRegion[],
-            }
-        }
+    useEffect(() => {
+        if (!containerRef.current) return
 
-        const centerX = CANVAS_WIDTH / 2
-        const centerY = CANVAS_HEIGHT / 2
-        const nodesByCluster = new Map<string, PublicWikiGraphNode[]>()
+        const graph = new MultiGraph()
+        const groupedNodes = new Map<string, PublicWikiGraphNode[]>()
         for (const node of nodes) {
             const clusterKey = getClusterKey(node, graphMode)
-            nodesByCluster.set(clusterKey, [...(nodesByCluster.get(clusterKey) ?? []), node])
+            groupedNodes.set(clusterKey, [...(groupedNodes.get(clusterKey) ?? []), node])
         }
-
-        const clusterEntries = [...nodesByCluster.entries()].sort(
+        const orderedClusters = [...groupedNodes.entries()].sort(
             ([leftKey, leftNodes], [rightKey, rightNodes]) =>
                 getClusterSortWeight(leftKey) - getClusterSortWeight(rightKey) || rightNodes.length - leftNodes.length
         )
+        const clusterIndexByKey = new Map(orderedClusters.map(([clusterKey], index) => [clusterKey, index]))
+        const nodeIndexById = new Map(
+            orderedClusters.flatMap(([clusterKey, clusterNodes]) =>
+                clusterNodes.map((node, index) => [node.id, { index, total: clusterNodes.length, clusterKey }] as const)
+            )
+        )
 
-        const clusters = clusterEntries.map(([clusterKey, clusterNodes], index): ClusterRegion => {
-            const center = getClusterCenter(index, clusterEntries.length, focusMode)
-            const tone = getClusterTone(clusterKey)
-            const sizeBoost = Math.min(clusterNodes.length, 42)
-            return {
-                key: clusterKey,
-                label: getClusterLabel(clusterKey, graphMode),
-                count: clusterNodes.length,
-                x: clamp(center.x, 160, CANVAS_WIDTH - 160),
-                y: clamp(center.y, 128, CANVAS_HEIGHT - 128),
-                rx: clamp(104 + sizeBoost * 2.4, 116, 188),
-                ry: clamp(76 + sizeBoost * 1.7, 88, 148),
-                fill: tone.fill,
-                stroke: tone.stroke,
+        nodes.forEach((node) => {
+            const tone = getNodeTone(node, graphMode)
+            const label = toLabel(node, graphMode)
+            const degree = neighborMap.get(node.id)?.size || 0
+            const clusterInfo = nodeIndexById.get(node.id)
+            const clusterIndex = clusterIndexByKey.get(clusterInfo?.clusterKey ?? getClusterKey(node, graphMode)) ?? 0
+            const position = getSeededPosition(
+                clusterInfo?.index ?? 0,
+                clusterInfo?.total ?? nodes.length,
+                clusterIndex,
+                orderedClusters.length
+            )
+
+            graph.addNode(node.id, {
+                x: position.x,
+                y: position.y,
+                size: Math.max(5, 5 + Math.sqrt(degree) * 2),
+                label,
+                color: tone.stroke,
+            })
+        })
+
+        edges.forEach((edge, index) => {
+            if (graph.hasNode(edge.source) && graph.hasNode(edge.target)) {
+                const edgeKey = `${edge.id || `${edge.source}->${edge.target}`}-${index}`
+                graph.addEdgeWithKey(edgeKey, edge.source, edge.target, {
+                    size: Math.max(1, (edge.weight || 1) * 0.5),
+                    color: '#99f6e4',
+                    type: 'arrow',
+                })
             }
         })
-        const clusterByKey = new Map(clusters.map((cluster) => [cluster.key, cluster]))
 
-        const positionedNodes = nodes.map((node): PositionedGraphNode => {
-            const clusterKey = getClusterKey(node, graphMode)
-            const cluster = clusterByKey.get(clusterKey) ?? clusters[0]
-            const clusterNodes = [...(clusterEntries.find(([entryKey]) => entryKey === clusterKey)?.[1] ?? nodes)].sort(
-                (left, right) => (neighborMap.get(right.id)?.size ?? 0) - (neighborMap.get(left.id)?.size ?? 0)
-            )
-            const clusterIndex = Math.max(
-                clusterNodes.findIndex((candidate) => candidate.id === node.id),
-                0
-            )
-            const isCenter = focusMode && selectedNode ? node.id === selectedNode.id : false
-            const isNeighborhood = selectedNode ? selectedNeighborhood.has(node.id) : false
-            const totalInCluster = Math.max(clusterNodes.length, 1)
-            const angle = (Math.PI * 2 * clusterIndex) / totalInCluster - Math.PI / 2
-            const spiralOffset = Math.sqrt(clusterIndex / totalInCluster)
-            const radiusFactor = clamp(0.28 + spiralOffset * 0.62, 0.28, 0.9)
-            const radiusX = Math.max(24, (cluster.rx - NODE_RADIUS - 24) * radiusFactor)
-            const radiusY = Math.max(20, (cluster.ry - NODE_RADIUS - 18) * radiusFactor)
-            const baseX = isCenter ? centerX : cluster.x + radiusX * Math.cos(angle)
-            const baseY = isCenter ? centerY : cluster.y + radiusY * Math.sin(angle)
-            const pullToCenter = focusMode && selectedNode && isNeighborhood && !isCenter ? 0.18 : 0
-            const x = clamp(baseX * (1 - pullToCenter) + centerX * pullToCenter, 76, CANVAS_WIDTH - 76)
-            const y = clamp(baseY * (1 - pullToCenter) + centerY * pullToCenter, 76, CANVAS_HEIGHT - 76)
+        if (nodes.length > 0) {
+            const settings = forceAtlas2.inferSettings(graph)
+            forceAtlas2.assign(graph, { iterations: 150, settings: { ...settings, gravity: 0.5, scalingRatio: 10 } })
+        }
 
-            return { ...node, x, y, clusterKey }
+        const sigma = new Sigma(graph, containerRef.current, {
+            renderLabels: true,
+            renderEdgeLabels: false,
+            labelDensity: 1.5,
+            labelGridCellSize: 60,
+            labelRenderedSizeThreshold: 10,
+            zIndex: true,
+            allowInvalidContainer: true,
+        })
+        sigmaRef.current = sigma
+
+        sigma.on('enterNode', (e) => setHoveredNode(e.node))
+        sigma.on('leaveNode', () => setHoveredNode(null))
+        sigma.on('clickNode', (e) => onSelectNodeRef.current(e.node))
+        sigma.on('clickStage', () => onResetSelectionRef.current())
+
+        return () => {
+            sigma.kill()
+            sigmaRef.current = null
+        }
+    }, [nodes, edges, graphMode, neighborMap])
+
+    useEffect(() => {
+        const sigma = sigmaRef.current
+        if (!sigma) return
+
+        sigma.setSetting('nodeReducer', (node, data) => {
+            const res = { ...data }
+
+            const isSelected = selectedNodeId === node
+            const isHovered = hoveredNode === node
+            const inSelectedNeighborhood = selectedNeighborhood.has(node)
+            const inHoveredNeighborhood = hoveredNeighborhood.has(node)
+
+            const degree = neighborMap.get(node)?.size || 0
+
+            if (isHovered || isSelected) {
+                res.highlighted = true
+                res.color = data.color
+                res.zIndex = 10
+            } else if (inHoveredNeighborhood || inSelectedNeighborhood) {
+                res.color = data.color
+                res.zIndex = 5
+            } else if ((focusMode && selectedNode) || hoveredNode) {
+                res.color = '#f1f5f9'
+                res.zIndex = 0
+            } else {
+                res.color = data.color
+                res.zIndex = 1
+            }
+
+            const isImportant = degree > 5
+            const showLabel =
+                isSelected || isHovered || inHoveredNeighborhood || (focusMode && inSelectedNeighborhood) || isImportant
+
+            if (!showLabel && !res.highlighted) {
+                res.label = ''
+            }
+
+            return res
         })
 
-        const lookup = new Map(positionedNodes.map((node) => [node.id, node]))
-        const positionedEdges = edges
-            .map((edge) => {
-                const source = lookup.get(edge.source)
-                const target = lookup.get(edge.target)
-                if (!source || !target) {
-                    return null
-                }
-                return {
-                    ...edge,
-                    x1: source.x,
-                    y1: source.y,
-                    x2: target.x,
-                    y2: target.y,
-                }
-            })
-            .filter(
-                (edge): edge is PublicWikiGraphEdge & { x1: number; y1: number; x2: number; y2: number } =>
-                    edge !== null
-            )
+        sigma.setSetting('edgeReducer', (edge, data) => {
+            const res = { ...data }
 
-        return { positionedNodes, positionedEdges, clusters }
-    }, [edges, focusMode, graphMode, neighborMap, nodes, selectedNeighborhood, selectedNode])
+            const graph = sigma.getGraph()
+            const source = graph.source(edge)
+            const target = graph.target(edge)
+
+            const sourceHovered = hoveredNode === source
+            const targetHovered = hoveredNode === target
+            const sourceSelected = selectedNodeId === source
+            const targetSelected = selectedNodeId === target
+
+            const isRelatedToHovered = sourceHovered || targetHovered
+            const isRelatedToSelected = sourceSelected || targetSelected
+            const inSelectedNeighborhood = selectedNeighborhood.has(source) && selectedNeighborhood.has(target)
+
+            if (isRelatedToHovered) {
+                res.color = '#0f766e'
+                res.size = data.size * 1.5
+                res.zIndex = 10
+            } else if (isRelatedToSelected) {
+                res.color = '#0f766e'
+                res.size = data.size * 1.5
+                res.zIndex = 5
+            } else if (focusMode && selectedNodeId && inSelectedNeighborhood) {
+                res.color = '#14b8a6'
+                res.zIndex = 2
+            } else if ((focusMode && selectedNodeId) || hoveredNode) {
+                res.color = '#f1f5f9'
+                res.zIndex = 0
+            }
+
+            return res
+        })
+    }, [hoveredNode, selectedNodeId, focusMode, selectedNeighborhood, hoveredNeighborhood, neighborMap, selectedNode])
+
+    const nodesByCluster = useMemo(() => {
+        const map = new Map<string, PublicWikiGraphNode[]>()
+        for (const node of nodes) {
+            const clusterKey = getClusterKey(node, graphMode)
+            map.set(clusterKey, [...(map.get(clusterKey) ?? []), node])
+        }
+        return map
+    }, [nodes, graphMode])
+
+    const clusterEntries = useMemo(() => {
+        return [...nodesByCluster.entries()].sort(
+            ([leftKey, leftNodes], [rightKey, rightNodes]) =>
+                getClusterSortWeight(leftKey) - getClusterSortWeight(rightKey) || rightNodes.length - leftNodes.length
+        )
+    }, [nodesByCluster])
 
     const relatedNodes = selectedNode
         ? nodes.filter((node) => selectedNeighborhood.has(node.id) && node.id !== selectedNode.id).slice(0, 8)
@@ -334,14 +403,14 @@ export const PublicWikiGraphView = ({
 
     return (
         <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_340px]">
-            <Card className="overflow-hidden border-teal-200/70 bg-white/86 shadow-[0_24px_90px_rgba(15,118,110,0.13)] backdrop-blur">
-                <CardHeader className="border-b border-teal-100 bg-[linear-gradient(135deg,rgba(204,251,241,0.55),rgba(255,247,237,0.9))]">
+            <Card className="overflow-hidden border-teal-200/70 bg-white/86 shadow-[0_24px_90px_rgba(15,118,110,0.13)] backdrop-blur flex flex-col h-full">
+                <CardHeader className="border-b border-teal-100 bg-[linear-gradient(135deg,rgba(204,251,241,0.55),rgba(255,247,237,0.9))] shrink-0">
                     <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
                         <div>
                             <div className="mb-3 flex flex-wrap items-center gap-2">
                                 <Badge className="border border-teal-200 bg-teal-700 text-teal-50 hover:bg-teal-700">
                                     <Sparkles className="mr-1 h-3 w-3" />
-                                    Curated graph view
+                                    Interactive Knowledge Graph
                                 </Badge>
                                 <Badge variant="outline" className="border-teal-200 bg-white/70 text-teal-800">
                                     {nodes.length} nodes
@@ -380,158 +449,34 @@ export const PublicWikiGraphView = ({
                         </div>
                     </div>
                 </CardHeader>
-                <CardContent className="overflow-x-auto p-0">
-                    <div className="min-w-[960px] bg-[radial-gradient(circle_at_20%_8%,rgba(20,184,166,0.18),transparent_34%),radial-gradient(circle_at_82%_12%,rgba(245,158,11,0.18),transparent_30%),linear-gradient(180deg,rgba(255,247,237,0.96),rgba(240,253,250,0.92))] p-4">
-                        <svg
-                            viewBox={`0 0 ${CANVAS_WIDTH} ${CANVAS_HEIGHT}`}
-                            className="h-[620px] w-full rounded-[28px] border border-teal-200/70 bg-[#fffaf0] shadow-[0_24px_80px_rgba(15,118,110,0.12)]"
-                        >
-                            <defs>
-                                <marker
-                                    id={`arrow-${graphMode}`}
-                                    markerWidth="8"
-                                    markerHeight="8"
-                                    refX="6"
-                                    refY="3"
-                                    orient="auto"
+                <CardContent className="p-0 relative flex-1 min-h-[620px] bg-[#fffaf0]">
+                    <div
+                        ref={containerRef}
+                        className="w-full h-full bg-[radial-gradient(circle_at_20%_8%,rgba(20,184,166,0.18),transparent_34%),radial-gradient(circle_at_82%_12%,rgba(245,158,11,0.18),transparent_30%),linear-gradient(180deg,rgba(255,247,237,0.96),rgba(240,253,250,0.92))] cursor-grab active:cursor-grabbing"
+                    />
+
+                    <div className="absolute top-4 left-4 max-w-[200px] flex flex-col gap-2 pointer-events-none">
+                        {clusterEntries.slice(0, 6).map(([clusterKey, clusterNodes]) => {
+                            const tone = getClusterTone(clusterKey)
+                            return (
+                                <div
+                                    key={clusterKey}
+                                    className="flex items-center gap-2 bg-white/80 backdrop-blur px-2 py-1.5 rounded border shadow-sm"
+                                    style={{ borderColor: tone.stroke }}
                                 >
-                                    <path d="M0,0 L0,6 L6,3 z" fill="#0f766e" opacity="0.56" />
-                                </marker>
-                            </defs>
-
-                            <circle cx={CANVAS_WIDTH / 2} cy={CANVAS_HEIGHT / 2} r="96" fill="rgba(15,118,110,0.055)" />
-
-                            {graphLayout.clusters.map((cluster) => {
-                                const isSelectedCluster = selectedNode
-                                    ? getClusterKey(selectedNode, graphMode) === cluster.key
-                                    : false
-                                return (
-                                    <g key={cluster.key}>
-                                        <ellipse
-                                            cx={cluster.x}
-                                            cy={cluster.y}
-                                            rx={cluster.rx}
-                                            ry={cluster.ry}
-                                            fill={cluster.fill}
-                                            stroke={isSelectedCluster ? 'rgba(15,118,110,0.52)' : cluster.stroke}
-                                            strokeWidth={isSelectedCluster ? 3 : 1.5}
-                                            strokeDasharray={undefined}
-                                        />
-                                        <text
-                                            x={cluster.x - cluster.rx + 18}
-                                            y={cluster.y - cluster.ry + 28}
-                                            className="fill-teal-900 text-[13px] font-semibold"
-                                        >
-                                            {cluster.label}
-                                        </text>
-                                        <text
-                                            x={cluster.x - cluster.rx + 18}
-                                            y={cluster.y - cluster.ry + 46}
-                                            className="fill-teal-700 text-[11px]"
-                                        >
-                                            {cluster.count} items
-                                        </text>
-                                    </g>
-                                )
-                            })}
-
-                            {graphLayout.positionedEdges.map((edge) => {
-                                const isRelevant =
-                                    !selectedNode ||
-                                    edge.source === selectedNode.id ||
-                                    edge.target === selectedNode.id ||
-                                    (focusMode &&
-                                        selectedNeighborhood.has(edge.source) &&
-                                        selectedNeighborhood.has(edge.target))
-                                return (
-                                    <g key={edge.id}>
-                                        <line
-                                            x1={edge.x1}
-                                            y1={edge.y1}
-                                            x2={edge.x2}
-                                            y2={edge.y2}
-                                            stroke={isRelevant ? '#0f766e' : '#99f6e4'}
-                                            strokeWidth={Math.max(
-                                                isRelevant ? 1.8 : 1,
-                                                (edge.weight ?? 1) * (isRelevant ? 1 : 0.65)
-                                            )}
-                                            strokeOpacity={isRelevant ? 0.88 : 0.24}
-                                            markerEnd={`url(#arrow-${graphMode})`}
-                                        />
-                                        <text
-                                            x={(edge.x1 + edge.x2) / 2}
-                                            y={(edge.y1 + edge.y2) / 2 - 6}
-                                            textAnchor="middle"
-                                            className="fill-teal-600 text-[11px]"
-                                            opacity={focusMode && !isRelevant ? 0.28 : 0.72}
-                                        >
-                                            {edge.link_type || edge.edge_type || 'linked'}
-                                        </text>
-                                    </g>
-                                )
-                            })}
-
-                            {graphLayout.positionedNodes.map((node) => {
-                                const tone = getNodeTone(node, graphMode)
-                                const isSelected = node.id === selectedNode?.id
-                                const isRelated = selectedNeighborhood.has(node.id)
-                                const isDimmed = focusMode && selectedNode && !isRelated
-                                const label = toLabel(node, graphMode)
-                                const shortLabel = label.length > 22 ? `${label.slice(0, 22)}…` : label
-
-                                return (
-                                    <g
-                                        key={node.id}
-                                        role="button"
-                                        tabIndex={0}
-                                        onClick={() => onSelectNode(node.id)}
-                                        onKeyDown={(event) => {
-                                            if (event.key === 'Enter' || event.key === ' ') {
-                                                event.preventDefault()
-                                                onSelectNode(node.id)
-                                            }
-                                        }}
-                                        className="cursor-pointer outline-none"
-                                    >
-                                        <circle
-                                            cx={node.x}
-                                            cy={node.y}
-                                            r={
-                                                isSelected
-                                                    ? NODE_RADIUS + 10
-                                                    : isRelated
-                                                      ? NODE_RADIUS + 2
-                                                      : NODE_RADIUS
-                                            }
-                                            fill={tone.fill}
-                                            stroke={isSelected ? '#134e4a' : tone.stroke}
-                                            strokeWidth={isSelected ? 3 : 2}
-                                            opacity={isDimmed ? 0.22 : isRelated ? 1 : 0.82}
-                                        />
-                                        {isSelected ? (
-                                            <circle
-                                                cx={node.x}
-                                                cy={node.y}
-                                                r={NODE_RADIUS + 18}
-                                                fill="none"
-                                                stroke={tone.stroke}
-                                                strokeOpacity={0.22}
-                                                strokeWidth={8}
-                                            />
-                                        ) : null}
-                                        <text
-                                            x={node.x}
-                                            y={node.y + NODE_RADIUS + 18}
-                                            textAnchor="middle"
-                                            className="fill-teal-950 text-[12px] font-medium"
-                                            opacity={isDimmed ? 0.3 : 1}
-                                        >
-                                            {shortLabel}
-                                        </text>
-                                    </g>
-                                )
-                            })}
-                        </svg>
+                                    <div
+                                        className="w-3 h-3 rounded-full"
+                                        style={{ backgroundColor: tone.fill, border: `1px solid ${tone.stroke}` }}
+                                    />
+                                    <div className="flex-1 flex justify-between text-[11px] items-center gap-4">
+                                        <span className="font-medium text-teal-900 truncate">
+                                            {getClusterLabel(clusterKey, graphMode)}
+                                        </span>
+                                        <span className="text-teal-700 font-mono">{clusterNodes.length}</span>
+                                    </div>
+                                </div>
+                            )
+                        })}
                     </div>
                 </CardContent>
             </Card>
