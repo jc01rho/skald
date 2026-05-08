@@ -186,18 +186,20 @@ const appendGroupedNode = (map: Map<string, PublicWikiGraphNode[]>, key: string,
     map.set(key, [node])
 }
 
+const LARGE_GRAPH_LAYOUT_THRESHOLD = 2000
+
 const getSeededPosition = (index: number, total: number, clusterIndex: number, clusterTotal: number) => {
     const clusterAngle = (Math.PI * 2 * clusterIndex) / Math.max(clusterTotal, 1) - Math.PI / 2
-    const clusterRadius = 34
+    const clusterRadius = 112 + Math.min(total, 6000) * 0.035
     const localAngle = (Math.PI * (3 - Math.sqrt(5)) * index) % (Math.PI * 2)
-    const localRadius = Math.sqrt((index + 1) / Math.max(total, 1)) * 18
+    const localSpread = total > LARGE_GRAPH_LAYOUT_THRESHOLD ? 56 + Math.sqrt(total) * 1.85 : 24
+    const localRadius = Math.sqrt((index + 1) / Math.max(total, 1)) * localSpread
 
     return {
         x: Math.cos(clusterAngle) * clusterRadius + Math.cos(localAngle) * localRadius,
         y: Math.sin(clusterAngle) * clusterRadius + Math.sin(localAngle) * localRadius,
     }
 }
-
 export const PublicWikiGraphView = ({
     graphMode,
     title,
@@ -287,7 +289,7 @@ export const PublicWikiGraphView = ({
             }
         })
 
-        if (nodes.length > 0 && nodes.length <= 2000) {
+        if (nodes.length > 0 && nodes.length <= LARGE_GRAPH_LAYOUT_THRESHOLD) {
             const settings = forceAtlas2.inferSettings(graph)
             forceAtlas2.assign(graph, { iterations: 150, settings: { ...settings, gravity: 0.5, scalingRatio: 10 } })
         }
