@@ -77,10 +77,7 @@ const PAGE_TYPE_ORDER = [
 ] as const
 
 const LARGE_PAGE_GROUP_THRESHOLD = 12
-const GRAPH_RENDER_NODE_LIMIT = 180
-const GRAPH_RENDER_EDGE_LIMIT = 280
 const GRAPH_DENSE_THRESHOLD = 400
-
 const findDefaultPageNode = (nodes: PublicWikiGraphNode[]) =>
     nodes.find((node) => node.page_type === 'index_page') ?? nodes[0] ?? null
 
@@ -188,7 +185,6 @@ const buildFocusedGraphSlice = (
         })
         .filter((entry): entry is { node: PublicWikiGraphNode; score: number } => entry !== null)
         .sort((left, right) => right.score - left.score)
-        .slice(0, GRAPH_RENDER_NODE_LIMIT - 1)
         .map((entry) => entry.node)
 
     const nodes = [selectedNode, ...neighborNodes]
@@ -196,7 +192,6 @@ const buildFocusedGraphSlice = (
     const edges = graph.edges
         .filter((edge) => nodeIds.has(edge.source) && nodeIds.has(edge.target))
         .sort((left, right) => (right.weight ?? 1) - (left.weight ?? 1))
-        .slice(0, GRAPH_RENDER_EDGE_LIMIT)
 
     return { nodes, edges }
 }
@@ -207,17 +202,16 @@ const buildOverviewGraphSlice = (
     selectedNodeId: string | null
 ) => {
     const selectedNode = graph.nodes.find((node) => node.id === selectedNodeId) ?? null
-    const rankedNodes = [...graph.nodes]
-        .sort((left, right) => scoreGraphNode(right, graphMode) - scoreGraphNode(left, graphMode))
-        .slice(0, GRAPH_RENDER_NODE_LIMIT)
+    const rankedNodes = [...graph.nodes].sort(
+        (left, right) => scoreGraphNode(right, graphMode) - scoreGraphNode(left, graphMode)
+    )
     const nodes = selectedNode
-        ? [selectedNode, ...rankedNodes.filter((node) => node.id !== selectedNode.id)].slice(0, GRAPH_RENDER_NODE_LIMIT)
+        ? [selectedNode, ...rankedNodes.filter((node) => node.id !== selectedNode.id)]
         : rankedNodes
     const nodeIds = new Set(nodes.map((node) => node.id))
     const edges = graph.edges
         .filter((edge) => nodeIds.has(edge.source) && nodeIds.has(edge.target))
         .sort((left, right) => (right.weight ?? 1) - (left.weight ?? 1))
-        .slice(0, GRAPH_RENDER_EDGE_LIMIT)
 
     return { nodes, edges }
 }
@@ -489,11 +483,19 @@ export const PublicWikiGraphPage = () => {
                                             {renderGraph?.isCapped ? (
                                                 <Badge
                                                     variant="outline"
-                                                    className="border-amber-300 bg-amber-100/90 text-amber-800"
+                                                    className="border-teal-300 bg-teal-100/90 text-teal-800"
                                                 >
-                                                    optimized {renderGraph.nodes.length}/{activeGraph.stats.nodes} nodes
+                                                    focused subset {renderGraph.nodes.length}/{activeGraph.stats.nodes}{' '}
+                                                    nodes
                                                 </Badge>
-                                            ) : null}
+                                            ) : (
+                                                <Badge
+                                                    variant="outline"
+                                                    className="border-teal-300 bg-teal-100/90 text-teal-800"
+                                                >
+                                                    full graph rendered
+                                                </Badge>
+                                            )}
                                         </>
                                     ) : null}
                                 </div>
@@ -922,16 +924,16 @@ export const PublicWikiGraphPage = () => {
                 ) : (
                     <div className="space-y-4">
                         {renderGraph.isCapped ? (
-                            <Alert className="border-amber-200 bg-amber-50 text-amber-950">
-                                <AlertCircle className="h-4 w-4 text-amber-700" />
-                                <AlertTitle>대규모 wiki라 그래프를 최적화해 표시합니다</AlertTitle>
+                            <Alert className="border-teal-200 bg-teal-50 text-teal-950">
+                                <AlertCircle className="h-4 w-4 text-teal-700" />
+                                <AlertTitle>선택 항목 중심의 focused subset을 표시합니다</AlertTitle>
                                 <AlertDescription>
-                                    전체 {activeGraph.stats.nodes}개 노드와 {activeGraph.stats.edges}개 연결 중 현재
-                                    화면에는 {renderGraph.nodes.length}개 노드와 {renderGraph.edges.length}개 연결만
-                                    렌더링합니다.
+                                    전체 그래프 데이터는 {activeGraph.stats.nodes}개 노드와 {activeGraph.stats.edges}개
+                                    연결이며, Focused view에서는 선택 항목 주변의 {renderGraph.nodes.length}개 노드와{' '}
+                                    {renderGraph.edges.length}개 연결을 별도로 좁혀 표시합니다.
                                     {graphIsDense
-                                        ? ' Chrome 성능을 보호하기 위해 높은 신뢰도 항목 또는 선택 항목의 1-hop 이웃을 우선 표시합니다.'
-                                        : ' Focused view를 켜면 선택 항목 주변 연결만 더 좁혀 볼 수 있습니다.'}
+                                        ? ' 전체 보기에서는 Sigma WebGL로 모든 노드와 연결을 그리되, 대규모 레이아웃 계산은 건너뜁니다.'
+                                        : ' Focused view를 끄면 전체 그래프를 다시 볼 수 있습니다.'}
                                 </AlertDescription>
                             </Alert>
                         ) : null}
@@ -940,8 +942,8 @@ export const PublicWikiGraphPage = () => {
                             title={graphMode === 'page' ? 'Page graph view' : 'Node / edge graph view'}
                             description={
                                 graphMode === 'page'
-                                    ? 'Wiki page 사이의 링크 구조를 성능 안전 범위 안에서 보여주고, 선택한 페이지 중심으로 읽기 쉽게 강조합니다.'
-                                    : 'Wiki node 와 edge 관계를 선택 개체 중심으로 재구성해 복잡도를 낮춰 보여줍니다.'
+                                    ? 'Wiki page 사이의 전체 링크 구조를 보여주고, 선택한 페이지 중심의 연결을 읽기 쉽게 강조합니다.'
+                                    : 'Wiki node 와 edge 전체 관계를 Sigma WebGL로 렌더링하고, 선택 개체 중심의 연결을 강조합니다.'
                             }
                             nodes={renderGraph.nodes}
                             edges={renderGraph.edges}

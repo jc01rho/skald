@@ -177,6 +177,15 @@ const buildNeighborMap = (edges: PublicWikiGraphEdge[]) => {
     return map
 }
 
+const appendGroupedNode = (map: Map<string, PublicWikiGraphNode[]>, key: string, node: PublicWikiGraphNode) => {
+    const group = map.get(key)
+    if (group) {
+        group.push(node)
+        return
+    }
+    map.set(key, [node])
+}
+
 const getSeededPosition = (index: number, total: number, clusterIndex: number, clusterTotal: number) => {
     const clusterAngle = (Math.PI * 2 * clusterIndex) / Math.max(clusterTotal, 1) - Math.PI / 2
     const clusterRadius = 34
@@ -232,7 +241,7 @@ export const PublicWikiGraphView = ({
         const groupedNodes = new Map<string, PublicWikiGraphNode[]>()
         for (const node of nodes) {
             const clusterKey = getClusterKey(node, graphMode)
-            groupedNodes.set(clusterKey, [...(groupedNodes.get(clusterKey) ?? []), node])
+            appendGroupedNode(groupedNodes, clusterKey, node)
         }
         const orderedClusters = [...groupedNodes.entries()].sort(
             ([leftKey, leftNodes], [rightKey, rightNodes]) =>
@@ -271,14 +280,14 @@ export const PublicWikiGraphView = ({
             if (graph.hasNode(edge.source) && graph.hasNode(edge.target)) {
                 const edgeKey = `${edge.id || `${edge.source}->${edge.target}`}-${index}`
                 graph.addEdgeWithKey(edgeKey, edge.source, edge.target, {
-                    size: Math.max(1, (edge.weight || 1) * 0.5),
-                    color: '#99f6e4',
+                    size: Math.max(1.2, (edge.weight || 1) * 0.55),
+                    color: '#0f766e',
                     type: 'arrow',
                 })
             }
         })
 
-        if (nodes.length > 0) {
+        if (nodes.length > 0 && nodes.length <= 2000) {
             const settings = forceAtlas2.inferSettings(graph)
             forceAtlas2.assign(graph, { iterations: 150, settings: { ...settings, gravity: 0.5, scalingRatio: 10 } })
         }
@@ -373,7 +382,7 @@ export const PublicWikiGraphView = ({
                 res.color = '#14b8a6'
                 res.zIndex = 2
             } else if ((focusMode && selectedNodeId) || hoveredNode) {
-                res.color = '#f1f5f9'
+                res.color = '#94a3b8'
                 res.zIndex = 0
             }
 
@@ -385,7 +394,7 @@ export const PublicWikiGraphView = ({
         const map = new Map<string, PublicWikiGraphNode[]>()
         for (const node of nodes) {
             const clusterKey = getClusterKey(node, graphMode)
-            map.set(clusterKey, [...(map.get(clusterKey) ?? []), node])
+            appendGroupedNode(map, clusterKey, node)
         }
         return map
     }, [nodes, graphMode])
