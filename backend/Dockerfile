@@ -12,7 +12,7 @@ WORKDIR /app
 COPY package.json pnpm-lock.yaml ./
 
 # Install all dependencies (including devDependencies for build)
-RUN pnpm install --frozen-lockfile
+RUN PNPM_CONFIG_DANGEROUSLY_ALLOW_ALL_BUILDS=true pnpm install --frozen-lockfile
 
 # Copy source code and config
 COPY tsconfig.json ./
@@ -34,7 +34,7 @@ WORKDIR /app
 COPY package.json pnpm-lock.yaml ./
 
 # Install only production dependencies
-RUN pnpm install --frozen-lockfile --prod
+RUN PNPM_CONFIG_DANGEROUSLY_ALLOW_ALL_BUILDS=true pnpm install --frozen-lockfile --prod
 
 # Copy built files from builder stage
 COPY --from=builder /app/dist ./dist
