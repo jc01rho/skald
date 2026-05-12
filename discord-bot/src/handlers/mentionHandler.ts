@@ -16,10 +16,13 @@ const URL_ACCESS_NOTICE =
 const DISCORD_MENTION_RAG_CONFIG = {
     llm_provider: 'cli-proxy-api',
     query_rewrite: { enabled: false },
-    reranking: { enabled: true, top_k: 8 },
-    vector_search: { top_k: 16, similarity_threshold: 0.45 },
+    reranking: { enabled: true, top_k: 12 },
+    vector_search: { top_k: 28, similarity_threshold: 0.4 },
     references: { enabled: true },
 } as const
+
+const DISCORD_MENTION_SYSTEM_PROMPT =
+    '제공된 프롬프트와 문맥 안에서만 답하고 없는 내용을 추측해 답하지 말것. 항상 한국어로 답변할 것. 사용자 질문에 대해 최대한 자세히 설명하되, 핵심 결론을 먼저 말하고 근거가 되는 문서 내용과 동작 맥락을 이어서 설명할 것. 가능하면 원인, 동작 방식, 예외/제약, 실무상 주의점까지 포함해 답할 것.'
 
 function isHttpUrl(value: string | undefined): value is string {
     return Boolean(value && /^https?:\/\//i.test(value))
@@ -651,8 +654,7 @@ export async function handleMention(message: Message, client: Client) {
             for await (const event of skaldClient.chatStream(query, {
                 history,
                 filters,
-                system_prompt:
-                    '제공된 프롬프트와 문맥 안에서만 답하고 그 외 없는 내용으로는 답변하지 말것. 항상 한국어로 답변할 것. 사용자 질문에 대해 최대한 자세히 설명할 것.',
+                system_prompt: DISCORD_MENTION_SYSTEM_PROMPT,
                 rag_config: DISCORD_MENTION_RAG_CONFIG,
             })) {
                 if (event.type === 'accepted') {
