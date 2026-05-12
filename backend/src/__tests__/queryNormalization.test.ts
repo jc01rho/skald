@@ -94,6 +94,19 @@ describe('queryNormalization', () => {
         )
     })
 
+    it('adds comparison variants for enterprise information comparison queries', () => {
+        const variants = expandTechnicalQueryVariants('전수분석과 수시분석의 차이를 설명해줘')
+
+        expect(variants).toEqual(
+            expect.arrayContaining([
+                '전수분석 수시분석 차이 비교',
+                '전수분석 수시분석 기능 설명',
+                '전수분석 수시분석 개요 차이점',
+                '전수분석 수시분석 information 비교',
+            ])
+        )
+    })
+
     it('suppresses low-confidence guidance when exact lookup already hit', () => {
         const shouldInject = shouldInjectLowConfidenceGuidance({
             lookupHit: true,

@@ -41,6 +41,12 @@ test('keeps automatic product filter for non-error-code product queries', () => 
     assert.equal(__testables__.detectProductId('엔터프라이즈 기능 설명해줘'), 'sparrow')
 })
 
+test('relaxes product filter for comparison and definition queries', () => {
+    assert.equal(__testables__.shouldUseRelaxedProductFilter('전수분석과 수시분석의 차이를 설명해줘'), true)
+    assert.equal(__testables__.shouldUseRelaxedProductFilter('엔터프라이즈 기능 정의가 뭐야?'), true)
+    assert.equal(__testables__.shouldUseRelaxedProductFilter('엔터프라이즈 sast 설정 알려줘'), false)
+})
+
 test('preserves partial response when transport terminates after tokens', () => {
     assert.equal(__testables__.shouldPreservePartialResponseOnError('transport_error', '부분 응답'), true)
     assert.equal(__testables__.shouldPreservePartialResponseOnError('transport_error', ' '), false)

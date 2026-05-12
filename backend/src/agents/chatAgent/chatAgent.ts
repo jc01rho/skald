@@ -11,6 +11,11 @@ interface RerankResult {
     memo_uuid?: string
     memo_title?: string
     source_url?: string
+    doc_type?: string
+}
+
+function isCanonicalInformationReference(result: RerankResult): boolean {
+    return result.doc_type === 'information' || /\binfo-\d+\b/i.test(result.memo_title ?? '')
 }
 
 function buildReferencesPayload(
@@ -66,6 +71,20 @@ function buildReferencesPayload(
             'Citation post-processing: cited references missing from payload, omitting references payload'
         )
         return {}
+    }
+
+    const hasCanonicalInformationReference = Object.values(filteredReferences).some((reference) =>
+        isCanonicalInformationReference(reference)
+    )
+    if (!hasCanonicalInformationReference) {
+        const fallbackInformation = rerankResults.find((reference) => isCanonicalInformationReference(reference))
+        if (fallbackInformation?.memo_uuid && fallbackInformation.memo_title) {
+            filteredReferences[totalAvailable + 1] = {
+                memo_uuid: fallbackInformation.memo_uuid,
+                memo_title: fallbackInformation.memo_title,
+                source_url: fallbackInformation.source_url,
+            }
+        }
     }
 
     return filteredReferences

@@ -12,6 +12,17 @@ from skald_worker.retry import with_retry
 
 logger = structlog.get_logger(__name__)
 
+INFORMATION_PRODUCT_ALIASES = {
+    "엔터프라이즈": "sparrow",
+    "enterprise": "sparrow",
+    "sparrow enterprise": "sparrow",
+    "sparrow": "sparrow",
+    "sast": "sparrow-sast",
+    "sparrow sast": "sparrow-sast",
+    "sca": "sparrow-sca",
+    "sparrow sca": "sparrow-sca",
+}
+
 # Default retry configuration
 DEFAULT_MAX_RETRIES = 3
 DEFAULT_RETRY_MIN_WAIT = 1.0
@@ -48,6 +59,43 @@ def html_to_markdown(html: str) -> str:
     # Clean up multiple newlines
     lines = [line.strip() for line in text.split("\n") if line.strip()]
     return "\n\n".join(lines)
+
+
+def normalize_search_text(*parts: str) -> str:
+    return " ".join(part.strip() for part in parts if isinstance(part, str) and part.strip())
+
+
+def infer_information_product_id(*parts: str) -> str:
+    haystack = normalize_search_text(*parts).lower()
+    for alias, product_id in sorted(INFORMATION_PRODUCT_ALIASES.items(), key=lambda item: len(item[0]), reverse=True):
+        if alias in haystack:
+            return product_id
+    return ""
+
+
+def build_information_search_aliases(title: str, category: str, description: str) -> list[str]:
+    aliases = {
+        title.strip(),
+        normalize_search_text(title, "기능 설명"),
+        normalize_search_text(title, "차이 비교"),
+        normalize_search_text(title, "개요 설명 사용 방법"),
+    }
+
+    if category:
+        aliases.add(normalize_search_text(category, title))
+        aliases.add(normalize_search_text(category, title, "기능 설명"))
+
+    normalized_description = normalize_search_text(description)
+    if "전수분석" in normalized_description and "수시분석" in normalized_description:
+        aliases.update(
+            {
+                "전수분석 수시분석 차이 비교",
+                "전수분석 수시분석 기능 설명",
+                normalize_search_text(title, "전수분석 수시분석 차이"),
+            }
+        )
+
+    return sorted(alias for alias in aliases if alias)
 
 
 class DocsCollector:
@@ -300,6 +348,7 @@ class DocsCollector:
             category = item.get("Type", "")
             component = ""
             description = item.get("Content", "") or item.get("description", "")
+            product_id = infer_information_product_id(title, category, description)
             author = ""
             created = item.get("date_created", "")
             updated = item.get("date_updated", "")
@@ -339,13 +388,17 @@ class DocsCollector:
             "updated": updated,
             "source_url": f"{self.base_url}{url_path}" if url_path else "",
             "spms_id": item.get("id", ""),
+            "search_text": normalize_search_text(title, category, description),
+            "title_tokens": [token for token in {title.strip(), *[part for part in title.replace('/', ' ').split() if part]} if token],
         }
 
         if item_type in ("function", "functions"):
             metadata["api_function_id"] = item.get("function_id", item.get("id", ""))
 
-        # Add product_id for troubleshoots and techs only
-        if item_type in ("troubleshoot", "troubleshoots", "tech", "techs") and product_id:
+        if item_type == "information":
+            metadata["search_aliases"] = build_information_search_aliases(title, category, description)
+
+        if item_type in ("troubleshoot", "troubleshoots", "tech", "techs", "information") and product_id:
             metadata["product_id"] = product_id
 
         # Build markdown content

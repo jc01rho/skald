@@ -6,6 +6,7 @@ const NUMERIC_ERROR_CODE_PATTERN = /\b\d{4,}\b/gu
 const KOREAN_DEFINITION_PATTERN =
     /(?:^|\s)(.+?)(?:이라는|라는|이란|란)?\s*(?:기능)?\s*(?:이 뭐야\??|가 뭐야\??|뭐야\??|무엇(?:인가요|이야|인가)?\??|설명해줘\??|자세히 설명해줘\??|소개해줘\??)$/iu
 const KOREAN_DEFINITION_SUFFIX_PATTERN = /(정의|개요|목적|동작 방식|사용 방법|설명)/iu
+const KOREAN_COMPARISON_PATTERN = /(.+?)(?:와|과)\s+(.+?)(?:의)?\s*(차이|비교|다른 점|뭐가 달라|어떻게 달라)/iu
 
 function unique(values: string[]): string[] {
     return Array.from(new Set(values.map((value) => value.trim()).filter(Boolean)))
@@ -48,6 +49,27 @@ function buildDefinitionVariants(query: string): string[] {
     }
 
     return variants
+}
+
+function buildComparisonVariants(query: string): string[] {
+    const normalizedQuery = normalizeWhitespace(query)
+    const match = normalizedQuery.match(KOREAN_COMPARISON_PATTERN)
+    if (!match?.[1] || !match?.[2]) {
+        return []
+    }
+
+    const left = normalizeWhitespace(match[1])
+    const right = normalizeWhitespace(match[2])
+    if (!left || !right) {
+        return []
+    }
+
+    return unique([
+        `${left} ${right} 차이 비교`,
+        `${left} ${right} 기능 설명`,
+        `${left} ${right} 개요 차이점`,
+        `${left} ${right} information 비교`,
+    ])
 }
 
 export function normalizeTechnicalAliases(query: string): string {
@@ -146,6 +168,7 @@ export function expandTechnicalQueryVariants(query: string): string[] {
     }
 
     variants.push(...buildDefinitionVariants(normalized))
+    variants.push(...buildComparisonVariants(normalized))
 
     return unique(variants)
 }

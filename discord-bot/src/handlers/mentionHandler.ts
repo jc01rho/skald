@@ -477,9 +477,14 @@ const SPARROW_ALIASES = ['엔터프라이즈', '엔터'] as const
 const SPARROW_COMBINE_KEYWORDS = ['sast', 'sca'] as const
 const ERROR_CODE_QUERY_PATTERN = /(에러\s*코드|에러코드|오류\s*코드|오류코드|error\s*codes?)/iu
 const NUMERIC_ERROR_CODE_PATTERN = /\b\d{4,}\b/u
+const INFORMATION_COMPARISON_QUERY_PATTERN = /(차이|비교|다른 점|뭐가 달라|어떻게 달라|기능 설명|정의|개요|설명)/iu
 
 function shouldSkipProductFilter(query: string): boolean {
     return ERROR_CODE_QUERY_PATTERN.test(query) && NUMERIC_ERROR_CODE_PATTERN.test(query)
+}
+
+function shouldUseRelaxedProductFilter(query: string): boolean {
+    return INFORMATION_COMPARISON_QUERY_PATTERN.test(query)
 }
 
 /**
@@ -636,19 +641,21 @@ export async function handleMention(message: Message, client: Client) {
 
             // Detect product_id from query and build filter
             const detectedProductId = detectProductId(query)
-            const filters: MemoFilter[] | undefined = detectedProductId
-                ? [
-                      {
-                          field: 'product_id',
-                          operator: 'eq',
-                          value: detectedProductId,
-                          filter_type: 'custom_metadata',
-                      },
-                  ]
-                : undefined
+            const shouldRelaxProductFilter = shouldUseRelaxedProductFilter(query)
+            const filters: MemoFilter[] | undefined =
+                detectedProductId && !shouldRelaxProductFilter
+                    ? [
+                          {
+                              field: 'product_id',
+                              operator: 'eq',
+                              value: detectedProductId,
+                              filter_type: 'custom_metadata',
+                          },
+                      ]
+                    : undefined
 
             if (detectedProductId) {
-                logger.info({ detectedProductId }, 'Product ID detected from query')
+                logger.info({ detectedProductId, relaxed: shouldRelaxProductFilter }, 'Product ID detected from query')
             }
 
             for await (const event of skaldClient.chatStream(query, {
@@ -771,4 +778,5 @@ export const __testables__ = {
     stripDiscordMentions,
     buildThreadName,
     DISCORD_MENTION_RAG_CONFIG,
+    shouldUseRelaxedProductFilter,
 }

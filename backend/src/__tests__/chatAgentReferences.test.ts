@@ -44,4 +44,59 @@ describe('chatAgent reference payload filtering', () => {
 
         expect(payload).toEqual({})
     })
+
+    it('adds canonical information fallback when cited references lack information doc', () => {
+        const payload = __testables__.buildReferencesPayload('응답 [[1]]', [
+            {
+                memo_uuid: 'memo-release',
+                memo_title: 'Sparrow Enterprise 2506.2 릴리즈 현황',
+                source_url: 'https://example.com/release',
+                doc_type: 'release',
+            },
+            {
+                memo_uuid: 'memo-info',
+                memo_title: '전수분석과 수시분석 차이 안내 info-321',
+                source_url: 'https://example.com/info',
+                doc_type: 'information',
+            },
+        ])
+
+        expect(payload).toEqual({
+            1: {
+                memo_uuid: 'memo-release',
+                memo_title: 'Sparrow Enterprise 2506.2 릴리즈 현황',
+                source_url: 'https://example.com/release',
+            },
+            3: {
+                memo_uuid: 'memo-info',
+                memo_title: '전수분석과 수시분석 차이 안내 info-321',
+                source_url: 'https://example.com/info',
+            },
+        })
+    })
+
+    it('does not add duplicate fallback when canonical information is already cited', () => {
+        const payload = __testables__.buildReferencesPayload('응답 [[2]]', [
+            {
+                memo_uuid: 'memo-release',
+                memo_title: 'Sparrow Enterprise 2506.2 릴리즈 현황',
+                source_url: 'https://example.com/release',
+                doc_type: 'release',
+            },
+            {
+                memo_uuid: 'memo-info',
+                memo_title: '전수분석과 수시분석 차이 안내 info-321',
+                source_url: 'https://example.com/info',
+                doc_type: 'information',
+            },
+        ])
+
+        expect(payload).toEqual({
+            2: {
+                memo_uuid: 'memo-info',
+                memo_title: '전수분석과 수시분석 차이 안내 info-321',
+                source_url: 'https://example.com/info',
+            },
+        })
+    })
 })
