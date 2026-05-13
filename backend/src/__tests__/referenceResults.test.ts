@@ -39,4 +39,24 @@ describe('buildReferenceResults', () => {
             { memo_uuid: 'memo-1', memo_title: 'manual submit memo', source_url: 'https://example.com/manual' },
         ])
     })
+
+    it('preserves doc_type from reranked references', () => {
+        const results = buildReferenceResults([
+            {
+                memo_uuid: 'memo-release',
+                memo_title: 'Sparrow Enterprise 2506.2 릴리즈 현황',
+                source_url: 'https://example.com/release',
+                doc_type: 'release',
+            },
+        ])
+
+        expect(results).toEqual([
+            {
+                memo_uuid: 'memo-release',
+                memo_title: 'Sparrow Enterprise 2506.2 릴리즈 현황',
+                source_url: 'https://example.com/release',
+                doc_type: 'release',
+            },
+        ])
+    })
 })

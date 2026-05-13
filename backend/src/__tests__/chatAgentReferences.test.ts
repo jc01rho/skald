@@ -45,8 +45,13 @@ describe('chatAgent reference payload filtering', () => {
         expect(payload).toEqual({})
     })
 
-    it('adds canonical information fallback when cited references lack information doc', () => {
+    it('adds canonical information and release fallbacks when cited references lack both', () => {
         const payload = __testables__.buildReferencesPayload('응답 [[1]]', [
+            {
+                memo_uuid: 'memo-generic',
+                memo_title: '일반 문서',
+                source_url: 'https://example.com/generic',
+            },
             {
                 memo_uuid: 'memo-release',
                 memo_title: 'Sparrow Enterprise 2506.2 릴리즈 현황',
@@ -63,20 +68,65 @@ describe('chatAgent reference payload filtering', () => {
 
         expect(payload).toEqual({
             1: {
-                memo_uuid: 'memo-release',
-                memo_title: 'Sparrow Enterprise 2506.2 릴리즈 현황',
-                source_url: 'https://example.com/release',
+                memo_uuid: 'memo-generic',
+                memo_title: '일반 문서',
+                source_url: 'https://example.com/generic',
             },
-            3: {
+            2: {
                 memo_uuid: 'memo-info',
                 memo_title: '전수분석과 수시분석 차이 안내 info-321',
                 source_url: 'https://example.com/info',
             },
+            3: {
+                memo_uuid: 'memo-release',
+                memo_title: 'Sparrow Enterprise 2506.2 릴리즈 현황',
+                source_url: 'https://example.com/release',
+            },
         })
     })
 
-    it('does not add duplicate fallback when canonical information is already cited', () => {
+    it('adds missing release fallback when information is already cited', () => {
         const payload = __testables__.buildReferencesPayload('응답 [[2]]', [
+            {
+                memo_uuid: 'memo-generic',
+                memo_title: '일반 문서',
+                source_url: 'https://example.com/generic',
+            },
+            {
+                memo_uuid: 'memo-info',
+                memo_title: '전수분석과 수시분석 차이 안내 info-321',
+                source_url: 'https://example.com/info',
+                doc_type: 'information',
+            },
+            {
+                memo_uuid: 'memo-release',
+                memo_title: 'Sparrow Enterprise 2506.2 릴리즈 현황',
+                source_url: 'https://example.com/release',
+                doc_type: 'release',
+            },
+        ])
+
+        expect(payload).toEqual({
+            2: {
+                memo_uuid: 'memo-info',
+                memo_title: '전수분석과 수시분석 차이 안내 info-321',
+                source_url: 'https://example.com/info',
+            },
+            3: {
+                memo_uuid: 'memo-release',
+                memo_title: 'Sparrow Enterprise 2506.2 릴리즈 현황',
+                source_url: 'https://example.com/release',
+            },
+        })
+    })
+
+    it('adds missing information fallback when release is already cited', () => {
+        const payload = __testables__.buildReferencesPayload('응답 [[2]]', [
+            {
+                memo_uuid: 'memo-generic',
+                memo_title: '일반 문서',
+                source_url: 'https://example.com/generic',
+            },
             {
                 memo_uuid: 'memo-release',
                 memo_title: 'Sparrow Enterprise 2506.2 릴리즈 현황',
@@ -93,6 +143,11 @@ describe('chatAgent reference payload filtering', () => {
 
         expect(payload).toEqual({
             2: {
+                memo_uuid: 'memo-release',
+                memo_title: 'Sparrow Enterprise 2506.2 릴리즈 현황',
+                source_url: 'https://example.com/release',
+            },
+            3: {
                 memo_uuid: 'memo-info',
                 memo_title: '전수분석과 수시분석 차이 안내 info-321',
                 source_url: 'https://example.com/info',

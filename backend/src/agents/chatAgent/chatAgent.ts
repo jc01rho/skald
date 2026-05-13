@@ -18,6 +18,31 @@ function isCanonicalInformationReference(result: RerankResult): boolean {
     return result.doc_type === 'information' || /\binfo-\d+\b/i.test(result.memo_title ?? '')
 }
 
+function isCanonicalReleaseReference(result: RerankResult): boolean {
+    return result.doc_type === 'release' || /릴리즈\s*현황|release/i.test(result.memo_title ?? '')
+}
+
+function appendFallbackReference(
+    references: Record<number, { memo_uuid: string; memo_title: string; source_url?: string }>,
+    fallback: RerankResult
+): void {
+    if (!fallback.memo_uuid || !fallback.memo_title) {
+        return
+    }
+
+    const alreadyIncluded = Object.values(references).some((reference) => reference.memo_uuid === fallback.memo_uuid)
+    if (alreadyIncluded) {
+        return
+    }
+
+    const nextReferenceNumber = Math.max(0, ...Object.keys(references).map(Number)) + 1
+    references[nextReferenceNumber] = {
+        memo_uuid: fallback.memo_uuid,
+        memo_title: fallback.memo_title,
+        source_url: fallback.source_url,
+    }
+}
+
 function buildReferencesPayload(
     fullResponseText: string,
     rerankResults: RerankResult[]
@@ -73,17 +98,27 @@ function buildReferencesPayload(
         return {}
     }
 
-    const hasCanonicalInformationReference = Object.values(filteredReferences).some((reference) =>
-        isCanonicalInformationReference(reference)
+    const hasCanonicalInformationReference = rerankResults.some(
+        (candidate) =>
+            isCanonicalInformationReference(candidate) &&
+            Object.values(filteredReferences).some((reference) => reference.memo_uuid === candidate.memo_uuid)
     )
     if (!hasCanonicalInformationReference) {
         const fallbackInformation = rerankResults.find((reference) => isCanonicalInformationReference(reference))
-        if (fallbackInformation?.memo_uuid && fallbackInformation.memo_title) {
-            filteredReferences[totalAvailable + 1] = {
-                memo_uuid: fallbackInformation.memo_uuid,
-                memo_title: fallbackInformation.memo_title,
-                source_url: fallbackInformation.source_url,
-            }
+        if (fallbackInformation) {
+            appendFallbackReference(filteredReferences, fallbackInformation)
+        }
+    }
+
+    const hasCanonicalReleaseReference = rerankResults.some(
+        (candidate) =>
+            isCanonicalReleaseReference(candidate) &&
+            Object.values(filteredReferences).some((reference) => reference.memo_uuid === candidate.memo_uuid)
+    )
+    if (!hasCanonicalReleaseReference) {
+        const fallbackRelease = rerankResults.find((reference) => isCanonicalReleaseReference(reference))
+        if (fallbackRelease) {
+            appendFallbackReference(filteredReferences, fallbackRelease)
         }
     }
 

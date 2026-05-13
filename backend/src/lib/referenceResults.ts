@@ -2,6 +2,7 @@ export type ReferenceCandidate = {
     memo_uuid?: string
     memo_title?: string
     source_url?: string
+    doc_type?: string
 }
 
 type ExactLookupReference = {
