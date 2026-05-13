@@ -65,7 +65,7 @@ function applyDocumentTypeBias(queryText: string, result: HybridSearchResult): H
     if (docType === 'information') {
         multiplier = 1.18
     } else if (docType === 'release') {
-        multiplier = 0.86
+        multiplier = 1
     }
 
     return {
@@ -83,13 +83,18 @@ export function resolveHybridSearchTuningProfile(
     const isCJK =
         detectedLang === Language.KOREAN || detectedLang === Language.JAPANESE || detectedLang === Language.CHINESE
     const isShortDefinitionQuery = isShortCJKFeatureDefinitionQuery(queryText, isCJK)
+    const isComparisonOrDefinition = isComparisonOrDefinitionQuery(queryText)
 
     return {
         isCJK,
         isShortDefinitionQuery,
         vectorWeight: config.vectorWeight ?? (isShortDefinitionQuery ? 0.35 : isCJK ? 0.5 : 0.7),
         bm25Weight: config.bm25Weight ?? (isShortDefinitionQuery ? 0.65 : isCJK ? 0.5 : 0.3),
-        similarityThreshold: isShortDefinitionQuery ? Math.max(0.35, similarityThreshold - 0.1) : similarityThreshold,
+        similarityThreshold: isShortDefinitionQuery
+            ? Math.max(0.35, similarityThreshold - 0.1)
+            : isComparisonOrDefinition
+              ? Math.max(0.35, similarityThreshold - 0.05)
+              : similarityThreshold,
     }
 }
 
@@ -334,17 +339,14 @@ export class HybridSearchService {
                 memo_uuid: row.memo_uuid,
                 memo_title: row.memo_title,
                 doc_type: row.doc_type,
-                bm25_score: Math.max(0, Math.min(1, row.bm25_score)),
+                bm25_score: Number(row.bm25_score) || 0,
             }))
         } catch (error) {
-            logger.error({ err: error }, 'Full-text search error in hybrid search')
+            logger.error({ err: error }, 'BM25 search error in hybrid search')
             return []
         }
     }
 
-    /**
-     * Trigram similarity search for CJK languages (Korean, Japanese, Chinese)
-     */
     private static async trgmSearch(
         project: Project,
         queryText: string,
@@ -361,27 +363,15 @@ export class HybridSearchService {
         }>
     > {
         const { whereConditions, params } = buildFilterConditions(filters || [])
-        const allParams = [
-            queryText,
-            queryText,
-            queryText,
-            project.uuid,
-            queryText,
-            queryText,
-            queryText,
-            ...params,
-            queryText,
-            queryText,
-            queryText,
-            topK,
-        ]
+        const sanitizedQuery = queryText.trim()
+        const allParams = [sanitizedQuery, sanitizedQuery, sanitizedQuery, project.uuid, ...params, topK]
 
         let whereClause = `
             WHERE skald_memochunk.project_id = ?
             AND (
-                skald_memochunk.chunk_content % ?
-                OR COALESCE(skald_memo.title, '') % ?
-                OR COALESCE(skald_memo.metadata->>'search_text', '') % ?
+                similarity(skald_memochunk.chunk_content, ?) > 0
+                OR similarity(COALESCE(skald_memo.title, ''), ?) > 0
+                OR similarity(COALESCE(skald_memo.metadata->>'search_text', ''), ?) > 0
             )
         `
 
@@ -398,17 +388,13 @@ export class HybridSearchService {
                 skald_memo.metadata->>'doc_type' AS doc_type,
                 GREATEST(
                     similarity(skald_memochunk.chunk_content, ?),
-                    similarity(COALESCE(skald_memo.title, ''), ?) * 1.15,
-                    similarity(COALESCE(skald_memo.metadata->>'search_text', ''), ?) * 1.25
+                    similarity(COALESCE(skald_memo.title, ''), ?),
+                    similarity(COALESCE(skald_memo.metadata->>'search_text', ''), ?) * 1.1
                 ) as bm25_score
             FROM skald_memochunk
             JOIN skald_memo ON skald_memochunk.memo_id = skald_memo.uuid
             ${whereClause}
-            ORDER BY LEAST(
-                skald_memochunk.chunk_content <-> ?,
-                COALESCE(skald_memo.title, '') <-> ?,
-                COALESCE(skald_memo.metadata->>'search_text', '') <-> ?
-            )
+            ORDER BY bm25_score DESC
             LIMIT ?
         `
 
@@ -420,18 +406,18 @@ export class HybridSearchService {
                 chunk_content: row.chunk_content,
                 memo_uuid: row.memo_uuid,
                 memo_title: row.memo_title,
-                bm25_score: Math.max(0, Math.min(1, row.bm25_score)),
+                doc_type: row.doc_type,
+                bm25_score: Number(row.bm25_score) || 0,
             }))
         } catch (error) {
-            logger.error({ err: error, language: detectLanguage(queryText) }, 'Trigram search error in hybrid search')
+            logger.error({ err: error }, 'Trigram search error in hybrid search')
             return []
         }
     }
 
     /**
-     * Combine results using Reciprocal Rank Fusion (RRF)
-     * RRF score = Σ [ weight / (k + rank + 1) ]
-     * More robust than weighted linear fusion as it's based on rank, not score magnitude
+     * Combine vector and BM25 results using Reciprocal Rank Fusion (RRF)
+     * More robust than score normalization as it uses ranking positions rather than raw scores
      */
     private static combineScoresRRF(
         vectorResults: Array<{
@@ -450,82 +436,45 @@ export class HybridSearchService {
             doc_type?: string
             bm25_score: number
         }>,
-        vectorWeight: number,
-        bm25Weight: number
+        vectorWeight: number = 1.0,
+        bm25Weight: number = 1.0
     ): HybridSearchResult[] {
-        const rrfScores = new Map<string, number>()
-        const docInfo = new Map<
-            string,
-            {
-                chunk_content: string
-                memo_uuid: string
-                memo_title?: string
-                doc_type?: string
-                vector_score: number
-                bm25_score: number
-            }
-        >()
+        const resultMap = new Map<string, HybridSearchResult>()
 
-        // Vector results RRF scores (already sorted by vector_score DESC)
-        for (let rank = 0; rank < vectorResults.length; rank++) {
-            const doc = vectorResults[rank]
-            const score = vectorWeight / (RRF_K + rank + 1)
-            rrfScores.set(doc.uuid, (rrfScores.get(doc.uuid) || 0) + score)
-            if (!docInfo.has(doc.uuid)) {
-                docInfo.set(doc.uuid, {
-                    chunk_content: doc.chunk_content,
-                    memo_uuid: doc.memo_uuid,
-                    memo_title: doc.memo_title,
-                    doc_type: doc.doc_type,
-                    vector_score: doc.vector_score,
-                    bm25_score: 0,
-                })
-            }
-        }
-
-        // BM25 results RRF scores (already sorted by bm25_score DESC)
-        for (let rank = 0; rank < bm25Results.length; rank++) {
-            const doc = bm25Results[rank]
-            const score = bm25Weight / (RRF_K + rank + 1)
-            rrfScores.set(doc.uuid, (rrfScores.get(doc.uuid) || 0) + score)
-            if (!docInfo.has(doc.uuid)) {
-                docInfo.set(doc.uuid, {
-                    chunk_content: doc.chunk_content,
-                    memo_uuid: doc.memo_uuid,
-                    memo_title: doc.memo_title,
-                    doc_type: doc.doc_type,
-                    vector_score: 0,
-                    bm25_score: doc.bm25_score,
-                })
-            } else {
-                // Update BM25 score for docs that appear in both
-                const info = docInfo.get(doc.uuid)!
-                info.bm25_score = doc.bm25_score
-                if (!info.memo_title && doc.memo_title) {
-                    info.memo_title = doc.memo_title
-                }
-                if (!info.doc_type && doc.doc_type) {
-                    info.doc_type = doc.doc_type
-                }
-            }
-        }
-
-        // Convert to HybridSearchResult array
-        const combined: HybridSearchResult[] = []
-        for (const [uuid, rrfScore] of rrfScores.entries()) {
-            const info = docInfo.get(uuid)!
-            combined.push({
-                uuid,
-                chunk_content: info.chunk_content,
-                memo_uuid: info.memo_uuid,
-                memo_title: info.memo_title,
-                doc_type: info.doc_type,
-                vector_score: info.vector_score,
-                bm25_score: info.bm25_score,
+        vectorResults.forEach((result, index) => {
+            const rrfScore = vectorWeight / (RRF_K + index + 1)
+            resultMap.set(result.uuid, {
+                uuid: result.uuid,
+                chunk_content: result.chunk_content,
+                memo_uuid: result.memo_uuid,
+                memo_title: result.memo_title,
+                doc_type: result.doc_type,
+                vector_score: result.vector_score,
+                bm25_score: 0,
                 hybrid_score: rrfScore,
             })
-        }
+        })
 
-        return combined
+        bm25Results.forEach((result, index) => {
+            const rrfScore = bm25Weight / (RRF_K + index + 1)
+            const existing = resultMap.get(result.uuid)
+            if (existing) {
+                existing.bm25_score = result.bm25_score
+                existing.hybrid_score += rrfScore
+            } else {
+                resultMap.set(result.uuid, {
+                    uuid: result.uuid,
+                    chunk_content: result.chunk_content,
+                    memo_uuid: result.memo_uuid,
+                    memo_title: result.memo_title,
+                    doc_type: result.doc_type,
+                    vector_score: 0,
+                    bm25_score: result.bm25_score,
+                    hybrid_score: rrfScore,
+                })
+            }
+        })
+
+        return Array.from(resultMap.values())
     }
 }
