@@ -187,12 +187,17 @@ const appendGroupedNode = (map: Map<string, PublicWikiGraphNode[]>, key: string,
 }
 
 const LARGE_GRAPH_LAYOUT_THRESHOLD = 2000
+const CLUSTER_SPREAD_MULTIPLIER = 2.2
+const NODE_SPREAD_MULTIPLIER = 2.5
 
 const getSeededPosition = (index: number, total: number, clusterIndex: number, clusterTotal: number) => {
     const clusterAngle = (Math.PI * 2 * clusterIndex) / Math.max(clusterTotal, 1) - Math.PI / 2
-    const clusterRadius = 112 + Math.min(total, 6000) * 0.035
+    const clusterRadius = 140 + Math.min(total, 6000) * 0.045 * CLUSTER_SPREAD_MULTIPLIER
     const localAngle = (Math.PI * (3 - Math.sqrt(5)) * index) % (Math.PI * 2)
-    const localSpread = total > LARGE_GRAPH_LAYOUT_THRESHOLD ? 56 + Math.sqrt(total) * 1.85 : 24
+    const localSpread =
+        total > LARGE_GRAPH_LAYOUT_THRESHOLD
+            ? 72 + Math.sqrt(total) * 2.2 * NODE_SPREAD_MULTIPLIER
+            : 32 * NODE_SPREAD_MULTIPLIER
     const localRadius = Math.sqrt((index + 1) / Math.max(total, 1)) * localSpread
 
     return {
@@ -272,12 +277,11 @@ export const PublicWikiGraphView = ({
             graph.addNode(node.id, {
                 x: position.x,
                 y: position.y,
-                size: Math.max(5, 5 + Math.sqrt(degree) * 2),
+                size: Math.max(3, Math.min(8, 3 + Math.sqrt(Math.min(degree, 20)) * 1.2)),
                 label,
                 color: tone.stroke,
             })
         })
-
         edges.forEach((edge, index) => {
             if (graph.hasNode(edge.source) && graph.hasNode(edge.target)) {
                 const edgeKey = `${edge.id || `${edge.source}->${edge.target}`}-${index}`
@@ -291,15 +295,24 @@ export const PublicWikiGraphView = ({
 
         if (nodes.length > 0 && nodes.length <= LARGE_GRAPH_LAYOUT_THRESHOLD) {
             const settings = forceAtlas2.inferSettings(graph)
-            forceAtlas2.assign(graph, { iterations: 150, settings: { ...settings, gravity: 0.5, scalingRatio: 10 } })
+            forceAtlas2.assign(graph, {
+                iterations: 200,
+                settings: {
+                    ...settings,
+                    gravity: 0.15,
+                    scalingRatio: 15,
+                    slowDown: 10,
+                    barnesHutOptimize: true,
+                    barnesHutTheta: 0.6,
+                },
+            })
         }
-
         const sigma = new Sigma(graph, containerRef.current, {
             renderLabels: true,
             renderEdgeLabels: false,
-            labelDensity: 1.5,
-            labelGridCellSize: 60,
-            labelRenderedSizeThreshold: 10,
+            labelDensity: 1.2,
+            labelGridCellSize: 80,
+            labelRenderedSizeThreshold: 8,
             zIndex: true,
             allowInvalidContainer: true,
         })
