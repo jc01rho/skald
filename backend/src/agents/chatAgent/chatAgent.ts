@@ -64,9 +64,9 @@ function buildReferencesPayload(
     if (citedNumbers.length === 0) {
         logger.info(
             { totalAvailable: Object.keys(allReferences).length },
-            'Citation post-processing: no citations found, omitting references payload'
+            'Citation post-processing: no citations found, returning all references as fallback'
         )
-        return {}
+        return allReferences
     }
 
     const filteredReferences: Record<number, { memo_uuid: string; memo_title: string; source_url?: string }> = {}

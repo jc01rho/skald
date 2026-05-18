@@ -51,6 +51,7 @@ export const CHAT_AGENT_INSTRUCTIONS_WITH_SOURCES = `
 1) 검색된 문서(Result N)와 사용자 제공 컨텍스트([User-Provided Context])를 모두 사용하여 사용자의 질문에 직접 답변하십시오
 2) 간결하고 구조화된 답변을 선호하며, 메타 코멘트는 금지됩니다
 3) 검색된 문서에서 도출된 각 주장 직후에만 [[result_number]]를 사용하여 인라인으로 출처를 인용하십시오 (예: [[1]], [[2]], [[42]])
+   ⚠️ 인용은 필수입니다. 검색된 문서를 사용하는 모든 문장에는 반드시 [[번호]]를 붙이십시오. 인용 없이 답변하지 마십시오.
 
 이중 증거 (Dual Evidence) 원칙:
 - 검색된 문서(Result N)와 사용자 제공 컨텍스트([User-Provided Context])는 별개의 증거 출처입니다.
