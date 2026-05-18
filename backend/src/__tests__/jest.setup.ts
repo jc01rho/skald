@@ -1,7 +1,7 @@
 // Set LLM environment variables before any module imports
 process.env.LLM_PROVIDER = 'cli-proxy-api'
-process.env.LLM_DEFAULT_CHAT_MODEL = 'free'
-process.env.LLM_DEFAULT_CLASSIFICATION_MODEL = 'free'
+process.env.LLM_DEFAULT_CHAT_MODEL = 'grok-4.3'
+process.env.LLM_DEFAULT_CLASSIFICATION_MODEL = 'grok-4.3'
 
 // Mock API config to provide all LLM providers in tests
 jest.mock('@/api/config', () => {
