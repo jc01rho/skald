@@ -187,17 +187,16 @@ const appendGroupedNode = (map: Map<string, PublicWikiGraphNode[]>, key: string,
 }
 
 const LARGE_GRAPH_LAYOUT_THRESHOLD = 2000
-const CLUSTER_SPREAD_MULTIPLIER = 3.2
-const NODE_SPREAD_MULTIPLIER = 3.5
-
+const CLUSTER_SPREAD_MULTIPLIER = 6.0
+const NODE_SPREAD_MULTIPLIER = 6.0
 const getSeededPosition = (index: number, total: number, clusterIndex: number, clusterTotal: number) => {
     const clusterAngle = (Math.PI * 2 * clusterIndex) / Math.max(clusterTotal, 1) - Math.PI / 2
-    const clusterRadius = 200 + Math.min(total, 6000) * 0.06 * CLUSTER_SPREAD_MULTIPLIER
+    const clusterRadius = 350 + Math.min(total, 6000) * 0.1 * CLUSTER_SPREAD_MULTIPLIER
     const localAngle = (Math.PI * (3 - Math.sqrt(5)) * index) % (Math.PI * 2)
     const localSpread =
         total > LARGE_GRAPH_LAYOUT_THRESHOLD
-            ? 100 + Math.sqrt(total) * 3.0 * NODE_SPREAD_MULTIPLIER
-            : 48 * NODE_SPREAD_MULTIPLIER
+            ? 180 + Math.sqrt(total) * 4.5 * NODE_SPREAD_MULTIPLIER
+            : 80 * NODE_SPREAD_MULTIPLIER
     const localRadius = Math.sqrt((index + 1) / Math.max(total, 1)) * localSpread
 
     return {
