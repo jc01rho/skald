@@ -186,17 +186,17 @@ const appendGroupedNode = (map: Map<string, PublicWikiGraphNode[]>, key: string,
     map.set(key, [node])
 }
 
-const LARGE_GRAPH_LAYOUT_THRESHOLD = 200
-const CLUSTER_SPREAD_MULTIPLIER = 1.5
-const NODE_SPREAD_MULTIPLIER = 1.8
+const LARGE_GRAPH_LAYOUT_THRESHOLD = 500
+const CLUSTER_SPREAD_MULTIPLIER = 2.0
+const NODE_SPREAD_MULTIPLIER = 2.5
 const getSeededPosition = (index: number, total: number, clusterIndex: number, clusterTotal: number) => {
     const clusterAngle = (Math.PI * 2 * clusterIndex) / Math.max(clusterTotal, 1) - Math.PI / 2
-    const clusterRadius = 200 + Math.min(total, 600) * 0.15 * CLUSTER_SPREAD_MULTIPLIER
+    const clusterRadius = 300 + Math.sqrt(total) * 3.0 * CLUSTER_SPREAD_MULTIPLIER
     const localAngle = (Math.PI * (3 - Math.sqrt(5)) * index) % (Math.PI * 2)
     const localSpread =
         total > LARGE_GRAPH_LAYOUT_THRESHOLD
-            ? 120 + Math.sqrt(total) * 3.0 * NODE_SPREAD_MULTIPLIER
-            : 60 * NODE_SPREAD_MULTIPLIER
+            ? 150 + Math.sqrt(total) * 4.0 * NODE_SPREAD_MULTIPLIER
+            : 80 * NODE_SPREAD_MULTIPLIER
     const localRadius = Math.sqrt((index + 1) / Math.max(total, 1)) * localSpread
 
     return {
@@ -296,14 +296,14 @@ export const PublicWikiGraphView = ({
             const settings = forceAtlas2.inferSettings(graph)
             const isLarge = nodes.length > LARGE_GRAPH_LAYOUT_THRESHOLD
             forceAtlas2.assign(graph, {
-                iterations: isLarge ? 200 : 400,
+                iterations: isLarge ? 300 : 400,
                 settings: {
                     ...settings,
-                    gravity: isLarge ? 0.15 : 0.3,
-                    scalingRatio: isLarge ? 12 : 8,
-                    slowDown: isLarge ? 15 : 10,
+                    gravity: isLarge ? 0.6 : 0.3,
+                    scalingRatio: isLarge ? 20 : 8,
+                    slowDown: isLarge ? 25 : 10,
                     barnesHutOptimize: true,
-                    barnesHutTheta: isLarge ? 0.9 : 0.6,
+                    barnesHutTheta: isLarge ? 0.95 : 0.6,
                 },
             })
         }

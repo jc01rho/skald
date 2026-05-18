@@ -78,7 +78,6 @@ const PAGE_TYPE_ORDER = [
 
 const LARGE_PAGE_GROUP_THRESHOLD = 12
 const GRAPH_DENSE_THRESHOLD = 400
-const MAX_OVERVIEW_NODES = 300
 const findDefaultPageNode = (nodes: PublicWikiGraphNode[]) =>
     nodes.find((node) => node.page_type === 'index_page') ?? nodes[0] ?? null
 
@@ -207,52 +206,9 @@ const buildOverviewGraphSlice = (
         (left, right) => scoreGraphNode(right, graphMode) - scoreGraphNode(left, graphMode)
     )
 
-    let nodes: PublicWikiGraphNode[]
-    if (rankedNodes.length <= MAX_OVERVIEW_NODES) {
-        nodes = selectedNode
-            ? [selectedNode, ...rankedNodes.filter((node) => node.id !== selectedNode.id)]
-            : rankedNodes
-    } else {
-        const clusterGroups = new Map<string, PublicWikiGraphNode[]>()
-        for (const node of rankedNodes) {
-            const clusterKey = node.page_type || 'default'
-            if (!clusterGroups.has(clusterKey)) clusterGroups.set(clusterKey, [])
-            clusterGroups.get(clusterKey)!.push(node)
-        }
-        const clusterEntries = [...clusterGroups.entries()].sort((a, b) => b[1].length - a[1].length)
-
-        const sampledNodes: PublicWikiGraphNode[] = []
-        const usedIds = new Set<string>()
-
-        if (selectedNode) {
-            sampledNodes.push(selectedNode)
-            usedIds.add(selectedNode.id)
-        }
-
-        const clusterIterators = clusterEntries.map(([, clusterNodes]) => [...clusterNodes].reverse())
-        let roundRobinIndex = 0
-        while (sampledNodes.length < MAX_OVERVIEW_NODES && roundRobinIndex < 1000) {
-            let advanced = false
-            for (let i = 0; i < clusterIterators.length; i++) {
-                const clusterIdx = (i + roundRobinIndex) % clusterIterators.length
-                const stack = clusterIterators[clusterIdx]
-                while (stack.length > 0) {
-                    const candidate = stack.pop()!
-                    if (!usedIds.has(candidate.id)) {
-                        sampledNodes.push(candidate)
-                        usedIds.add(candidate.id)
-                        if (sampledNodes.length >= MAX_OVERVIEW_NODES) break
-                    }
-                    break
-                }
-                if (sampledNodes.length >= MAX_OVERVIEW_NODES) break
-            }
-            roundRobinIndex++
-            if (!advanced && clusterIterators.every((s) => s.length === 0)) break
-            advanced = true
-        }
-        nodes = sampledNodes
-    }
+    const nodes = selectedNode
+        ? [selectedNode, ...rankedNodes.filter((node) => node.id !== selectedNode.id)]
+        : rankedNodes
 
     const nodeIds = new Set(nodes.map((node) => node.id))
     const edges = graph.edges
