@@ -93,9 +93,9 @@ function buildReferencesPayload(
     if (totalCited === 0 && totalAvailable > 0) {
         logger.warn(
             { totalAvailable, citedNumbers },
-            'Citation post-processing: cited references missing from payload, omitting references payload'
+            'Citation post-processing: cited references missing from payload, falling back to all references'
         )
-        return {}
+        return allReferences
     }
 
     const hasCanonicalInformationReference = rerankResults.some(
