@@ -6,6 +6,7 @@ export const SUPPORTED_LLM_MODELS = {
         // Available Models (28 working models)
         // Listed in priority order as specified
         // ========================================
+        'mimo-v2.5-pro': { slug: 'mimo-v2.5-pro', name: 'MiMo v2.5 Pro' },
         'grok-4.3': { slug: 'grok-4.3', name: 'Grok 4.3' },
         parrot: { slug: 'parrot', name: 'Parrot' },
         'gpt-5.2': { slug: 'gpt-5.2', name: 'GPT 5.2' },
