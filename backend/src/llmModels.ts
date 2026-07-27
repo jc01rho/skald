@@ -3,12 +3,18 @@ import { getLLMConfig } from './settings'
 export const SUPPORTED_LLM_MODELS = {
     'cli-proxy-api': {
         // ========================================
-        // Available Models (28 working models)
-        // Listed in priority order as specified
+        // Available Models
+        // Primary fallback chain priority first
         // ========================================
+        'glm-5.2': { slug: 'glm-5.2', name: 'GLM 5.2' },
+        parrot: { slug: 'parrot', name: 'Parrot' },
+        'deepseek/deepseek-v4-pro': { slug: 'deepseek/deepseek-v4-pro', name: 'DeepSeek V4 Pro' },
+        'xiaomi/mimo-v2.5-pro': { slug: 'xiaomi/mimo-v2.5-pro', name: 'Xiaomi MiMo v2.5 Pro' },
+        'higher-coding': { slug: 'higher-coding', name: 'Higher Coding' },
+        free: { slug: 'free', name: 'Free' },
+        // Legacy / additional models
         'mimo-v2.5-pro': { slug: 'mimo-v2.5-pro', name: 'MiMo v2.5 Pro' },
         'grok-4.3': { slug: 'grok-4.3', name: 'Grok 4.3' },
-        parrot: { slug: 'parrot', name: 'Parrot' },
         'gpt-5.2': { slug: 'gpt-5.2', name: 'GPT 5.2' },
         step: { slug: 'step', name: 'Step' },
         'qwen-3.5': { slug: 'qwen-3.5', name: 'Qwen 3.5' },
@@ -19,7 +25,6 @@ export const SUPPORTED_LLM_MODELS = {
         'qwen3-max': { slug: 'qwen3-max', name: 'Qwen 3 Max' },
         'qwen3-235b': { slug: 'qwen3-235b', name: 'Qwen 3 235B' },
         'gemini-2.5-flash': { slug: 'gemini-2.5-flash', name: 'Gemini 2.5 Flash' },
-        free: { slug: 'free', name: 'Free' },
         'gemini-2.5-flash-lite': { slug: 'gemini-2.5-flash-lite', name: 'Gemini 2.5 Flash Lite' },
         'gemini-3-flash-preview': { slug: 'gemini-3-flash-preview', name: 'Gemini 3 Flash Preview' },
         'gemini-2.5-computer-use-preview-10-2025': {
