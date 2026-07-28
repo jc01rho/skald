@@ -33,6 +33,13 @@ spec:
                 - name: sparrow-function-spec
                   image: HERMES_IMAGE
                   imagePullPolicy: IfNotPresent
+                  env:
+                      - name: GIT_CONFIG_COUNT
+                        value: "1"
+                      - name: GIT_CONFIG_KEY_0
+                        value: safe.directory
+                      - name: GIT_CONFIG_VALUE_0
+                        value: /opt/sparrow-function-spec
                   command:
                       - /bin/bash
                       - -ec
@@ -44,11 +51,10 @@ spec:
                         test "$(git -C /opt/sparrow-function-spec rev-parse HEAD)" = "c4b6941b4b7bfb054040960099616019a901e745"
                         cd /opt/sparrow-function-spec
                         bun install --frozen-lockfile
-                        chown -R 10001:10001 /opt/sparrow-function-spec
                   securityContext:
-                      runAsNonRoot: false
-                      runAsUser: 0
-                      runAsGroup: 0
+                      runAsNonRoot: true
+                      runAsUser: 10001
+                      runAsGroup: 10001
                       allowPrivilegeEscalation: false
                       readOnlyRootFilesystem: false
                       capabilities:
@@ -101,6 +107,12 @@ spec:
                             configMapKeyRef:
                                 name: hermes-gateway-config
                                 key: SKALD_BASE_URL
+                      - name: GIT_CONFIG_COUNT
+                        value: "1"
+                      - name: GIT_CONFIG_KEY_0
+                        value: safe.directory
+                      - name: GIT_CONFIG_VALUE_0
+                        value: /opt/sparrow-function-spec
                   resources:
                       requests:
                           cpu: '250m'

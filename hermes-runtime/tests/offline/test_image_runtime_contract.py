@@ -133,13 +133,17 @@ def test_image_layout_and_runtime_functional_spec_acquisition():
     assert f"git -C /opt/sparrow-function-spec checkout --detach {revision}" in manifest
     assert f'test "$(git -C /opt/sparrow-function-spec rev-parse HEAD)" = "{revision}"' in manifest
     assert "bun install --frozen-lockfile" in manifest
-    assert "chown -R 10001:10001 /opt/sparrow-function-spec" in manifest
+    assert "chown -R" not in manifest
     assert manifest.count("name: sparrow-function-spec") == 4
     assert manifest.count("mountPath: /opt/sparrow-function-spec") == 2
     assert "emptyDir: {}" in manifest
-    assert "runAsNonRoot: false" in manifest
-    assert "runAsUser: 0" in manifest
-    assert "runAsGroup: 0" in manifest
+    assert manifest.count("runAsNonRoot: true") >= 2
+    assert manifest.count("runAsUser: 10001") >= 2
+    assert manifest.count("runAsGroup: 10001") >= 2
+    assert manifest.count("name: GIT_CONFIG_COUNT") == 2
+    assert manifest.count("name: GIT_CONFIG_KEY_0") == 2
+    assert manifest.count("name: GIT_CONFIG_VALUE_0") == 2
+    assert manifest.count("value: safe.directory") == 2
     assert "command: /bin/bash" in config
     assert "- /opt/sparrow-function-spec/scripts/run-with-auto-update.sh" in config
     assert config.count("sparrow-function-spec:") == 1

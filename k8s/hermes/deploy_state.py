@@ -826,7 +826,8 @@ def dispatch(mode: str) -> str:
         if DESTRUCTIVE_BOUNDARY_CROSSED:
             if isinstance(error, Exit) and error.code == 75:
                 raise
-            recovery_required("operation failed after destructive boundary")
+            detail = error.message if isinstance(error, Exit) else type(error).__name__
+            recovery_required(f"operation failed after destructive boundary: {detail}")
         if isinstance(error, Exit) and error.code != 75 and MUTATIONS_ALLOWED:
             release()
         raise
