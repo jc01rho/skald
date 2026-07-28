@@ -159,9 +159,12 @@ def read_current_identity(base: list[str]) -> dict[str, Any] | None:
 
 
 def permission_allowed(base: list[str], verb: str, resource: str, name: str | None) -> bool:
-    command = [*base, "auth", "can-i", verb, resource, "-n", NAMESPACE]
-    if name is not None:
-        command.extend(("--resource-name", name))
+    if "/" in resource and name is not None:
+        base_resource, subresource = resource.split("/", 1)
+        command = [*base, "auth", "can-i", verb, f"{base_resource}/{name}", "--subresource", subresource, "-n", NAMESPACE]
+    else:
+        target = f"{resource}/{name}" if name is not None else resource
+        command = [*base, "auth", "can-i", verb, target, "-n", NAMESPACE]
     try:
         result = subprocess.run(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=REQUEST_TIMEOUT + 5)
     except (subprocess.TimeoutExpired, OSError):
@@ -169,6 +172,8 @@ def permission_allowed(base: list[str], verb: str, resource: str, name: str | No
     answer = result.stdout.strip().lower()
     if answer not in (b"yes", b"no"):
         raise Exit(77, f"Kubernetes permission preflight was inconclusive for {verb} {resource}/{name or '*'}")
+    if result.returncode not in (0, 1):
+        raise Exit(77, f"Kubernetes permission preflight failed for {verb} {resource}/{name or '*'}")
     return answer == b"yes"
 
 def current_snapshot_names(base: list[str]) -> tuple[str, ...]:

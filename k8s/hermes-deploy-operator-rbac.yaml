@@ -90,7 +90,7 @@ rules:
       resources:
           - services/proxy
       resourceNames:
-          - discord-bot-service
+          - http:discord-bot-service:3000
       verbs:
           - get
 ---

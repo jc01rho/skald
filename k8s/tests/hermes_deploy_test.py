@@ -92,20 +92,26 @@ def test_operator_identity_preflight_checks_required_and_prohibited_permissions(
         if command[command.index("--request-timeout") + 2 : command.index("--request-timeout") + 5] == ["get", "configmap", state.OWNER_CONFIGMAP]:
             owner_record = {"legacy_snapshot_ref": "configmap://skald/skald-discord-legacy-0123456789abcdef", "hermes_verified_snapshot_ref": None}
             return SimpleNamespace(returncode=0, stdout=json.dumps({"data": {state.OWNER_KEY: json.dumps(owner_record)}}).encode(), stderr=b"")
-        permission = (command[command.index("can-i") + 1], command[command.index("can-i") + 2])
-        prohibited = {(verb, resource) for verb, resource, _ in state.PROHIBITED_PERMISSIONS}
-        return SimpleNamespace(returncode=0, stdout=b"no\n" if permission in prohibited else b"yes\n", stderr=b"")
+        verb = command[command.index("can-i") + 1]
+        target = command[command.index("can-i") + 2]
+        resource = target.split("/", 1)[0]
+        if "--subresource" in command:
+            resource = f"{resource}/{command[command.index('--subresource') + 1]}"
+        permission = (verb, resource)
+        prohibited = {(item_verb, item_resource) for item_verb, item_resource, _ in state.PROHIBITED_PERMISSIONS}
+        allowed = permission not in prohibited
+        return SimpleNamespace(returncode=0 if allowed else 1, stdout=b"yes\n" if allowed else b"no\n", stderr=b"")
 
     monkeypatch.setattr(state.subprocess, "run", run)
     state.verify_operator_identity()
     assert state.IDENTITY_VERIFIED is True
     permission_calls = [call for call in calls if "can-i" in call]
     assert len(permission_calls) == len(state.PROHIBITED_PERMISSIONS) + len(state.OPERATOR_PERMISSIONS) + 1
-    assert any("leases.coordination.k8s.io" in call and "--resource-name" in call for call in permission_calls)
-    assert any("hermes-gateway" in call for call in permission_calls)
-    assert any("discord-bot" in call for call in permission_calls)
+    assert any("leases.coordination.k8s.io/skald-discord-deploy-operation" in call for call in permission_calls)
+    assert any(any("hermes-gateway" in part for part in call) for call in permission_calls)
+    assert any(any("discord-bot" in part for part in call) for call in permission_calls)
     assert any("deletecollection" in call and "secrets" in call for call in permission_calls)
-    assert any("delete" in call and "skald-discord-legacy-0123456789abcdef" in call for call in permission_calls)
+    assert any("delete" in call and any("skald-discord-legacy-0123456789abcdef" in part for part in call) for call in permission_calls)
     assert any("impersonate" in call and "serviceaccounts" in call for call in permission_calls)
 
 
@@ -119,11 +125,15 @@ def test_operator_identity_with_required_plus_prohibited_grant_fails_before_muta
 
     def run(command, **_):
         assert command[command.index("auth") + 1] == "can-i"
-        permission = (command[command.index("can-i") + 1], command[command.index("can-i") + 2])
-        allowed = permission == prohibited_grant or permission not in {
-            (verb, resource) for verb, resource, _ in state.PROHIBITED_PERMISSIONS
-        }
-        return SimpleNamespace(returncode=0, stdout=b"yes\n" if allowed else b"no\n", stderr=b"")
+        verb = command[command.index("can-i") + 1]
+        target = command[command.index("can-i") + 2]
+        resource = target.split("/", 1)[0]
+        if "--subresource" in command:
+            resource = f"{resource}/{command[command.index('--subresource') + 1]}"
+        permission = (verb, resource)
+        prohibited = {(item_verb, item_resource) for item_verb, item_resource, _ in state.PROHIBITED_PERMISSIONS}
+        allowed = permission == prohibited_grant or permission not in prohibited
+        return SimpleNamespace(returncode=0 if allowed else 1, stdout=b"yes\n" if allowed else b"no\n", stderr=b"")
 
     def current_snapshot_names(_):
         return ()
