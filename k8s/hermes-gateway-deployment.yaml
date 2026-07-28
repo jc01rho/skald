@@ -38,6 +38,7 @@ spec:
                       - -ec
                   args:
                       - |
+                        find /opt/sparrow-function-spec -mindepth 1 -maxdepth 1 -exec rm -rf -- {} +
                         git -c http.sslVerify=false clone https://gitlab.git.sparrow.local/mcp-servers/functional-spec.git /opt/sparrow-function-spec
                         git -C /opt/sparrow-function-spec checkout --detach c4b6941b4b7bfb054040960099616019a901e745
                         test "$(git -C /opt/sparrow-function-spec rev-parse HEAD)" = "c4b6941b4b7bfb054040960099616019a901e745"

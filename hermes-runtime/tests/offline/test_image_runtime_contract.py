@@ -122,6 +122,9 @@ def test_image_layout_and_runtime_functional_spec_acquisition():
     assert "args: ['gateway', 'run']" in manifest
     assert manifest.count("image: HERMES_IMAGE") == 2
     assert f"git -c http.sslVerify=false clone {source} /opt/sparrow-function-spec" in manifest
+    assert "find /opt/sparrow-function-spec -mindepth 1 -maxdepth 1 -exec rm -rf -- {} +" in manifest
+    assert "rm -rf /opt/sparrow-function-spec/*" not in manifest
+    assert "|| true" not in manifest
     assert manifest.count("http.sslVerify=false") == 1
     assert "git@gitlab.git.sparrow.local" not in manifest
     assert "--mount=type=ssh" not in manifest

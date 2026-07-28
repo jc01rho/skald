@@ -295,9 +295,15 @@ def relevant_object(obj: dict[str, Any]) -> dict[str, Any]:
 
 def intended_fields_match(intended: Any, observed: Any) -> bool:
     if isinstance(intended, dict):
-        return isinstance(observed, dict) and all(key in observed and intended_fields_match(value, observed[key]) for key, value in intended.items())
+        return isinstance(observed, dict) and all(
+            (field in observed and intended_fields_match(value, observed[field]))
+            or (field not in observed and field in {"stdin", "tty"} and value is False)
+            for field, value in intended.items()
+        )
     if isinstance(intended, list):
-        return isinstance(observed, list) and len(intended) == len(observed) and all(intended_fields_match(left, right) for left, right in zip(intended, observed))
+        return isinstance(observed, list) and len(intended) == len(observed) and all(
+            intended_fields_match(left, right) for left, right in zip(intended, observed)
+        )
     return intended == observed
 
 
