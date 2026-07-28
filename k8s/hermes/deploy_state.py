@@ -70,7 +70,7 @@ OPERATOR_PERMISSIONS = (
     ("get", "services", "discord-bot-service"),
     ("create", "services", None),
     ("patch", "services", "discord-bot-service"),
-    ("get", "services/proxy", "discord-bot-service"),
+    ("get", "services/proxy", "http:discord-bot-service:3000"),
 )
 # These grants are incompatible with an ordinary transition identity even when
 # it also has every required grant above. None is used by this orchestrator.

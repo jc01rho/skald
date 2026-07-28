@@ -110,6 +110,7 @@ def test_operator_identity_preflight_checks_required_and_prohibited_permissions(
     assert any("leases.coordination.k8s.io/skald-discord-deploy-operation" in call for call in permission_calls)
     assert any(any("hermes-gateway" in part for part in call) for call in permission_calls)
     assert any(any("discord-bot" in part for part in call) for call in permission_calls)
+    assert any(any("http:discord-bot-service:3000" in part for part in call) and "--subresource" in call for call in permission_calls)
     assert any("deletecollection" in call and "secrets" in call for call in permission_calls)
     assert any("delete" in call and any("skald-discord-legacy-0123456789abcdef" in part for part in call) for call in permission_calls)
     assert any("impersonate" in call and "serviceaccounts" in call for call in permission_calls)
