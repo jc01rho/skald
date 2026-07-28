@@ -22,7 +22,7 @@ data:
         discord:
           require_mention: true
           auto_thread: true
-          thread_require_mention: false
+          thread_require_mention: true
           history_backfill: true
           history_backfill_limit: 50
           reactions: true
