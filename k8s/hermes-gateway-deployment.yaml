@@ -29,6 +29,33 @@ spec:
                 fsGroup: 10001
                 seccompProfile:
                     type: RuntimeDefault
+            initContainers:
+                - name: sparrow-function-spec
+                  image: HERMES_IMAGE
+                  imagePullPolicy: IfNotPresent
+                  command:
+                      - /bin/bash
+                      - -ec
+                  args:
+                      - |
+                        git -c http.sslVerify=false clone https://gitlab.git.sparrow.local/mcp-servers/functional-spec.git /opt/sparrow-function-spec
+                        git -C /opt/sparrow-function-spec checkout --detach c4b6941b4b7bfb054040960099616019a901e745
+                        test "$(git -C /opt/sparrow-function-spec rev-parse HEAD)" = "c4b6941b4b7bfb054040960099616019a901e745"
+                        cd /opt/sparrow-function-spec
+                        bun install --frozen-lockfile
+                        chown -R 10001:10001 /opt/sparrow-function-spec
+                  securityContext:
+                      runAsNonRoot: false
+                      runAsUser: 0
+                      runAsGroup: 0
+                      allowPrivilegeEscalation: false
+                      readOnlyRootFilesystem: false
+                      capabilities:
+                          drop:
+                              - ALL
+                  volumeMounts:
+                      - name: sparrow-function-spec
+                        mountPath: /opt/sparrow-function-spec
             containers:
                 - name: hermes-gateway
                   image: HERMES_IMAGE
@@ -91,6 +118,8 @@ spec:
                         mountPath: /var/lib/hermes/config.yaml
                         subPath: config.yaml
                         readOnly: true
+                      - name: sparrow-function-spec
+                        mountPath: /opt/sparrow-function-spec
             volumes:
                 - name: hermes-config
                   configMap:
@@ -98,5 +127,7 @@ spec:
                       items:
                           - key: config.yaml
                             path: config.yaml
+                - name: sparrow-function-spec
+                  emptyDir: {}
             restartPolicy: Always
             terminationGracePeriodSeconds: 30

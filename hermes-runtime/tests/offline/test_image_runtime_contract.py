@@ -13,7 +13,10 @@ def test_image_is_pinned_and_runtime_argv_is_exact():
     assert "--platform" not in dockerfile
     assert "sh -c" not in dockerfile
     assert "339d968689a3b91c5f537d7198ff28abde32ab3b" in dockerfile
-    assert "c4b6941b4b7bfb054040960099616019a901e745" in dockerfile
+    assert "c4b6941b4b7bfb054040960099616019a901e745" not in dockerfile
+    assert "git" in dockerfile
+    assert "bash" in dockerfile
+    assert "BUN_VERSION=1.3.14" in dockerfile
     assert "python:3.12.11-slim-bookworm@sha256:" in dockerfile
     assert "BUN_VERSION=1.3.14" in lock
     assert "SPARROW_FUNCTION_SPEC_SOURCE=https://gitlab.git.sparrow.local/mcp-servers/functional-spec.git" in lock
@@ -61,23 +64,38 @@ def test_workflow_runs_all_offline_pytest_and_pins_actions():
         )
 
 
-def test_image_layout_keeps_full_checkouts_and_fixed_mcp_wrapper():
+def test_image_layout_and_runtime_functional_spec_acquisition():
     dockerfile = (ROOT / "Dockerfile").read_text()
+    manifest = (ROOT.parent / "k8s" / "hermes-gateway-deployment.yaml").read_text()
     config = (ROOT / "config" / "config.yaml.example").read_text()
 
+    source = "https://gitlab.git.sparrow.local/mcp-servers/functional-spec.git"
+    revision = "c4b6941b4b7bfb054040960099616019a901e745"
+
     assert 'git clone https://github.com/NousResearch/hermes-agent.git "${HERMES_HOME}/hermes-agent"' in dockerfile
-    public_clone = "git -c http.sslVerify=false clone https://gitlab.git.sparrow.local/mcp-servers/functional-spec.git /opt/sparrow-function-spec"
-    assert public_clone in dockerfile
-    assert dockerfile.count("http.sslVerify=false") == 1
-    assert "GIT_SSL_NO_VERIFY" not in dockerfile
-    assert "git config" not in dockerfile
-    assert "git@gitlab.git.sparrow.local" not in dockerfile
-    assert "--mount=type=ssh" not in dockerfile
-    assert "MCP runtime TLS verification remains unchanged" in dockerfile
-    assert 'git -C /opt/sparrow-function-spec checkout --detach "${SPARROW_FUNCTION_SPEC_REVISION}"' in dockerfile
-    assert 'test "$(git -C /opt/sparrow-function-spec rev-parse HEAD)" = "${SPARROW_FUNCTION_SPEC_REVISION}"' in dockerfile
-    assert "rm -rf /opt/sparrow-function-spec/.git" not in dockerfile
+    assert source not in dockerfile
+    assert revision not in dockerfile
+    assert "http.sslVerify=false" not in dockerfile
     assert "rm -rf \"${HERMES_HOME}/hermes-agent/.git\"" not in dockerfile
+    assert "command: ['hermes']" in manifest
+    assert "args: ['gateway', 'run']" in manifest
+    assert manifest.count("image: HERMES_IMAGE") == 2
+    assert f"git -c http.sslVerify=false clone {source} /opt/sparrow-function-spec" in manifest
+    assert manifest.count("http.sslVerify=false") == 1
+    assert "git@gitlab.git.sparrow.local" not in manifest
+    assert "--mount=type=ssh" not in manifest
+    assert "GIT_SSL_NO_VERIFY" not in manifest
+    assert "git config" not in manifest
+    assert f"git -C /opt/sparrow-function-spec checkout --detach {revision}" in manifest
+    assert f'test "$(git -C /opt/sparrow-function-spec rev-parse HEAD)" = "{revision}"' in manifest
+    assert "bun install --frozen-lockfile" in manifest
+    assert "chown -R 10001:10001 /opt/sparrow-function-spec" in manifest
+    assert manifest.count("name: sparrow-function-spec") == 4
+    assert manifest.count("mountPath: /opt/sparrow-function-spec") == 2
+    assert "emptyDir: {}" in manifest
+    assert "runAsNonRoot: false" in manifest
+    assert "runAsUser: 0" in manifest
+    assert "runAsGroup: 0" in manifest
     assert "command: /bin/bash" in config
     assert "- /opt/sparrow-function-spec/scripts/run-with-auto-update.sh" in config
     assert config.count("sparrow-function-spec:") == 1

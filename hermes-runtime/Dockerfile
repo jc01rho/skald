@@ -3,7 +3,6 @@ ARG PYTHON_BASE=python:3.12.11-slim-bookworm@sha256:c00fc7b44d844b6da22861ec24af
 FROM ${PYTHON_BASE}
 
 ARG HERMES_REVISION=339d968689a3b91c5f537d7198ff28abde32ab3b
-ARG SPARROW_FUNCTION_SPEC_REVISION=c4b6941b4b7bfb054040960099616019a901e745
 ARG BUN_VERSION=1.3.14
 ARG BUN_LINUX_X64_SHA256=951ee2aee855f08595aeec6225226a298d3fea83a3dcd6465c09cbccdf7e848f
 
@@ -34,18 +33,11 @@ RUN git clone https://github.com/NousResearch/hermes-agent.git "${HERMES_HOME}/h
     && uv sync --frozen --no-dev \
     && ln -s "${HERMES_HOME}/hermes-agent/.venv/bin/hermes" /usr/local/bin/hermes
 
-# The internal GitLab certificate requires a clone-local TLS exception. Keep it on
-# this single public source fetch; MCP runtime TLS verification remains unchanged.
-RUN git -c http.sslVerify=false clone https://gitlab.git.sparrow.local/mcp-servers/functional-spec.git /opt/sparrow-function-spec \
-    && git -C /opt/sparrow-function-spec checkout --detach "${SPARROW_FUNCTION_SPEC_REVISION}" \
-    && test "$(git -C /opt/sparrow-function-spec rev-parse HEAD)" = "${SPARROW_FUNCTION_SPEC_REVISION}" \
-    && cd /opt/sparrow-function-spec \
-    && bun install --frozen-lockfile
 
 RUN groupadd --gid 10001 hermes \
     && useradd --uid 10001 --gid hermes --home-dir "${HERMES_HOME}" --shell /usr/sbin/nologin hermes \
     && mkdir -p "${HERMES_HOME}/logs" "${HERMES_HOME}/sessions" "${HERMES_HOME}/skills" \
-    && chown -R hermes:hermes "${HERMES_HOME}" /opt/sparrow-function-spec
+    && chown -R hermes:hermes "${HERMES_HOME}"
 
 WORKDIR ${HERMES_HOME}
 USER 10001:10001
