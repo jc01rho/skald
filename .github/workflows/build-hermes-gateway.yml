@@ -60,7 +60,7 @@ jobs:
 
             - name: Scan image vulnerabilities and secrets
               if: github.event_name != 'pull_request'
-              uses: aquasecurity/trivy-action@dc5a429b52fcf669ce959baa2c2dd26090d2a6c4 # v0.32.0
+              uses: aquasecurity/trivy-action@c07df6fec6fa692e6fd1200d50aaa1fdd66f03c8 # v0.36.0
               with:
                   image-ref: ${{ env.IMAGE_NAME }}:${{ env.IMAGE_TAG }}
                   scanners: vuln,secret

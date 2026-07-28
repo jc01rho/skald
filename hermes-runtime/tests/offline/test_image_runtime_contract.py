@@ -46,7 +46,7 @@ def test_workflow_runs_all_offline_pytest_and_pins_actions():
     action_uses = re.findall(r"^\s*uses:\s*([^\s#]+)", workflow, re.MULTILINE)
     assert action_uses == [
         "actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683",
-        "aquasecurity/trivy-action@dc5a429b52fcf669ce959baa2c2dd26090d2a6c4",
+        "aquasecurity/trivy-action@c07df6fec6fa692e6fd1200d50aaa1fdd66f03c8",
         "anchore/sbom-action@fc46e51fd3cb168ffb36c6d1915723c47db58abb",
         "docker/login-action@74a5d142397b4f367a81961eba4e8cd7edddf772",
     ]
