@@ -1,0 +1,26 @@
+**/.env
+**/.env.*
+!**/.env.example
+**/*secret*
+**/auth.json
+**/sessions/
+**/logs/
+**/__pycache__/
+**/.pytest_cache/
+**/.mypy_cache/
+**/.ruff_cache/
+**/node_modules/
+**/.DS_Store
+**/*~
+**/*.swp
+**/*.swo
+**/coverage/
+**/dist/
+**/test-results/
+.git/
+.github/
+.gjc/
+.omo/
+
+# Upstream .git directories are cloned inside the build; no local Git metadata is
+# sent in the context. They are intentionally retained in the resulting image.

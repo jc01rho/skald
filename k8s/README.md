@@ -1047,6 +1047,57 @@ kubectl get pods,svc,ingress -n skald
 - [MetalLB](https://metallb.universe.tf/)
 - [Local Path Provisioner](https://github.com/rancher/local-path-provisioner)
 
+## Hermes Discord Gateway 운영 계약
+
+### 범위와 런타임
+
+Hermes는 Skald가 빌드하는 Kubernetes 이미지로 운영하며 프로세스 argv는 정확히 `hermes gateway run`입니다. 별도 플래그나 Skald 호환 래퍼를 추가하지 않습니다. Discord ingress, 세션, 메시지 전달, 멘션/스레드/첨부 정책은 Hermes native Discord adapter와 native policy가 정본입니다.
+
+이번 전환은 **functional-spec-only**입니다. 이미지에 고정된 `sparrow-function-spec`만 사용하며, 기존 standalone bot의 general RAG, product filter, reference/citation, preview/progress, streaming/partial-response 동작을 Hermes에서 재현하지 않습니다. 해당 코드는 soak 기간 동안 rollback 용도로 유지하며 삭제하지 않습니다.
+
+readiness는 매니페스트에 정의된 단일 프로세스 probe 범위만 의미합니다. Skald 정책 동등성, MCP 의미 검증, Discord API 세션 단독 소유를 결합한 compound readiness라고 해석하거나 주장하지 않습니다.
+
+### 이미지 발행과 배포 순서
+
+1. 변경을 `commit`합니다.
+2. 원격 저장소에 `push`합니다.
+3. `.github/workflows/build-hermes-gateway.yml` GitHub Actions가 offline test, 이미지 build, vulnerability/secret scan, SPDX SBOM 생성을 완료하고 `ghcr.io/jc01rho/hermes-gateway:<commit-sha>`를 push했는지 확인합니다. 워크플로우는 `latest`를 발행하지 않습니다.
+4. Actions 요약에 기록된 digest를 사용해 `HERMES_IMAGE=ghcr.io/jc01rho/hermes-gateway@sha256:<64hex>`를 설정합니다. `HERMES_IMAGE`는 legacy `IMAGE_TAG`와 독립된 전용 값이며 tag-only 값은 허용하지 않습니다.
+5. `kubectl auth whoami -o json`의 실제 username 또는 group 중 운영자 전용 RBAC에 연결된 값을 `HERMES_DEPLOY_IDENTITY=user:<username>` 또는 `group:<group>`으로 설정합니다. `hermes-deploy-operator-rbac.yaml`의 기본 binding은 `hermes-deploy-operators` group을 사용하며 ServiceAccount impersonation을 사용하지 않습니다. 스크립트는 실제 ambient identity 일치와 모든 required `kubectl auth can-i` grant를 확인한 뒤, Lease create/delete, owner index 또는 snapshot 삭제, ConfigMap/Secret/Deployment/Pod delete-collection, RBAC bind/escalate/impersonate, wildcard resource/verb grant 중 하나라도 실제 credentials에 있으면 mutation 전에 실패합니다. Deployment patch는 scale 전환에 필요해 허용하지만 Lease CAS는 replace/update만 사용하므로 Lease patch는 허용하지 않으며, 각 Kubernetes 명령 전에 identity를 다시 확인합니다.
+6. 전환 목적에 맞게 `HERMES_DEPLOY_MODE=cutover`, `upgrade`, 또는 `rollback`을 설정하고 `./deploy.sh -y`를 실행합니다. 빈 값은 durable active-owner record에 따라 기존 owner lane만 확인/유지합니다. Smoke 단계에서는 배포 출력의 stderr에 정확한 correlation probe가 표시됩니다. `operator_user_ids`에 등록된 운영자가 cutover 중 그 문자열을 변경 없이 대상 Discord 채널에 직접 게시해야 하며, orchestration은 그 운영자 메시지를 확인한 뒤 parent 채널과 auto-thread에서 owner bot 응답을 제한 시간 동안 읽기 전용으로 확인합니다. Bot token으로 probe를 게시하지 않습니다.
+
+Hermes ConfigMap은 `/var/lib/hermes/config.yaml`로 mount됩니다. Secret 값은 로컬 ignored Secret manifest 또는 운영 Secret 관리 경로로 주입하며 문서나 GitHub Actions 입력에 값을 기록하지 않습니다. 확인된 runtime Secret key는 `DISCORD_BOT_TOKEN`, `OPENAI_API_KEY`, `SKALD_API_KEY`, `SKALD_PROJECT_ID`이고, `SKALD_BASE_URL`은 비민감 ConfigMap 값입니다.
+
+### operation lock과 복구
+
+`skald-discord-deploy-operation` Lease는 bootstrap에서 미리 생성하는 **배포 작업 mutex**입니다. expiry, renewal, 자동 takeover가 없으며 runtime readiness나 Discord session fencing이 아닙니다. durable active-owner index와 immutable snapshots가 전환/rollback 권한의 정본이고, Pod 또는 Deployment 존재 여부는 owner 판정 근거가 아닙니다.
+
+비어 있지 않은 Lease holder는 나이나 workload 상태만으로 해제하지 않습니다. Kubernetes write, readback, 또는 release 결과가 모호하면 deploy는 즉시 `RECOVERY_REQUIRED`로 fail closed하고 holder를 유지하며 자동 mutation과 자동 rollback을 중단합니다. 별도 privileged recovery는 originating process/request가 재개되거나 지연 도착할 수 없다는 증거, 유효한 owner/snapshot 검증, lock 하 reconciliation과 correlated smoke, redacted audit를 갖춘 뒤 exact-resourceVersion CAS clear와 empty-holder readback을 수행해야 합니다.
+`hermes-deploy-operator-rbac.yaml`은 장식용 ServiceAccount를 만들지 않습니다. 명시된 사용자/group identity에 직접 bind되는 namespace Role이며, Kubernetes가 `create`에 `resourceNames`를 적용하지 않는 한계 때문에 first-cutover Deployment와 content-addressed snapshot ConfigMap create/get만 resource 범위입니다. 나머지 mutation/read 권한은 transition에서 사용하는 exact resource name으로 제한됩니다. Role은 workload scale용 named Deployment patch를 유지하고 operation Lease에는 exact-name get/update만 부여하며 create/delete/patch, authority 삭제, delete-collection, RBAC privilege delegation, impersonation, wildcard grant를 부여하지 않습니다.
+
+### cutover, rollback, soak
+
+- **Cutover:** legacy authority와 health/smoke를 확인하고 snapshot/index를 기록한 뒤 legacy를 중지하고 Hermes를 시작합니다. stop 이후의 결론적인 실패는 retained legacy snapshot을 복원하고 smoke합니다. 결과가 모호하면 자동 복원이 아니라 `RECOVERY_REQUIRED`입니다.
+- **Upgrade:** 현재 Hermes owner와 이전 immutable Hermes snapshot이 필요합니다. 결론적인 실패 시 그 exact snapshot으로 복원합니다.
+- **Rollback:** Hermes owner에서 retained legacy를 복원/smoke한 뒤 durable owner를 legacy로 게시합니다. 이미 legacy owner이면 검증만 수행하는 idempotent 경로입니다.
+- **Soak:** Hermes 운영 지표와 native Discord 동작을 관찰하는 동안 legacy image, manifests, compatible config/Secret contract, snapshot을 rollback-only로 보존합니다. legacy 삭제/decommission은 별도 승인 전에는 금지됩니다.
+
+동일 production Discord token으로 Hermes와 legacy bot을 동시에 실행하지 않습니다.
+
+### 명시적으로 수용된 잔여 위험
+
+아래 항목은 이번 변경으로 해결되었다고 주장하지 않으며, 이 migration에서 의도적으로 수용한 잔여 위험입니다.
+
+- 정확한 `hermes gateway run`은 multi-platform gateway process로 동작합니다.
+- Hermes native Discord policy가 정본이며 legacy Skald policy parity를 보장하지 않습니다.
+- compound authorization/readiness proof와 Discord API session-exclusivity proof가 없습니다.
+- native attachment와 message-delivery 동작은 legacy bot과 다를 수 있습니다.
+- `sparrow-function-spec`의 현재 credential 처리, TLS bypass/default, updater/install 동작은 변경하지 않습니다.
+- Calico, NetworkPolicy, proxy, firewall, DNS, 일반 cluster egress를 변경하거나 강화하지 않습니다.
+- 모호하거나 abandoned deployment operation은 감사된 수동 recovery가 끝날 때까지 무기한 배포를 잠글 수 있습니다.
+
+이 목록은 remediation 완료 목록이 아닙니다. 별도 승인된 후속 작업만 해당 위험을 변경할 수 있습니다.
+
 ---
 
 ## 부록: 빠른 시작 스크립트

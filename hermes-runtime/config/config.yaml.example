@@ -1,0 +1,30 @@
+# Non-secret runtime settings. Credentials are supplied only through container
+# environment variables; do not copy them into this file.
+model:
+  provider: custom
+  default: your-openai-compatible-model
+  base_url: ${OPENAI_BASE_URL}
+
+terminal:
+  cwd: /var/lib/hermes
+
+# Hermes native Discord policy is authoritative for this migration.
+discord:
+  require_mention: true
+  auto_thread: true
+  thread_require_mention: false
+  history_backfill: true
+  history_backfill_limit: 50
+  reactions: true
+
+# Functional-spec-only tool surface: exactly one unchanged MCP checkout/wrapper.
+platform_toolsets:
+  discord:
+    - sparrow-function-spec
+
+mcp_servers:
+  sparrow-function-spec:
+    command: /bin/bash
+    args:
+      - /opt/sparrow-function-spec/scripts/run-with-auto-update.sh
+    enabled: true

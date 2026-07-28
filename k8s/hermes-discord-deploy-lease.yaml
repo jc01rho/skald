@@ -1,0 +1,10 @@
+apiVersion: coordination.k8s.io/v1
+kind: Lease
+metadata:
+    name: skald-discord-deploy-operation
+    namespace: skald
+    labels:
+        app: skald
+        component: hermes-deploy-operation
+spec:
+    holderIdentity: ''

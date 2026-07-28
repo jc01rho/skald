@@ -34,6 +34,11 @@ NAMESPACE="skald"
 IMAGE_TAG="${IMAGE_TAG:-latest}"
 UI_IMAGE_TAG="${UI_IMAGE_TAG:-$IMAGE_TAG}"
 DOCKER_REGISTRY="${DOCKER_REGISTRY:-ghcr.io/jc01rho}"
+HERMES_IMAGE="${HERMES_IMAGE:-}"
+HERMES_DEPLOY_MODE="${HERMES_DEPLOY_MODE:-}"
+HERMES_DEPLOY_IDENTITY="${HERMES_DEPLOY_IDENTITY:-}"
+RETENTION_ACTIVE="${RETENTION_ACTIVE:-true}"
+
 echo "DOCKER_REGISTRY : $DOCKER_REGISTRY"
 SKIP_INGRESS="${SKIP_INGRESS:-false}"
 
@@ -792,6 +797,34 @@ deploy_worker() {
 }
 
 # Step 7.6: Discord Bot 배포
+# Hermes/legacy Discord owner dispatch. Durable owner state is authoritative;
+# workload existence is never used to choose an owner.
+deploy_discord_owner() {
+    local state_command=(python3 hermes/deploy_state.py dispatch --mode "$HERMES_DEPLOY_MODE")
+    local result
+
+    if ! result=$(NAMESPACE="$NAMESPACE" HERMES_IMAGE="$HERMES_IMAGE" HERMES_DEPLOY_IDENTITY="$HERMES_DEPLOY_IDENTITY" "${state_command[@]}"); then
+        log_error "Discord owner orchestration failed; see sanitized hermes_deploy diagnostics"
+        return 1
+    fi
+
+    case "$result" in
+        legacy)
+            deploy_discord_bot
+            ;;
+        skip)
+            log_info "discord_owner=hermes action=skip_legacy ordinary_deploy=true"
+            ;;
+        managed)
+            log_success "Hermes Discord owner transition completed"
+            ;;
+        *)
+            log_error "Invalid Discord owner dispatch result"
+            return 1
+            ;;
+    esac
+}
+
 deploy_discord_bot() {
     log_info "Step 7.6: Discord Bot 배포"
 
@@ -1334,53 +1367,31 @@ undeploy_pvcs() {
     fi
 }
 
-# 언디플로이: ConfigMap 및 Secret 삭제
-undeploy_configs() {
-    log_info "Step 8: ConfigMap 및 Secret 삭제 중..."
-    
-    # ConfigMap 삭제
+# 언디플로이: retention-safe non-Discord ConfigMap 및 Secret 삭제
+undeploy_non_discord_configs() {
+    log_info "Step 8: non-Discord ConfigMap 및 Secret 삭제 중..."
+
     if kubectl delete configmap skald-config -n "$NAMESPACE" --ignore-not-found=true; then
-        log_success "ConfigMap 삭제 완료"
+        log_success "Skald ConfigMap 삭제 완료"
     else
-        log_error "ConfigMap 삭제 실패"
+        log_error "Skald ConfigMap 삭제 실패"
         return 1
     fi
-    
-    # 초기화 스크립트 ConfigMap 삭제
+
     if kubectl delete configmap init-scripts -n "$NAMESPACE" --ignore-not-found=true; then
         log_success "초기화 스크립트 ConfigMap 삭제 완료"
     else
         log_error "초기화 스크립트 ConfigMap 삭제 실패"
         return 1
     fi
-    
-    # Secret 삭제
+
     if kubectl delete secret skald-secret -n "$NAMESPACE" --ignore-not-found=true; then
-        log_success "Secret 삭제 완료"
+        log_success "Skald Secret 삭제 완료"
     else
-        log_error "Secret 삭제 실패"
+        log_error "Skald Secret 삭제 실패"
         return 1
     fi
 }
-
-# 언디플로이: 네임스페이스 삭제
-undeploy_namespace() {
-    # KEEP_DATA=true일 때는 네임스페이스 삭제 건너뛰기 (PVC 보존)
-    if [ "$KEEP_DATA" = "true" ]; then
-        log_info "Step 9: 네임스페이스 삭제 건너뜀 (KEEP_DATA=true, 데이터 유지)"
-        return 0
-    fi
-    
-    log_info "Step 9: 네임스페이스 삭제 중..."
-    
-    if kubectl delete namespace "$NAMESPACE" --ignore-not-found=true; then
-        log_success "네임스페이스 '$NAMESPACE' 삭제 완료"
-    else
-        log_error "네임스페이스 삭제 실패"
-        return 1
-    fi
-}
-
 # 언디플로이: Traefik 삭제
 undeploy_traefik() {
     log_info "Step 0: Traefik Ingress Controller 삭제 중..."
@@ -1417,6 +1428,35 @@ undeploy_traefik() {
 }
 
 # 언디플로이 함수
+# Retention-safe undeploy uses only the explicit non-Discord cleanup calls below.
+# Both Discord owner lanes, their Secrets, ConfigMaps, workloads and Services,
+# the durable owner index, immutable snapshots, operation Lease, RBAC, and the
+# namespace are outside this allowlist and remain untouched.
+undeploy_retained() {
+    log_info "Discord owner retention is active; preserving rollback authority"
+    if NAMESPACE="$NAMESPACE" HERMES_DEPLOY_IDENTITY="$HERMES_DEPLOY_IDENTITY" python3 hermes/deploy_state.py retained-undeploy; then
+        :
+    else
+        local state_result=$?
+        log_error "Retained undeploy state transition failed; no cleanup was attempted"
+        return "$state_result"
+    fi
+
+    undeploy_traefik || log_warning "Traefik 삭제 중 오류 발생"
+    undeploy_ingress || log_warning "Ingress 삭제 중 오류 발생"
+    undeploy_ui || log_warning "UI 리소스 삭제 중 오류 발생"
+    undeploy_ai_services || log_warning "AI 서비스 삭제 중 오류 발생"
+    undeploy_worker || log_warning "Worker 리소스 삭제 중 오류 발생"
+    undeploy_backend || log_warning "Backend 리소스 삭제 중 오류 발생"
+    undeploy_rabbitmq || log_warning "RabbitMQ 리소스 삭제 중 오류 발생"
+    undeploy_redis || log_warning "Redis 리소스 삭제 중 오류 발생"
+    undeploy_postgres || log_warning "PostgreSQL 리소스 삭제 중 오류 발생"
+    undeploy_pvcs || log_warning "PVC 삭제 중 오류 발생"
+    undeploy_non_discord_configs || log_warning "Non-Discord ConfigMap/Secret 삭제 중 오류 발생"
+
+    log_success "Skald 애플리케이션 언디플로이가 완료되었습니다 (Discord retention active)"
+}
+
 undeploy() {
     echo -e "${BLUE}========================================${NC}"
     echo -e "${BLUE}    Skald Kubernetes 언디플로이 스크립트${NC}"
@@ -1430,167 +1470,11 @@ undeploy() {
     echo
     
     show_undeploy_confirmation
-    
-    # 삭제 순서: Traefik -> Ingress -> UI -> AI 서비스 -> Worker -> Discord Bot -> Backend -> RabbitMQ -> Redis -> PostgreSQL -> ReplicaSets -> PVC -> Configs -> Namespace
-    undeploy_traefik || log_warning "Traefik 삭제 중 오류 발생"
-    undeploy_ingress || log_warning "Ingress 삭제 중 오류 발생"
-    undeploy_ui || log_warning "UI 리소스 삭제 중 오류 발생"
-    undeploy_ai_services || log_warning "AI 서비스 삭제 중 오류 발생"
-    undeploy_worker || log_warning "Worker 리소스 삭제 중 오류 발생"
-    undeploy_discord_bot || log_warning "Discord Bot 리소스 삭제 중 오류 발생"
-    undeploy_backend || log_warning "Backend 리소스 삭제 중 오류 발생"
-    undeploy_rabbitmq || log_warning "RabbitMQ 리소스 삭제 중 오류 발생"
-    undeploy_redis || log_warning "Redis 리소스 삭제 중 오류 발생"
-    undeploy_postgres || log_warning "PostgreSQL 리소스 삭제 중 오류 발생"
-    undeploy_replicasets || log_warning "ReplicaSet 삭제 중 오류 발생"
-    undeploy_pvcs || log_warning "PVC 삭제 중 오류 발생"
-    
-    # StatefulSet에서 생성된 PVC 삭제 (volumeClaimTemplates로 생성된 PVC들)
-    if [ "$KEEP_DATA" = "false" ]; then
-        log_info "StatefulSet에서 생성된 PVC 삭제 중..."
-        
-        # PostgreSQL 관련 PVC 삭제 (레이블 기반)
-        postgres_pvcs=$(kubectl get pvc -n "$NAMESPACE" -l "app.kubernetes.io/instance=postgres" -o name 2>/dev/null || echo "")
-        if [ -n "$postgres_pvcs" ]; then
-            log_info "PostgreSQL 관련 PVC 삭제 중..."
-            echo "$postgres_pvcs" | while read -r pvc; do
-                if [ -n "$pvc" ]; then
-                    pvc_name=${pvc#persistentvolumeclaim/}
-                    if kubectl delete "$pvc" -n "$NAMESPACE" 2>/dev/null; then
-                        log_success "PostgreSQL PVC '$pvc_name' 삭제 완료"
-                    else
-                        log_error "PostgreSQL PVC '$pvc_name' 삭제 실패"
-                    fi
-                fi
-            done
-        else
-            log_info "PostgreSQL 관련 PVC를 찾을 수 없습니다"
-        fi
-        
-        # RabbitMQ 관련 PVC 삭제 (레이블 기반)
-        rabbitmq_pvcs=$(kubectl get pvc -n "$NAMESPACE" -l "app.kubernetes.io/instance=rabbitmq" -o name 2>/dev/null || echo "")
-        if [ -n "$rabbitmq_pvcs" ]; then
-            log_info "RabbitMQ 관련 PVC 삭제 중..."
-            echo "$rabbitmq_pvcs" | while read -r pvc; do
-                if [ -n "$pvc" ]; then
-                    pvc_name=${pvc#persistentvolumeclaim/}
-                    if kubectl delete "$pvc" -n "$NAMESPACE" 2>/dev/null; then
-                        log_success "RabbitMQ PVC '$pvc_name' 삭제 완료"
-                    else
-                        log_error "RabbitMQ PVC '$pvc_name' 삭제 실패"
-                    fi
-                fi
-            done
-        else
-            log_info "RabbitMQ 관련 PVC를 찾을 수 없습니다"
-        fi
-        
-        # 삭제 확인
-        log_info "PVC 삭제 확인 중..."
-        remaining_pvcs=$(kubectl get pvc -n "$NAMESPACE" -o name 2>/dev/null || echo "")
-        if [ -n "$remaining_pvcs" ]; then
-            log_warning "삭제되지 않은 PVC 목록:"
-            echo "$remaining_pvcs" | while read -r pvc; do
-                if [ -n "$pvc" ]; then
-                    pvc_name=${pvc#persistentvolumeclaim/}
-                    pvc_status=$(kubectl get "$pvc" -n "$NAMESPACE" -o jsonpath='{.status.phase}' 2>/dev/null || echo "Unknown")
-                    echo "  - $pvc_name (상태: $pvc_status)"
-                    
-                    # 강제 삭제 시도
-                    log_info "강제 삭제 시도: $pvc_name"
-                    kubectl delete "$pvc" -n "$NAMESPACE" --force --grace-period=0 2>/dev/null || true
-                fi
-            done
-        else
-            log_success "모든 PVC가 삭제되었습니다"
-        fi
+    if [ "$RETENTION_ACTIVE" != "true" ]; then
+        log_error "Discord owner decommission requires a separately approved operation; ordinary undeploy is retention-only"
+        return 1
     fi
-    
-    # 남아있는 Pod 강제 종료
-    log_info "남아있는 Pod 확인 및 강제 종료 중..."
-    remaining_pods=$(kubectl get pods -n "$NAMESPACE" -o name 2>/dev/null || echo "")
-    if [ -n "$remaining_pods" ]; then
-        log_warning "삭제되지 않은 Pod 목록:"
-        echo "$remaining_pods" | while read -r pod; do
-            if [ -n "$pod" ]; then
-                # pod/name 형식에서 name만 추출
-                pod_name=${pod#pod/}
-                
-                # 상태 확인 (실패 시 무시)
-                pod_status=$(kubectl get "$pod" -n "$NAMESPACE" -o jsonpath='{.status.phase}' 2>/dev/null || echo "Unknown")
-                echo "  - $pod_name (상태: $pod_status)"
-                
-                # 강제 삭제 시도
-                log_info "강제 삭제 시도: $pod_name"
-                kubectl delete "$pod" -n "$NAMESPACE" --force --grace-period=0 2>/dev/null || true
-            fi
-        done
-        
-        # 삭제 확인
-        sleep 5
-        remaining_pods_after=$(kubectl get pods -n "$NAMESPACE" -o name 2>/dev/null || echo "")
-        if [ -n "$remaining_pods_after" ]; then
-            log_warning "여전히 삭제되지 않은 Pod이 존재합니다:"
-            echo "$remaining_pods_after" | while read -r pod; do
-                if [ -n "$pod" ]; then
-                    pod_name=${pod#pod/}
-                    pod_status=$(kubectl get "$pod" -n "$NAMESPACE" -o jsonpath='{.status.phase}' 2>/dev/null || echo "Unknown")
-                    echo "  - $pod_name (상태: $pod_status)"
-                fi
-            done
-        else
-            log_success "모든 Pod이 삭제되었습니다"
-        fi
-    else
-        log_success "남아있는 Pod이 없습니다"
-    fi
-    
-    # ConfigMap 및 Secret 삭제
-    undeploy_configs || log_warning "ConfigMap/Secret 삭제 중 오류 발생"
-    
-    # 남아있는 StatefulSet이 있는지 확인 및 정리
-    log_info "남아있는 StatefulSet/Deployment/ReplicaSet 확인 및 정리 중..."
-    remaining_deployments=$(kubectl get deployments -n "$NAMESPACE" -o name 2>/dev/null || echo "")
-    remaining_statefulsets=$(kubectl get statefulsets -n "$NAMESPACE" -o name 2>/dev/null || echo "")
-    remaining_replicasets=$(kubectl get replicasets -n "$NAMESPACE" -o name 2>/dev/null || echo "")
-
-    if [ -n "$remaining_deployments" ] || [ -n "$remaining_statefulsets" ] || [ -n "$remaining_replicasets" ]; then
-        log_warning "삭제되지 않은 컨트롤러 리소스 발견 - 강제 정리 시도"
-        kubectl delete deployments,daemonsets,replicasets,statefulsets --all -n "$NAMESPACE" --force --grace-period=0 --ignore-not-found=true
-        log_success "남아있는 컨트롤러 리소스 강제 정리 완료"
-    else
-        log_success "모든 컨트롤러 리소스가 정상적으로 삭제되었습니다"
-    fi
-
-    # 네임스페이스의 모든 리소스 확인 및 삭제
-    log_info "네임스페이스 '$NAMESPACE'의 모든 리소스 확인 중..."
-    all_resources=$(kubectl api-resources --verbs=delete --namespaced -o name | tr '\n' ',' | sed 's/,$//')
-    
-    if [ -n "$all_resources" ]; then
-        log_warning "네임스페이스 '$NAMESPACE'에 남아있는 모든 리소스를 삭제합니다..."
-        if kubectl delete $all_resources --all -n "$NAMESPACE" --ignore-not-found=true; then
-            log_success "네임스페이스의 모든 리소스 삭제 완료"
-        else
-            log_warning "일부 리소스 삭제 중 오류 발생"
-        fi
-    fi
-    
-    # 네임스페이스 삭제
-    log_warning "네임스페이스 '$NAMESPACE'를 삭제합니다. 이 작업은 되돌릴 수 없습니다."
-    if [ "$FORCE_UNDEPLOY" = "false" ] && [ "$FORCE_YES" = "false" ]; then
-        read -p "네임스페이스를 삭제하시겠습니까? (yes/no): " -r
-        echo
-        if [[ ! $REPLY =~ ^[yY][eE][sS]$ ]]; then
-            log_info "네임스페이스 삭제를 취소합니다."
-            log_info "네임스페이스를 수동으로 삭제하려면 다음 명령어를 사용하세요:"
-            echo "  kubectl delete namespace $NAMESPACE"
-            return 0
-        fi
-    fi
-    
-    undeploy_namespace || log_warning "네임스페이스 삭제 중 오류 발생"
-    
-    log_success "Skald 애플리케이션 언디플로이가 완료되었습니다!"
+    undeploy_retained
 }
 
 # 메인 함수
@@ -1608,6 +1492,10 @@ main() {
         echo "  네임스페이스: $NAMESPACE"
         echo "  이미지 태그: $IMAGE_TAG"
         echo "  UI 이미지 태그: $UI_IMAGE_TAG"
+        if [ -n "$HERMES_IMAGE" ]; then
+            echo "  Hermes image: $HERMES_IMAGE"
+        fi
+        echo "  Hermes mode: ${HERMES_DEPLOY_MODE:-ordinary-owner-dispatch}"
         echo "  도커 레지스트리: $DOCKER_REGISTRY"
         echo "  Ingress 건너뛰기: $SKIP_INGRESS"
         echo
@@ -1635,7 +1523,7 @@ main() {
         deploy_backend
         deploy_ai_services
         deploy_worker
-        deploy_discord_bot
+        deploy_discord_owner
         deploy_frontend
         deploy_ingress
         verify_deployment
@@ -1676,6 +1564,10 @@ show_help() {
     echo "환경변수:"
     echo "  IMAGE_TAG              공통 이미지 태그 (기본값: latest)"
     echo "  UI_IMAGE_TAG           UI 전용 이미지 태그 (기본값: IMAGE_TAG 값)"
+    echo "  HERMES_IMAGE          Hermes full immutable image digest (required for cutover/upgrade)"
+    echo "  HERMES_DEPLOY_MODE    unset, cutover, upgrade, or rollback"
+    echo "  HERMES_DEPLOY_IDENTITY required user:<username> or group:<group> from kubectl auth whoami"
+    echo "  RETENTION_ACTIVE      preserve Discord rollback authority on undeploy (default: true)"
     echo "  DOCKER_REGISTRY        도커 레지스트리 (기본값: ghcr.io/skaldlabs)"
     echo "  SKIP_INGRESS           Ingress 건너뛰기 (기본값: false)"
     echo "  ENV_FILE              환경 변수 파일 경로 (기본값: .env.prod)"

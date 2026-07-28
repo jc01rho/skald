@@ -377,6 +377,26 @@ LOG_LEVEL=info
 
 ---
 
+## Hermes 전환 상태
+
+이 디렉터리의 Node/Discord.js bot은 Hermes production cutover 이후 **rollback-only**입니다. soak 기간에는 이미지, Kubernetes manifest, compatible ConfigMap/Secret contract와 소스를 유지하며 삭제하지 않습니다. 별도 decommission 승인 전에는 production 기능을 이 코드에 추가하거나 Hermes와 같은 production Discord token으로 동시에 실행하지 않습니다.
+
+Production 목표는 Skald-owned Kubernetes Hermes 이미지이며 실행 argv는 정확히 `hermes gateway run`입니다. Discord 멘션, 스레드, 첨부, 메시지 전달 정책은 Hermes native Discord policy가 정본입니다. 기존 bot의 general RAG, product filter, reference/citation, preview/progress, streaming/partial-response 동작은 functional-spec-only Hermes scope에서 의도적으로 parity 대상이 아닙니다. readiness도 이 기존 동작을 묶어 검증하는 compound readiness가 아닙니다.
+
+운영 순서는 `commit` → `push` → `.github/workflows/build-hermes-gateway.yml` Actions 성공과 digest 확인 → immutable `HERMES_IMAGE=...@sha256:...` 설정 → `HERMES_DEPLOY_MODE=cutover|upgrade|rollback`으로 `k8s/deploy.sh -y` 실행입니다. tag-only 이미지나 `latest`는 Hermes 배포 입력으로 사용하지 않습니다.
+
+Cutover/upgrade/rollback은 precreated non-expiring operation Lease, durable active-owner index, immutable snapshots를 사용합니다. 모호한 Kubernetes write/readback/release는 `RECOVERY_REQUIRED`로 fail closed하며 자동 rollback이나 lock clear를 하지 않습니다. recovery는 privileged audit 절차가 필요합니다. Hermes soak 중 결론적인 장애에는 retained legacy snapshot으로 rollback할 수 있지만, legacy workload는 평상시 production owner가 아닙니다.
+
+### 수용된 잔여 위험
+
+다음 항목은 해결되었다는 의미가 아니라 명시적으로 수용한 범위입니다.
+
+- Hermes native policy와 native attachment/message behavior는 legacy bot과 다를 수 있습니다.
+- compound policy/readiness 및 Discord API session-exclusivity proof는 제공하지 않습니다.
+- `sparrow-function-spec`의 credential 처리, TLS bypass/default, updater/install 동작은 변경하지 않습니다.
+- Calico, NetworkPolicy, proxy 및 cluster egress는 변경하지 않습니다.
+- abandoned 또는 ambiguous operation은 audited manual recovery까지 배포를 무기한 잠글 수 있습니다.
+
 ## 참고 자료
 
 - [Discord.js Guide](https://discordjs.guide/)

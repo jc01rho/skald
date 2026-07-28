@@ -5,7 +5,7 @@
 
 ## OVERVIEW
 
-Root `k8s/` owns live runtime manifests and deployment orchestration. Worker config/secret source manifests are under `worker/k8s/`, but deploy fallbacks apply them from here.
+Root `k8s/` owns live runtime manifests and deployment orchestration. Worker config/secret source manifests are under `worker/k8s/`, but deploy fallbacks apply them from here. Hermes is the production Discord target; the standalone bot remains rollback-only through soak.
 
 ## WHERE TO LOOK
 
@@ -20,17 +20,24 @@ Root `k8s/` owns live runtime manifests and deployment orchestration. Worker con
 | Worker config fallbacks | `worker-configmap.yaml`, `worker-secret*.yaml` | root fallback consumes `worker/k8s` source intent |
 | Embedding service | `embedding-service-*.yaml` | embeddings/rerank/chat proxy microservice |
 | Discord bot | `discord-bot-*.yaml` | Discord mention integration deployment/config/secret |
+| Hermes gateway | `hermes-gateway-*`, `hermes-discord-deploy-lease.yaml`, `hermes-deploy-operator-rbac.yaml`, `hermes/` | immutable native Discord gateway, operation mutex, durable recovery |
 | Datastores | `postgres-*`, `redis-*`, `rabbitmq-*` | PVC-backed stateful dependencies |
 | Secrets | `secret.yaml`, `secret.yaml.example`, `secret.local.yaml` | root app secrets; local files ignored |
 
 ## CONVENTIONS
 
-- Deployment order is `commit` → `push` → GitHub Actions build 확인 → `./deploy.sh -y`.
+- Deployment order is `commit` → `push` → GitHub Actions build/digest 확인 → set immutable `HERMES_IMAGE` → `./deploy.sh -y` with the intended `HERMES_DEPLOY_MODE`.
 - `deploy.sh` still requires root app secret `k8s/secret.yaml`; worker local secret does not satisfy this.
 - Local secret manifests (`*.local.yaml`) are preferred for live credentials and must stay ignored.
 - Worker Deployment reads `skald-worker-config` and `skald-worker-secrets` via `envFrom`; after live config changes, restart `deployment/skald-worker`.
 - `wiki-processing-deployment.yaml` must set both `WIKI_ENABLED=true` and `WIKI_COMPILE_ON_MEMO_PROCESS=true`.
 - Mutable image tags require explicit rollout/restart; `kubectl apply` alone may not create new Pods.
+- Hermes Pod argv is exactly `hermes gateway run`; do not add flags, wrappers, compound readiness, or Skald policy-parity gates.
+- `HERMES_IMAGE` is a dedicated required `registry/repository@sha256:<64hex>` reference and is independent of legacy `IMAGE_TAG`.
+- The precreated `skald-discord-deploy-operation` Lease is a non-expiring deploy-operation mutex, not runtime/session fencing. A nonempty or ambiguous operation blocks until privileged audited recovery.
+- Durable active-owner and immutable snapshot records are rollback authority; workload existence is not.
+- Hermes uses native Discord policy with functional-spec-only `sparrow-function-spec`; its existing credential/TLS/updater/install behavior and current Calico/egress posture are intentionally unchanged accepted risks.
+- Never run Hermes and the legacy bot as simultaneous production token owners. Retain legacy manifests/image/config compatibility for rollback through soak.
 
 ## ANTI-PATTERNS
 
@@ -39,8 +46,11 @@ Root `k8s/` owns live runtime manifests and deployment orchestration. Worker con
 - Do not place proxy base URLs in Secret; base URLs belong in ConfigMap, proxy keys in local Secret.
 - Do not assume `NOTION_TOKEN` is injected by `deploy.sh`; it must exist in live worker secret/config.
 - Do not deploy without resource limits for app/datastore containers.
+- Never clear or recreate the Hermes operation Lease based on age, Pod state, or an automated retry after `RECOVERY_REQUIRED`.
+- Never claim compound readiness, Skald Discord/RAG parity, Discord session exclusivity, MCP hardening, or Calico/egress remediation.
 
 ## NOTES
 
 - GitHub Actions image builds live in `.github/workflows/build-*.yml`.
 - Discord bot local secret resolution applies `k8s/discord-bot-secret.local.yaml` before tracked template files.
+- Hermes image builds live in `.github/workflows/build-hermes-gateway.yml` and publish commit-tagged images resolved to immutable digests; no `latest` tag is published.

@@ -1,0 +1,100 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+    name: hermes-gateway
+    namespace: skald
+    labels:
+        app: skald
+        component: hermes-gateway
+spec:
+    replicas: 1
+    strategy:
+        type: Recreate
+    selector:
+        matchLabels:
+            component: hermes-gateway
+    template:
+        metadata:
+            labels:
+                app: skald
+                component: hermes-gateway
+        spec:
+            automountServiceAccountToken: false
+            securityContext:
+                runAsNonRoot: true
+                runAsUser: 10001
+                runAsGroup: 10001
+                fsGroup: 10001
+                seccompProfile:
+                    type: RuntimeDefault
+            containers:
+                - name: hermes-gateway
+                  image: HERMES_IMAGE
+                  imagePullPolicy: IfNotPresent
+                  command: ['hermes']
+                  args: ['gateway', 'run']
+                  stdin: false
+                  tty: false
+                  env:
+                      - name: DISCORD_BOT_TOKEN
+                        valueFrom:
+                            secretKeyRef:
+                                name: hermes-gateway-secrets
+                                key: DISCORD_BOT_TOKEN
+                      - name: OPENAI_API_KEY
+                        valueFrom:
+                            secretKeyRef:
+                                name: hermes-gateway-secrets
+                                key: OPENAI_API_KEY
+                      - name: OPENAI_BASE_URL
+                        valueFrom:
+                            configMapKeyRef:
+                                name: hermes-gateway-config
+                                key: OPENAI_BASE_URL
+                      - name: OPENAI_MODEL
+                        valueFrom:
+                            configMapKeyRef:
+                                name: hermes-gateway-config
+                                key: OPENAI_MODEL
+                      - name: SKALD_API_KEY
+                        valueFrom:
+                            secretKeyRef:
+                                name: hermes-gateway-secrets
+                                key: SKALD_API_KEY
+                      - name: SKALD_PROJECT_ID
+                        valueFrom:
+                            secretKeyRef:
+                                name: hermes-gateway-secrets
+                                key: SKALD_PROJECT_ID
+                      - name: SKALD_BASE_URL
+                        valueFrom:
+                            configMapKeyRef:
+                                name: hermes-gateway-config
+                                key: SKALD_BASE_URL
+                  resources:
+                      requests:
+                          cpu: '250m'
+                          memory: '512Mi'
+                      limits:
+                          cpu: '1'
+                          memory: '1Gi'
+                  securityContext:
+                      allowPrivilegeEscalation: false
+                      readOnlyRootFilesystem: false
+                      capabilities:
+                          drop:
+                              - ALL
+                  volumeMounts:
+                      - name: hermes-config
+                        mountPath: /var/lib/hermes/config.yaml
+                        subPath: config.yaml
+                        readOnly: true
+            volumes:
+                - name: hermes-config
+                  configMap:
+                      name: hermes-gateway-config
+                      items:
+                          - key: config.yaml
+                            path: config.yaml
+            restartPolicy: Always
+            terminationGracePeriodSeconds: 30
