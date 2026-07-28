@@ -13,7 +13,7 @@ ENV HERMES_HOME=/var/lib/hermes \
     PYTHONUNBUFFERED=1
 
 RUN apt-get update \
-    && apt-get install --yes --no-install-recommends bash ca-certificates curl git openssh-client unzip \
+    && apt-get install --yes --no-install-recommends bash ca-certificates curl git unzip \
     && rm -rf /var/lib/apt/lists/*
 
 RUN curl --fail --location --silent --show-error \
@@ -34,17 +34,13 @@ RUN git clone https://github.com/NousResearch/hermes-agent.git "${HERMES_HOME}/h
     && uv sync --frozen --no-dev \
     && ln -s "${HERMES_HOME}/hermes-agent/.venv/bin/hermes" /usr/local/bin/hermes
 
-# The MCP repository is private. BuildKit forwards an SSH agent for clone only;
-# credentials are never copied into a layer. Its existing wrapper remains unchanged.
-RUN --mount=type=ssh,required=true \
-    mkdir -p -m 0700 /root/.ssh \
-    && ssh-keyscan gitlab.git.sparrow.local > /root/.ssh/known_hosts \
-    && git clone git@gitlab.git.sparrow.local:mcp-servers/functional-spec.git /opt/sparrow-function-spec \
+# The internal GitLab certificate requires a clone-local TLS exception. Keep it on
+# this single public source fetch; MCP runtime TLS verification remains unchanged.
+RUN git -c http.sslVerify=false clone https://gitlab.git.sparrow.local/mcp-servers/functional-spec.git /opt/sparrow-function-spec \
     && git -C /opt/sparrow-function-spec checkout --detach "${SPARROW_FUNCTION_SPEC_REVISION}" \
     && test "$(git -C /opt/sparrow-function-spec rev-parse HEAD)" = "${SPARROW_FUNCTION_SPEC_REVISION}" \
     && cd /opt/sparrow-function-spec \
-    && bun install --frozen-lockfile \
-    && rm -rf /root/.ssh
+    && bun install --frozen-lockfile
 
 RUN groupadd --gid 10001 hermes \
     && useradd --uid 10001 --gid hermes --home-dir "${HERMES_HOME}" --shell /usr/sbin/nologin hermes \

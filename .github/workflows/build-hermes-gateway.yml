@@ -48,22 +48,9 @@ jobs:
             - name: Run offline runtime and deployment tests
               run: python -m pytest hermes-runtime/tests/offline k8s/tests -v
 
-            - name: Load GitLab deploy key
-              if: github.event_name != 'pull_request'
-              uses: webfactory/ssh-agent@dc588b651fe13675774614f8e6a936a468676387 # v0.9.0
-              with:
-                  ssh-private-key: ${{ secrets.HERMES_GITLAB_DEPLOY_KEY }}
-
-            - name: Trust private GitLab host
-              if: github.event_name != 'pull_request'
-              run: |
-                  install -d -m 0700 "$HOME/.ssh"
-                  ssh-keyscan -H gitlab.git.sparrow.local >> "$HOME/.ssh/known_hosts"
-                  chmod 0600 "$HOME/.ssh/known_hosts"
-
             - name: Build immutable commit image
               if: github.event_name != 'pull_request'
-              run: docker build --pull --ssh default --file hermes-runtime/Dockerfile --tag "${IMAGE_NAME}:${IMAGE_TAG}" hermes-runtime
+              run: docker build --pull --file hermes-runtime/Dockerfile --tag "${IMAGE_NAME}:${IMAGE_TAG}" hermes-runtime
 
             - name: Verify image command
               if: github.event_name != 'pull_request'
