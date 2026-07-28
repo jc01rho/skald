@@ -45,6 +45,15 @@ def manifest(name="candidate", data=None):
     return yaml.safe_dump({"apiVersion": "v1", "kind": "ConfigMap", "metadata": {"name": name, "namespace": "skald"}, "data": data or {"key": "value"}})
 
 
+def test_get_json_only_treats_not_found_as_missing(monkeypatch):
+    state = load_state()
+    monkeypatch.setattr(state, "kubectl", lambda *args, **kwargs: SimpleNamespace(returncode=1, stdout=b"", stderr=b'Error from server (NotFound): missing'))
+    assert state.get_json("deployment", "missing", allow_missing=True) is None
+    monkeypatch.setattr(state, "kubectl", lambda *args, **kwargs: SimpleNamespace(returncode=1, stdout=b"", stderr=b"Forbidden"))
+    with pytest.raises(state.Exit) as caught:
+        state.get_json("deployment", "forbidden", allow_missing=True)
+    assert caught.value.code == 65
+
 def hermes_snapshot(state):
     deployment = (ROOT / "k8s" / "hermes-gateway-deployment.yaml").read_text().replace("HERMES_IMAGE", "registry.example/hermes@sha256:" + "a" * 64)
     configmap = yaml.safe_dump({"apiVersion":"v1","kind":"ConfigMap","metadata":{"name":"hermes-gateway-config","namespace":"skald"},"data":{"config.yaml":"x"}})
