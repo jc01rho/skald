@@ -1,3 +1,4 @@
+import hashlib
 import re
 from pathlib import Path
 
@@ -17,9 +18,45 @@ def test_image_is_pinned_and_runtime_argv_is_exact():
     assert "git" in dockerfile
     assert "bash" in dockerfile
     assert "BUN_VERSION=1.3.14" in dockerfile
-    assert "python:3.12.11-slim-bookworm@sha256:" in dockerfile
+    python_base = "python:3.12.13-slim-trixie@sha256:57cd7c3a7a273101a6485ba99423ee568157882804b1124b4dd04266317710de"
+    assert f"ARG PYTHON_BASE={python_base}" in dockerfile
+    assert f"PYTHON_BASE={python_base}" in lock
+    assert "slim-bookworm" not in dockerfile
     assert "BUN_VERSION=1.3.14" in lock
     assert "SPARROW_FUNCTION_SPEC_SOURCE=https://gitlab.git.sparrow.local/mcp-servers/functional-spec.git" in lock
+
+
+
+def test_security_patch_is_pinned_and_updates_manifests_together():
+    dockerfile = (ROOT / "Dockerfile").read_text()
+    versions = dict(
+        line.split("=", 1)
+        for line in (ROOT / "versions.lock").read_text().splitlines()
+        if line and not line.startswith("#")
+    )
+    patch_path = ROOT / versions["HERMES_SECURITY_PATCH"]
+
+    assert patch_path.is_file()
+    assert hashlib.sha256(patch_path.read_bytes()).hexdigest() == versions["HERMES_SECURITY_PATCH_SHA256"]
+    assert f"ARG HERMES_SECURITY_PATCH={versions['HERMES_SECURITY_PATCH']}" in dockerfile
+    assert f"ARG HERMES_SECURITY_PATCH_SHA256={versions['HERMES_SECURITY_PATCH_SHA256']}" in dockerfile
+    assert "git -C \"${HERMES_HOME}/hermes-agent\" apply --check /tmp/hermes-security.patch" in dockerfile
+    assert dockerfile.index("apply --check") < dockerfile.index("uv sync --frozen --no-dev")
+    assert "uv sync --frozen --no-dev" in dockerfile
+    assert "uv lock" not in dockerfile
+    assert "uv pip install" not in dockerfile
+
+    patch = patch_path.read_text()
+    assert "diff --git a/pyproject.toml b/pyproject.toml" in patch
+    assert "diff --git a/uv.lock b/uv.lock" in patch
+    assert '+  "Pillow==12.3.0",' in patch
+    assert '+  "cryptography==48.0.1"' in patch
+    assert '"starlette==1.3.1"' in patch
+    assert '"python-multipart==0.0.32"' in patch
+    assert '+version = "12.3.0"' in patch
+    assert '+version = "48.0.1"' in patch
+    assert '+version = "1.3.1"' in patch
+    assert '+version = "0.0.32"' in patch
 
 
 def test_workflow_runs_all_offline_pytest_and_pins_actions():
@@ -42,6 +79,10 @@ def test_workflow_runs_all_offline_pytest_and_pins_actions():
     assert "= '[\"hermes\"]'" in workflow
     assert "= '[\"gateway\",\"run\"]'" in workflow
     assert ":latest" not in workflow
+    assert re.search(r"severity:\s*HIGH,CRITICAL", workflow)
+    assert re.search(r"exit-code:\s*['\"]?1['\"]?", workflow)
+    assert "exit-code: '0'" not in workflow
+    assert "severity: CRITICAL" not in workflow
 
     action_uses = re.findall(r"^\s*uses:\s*([^\s#]+)", workflow, re.MULTILINE)
     assert action_uses == [
