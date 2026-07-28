@@ -71,6 +71,25 @@ def test_readback_accepts_only_omitted_kubernetes_false_terminal_defaults():
     }
     assert state.intended_fields_match(state.relevant_object(intended), state.relevant_object(observed))
 
+def test_readback_ignores_kubectl_last_applied_annotation_only():
+    state = load_state()
+    intended = {
+        "apiVersion": "v1",
+        "kind": "Service",
+        "metadata": {"name": "discord-bot-service", "annotations": {"kubectl.kubernetes.io/last-applied-configuration": "old"}},
+        "spec": {"type": "ClusterIP"},
+    }
+    observed = {
+        "apiVersion": "v1",
+        "kind": "Service",
+        "metadata": {"name": "discord-bot-service", "annotations": {"kubectl.kubernetes.io/last-applied-configuration": "new"}},
+        "spec": {"type": "ClusterIP", "clusterIP": "10.0.0.1"},
+    }
+    assert state.intended_fields_match(state.relevant_object(intended), state.relevant_object(observed))
+    intended["metadata"]["annotations"]["custom"] = "expected"
+    observed["metadata"]["annotations"]["custom"] = "drift"
+    assert not state.intended_fields_match(state.relevant_object(intended), state.relevant_object(observed))
+
 
 @pytest.mark.parametrize(
     ("intended_container", "observed_container"),

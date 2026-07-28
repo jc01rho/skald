@@ -290,6 +290,11 @@ def relevant_object(obj: dict[str, Any]) -> dict[str, Any]:
     metadata = relevant.get("metadata", {})
     for key in ("creationTimestamp", "generation", "managedFields", "resourceVersion", "uid"):
         metadata.pop(key, None)
+    annotations = metadata.get("annotations")
+    if isinstance(annotations, dict):
+        annotations.pop("kubectl.kubernetes.io/last-applied-configuration", None)
+        if not annotations:
+            metadata.pop("annotations", None)
     return relevant
 
 
