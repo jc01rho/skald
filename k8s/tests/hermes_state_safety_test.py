@@ -464,6 +464,78 @@ def test_recovery_mismatch_evidence_performs_zero_mutation(monkeypatch, tmp_path
         with pytest.raises(state.Exit):
             state.recover(SimpleNamespace(evidence_file=str(path), audit_file=str(tmp_path / "audit.json")))
     assert mutations == []
+    assert state.ACTOR == "test-actor"
+
+
+def test_recovery_adopts_held_lease_for_mutations_and_preserves_authorizing_actor_in_audit(monkeypatch, tmp_path):
+    state = load_state()
+    record = {**owner("legacy"), "generation": 1}
+    held_holder = "SP0021B:968064:009e8ad1-76c7-4a2a-8349-65ef37618187"
+    lease = {"apiVersion":"coordination.k8s.io/v1","kind":"Lease","metadata":{"name":state.LEASE,"resourceVersion":"9"},"spec":{"holderIdentity":held_holder}}
+    evidence_path = tmp_path / "evidence.json"
+    evidence_path.write_text(json.dumps(recovery_evidence(record, holder=held_holder))); evidence_path.chmod(0o600)
+    audit_path = tmp_path / "audit.json"
+    events = []
+    replacements = []
+
+    monkeypatch.setattr(state, "get_json", lambda kind, name, **kwargs: lease if kind == "lease" else None)
+    monkeypatch.setattr(state, "load_owner", lambda required=True: ({}, record))
+
+    def restore(ref, kind):
+        events.append(("restore", ref, kind, state.ACTOR, state.holder(state.assert_lease())))
+        assert state.holder(lease) == held_holder
+
+    def smoke(kind):
+        events.append(("smoke", kind, state.ACTOR, state.holder(state.assert_lease())))
+        return {"profile":"legacy-mention","correlation_id":"id","completed_at":"now"}
+
+    def replace(desired, **kwargs):
+        replacements.append(desired)
+        observed = json.loads(json.dumps(desired))
+        observed["metadata"]["resourceVersion"] = "10"
+        return observed
+
+    monkeypatch.setattr(state, "restore_snapshot", restore)
+    monkeypatch.setattr(state, "smoke", smoke)
+    monkeypatch.setattr(state, "replace_exact", replace)
+
+    state.recover(SimpleNamespace(evidence_file=str(evidence_path), audit_file=str(audit_path)))
+
+    assert events == [
+        ("restore", record["legacy_snapshot_ref"], "legacy", held_holder, held_holder),
+        ("smoke", "legacy", held_holder, held_holder),
+    ]
+    assert state.holder(lease) == held_holder
+    assert len(replacements) == 1
+    assert state.holder(replacements[0]) == ""
+    audit = json.loads(audit_path.read_text())
+    assert audit["actor"] == "test-actor"
+    assert audit["holder"] == held_holder
+
+
+def test_recovery_failure_after_holder_handoff_retains_lease(monkeypatch, tmp_path):
+    state = load_state()
+    record = {**owner("legacy"), "generation": 1}
+    held_holder = "SP0021B:968064:009e8ad1-76c7-4a2a-8349-65ef37618187"
+    lease = {"spec":{"holderIdentity":held_holder}}
+    evidence_path = tmp_path / "evidence.json"
+    evidence_path.write_text(json.dumps(recovery_evidence(record, holder=held_holder))); evidence_path.chmod(0o600)
+    releases = []
+
+    monkeypatch.setattr(state, "get_json", lambda kind, name, **kwargs: lease if kind == "lease" else None)
+    monkeypatch.setattr(state, "load_owner", lambda required=True: ({}, record))
+    monkeypatch.setattr(state, "restore_snapshot", lambda *_: (_ for _ in ()).throw(state.Exit(70, "restore failed")))
+    monkeypatch.setattr(state, "release", lambda: releases.append(state.ACTOR))
+
+    with pytest.raises(state.Exit) as caught:
+        state.recover(SimpleNamespace(evidence_file=str(evidence_path), audit_file=str(tmp_path / "audit.json")))
+
+    assert caught.value.code == 75
+    assert "RECOVERY_REQUIRED" in caught.value.message
+    assert state.ACTOR == held_holder
+    assert state.holder(lease) == held_holder
+    assert releases == []
+    assert state.MUTATIONS_ALLOWED is False
 
 
 def test_recovery_stale_evidence_performs_zero_mutation(monkeypatch, tmp_path):

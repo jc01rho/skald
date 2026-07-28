@@ -876,6 +876,9 @@ def recover(args: argparse.Namespace) -> None:
     except OSError:
         raise Exit(65, "Recovery audit file is not writable")
     target = record["legacy_snapshot_ref"] if record["active_owner"] == "legacy" else record["hermes_verified_snapshot_ref"]
+    # Recovery authorization remains attributed to evidence["actor"], while all
+    # Kubernetes mutations are fenced by the already-held Lease identity.
+    ACTOR = evidence["holder"]
     mark_destructive_boundary()
     try:
         restore_snapshot(target, record["active_owner"])
@@ -886,7 +889,6 @@ def recover(args: argparse.Namespace) -> None:
             os.chmod(audit_path, 0o600)
         except OSError:
             recovery_required("recovery audit finalization failed")
-        ACTOR = evidence["holder"]
         release()
     except BaseException:
         error = sys.exc_info()[1]
