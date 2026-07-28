@@ -569,8 +569,24 @@ def restore_snapshot(ref: str, kind: str) -> None:
 
 
 def wait_rollout(name: str) -> None:
-    # rollout status is a bounded read/watch, not a mutation.
-    kubectl(["rollout", "status", f"deployment/{name}", "-n", NAMESPACE, "--timeout=300s"])
+    deadline = time.monotonic() + 300
+    while time.monotonic() < deadline:
+        deployment = get_json("deployment", name)
+        if deployment is None:
+            raise Exit(65, f"Deployment/{name} is missing")
+        desired = deployment.get("spec", {}).get("replicas", 0)
+        status = deployment.get("status", {})
+        generation = deployment.get("metadata", {}).get("generation")
+        if (
+            status.get("observedGeneration") == generation
+            and status.get("updatedReplicas", 0) == desired
+            and status.get("readyReplicas", 0) == desired
+            and status.get("availableReplicas", 0) == desired
+            and status.get("unavailableReplicas", 0) == 0
+        ):
+            return
+        time.sleep(2)
+    raise Exit(65, f"Deployment/{name} rollout timed out")
 
 
 def smoke(owner: str) -> dict[str, str]:
@@ -899,7 +915,8 @@ def recover(args: argparse.Namespace) -> None:
         error = sys.exc_info()[1]
         if isinstance(error, Exit) and error.code == 75:
             raise
-        recovery_required("recovery operation failed after destructive boundary")
+        detail = error.message if isinstance(error, Exit) else type(error).__name__
+        recovery_required(f"recovery operation failed after destructive boundary: {detail}")
 
 
 def main() -> int:

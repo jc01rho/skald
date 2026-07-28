@@ -89,6 +89,18 @@ def test_readback_ignores_kubectl_last_applied_annotation_only():
     intended["metadata"]["annotations"]["custom"] = "expected"
     observed["metadata"]["annotations"]["custom"] = "drift"
     assert not state.intended_fields_match(state.relevant_object(intended), state.relevant_object(observed))
+def test_wait_rollout_uses_named_get_without_list_or_watch(monkeypatch):
+    state = load_state()
+    calls = []
+    deployment = {
+        "metadata": {"generation": 3},
+        "spec": {"replicas": 1},
+        "status": {"observedGeneration": 3, "updatedReplicas": 1, "readyReplicas": 1, "availableReplicas": 1},
+    }
+    monkeypatch.setattr(state, "get_json", lambda kind, name: calls.append((kind, name)) or deployment)
+    state.wait_rollout("discord-bot")
+    assert calls == [("deployment", "discord-bot")]
+
 
 
 @pytest.mark.parametrize(
