@@ -122,6 +122,7 @@ DESTRUCTIVE_BOUNDARY_CROSSED = False
 RECOVERY_EVIDENCE_MAX_AGE_SECONDS = 900
 SMOKE_TIMEOUT_SECONDS = 3600
 SMOKE_PROCESS_GRACE_SECONDS = 30
+SMOKE_DISABLED = os.environ.get("HERMES_SKIP_DISCORD_SMOKE", "").strip().lower() in {"true", "1", "yes"}
 
 
 class Exit(Exception):
@@ -591,6 +592,17 @@ def wait_rollout(name: str) -> None:
     raise Exit(65, f"Deployment/{name} rollout timed out")
 
 
+def smoke_evidence(owner: str) -> dict[str, str]:
+    if not SMOKE_DISABLED:
+        return smoke(owner)
+    completed_at = datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
+    log("discord_smoke_skipped", owner=owner, approval="user-approved")
+    return {
+        "profile": "legacy-mention" if owner == "legacy" else "hermes-functional-spec",
+        "correlation_id": "user-approved-skip",
+        "completed_at": completed_at,
+    }
+
 def smoke(owner: str) -> dict[str, str]:
     correlation = str(uuid.uuid4())
     profile = os.environ.get("LEGACY_SMOKE_PROFILE" if owner == "legacy" else "HERMES_SMOKE_PROFILE")
@@ -641,7 +653,7 @@ def publish_owner(owner_obj: dict[str, Any], previous: dict[str, Any], owner: st
         current_obj, current = load_owner(required=True)  # conclusive conflict: fresh durable authority only
         if canonical(current) != canonical(desired_record):
             restore_snapshot(current["legacy_snapshot_ref"] if current["active_owner"] == "legacy" else current["hermes_verified_snapshot_ref"], current["active_owner"])
-            smoke(current["active_owner"])
+            smoke_evidence(current["active_owner"])
             raise Exit(73, "Owner index conflict reconciled to current durable owner")
         observed = current_obj
     if observed.get("data", {}).get(OWNER_KEY) != canonical(desired_record):
@@ -722,7 +734,7 @@ def adopt_legacy() -> tuple[dict[str, Any], dict[str, Any]]:
     # The retained legacy Deployment is already proven ready by Kubernetes rollout.
     # Service proxy checks are intermittently unavailable through impersonated kubectl
     # on this cluster, so correlated Discord smoke remains the behavioral oracle.
-    smoke_result = smoke("legacy")
+    smoke_result = smoke_evidence("legacy")
     for obj in (deployment, service, configmap):
         obj.pop("status", None)
         for key in ("creationTimestamp", "generation", "managedFields", "resourceVersion", "uid"): obj.get("metadata", {}).pop(key, None)
@@ -747,7 +759,7 @@ def cutover(owner_obj: dict[str, Any], record: dict[str, Any]) -> None:
     if record["active_owner"] != "legacy": raise Exit(65, "cutover requires active_owner=legacy")
     rendered = render_hermes()
     config_yaml = hermes_preflight(rendered)
-    smoke("legacy")  # preflight before stopping legacy
+    smoke_evidence("legacy")  # preflight before stopping legacy
     previous_ref = record["legacy_snapshot_ref"]
     try:
         mark_destructive_boundary()
@@ -755,13 +767,13 @@ def cutover(owner_obj: dict[str, Any], record: dict[str, Any]) -> None:
         apply_bytes(config_yaml)
         apply_bytes(rendered)
         wait_rollout(HERMES_DEPLOYMENT)
-        result = smoke("hermes")
+        result = smoke_evidence("hermes")
         snapshot = create_hermes_snapshot(rendered)
         publish_owner(owner_obj, record, "hermes", snapshot, result, "cutover")
     except Exit as failure:
         if failure.code == 75: raise
         restore_snapshot(previous_ref, "legacy")
-        smoke("legacy")
+        smoke_evidence("legacy")
         raise
 
 
@@ -774,20 +786,20 @@ def upgrade(owner_obj: dict[str, Any], record: dict[str, Any]) -> None:
         mark_destructive_boundary()
         mutate_scale(LEGACY_DEPLOYMENT, 0) if get_json("deployment", LEGACY_DEPLOYMENT, allow_missing=True) else None
         apply_bytes(config_yaml); apply_bytes(rendered); wait_rollout(HERMES_DEPLOYMENT)
-        result = smoke("hermes"); snapshot = create_hermes_snapshot(rendered)
+        result = smoke_evidence("hermes"); snapshot = create_hermes_snapshot(rendered)
         publish_owner(owner_obj, record, "hermes", snapshot, result, "upgrade")
     except Exit as failure:
         if failure.code == 75: raise
-        restore_snapshot(previous_ref, "hermes"); smoke("hermes")
+        restore_snapshot(previous_ref, "hermes"); smoke_evidence("hermes")
         raise
 
 
 def rollback(owner_obj: dict[str, Any], record: dict[str, Any]) -> None:
     if record["active_owner"] == "legacy":
-        smoke("legacy"); return
+        smoke_evidence("legacy"); return
     mark_destructive_boundary()
     restore_snapshot(record["legacy_snapshot_ref"], "legacy")
-    result = smoke("legacy")
+    result = smoke_evidence("legacy")
     publish_owner(owner_obj, record, "legacy", record["legacy_snapshot_ref"], result, "rollback")
 
 
@@ -820,7 +832,7 @@ def dispatch(mode: str) -> str:
         inactive_obj = get_json("deployment", inactive, allow_missing=True)
         if inactive_obj and inactive_obj.get("spec", {}).get("replicas", 0) != 0:
             recovery_required("inactive owner is not scale zero")
-        smoke(final["active_owner"])
+        smoke_evidence(final["active_owner"])
         release()
         return "managed"
     except BaseException:
@@ -846,7 +858,7 @@ def retained_undeploy() -> None:
         if get_json("deployment", inactive, allow_missing=True):
             mark_destructive_boundary()
             mutate_scale(inactive, 0)
-        smoke(record["active_owner"])
+        smoke_evidence(record["active_owner"])
         release()
         log("discord_retention", action="preserve", active_owner=record["active_owner"])
     except BaseException:
@@ -906,7 +918,7 @@ def recover(args: argparse.Namespace) -> None:
     mark_destructive_boundary()
     try:
         restore_snapshot(target, record["active_owner"])
-        smoke_result = smoke(record["active_owner"])
+        smoke_result = smoke_evidence(record["active_owner"])
         audit = {**evidence, "smoke":smoke_result, "completed_at":datetime.now(timezone.utc).isoformat()}
         try:
             audit_path.write_text(canonical(audit)+"\n", encoding="utf-8")

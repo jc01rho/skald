@@ -402,7 +402,7 @@ def test_owner_conflict_reconciles_to_current_authority(monkeypatch):
     monkeypatch.setattr(state, "replace_exact", lambda *args, **kwargs: (_ for _ in ()).throw(state.Conflict()))
     monkeypatch.setattr(state, "load_owner", lambda required=True: ({}, current))
     monkeypatch.setattr(state, "restore_snapshot", lambda ref, kind: events.append(("restore", ref, kind)))
-    monkeypatch.setattr(state, "smoke", lambda kind: events.append(("smoke", kind)))
+    monkeypatch.setattr(state, "smoke_evidence", lambda kind: events.append(("smoke", kind)))
     with pytest.raises(state.Exit) as caught:
         state.publish_owner({}, previous, "hermes", "configmap://skald/skald-hermes-verified-fedcba9876543210", {}, "upgrade")
     assert caught.value.code == 73
@@ -527,7 +527,7 @@ def test_recovery_adopts_held_lease_for_mutations_and_preserves_authorizing_acto
         return observed
 
     monkeypatch.setattr(state, "restore_snapshot", restore)
-    monkeypatch.setattr(state, "smoke", smoke)
+    monkeypatch.setattr(state, "smoke_evidence", smoke)
     monkeypatch.setattr(state, "replace_exact", replace)
 
     state.recover(SimpleNamespace(evidence_file=str(evidence_path), audit_file=str(audit_path)))

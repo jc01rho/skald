@@ -308,7 +308,7 @@ def test_automatic_cutover_rollback_is_ordered(monkeypatch):
     record = owner("legacy")
     monkeypatch.setattr(state, "render_hermes", lambda: "deployment")
     monkeypatch.setattr(state, "hermes_preflight", lambda _: "config")
-    monkeypatch.setattr(state, "smoke", lambda value: events.append(f"smoke:{value}") or ({"profile": value, "correlation_id": "id", "completed_at": "now"} if value == "legacy" else (_ for _ in ()).throw(state.Exit(70, "candidate failed"))))
+    monkeypatch.setattr(state, "smoke_evidence", lambda value: events.append(f"smoke:{value}") or ({"profile": value, "correlation_id": "id", "completed_at": "now"} if value == "legacy" else (_ for _ in ()).throw(state.Exit(70, "candidate failed"))))
     monkeypatch.setattr(state, "mutate_scale", lambda name, replicas: events.append(f"scale:{name}:{replicas}"))
     monkeypatch.setattr(state, "apply_bytes", lambda _: events.append("apply:hermes"))
     monkeypatch.setattr(state, "wait_rollout", lambda _: events.append("rollout:hermes"))
@@ -323,7 +323,7 @@ def test_unknown_post_stop_failure_does_not_attempt_rollback(monkeypatch):
     events = []
     monkeypatch.setattr(state, "render_hermes", lambda: "deployment")
     monkeypatch.setattr(state, "hermes_preflight", lambda _: "config")
-    monkeypatch.setattr(state, "smoke", lambda owner: events.append(f"smoke:{owner}") or {})
+    monkeypatch.setattr(state, "smoke_evidence", lambda owner: events.append(f"smoke:{owner}") or {})
     monkeypatch.setattr(state, "mutate_scale", lambda *_: (_ for _ in ()).throw(state.Exit(75, "RECOVERY_REQUIRED")))
     monkeypatch.setattr(state, "restore_snapshot", lambda *_: events.append("restore"))
     with pytest.raises(state.Exit) as caught:
@@ -561,6 +561,15 @@ def test_deploy_state_streams_smoke_subprocess_output():
     assert state.SMOKE_PROCESS_GRACE_SECONDS == 30
     assert '"--timeout-seconds", str(SMOKE_TIMEOUT_SECONDS)' in smoke_body
     assert "timeout=SMOKE_TIMEOUT_SECONDS + SMOKE_PROCESS_GRACE_SECONDS" in smoke_body
+
+def test_user_approved_smoke_skip_is_explicit_and_auditable(monkeypatch):
+    state = load_state()
+    monkeypatch.setattr(state, "SMOKE_DISABLED", True)
+    monkeypatch.setattr(state, "smoke", lambda _: pytest.fail("interactive smoke must not run"))
+    evidence = state.smoke_evidence("hermes")
+    assert evidence["profile"] == "hermes-functional-spec"
+    assert evidence["correlation_id"] == "user-approved-skip"
+    assert evidence["completed_at"].endswith("Z")
 
 @pytest.mark.parametrize(
     "mutate",
