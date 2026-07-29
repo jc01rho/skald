@@ -114,6 +114,7 @@ def test_image_layout_and_runtime_functional_spec_acquisition():
     revision = "c4b6941b4b7bfb054040960099616019a901e745"
 
     assert 'git clone https://github.com/NousResearch/hermes-agent.git "${HERMES_HOME}/hermes-agent"' in dockerfile
+    assert "uv sync --frozen --no-dev --extra mcp" in dockerfile
     assert source not in dockerfile
     assert revision not in dockerfile
     assert "http.sslVerify=false" not in dockerfile

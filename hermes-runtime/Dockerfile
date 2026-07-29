@@ -35,7 +35,7 @@ RUN git clone https://github.com/NousResearch/hermes-agent.git "${HERMES_HOME}/h
     && git -C "${HERMES_HOME}/hermes-agent" apply /tmp/hermes-security.patch \
     && cd "${HERMES_HOME}/hermes-agent" \
     && python -m pip install --no-cache-dir uv \
-    && uv sync --frozen --no-dev \
+    && uv sync --frozen --no-dev --extra mcp \
     && rm /tmp/hermes-security.patch \
     && ln -s "${HERMES_HOME}/hermes-agent/.venv/bin/hermes" /usr/local/bin/hermes
 
