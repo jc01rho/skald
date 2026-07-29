@@ -16,7 +16,7 @@ spec:
     template:
         metadata:
             annotations:
-                skald.io/hermes-config-revision: 'functional-spec-v2'
+                skald.io/hermes-config-revision: 'functional-spec-v3'
             labels:
                 app: skald
                 component: hermes-gateway
