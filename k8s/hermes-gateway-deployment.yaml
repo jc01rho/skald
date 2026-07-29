@@ -16,7 +16,7 @@ spec:
     template:
         metadata:
             annotations:
-                skald.io/hermes-config-revision: 'functional-spec-v3'
+                skald.io/hermes-config-revision: 'functional-spec-v4'
             labels:
                 app: skald
                 component: hermes-gateway
@@ -153,6 +153,10 @@ spec:
                         mountPath: /var/lib/hermes/config.yaml
                         subPath: config.yaml
                         readOnly: true
+                      - name: hermes-config
+                        mountPath: /var/lib/hermes/SOUL.md
+                        subPath: SOUL.md
+                        readOnly: true
                       - name: sparrow-function-spec
                         mountPath: /opt/sparrow-function-spec
             volumes:
@@ -162,6 +166,8 @@ spec:
                       items:
                           - key: config.yaml
                             path: config.yaml
+                          - key: SOUL.md
+                            path: SOUL.md
                 - name: sparrow-function-spec
                   emptyDir: {}
             restartPolicy: Always

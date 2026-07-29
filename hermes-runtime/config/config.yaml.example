@@ -10,6 +10,8 @@ providers:
     key_env: OPENAI_API_KEY
     model: your-openai-compatible-model
     api_mode: chat_completions
+onboarding:
+  profile_build: off
 
 terminal:
   cwd: /var/lib/hermes

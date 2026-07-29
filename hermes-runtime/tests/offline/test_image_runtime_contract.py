@@ -166,8 +166,12 @@ def test_image_layout_and_runtime_functional_spec_acquisition():
     assert "name: DISCORD_HOME_CHANNEL_NAME" in manifest
     assert "key: DISCORD_HOME_CHANNEL_NAME" in manifest
     assert "DISCORD_ALLOW_ALL_USERS" not in manifest
-    assert "skald.io/hermes-config-revision: 'functional-spec-v3'" in manifest
+    assert "skald.io/hermes-config-revision: 'functional-spec-v4'" in manifest
     assert "DISCORD_ALLOW_ALL_USERS" not in config
+    assert "onboarding:\n  profile_build: off" in config
+    assert "mountPath: /var/lib/hermes/SOUL.md" in manifest
+    assert "subPath: SOUL.md" in manifest
+    assert "key: SOUL.md" in manifest
 
 
 def test_docker_context_excludes_secret_bearing_local_state():
