@@ -155,6 +155,8 @@ def test_image_layout_and_runtime_functional_spec_acquisition():
     assert "${OPENAI_MODEL}" not in config
     assert "${OPENAI_BASE_URL}" not in config
     assert "disabled_toolsets:\n    - kanban" in config
+    assert "PATH: /opt/bun/bin:/usr/local/bin:/usr/bin:/bin" in config
+    assert 'GIT_SSL_NO_VERIFY: "true"' in config
     assert "name: DISCORD_ALLOWED_USERS" in manifest
     assert "key: DISCORD_ALLOWED_USERS" in manifest
     assert "name: DISCORD_ALLOWED_CHANNELS" in manifest

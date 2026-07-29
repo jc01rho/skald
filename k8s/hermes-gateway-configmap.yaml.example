@@ -45,6 +45,8 @@ data:
             args:
               - /opt/sparrow-function-spec/scripts/run-with-auto-update.sh
             env:
+              PATH: /opt/bun/bin:/usr/local/bin:/usr/bin:/bin
+              GIT_SSL_NO_VERIFY: 'true'
               SKALD_API_KEY: ${SKALD_API_KEY}
               SKALD_BASE_URL: ${SKALD_BASE_URL}
               SKALD_PROJECT_ID: ${SKALD_PROJECT_ID}
