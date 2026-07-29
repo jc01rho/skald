@@ -148,6 +148,12 @@ def test_image_layout_and_runtime_functional_spec_acquisition():
     assert "- /opt/sparrow-function-spec/scripts/run-with-auto-update.sh" in config
     assert config.count("sparrow-function-spec:") == 1
     assert "- sparrow-function-spec" in config
+    assert "name: DISCORD_ALLOWED_USERS" in manifest
+    assert "key: DISCORD_ALLOWED_USERS" in manifest
+    assert "name: DISCORD_ALLOWED_CHANNELS" in manifest
+    assert "key: DISCORD_ALLOWED_CHANNELS" in manifest
+    assert "DISCORD_ALLOW_ALL_USERS" not in manifest
+    assert "DISCORD_ALLOW_ALL_USERS" not in config
 
 
 def test_docker_context_excludes_secret_bearing_local_state():

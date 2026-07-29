@@ -107,6 +107,16 @@ spec:
                             configMapKeyRef:
                                 name: hermes-gateway-config
                                 key: SKALD_BASE_URL
+                      - name: DISCORD_ALLOWED_USERS
+                        valueFrom:
+                            configMapKeyRef:
+                                name: hermes-gateway-config
+                                key: DISCORD_ALLOWED_USERS
+                      - name: DISCORD_ALLOWED_CHANNELS
+                        valueFrom:
+                            configMapKeyRef:
+                                name: hermes-gateway-config
+                                key: DISCORD_ALLOWED_CHANNELS
                       - name: GIT_CONFIG_COUNT
                         value: "1"
                       - name: GIT_CONFIG_KEY_0

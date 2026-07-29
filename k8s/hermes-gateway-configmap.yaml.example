@@ -10,6 +10,8 @@ data:
     SKALD_BASE_URL: 'https://your-skald-instance.example/'
     OPENAI_BASE_URL: 'https://your-openai-compatible-provider.example/v1'
     OPENAI_MODEL: 'your-openai-compatible-model'
+    DISCORD_ALLOWED_USERS: '593604865771438083'
+    DISCORD_ALLOWED_CHANNELS: '1433492151982887044'
     config.yaml: |
         model:
           provider: custom
