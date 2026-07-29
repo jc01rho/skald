@@ -69,14 +69,6 @@ jobs:
                   exit-code: '1'
                   format: table
 
-            - name: Generate SPDX SBOM
-              if: github.event_name != 'pull_request'
-              uses: anchore/sbom-action@fc46e51fd3cb168ffb36c6d1915723c47db58abb # v0.17.7
-              with:
-                  image: ${{ env.IMAGE_NAME }}:${{ env.IMAGE_TAG }}
-                  format: spdx-json
-                  output-file: hermes-gateway-${{ github.sha }}.spdx.json
-                  upload-artifact: true
 
             - name: Log in to GitHub Container Registry
               if: github.event_name != 'pull_request'

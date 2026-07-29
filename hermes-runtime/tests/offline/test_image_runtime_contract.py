@@ -88,7 +88,6 @@ def test_workflow_runs_all_offline_pytest_and_pins_actions():
     assert action_uses == [
         "actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683",
         "aquasecurity/trivy-action@c07df6fec6fa692e6fd1200d50aaa1fdd66f03c8",
-        "anchore/sbom-action@fc46e51fd3cb168ffb36c6d1915723c47db58abb",
         "docker/login-action@74a5d142397b4f367a81961eba4e8cd7edddf772",
     ]
     assert all(re.fullmatch(r"[^@\s]+@[0-9a-f]{40}", action) for action in action_uses)
@@ -97,7 +96,6 @@ def test_workflow_runs_all_offline_pytest_and_pins_actions():
         "Build immutable commit image",
         "Verify image command",
         "Scan image vulnerabilities and secrets",
-        "Generate SPDX SBOM",
     ):
         assert re.search(
             rf"- name: {re.escape(image_step)}\n\s+if: github\.event_name != 'pull_request'",
