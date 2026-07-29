@@ -57,6 +57,9 @@ def test_security_patch_is_pinned_and_updates_manifests_together():
     assert '+version = "48.0.1"' in patch
     assert '+version = "1.3.1"' in patch
     assert '+version = "0.0.32"' in patch
+    assert '"mcp==1.28.1"' in patch
+    assert '+version = "1.28.1"' in patch
+    assert '-mcp = ["mcp==1.26.0"' in patch
 
 
 def test_workflow_runs_all_offline_pytest_and_pins_actions():
