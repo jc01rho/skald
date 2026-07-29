@@ -169,13 +169,17 @@ def test_image_layout_and_runtime_functional_spec_acquisition():
     assert "name: DISCORD_HOME_CHANNEL_NAME" in manifest
     assert "key: DISCORD_HOME_CHANNEL_NAME" in manifest
     assert "DISCORD_ALLOW_ALL_USERS" in manifest
-    assert "skald.io/hermes-config-revision: 'functional-spec-v5'" in manifest
+    assert "skald.io/hermes-config-revision: 'functional-spec-v6'" in manifest
     assert 'allowed_channels: "*"' in config
     assert "slash_commands: false" in config
     assert "onboarding:\n  profile_build: off" in config
     assert "mountPath: /var/lib/hermes/SOUL.md" in manifest
     assert "subPath: SOUL.md" in manifest
     assert "key: SOUL.md" in manifest
+    configmap = (ROOT.parent / "k8s" / "hermes-gateway-configmap.yaml.example").read_text()
+    assert "http://spms.sparrow.local/enterprise/information/<id>" in configmap
+    assert "/information/1337" in configmap
+    assert "http://spms.sparrow.local/enterprise/information/1337" in configmap
 
 
 def test_docker_context_excludes_secret_bearing_local_state():
