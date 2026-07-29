@@ -1,3 +1,16 @@
+diff --git a/gateway/run.py b/gateway/run.py
+index aac6a19..4093652 100644
+--- a/gateway/run.py
++++ b/gateway/run.py
+@@ -13757,7 +13757,7 @@ class GatewayRunner(GatewayAuthorizationMixin, GatewayKanbanWatchersMixin, Gatew
+             # Default first-contact note: a brief self-introduction.
+             _intro_note = (
+                 "[System note: This is the user's very first message ever. "
+-                "Briefly introduce yourself and mention that /help shows available commands. "
++                "Briefly introduce yourself without advertising slash commands. "
+                 "Keep the introduction concise -- one or two sentences max.]"
+             )
+             # Opt-in structured profile-build path. When enabled (default
 diff --git a/pyproject.toml b/pyproject.toml
 index d68ce4c..8f6db1c 100644
 --- a/pyproject.toml

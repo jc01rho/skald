@@ -16,7 +16,7 @@ spec:
     template:
         metadata:
             annotations:
-                skald.io/hermes-config-revision: 'functional-spec-v4'
+                skald.io/hermes-config-revision: 'functional-spec-v5'
             labels:
                 app: skald
                 component: hermes-gateway
@@ -109,11 +109,11 @@ spec:
                             configMapKeyRef:
                                 name: hermes-gateway-config
                                 key: SKALD_BASE_URL
-                      - name: DISCORD_ALLOWED_USERS
+                      - name: DISCORD_ALLOW_ALL_USERS
                         valueFrom:
                             configMapKeyRef:
                                 name: hermes-gateway-config
-                                key: DISCORD_ALLOWED_USERS
+                                key: DISCORD_ALLOW_ALL_USERS
                       - name: DISCORD_ALLOWED_CHANNELS
                         valueFrom:
                             configMapKeyRef:

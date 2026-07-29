@@ -60,6 +60,8 @@ def test_security_patch_is_pinned_and_updates_manifests_together():
     assert '"mcp==1.28.1"' in patch
     assert '+version = "1.28.1"' in patch
     assert '-mcp = ["mcp==1.26.0"' in patch
+    assert "Briefly introduce yourself without advertising slash commands." in patch
+    assert "+                \"Briefly introduce yourself and mention that /help shows available commands." not in patch
 
 
 def test_workflow_runs_all_offline_pytest_and_pins_actions():
@@ -157,17 +159,19 @@ def test_image_layout_and_runtime_functional_spec_acquisition():
     assert "disabled_toolsets:\n    - kanban" in config
     assert "PATH: /opt/bun/bin:/usr/local/bin:/usr/bin:/bin" in config
     assert 'GIT_SSL_NO_VERIFY: "true"' in config
-    assert "name: DISCORD_ALLOWED_USERS" in manifest
-    assert "key: DISCORD_ALLOWED_USERS" in manifest
+    assert "name: DISCORD_ALLOW_ALL_USERS" in manifest
+    assert "key: DISCORD_ALLOW_ALL_USERS" in manifest
+    assert "name: DISCORD_ALLOWED_USERS" not in manifest
     assert "name: DISCORD_ALLOWED_CHANNELS" in manifest
     assert "key: DISCORD_ALLOWED_CHANNELS" in manifest
     assert "name: DISCORD_HOME_CHANNEL" in manifest
     assert "key: DISCORD_HOME_CHANNEL" in manifest
     assert "name: DISCORD_HOME_CHANNEL_NAME" in manifest
     assert "key: DISCORD_HOME_CHANNEL_NAME" in manifest
-    assert "DISCORD_ALLOW_ALL_USERS" not in manifest
-    assert "skald.io/hermes-config-revision: 'functional-spec-v4'" in manifest
-    assert "DISCORD_ALLOW_ALL_USERS" not in config
+    assert "DISCORD_ALLOW_ALL_USERS" in manifest
+    assert "skald.io/hermes-config-revision: 'functional-spec-v5'" in manifest
+    assert 'allowed_channels: "*"' in config
+    assert "slash_commands: false" in config
     assert "onboarding:\n  profile_build: off" in config
     assert "mountPath: /var/lib/hermes/SOUL.md" in manifest
     assert "subPath: SOUL.md" in manifest

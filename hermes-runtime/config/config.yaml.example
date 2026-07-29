@@ -19,12 +19,17 @@ terminal:
 # Hermes native Discord policy is authoritative for this migration.
 discord:
   require_mention: true
+  allowed_channels: "*"
   auto_thread: true
   thread_require_mention: true
   history_backfill: true
   history_backfill_limit: 50
   reactions: true
 
+platforms:
+  discord:
+    extra:
+      slash_commands: false
 # Functional-spec-only tool surface: exactly one unchanged MCP checkout/wrapper.
 platform_toolsets:
   discord: []

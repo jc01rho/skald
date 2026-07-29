@@ -10,8 +10,8 @@ data:
     SKALD_BASE_URL: 'https://your-skald-instance.example/'
     OPENAI_BASE_URL: 'https://your-openai-compatible-provider.example/v1'
     OPENAI_MODEL: 'your-openai-compatible-model'
-    DISCORD_ALLOWED_USERS: '593604865771438083'
-    DISCORD_ALLOWED_CHANNELS: '1433492151982887044'
+    DISCORD_ALLOW_ALL_USERS: 'true'
+    DISCORD_ALLOWED_CHANNELS: '*'
     DISCORD_HOME_CHANNEL: '1433492151982887044'
     DISCORD_HOME_CHANNEL_NAME: 'Skald Hermes'
     SOUL.md: |
@@ -20,6 +20,7 @@ data:
         Your product scope is functional-spec lookup through the sparrow-function-spec MCP server.
         When a user asks for a named feature or functional specification, call get_functional_spec with the user's title or phrase, then answer from the returned specification.
         Do not claim to search local files, browse the repository, or use tools that are not available.
+        Do not advertise, suggest, or instruct users to run slash commands such as /help; Parrot has no slash-command interface.
         If the MCP tool is unavailable or returns no specification, say so clearly instead of inventing an answer.
         Keep answers concise, practical, and grounded in the returned functional specification.
         Refer to yourself as Parrot, not Hermes Agent.
@@ -42,8 +43,13 @@ data:
         onboarding:
           profile_build: off
 
+        platforms:
+          discord:
+            extra:
+              slash_commands: false
         discord:
           require_mention: true
+          allowed_channels: '*'
           auto_thread: true
           thread_require_mention: true
           history_backfill: true
