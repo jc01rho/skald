@@ -553,9 +553,14 @@ def test_smoke_times_out_waiting_for_configured_operator_without_leaking_token(m
 
 
 def test_deploy_state_streams_smoke_subprocess_output():
+    state = load_state()
     smoke_body = STATE_PATH.read_text()[STATE_PATH.read_text().index("def smoke(owner:") : STATE_PATH.read_text().index("def publish_owner(")]
     assert "stdout=subprocess.PIPE" not in smoke_body
     assert "stderr=subprocess.PIPE" not in smoke_body
+    assert state.SMOKE_TIMEOUT_SECONDS == 3600
+    assert state.SMOKE_PROCESS_GRACE_SECONDS == 30
+    assert '"--timeout-seconds", str(SMOKE_TIMEOUT_SECONDS)' in smoke_body
+    assert "timeout=SMOKE_TIMEOUT_SECONDS + SMOKE_PROCESS_GRACE_SECONDS" in smoke_body
 
 @pytest.mark.parametrize(
     "mutate",

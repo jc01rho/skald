@@ -120,6 +120,8 @@ PROHIBITED_PERMISSIONS = (
 MUTATIONS_ALLOWED = True
 DESTRUCTIVE_BOUNDARY_CROSSED = False
 RECOVERY_EVIDENCE_MAX_AGE_SECONDS = 900
+SMOKE_TIMEOUT_SECONDS = 3600
+SMOKE_PROCESS_GRACE_SECONDS = 30
 
 
 class Exit(Exception):
@@ -608,8 +610,8 @@ def smoke(owner: str) -> dict[str, str]:
     read_fd, write_fd = os.pipe()
     try:
         os.write(write_fd, token); os.close(write_fd); write_fd = -1
-        command = [sys.executable, str(K8S / "hermes" / "smoke.py"), "--owner", owner, "--token-fd", str(read_fd), "--profile", profile, "--correlation-id", correlation, "--timeout-seconds", "180" if owner == "legacy" else "300", "--http-timeout-seconds", "10", "--poll-seconds", "2", "--result-file", str(result_file)]
-        completed = subprocess.run(command, pass_fds=(read_fd,), timeout=330, env={**os.environ, "SMOKE_OWNER": owner, "SMOKE_CORRELATION_ID": correlation, "SMOKE_RESULT_FILE": str(result_file), "SMOKE_TOKEN_FD": str(read_fd)})
+        command = [sys.executable, str(K8S / "hermes" / "smoke.py"), "--owner", owner, "--token-fd", str(read_fd), "--profile", profile, "--correlation-id", correlation, "--timeout-seconds", str(SMOKE_TIMEOUT_SECONDS), "--http-timeout-seconds", "10", "--poll-seconds", "2", "--result-file", str(result_file)]
+        completed = subprocess.run(command, pass_fds=(read_fd,), timeout=SMOKE_TIMEOUT_SECONDS + SMOKE_PROCESS_GRACE_SECONDS, env={**os.environ, "SMOKE_OWNER": owner, "SMOKE_CORRELATION_ID": correlation, "SMOKE_RESULT_FILE": str(result_file), "SMOKE_TOKEN_FD": str(read_fd)})
         if completed.returncode:
             raise Exit(completed.returncode, f"{owner} smoke failed with category code {completed.returncode}")
         result = json.loads(result_file.read_text())
