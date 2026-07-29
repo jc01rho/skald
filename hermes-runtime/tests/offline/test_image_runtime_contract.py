@@ -147,11 +147,19 @@ def test_image_layout_and_runtime_functional_spec_acquisition():
     assert "command: /bin/bash" in config
     assert "- /opt/sparrow-function-spec/scripts/run-with-auto-update.sh" in config
     assert config.count("sparrow-function-spec:") == 1
-    assert "- sparrow-function-spec" in config
+    assert "platform_toolsets:\n  discord: []" in config
+    assert "provider: skald-proxy" in config
+    assert "key_env: OPENAI_API_KEY" in config
+    assert "${OPENAI_MODEL}" not in config
+    assert "${OPENAI_BASE_URL}" not in config
     assert "name: DISCORD_ALLOWED_USERS" in manifest
     assert "key: DISCORD_ALLOWED_USERS" in manifest
     assert "name: DISCORD_ALLOWED_CHANNELS" in manifest
     assert "key: DISCORD_ALLOWED_CHANNELS" in manifest
+    assert "name: DISCORD_HOME_CHANNEL" in manifest
+    assert "key: DISCORD_HOME_CHANNEL" in manifest
+    assert "name: DISCORD_HOME_CHANNEL_NAME" in manifest
+    assert "key: DISCORD_HOME_CHANNEL_NAME" in manifest
     assert "DISCORD_ALLOW_ALL_USERS" not in manifest
     assert "DISCORD_ALLOW_ALL_USERS" not in config
 

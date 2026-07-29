@@ -117,6 +117,16 @@ spec:
                             configMapKeyRef:
                                 name: hermes-gateway-config
                                 key: DISCORD_ALLOWED_CHANNELS
+                      - name: DISCORD_HOME_CHANNEL
+                        valueFrom:
+                            configMapKeyRef:
+                                name: hermes-gateway-config
+                                key: DISCORD_HOME_CHANNEL
+                      - name: DISCORD_HOME_CHANNEL_NAME
+                        valueFrom:
+                            configMapKeyRef:
+                                name: hermes-gateway-config
+                                key: DISCORD_HOME_CHANNEL_NAME
                       - name: GIT_CONFIG_COUNT
                         value: "1"
                       - name: GIT_CONFIG_KEY_0

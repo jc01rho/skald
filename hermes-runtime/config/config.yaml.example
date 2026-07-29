@@ -1,9 +1,15 @@
 # Non-secret runtime settings. Credentials are supplied only through container
 # environment variables; do not copy them into this file.
 model:
-  provider: custom
+  provider: skald-proxy
   default: your-openai-compatible-model
-  base_url: ${OPENAI_BASE_URL}
+  base_url: https://your-openai-compatible-provider.example/v1
+providers:
+  skald-proxy:
+    base_url: https://your-openai-compatible-provider.example/v1
+    key_env: OPENAI_API_KEY
+    model: your-openai-compatible-model
+    api_mode: chat_completions
 
 terminal:
   cwd: /var/lib/hermes
@@ -12,15 +18,14 @@ terminal:
 discord:
   require_mention: true
   auto_thread: true
-  thread_require_mention: false
+  thread_require_mention: true
   history_backfill: true
   history_backfill_limit: 50
   reactions: true
 
 # Functional-spec-only tool surface: exactly one unchanged MCP checkout/wrapper.
 platform_toolsets:
-  discord:
-    - sparrow-function-spec
+  discord: []
 
 mcp_servers:
   sparrow-function-spec:

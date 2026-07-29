@@ -12,14 +12,21 @@ data:
     OPENAI_MODEL: 'your-openai-compatible-model'
     DISCORD_ALLOWED_USERS: '593604865771438083'
     DISCORD_ALLOWED_CHANNELS: '1433492151982887044'
+    DISCORD_HOME_CHANNEL: '1433492151982887044'
+    DISCORD_HOME_CHANNEL_NAME: 'Skald Hermes'
     config.yaml: |
         model:
-          provider: custom
-          default: ${OPENAI_MODEL}
-          base_url: ${OPENAI_BASE_URL}
+          provider: skald-proxy
+          default: your-openai-compatible-model
+          base_url: https://your-openai-compatible-provider.example/v1
+        providers:
+          skald-proxy:
+            base_url: https://your-openai-compatible-provider.example/v1
+            key_env: OPENAI_API_KEY
+            model: your-openai-compatible-model
+            api_mode: chat_completions
         platform_toolsets:
-          discord:
-            - sparrow-function-spec
+          discord: []
 
         discord:
           require_mention: true
