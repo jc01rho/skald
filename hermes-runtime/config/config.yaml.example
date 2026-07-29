@@ -26,6 +26,9 @@ discord:
 # Functional-spec-only tool surface: exactly one unchanged MCP checkout/wrapper.
 platform_toolsets:
   discord: []
+agent:
+  disabled_toolsets:
+    - kanban
 
 mcp_servers:
   sparrow-function-spec:

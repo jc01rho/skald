@@ -152,6 +152,7 @@ def test_image_layout_and_runtime_functional_spec_acquisition():
     assert "key_env: OPENAI_API_KEY" in config
     assert "${OPENAI_MODEL}" not in config
     assert "${OPENAI_BASE_URL}" not in config
+    assert "disabled_toolsets:\n    - kanban" in config
     assert "name: DISCORD_ALLOWED_USERS" in manifest
     assert "key: DISCORD_ALLOWED_USERS" in manifest
     assert "name: DISCORD_ALLOWED_CHANNELS" in manifest

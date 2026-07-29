@@ -27,6 +27,9 @@ data:
             api_mode: chat_completions
         platform_toolsets:
           discord: []
+        agent:
+          disabled_toolsets:
+            - kanban
 
         discord:
           require_mention: true
