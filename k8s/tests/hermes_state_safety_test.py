@@ -142,7 +142,7 @@ def test_function_spec_init_is_restart_idempotent_and_does_not_mask_clone_failur
     destination.mkdir()
     bin_dir = tmp_path / "bin"
     bin_dir.mkdir()
-    for command in ("bun", "chown"):
+    for command in ("bun",):
         executable = bin_dir / command
         executable.write_text("#!/bin/sh\nexit 0\n")
         executable.chmod(0o755)
