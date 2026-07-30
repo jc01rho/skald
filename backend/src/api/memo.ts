@@ -18,7 +18,6 @@ import { MemoTag } from '@/entities/MemoTag'
 import { MemoChunk } from '@/entities/MemoChunk'
 import { MemoParentChunk } from '@/entities/MemoParentChunk'
 import { Memo } from '@/entities/Memo'
-import { SpecSource } from '@/entities/SpecSource'
 import { logger } from '@/lib/logger'
 import { deleteFileFromS3 } from '@/lib/s3Utils'
 import { sha256, sha256Buffer } from '@/lib/hashUtils'
@@ -97,7 +96,33 @@ const canonicalMutationError = (res: Response) =>
         },
     })
 
-const specSources = () => DI.specSources || DI.em.getRepository(SpecSource)
+interface CanonicalMemoProjection {
+    active_revision_id: string | null
+    memo_projection_revision_id: string
+    memo_projection_canonical_hash: string
+    revision_content_hash: string | null
+}
+
+const canonicalMemoProjection = async (projectId: string, memoId: string): Promise<CanonicalMemoProjection | null> => {
+    const rows = await DI.em.getConnection().execute<CanonicalMemoProjection[]>(
+        `select s.active_revision_id,
+                s.memo_projection_revision_id,
+                s.memo_projection_canonical_hash,
+                r.content_hash as revision_content_hash
+           from skald_spec_source s
+           left join skald_spec_revision r
+             on r.project_id = s.project_id
+            and r.source_id = s.uuid
+            and r.uuid = s.active_revision_id
+          where s.project_id = ? and s.memo_id = ?
+          limit 1`,
+        [projectId, memoId]
+    )
+    return rows[0] || null
+}
+
+const isCanonicalMemo = async (projectId: string, memoId: string): Promise<boolean> =>
+    (await canonicalMemoProjection(projectId, memoId)) !== null
 const validateMemoOperationRequestMiddleware = () => {
     return async (req: Request, res: Response, next: NextFunction) => {
         const project = req.context?.requestUser?.project
@@ -253,20 +278,19 @@ export const getMemo = async (req: Request, res: Response) => {
         DI.memoChunks.find({ memo }, { orderBy: { chunk_index: 'asc' } }),
     ])
 
-    const specSource = await specSources().findOne({ project, memo }, { populate: ['active_revision'] })
-    if (specSource) {
-        if (!specSource.active_revision || !memoContent) {
+    const specProjection = await canonicalMemoProjection(project.uuid, memo.uuid)
+    if (specProjection) {
+        if (!specProjection.active_revision_id || !specProjection.revision_content_hash || !memoContent) {
             return canonicalMemoError(res, 'SPEC_PROCESSING', 'Canonical memo projection is not published')
         }
 
-        const activeRevisionId = specSource.active_revision.uuid
         const requiredRevisionId = revisionQuery.data.required_revision_id
         const currentContentHash = sha256(memoContent.content)
         if (
-            (requiredRevisionId !== undefined && activeRevisionId !== requiredRevisionId) ||
-            specSource.memo_projection_revision_id !== activeRevisionId ||
-            specSource.active_revision.content_hash !== currentContentHash ||
-            specSource.memo_projection_canonical_hash !== currentContentHash ||
+            (requiredRevisionId !== undefined && specProjection.active_revision_id !== requiredRevisionId) ||
+            specProjection.memo_projection_revision_id !== specProjection.active_revision_id ||
+            specProjection.revision_content_hash !== currentContentHash ||
+            specProjection.memo_projection_canonical_hash !== currentContentHash ||
             memo.content_hash !== currentContentHash
         ) {
             return canonicalMemoError(res, 'MEMO_REVISION_MISMATCH', 'Canonical memo revision does not match published content')
@@ -316,7 +340,7 @@ export const updateMemo = async (req: Request, res: Response) => {
         return res.status(404).json({ error: 'Memo not found' })
     }
 
-    if (await specSources().findOne({ project, memo })) {
+    if (await isCanonicalMemo(project.uuid, memo.uuid)) {
         return canonicalMutationError(res)
     }
 
@@ -475,7 +499,7 @@ export const deleteMemo = async (req: Request, res: Response) => {
         return res.status(404).json({ error: 'Memo not found' })
     }
 
-    if (await specSources().findOne({ project, memo })) {
+    if (await isCanonicalMemo(project.uuid, memo.uuid)) {
         return canonicalMutationError(res)
     }
 

@@ -47,17 +47,21 @@ function installRepositories(options: {
     DI.memoSummaries = { findOne: jest.fn().mockResolvedValue(null) } as any
     DI.memoTags = { find: jest.fn().mockResolvedValue([]) } as any
     DI.memoChunks = { find: jest.fn().mockResolvedValue([]) } as any
-    DI.specSources = {
-        findOne: jest.fn().mockResolvedValue({
-            memo,
-            active_revision: revisionId ? {
-                uuid: revisionId,
-                content_hash: options.revisionContentHash || sha256('published content'),
-            } : null,
-            memo_projection_revision_id: options.projectionRevisionId || revisionId,
-            memo_projection_canonical_hash: options.projectionContentHash || sha256('published content'),
+    DI.em = {
+        getConnection: jest.fn().mockReturnValue({
+            execute: jest.fn().mockResolvedValue([{
+                active_revision_id: revisionId,
+                memo_projection_revision_id: options.projectionRevisionId || revisionId,
+                memo_projection_canonical_hash: options.projectionContentHash || sha256('published content'),
+                revision_content_hash: revisionId ? (options.revisionContentHash || sha256('published content')) : null,
+            }]),
         }),
     } as any
+}
+
+function installLegacyRepositories() {
+    installRepositories({})
+    ;(DI.em.getConnection().execute as jest.Mock).mockResolvedValue([])
 }
 
 describe('canonical exact memo reads', () => {
@@ -101,6 +105,20 @@ describe('canonical exact memo reads', () => {
         expect(res.json).toHaveBeenCalledWith(expect.objectContaining({
             error: expect.objectContaining({ code: 'SPEC_PROCESSING' }),
         }))
+    })
+})
+
+describe('legacy memo compatibility', () => {
+    afterEach(() => jest.restoreAllMocks())
+
+    it('returns legacy memos when no canonical projection exists', async () => {
+        installLegacyRepositories()
+        const res = response()
+
+        await getMemo(request('GET'), res)
+
+        expect(res.status).toHaveBeenCalledWith(200)
+        expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ uuid: memo.uuid, content: 'published content' }))
     })
 })
 
