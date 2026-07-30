@@ -181,7 +181,7 @@ CLI_PROXY_API_CONFIG.txtnul
 k8s/configmap.yaml
 k8s/worker-secret.yaml
 k8s/ui-configmap.yaml
-k8s/worker-configmap.yaml
+!k8s/worker-configmap.yaml
 k8s/worker-secret.local.yaml
 k8s/worker-configmap.local.yaml
 k8s/discord-bot-configmap.local.yaml

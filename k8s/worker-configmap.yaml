@@ -1,0 +1,66 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+    name: skald-worker-config
+    namespace: skald
+    labels:
+        app: skald
+        component: worker
+        environment: production
+data:
+    # Non-secret Skald API coordinates. The project ID is an identifier, not a credential.
+    SKALD_BASE_URL: 'http://api-service:8000'
+    SKALD_PROJECT_ID: 'replace-with-skald-project-id'
+
+    # Jira collector is disabled until its Secret-backed credentials and site URL are configured.
+    JIRA_SERVER: ''
+    JIRA_URL: ''
+    JIRA_JQL_FILTER: 'TYPE IN (인시던트, 장애) AND updated >= -1d ORDER BY updated DESC'
+    JIRA_POLL_INTERVAL_MINUTES: '10'
+    JIRA_ENABLED: 'false'
+
+    # SPMS-backed collectors stay disabled until a real non-secret base URL is supplied.
+    SPMS_BASE_URL: ''
+    # Fail closed for production docs collection unless an internal unauthenticated SPMS is explicit.
+    SPMS_AUTH_REQUIRED: 'true'
+    DOCS_POLL_INTERVAL_MINUTES: '30'
+    DOCS_SYNC_CRON_HOUR: '3'
+    DOCS_SYNC_CRON_MINUTE: '0'
+    DOCS_SYNC_DAYS: '7'
+    DOCS_ENABLED: 'false'
+    RELEASE_ENABLED: 'false'
+    USERDATA_ENABLED: 'false'
+
+    # Notion stays disabled until its Secret-backed token and root page are configured.
+    NOTION_ENABLED: 'false'
+    NOTION_ROOT_PAGE_ID: ''
+    NOTION_SYNC_CRON_HOUR: '1'
+    NOTION_SYNC_CRON_MINUTE: '0'
+    NOTION_MAX_DEPTH: '5'
+    NOTION_MAX_PAGES: '500'
+    NOTION_RATE_LIMIT_RPS: '2.5'
+
+    # Relative scheduler cadence; reconciliation stays disabled with docs/SPMS above.
+    DOCS_RECONCILIATION_INTERVAL_HOURS: '24'
+    # Retained for existing deployment compatibility.
+    DOCS_RECONCILIATION_GRACE_HOURS: '48'
+    # Evidence windows used by scheduled, manual, and startup authoritative runs.
+    SPEC_RECONCILIATION_INTERVAL_SECONDS: '86400'
+    SPEC_RECONCILIATION_GRACE_SECONDS: '172800'
+
+    # Startup one-shot operations are opt-in to avoid unexpected live writes.
+    SPEC_STARTUP_BACKFILL_ENABLED: 'false'
+    SPEC_STARTUP_AUTHORITATIVE_ENABLED: 'false'
+    SPEC_BACKFILL_MAX_DOCUMENTS: '5000'
+
+    # Worker process and server defaults.
+    WORKER_CONCURRENCY: '4'
+    LOG_LEVEL: 'INFO'
+    LOG_FORMAT: 'json'
+    HOST: '0.0.0.0'
+    PORT: '8080'
+    ENVIRONMENT: 'production'
+    CIRCUIT_BREAKER_FAILURE_THRESHOLD: '5'
+    CIRCUIT_BREAKER_RECOVERY_TIMEOUT: '30.0'
+    CIRCUIT_BREAKER_SUCCESS_THRESHOLD: '2'
+    SYNC_STATE_FILE: '/tmp/skald-worker-sync-state.json'

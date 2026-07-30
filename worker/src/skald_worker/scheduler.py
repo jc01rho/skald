@@ -22,6 +22,7 @@ logger = structlog.get_logger(__name__)
 _scheduler: AsyncIOScheduler | None = None
 _last_runs: dict[str, datetime] = {}
 SPMS_BOOTSTRAP_SOURCES = ("functions", "techs", "information", "troubleshoots")
+SPMS_CANONICAL_LEGACY_SOURCES = ("functions", "information")
 
 
 async def jira_sync_job() -> None:
@@ -76,8 +77,8 @@ async def docs_authoritative_reconciliation_job() -> None:
     try:
         collector = get_docs_collector()
         result = await collector.sync_authoritative_all(
-            minimum_interval=timedelta(hours=settings.docs_reconciliation_interval_hours),
-            grace_period=timedelta(hours=settings.docs_reconciliation_grace_hours),
+            minimum_interval=timedelta(seconds=settings.spec_reconciliation_interval_seconds),
+            grace_period=timedelta(seconds=settings.spec_reconciliation_grace_seconds),
         )
         _last_runs["docs_reconciliation"] = datetime.now()
         logger.info(
@@ -138,7 +139,7 @@ async def notion_sync_job() -> None:
 
 
 async def bootstrap_initial_full_sync() -> None:
-    """Run full SPMS and Notion sync when the target DB has no source data."""
+    """Run explicitly enabled startup backfills without mutating by default."""
     skald = get_skald_client()
 
     try:
@@ -155,25 +156,60 @@ async def bootstrap_initial_full_sync() -> None:
 
 
 async def _bootstrap_initial_spms_sync(skald) -> None:
-    """Run full SPMS sync when no SPMS source data exists."""
-    spms_counts = {
+    """Backfill legacy/empty SPMS projections and then reconcile when enabled."""
+    if not settings.spec_startup_backfill_enabled and not settings.spec_startup_authoritative_enabled:
+        logger.info("Skipping startup SPMS mutation; startup triggers are disabled")
+        return
+
+    legacy_counts = {
         source: await skald.count_memos(source=source)
         for source in SPMS_BOOTSTRAP_SOURCES
     }
-    if all(count == 0 for count in spms_counts.values()):
-        logger.info("Starting initial full SPMS sync", source_counts=spms_counts)
-        collector = get_docs_collector()
-        result = await collector.sync_all(updated_since=None)
+    canonical_count = await skald.count_memos(source="spms")
+    needs_backfill = (
+        all(count == 0 for count in legacy_counts.values()) and canonical_count == 0
+    ) or any(legacy_counts[source] > 0 for source in SPMS_CANONICAL_LEGACY_SOURCES)
+    collector = get_docs_collector()
+
+    if settings.spec_startup_backfill_enabled and needs_backfill:
+        logger.info(
+            "Starting startup SPMS full backfill",
+            legacy_source_counts=legacy_counts,
+            canonical_count=canonical_count,
+            max_documents=settings.spec_backfill_max_documents,
+        )
+        result = await collector.sync_all(
+            updated_since=None,
+            max_documents=settings.spec_backfill_max_documents,
+        )
         _last_runs["docs_bootstrap"] = datetime.now()
         total = result.get("total", result)
         logger.info(
-            "Initial full SPMS sync completed",
+            "Startup SPMS full backfill completed",
             processed=total.get("processed", 0),
             failed=total.get("failed", 0),
             skipped=total.get("skipped", 0),
         )
-    else:
-        logger.info("Skipping initial full SPMS sync; source data exists", source_counts=spms_counts)
+    elif settings.spec_startup_backfill_enabled:
+        logger.info(
+            "Skipping startup SPMS full backfill; canonical projection exists",
+            legacy_source_counts=legacy_counts,
+            canonical_count=canonical_count,
+        )
+
+    if settings.spec_startup_authoritative_enabled:
+        result = await collector.sync_authoritative_all(
+            minimum_interval=timedelta(seconds=settings.spec_reconciliation_interval_seconds),
+            grace_period=timedelta(seconds=settings.spec_reconciliation_grace_seconds),
+        )
+        _last_runs["docs_reconciliation_bootstrap"] = datetime.now()
+        logger.info(
+            "Startup authoritative SPMS reconciliation completed",
+            run_id=result["run_id"],
+            complete=result["complete"],
+            count=result["count"],
+            promotion_state=result["promotion_state"],
+        )
 
 
 async def _bootstrap_initial_notion_sync(skald) -> None:

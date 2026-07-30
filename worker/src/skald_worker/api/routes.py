@@ -1,9 +1,11 @@
 """API routes for the worker service."""
 
 import time
+from datetime import timedelta
 
 import structlog
 from fastapi import APIRouter, Depends, HTTPException
+from fastapi.responses import JSONResponse
 
 from skald_worker.api.schemas import (
     ChatRequest,
@@ -41,7 +43,7 @@ from skald_worker.metrics import (
     sync_job_duration_seconds,
     sync_jobs_total,
 )
-from skald_worker.middleware.auth import require_api_key
+from skald_worker.middleware.auth import require_api_key, require_mutation_api_key
 from skald_worker.sync_state import get_sync_state_manager
 
 logger = structlog.get_logger(__name__)
@@ -235,7 +237,7 @@ async def chat(
 @router.post("/sync", response_model=SyncResponse)
 async def trigger_sync(
     request: SyncRequest,
-    _api_key: str | None = Depends(require_api_key),
+    _api_key: str = Depends(require_mutation_api_key),
 ) -> SyncResponse:
     """Manually trigger a sync operation.
 
@@ -245,6 +247,10 @@ async def trigger_sync(
     sync_state_manager = get_sync_state_manager()
 
     try:
+        if request.source != "docs" and request.mode != "incremental":
+            from skald_worker.errors import bad_request
+
+            raise bad_request(f"Sync mode '{request.mode}' is only supported for docs")
         if request.source == "jira":
             if not settings.jira_enabled or not settings.jira_server:
                 sync_jobs_total.labels(source="jira", status="error").inc()
@@ -284,41 +290,107 @@ async def trigger_sync(
                 sync_jobs_total.labels(source="docs", status="error").inc()
                 raise integration_not_configured("Docs")
 
-            sync_state_manager.record_sync_start("docs")
             collector = get_docs_collector()
-            updated_since = request.options.get("updated_since")
-            max_documents = request.options.get("max_documents", 5000)
 
-            result = await collector.sync_all(
-                updated_since=updated_since,
-                max_documents=max_documents,
-            )
+            if request.mode == "authoritative":
+                sync_state_manager.record_sync_start("docs_authoritative")
+                result = await collector.sync_authoritative_all(
+                    minimum_interval=timedelta(seconds=settings.spec_reconciliation_interval_seconds),
+                    grace_period=timedelta(seconds=settings.spec_reconciliation_grace_seconds),
+                )
+                total_processed = result["count"]
+                total_failed = len(result.get("errors", []))
+                response = SyncResponse(
+                    source="docs",
+                    mode="authoritative",
+                    status="completed" if result["complete"] else "incomplete",
+                    processed=total_processed,
+                    failed=total_failed,
+                    run_id=result["run_id"],
+                    complete=result["complete"],
+                    count=result["count"],
+                    promotion_state=result["promotion_state"],
+                    progress={"by_type": result.get("by_type", {}), "errors": result.get("errors", [])},
+                    message=f"Authoritative reconciliation observed {result['count']} documents",
+                )
+                if not result["complete"]:
+                    failure_message = f"Authoritative reconciliation {result['run_id']} was incomplete"
+                    sync_state_manager.record_sync_failure("docs_authoritative", failure_message)
+                    sync_jobs_total.labels(source="docs", status="error").inc()
+                    sync_items_processed_total.labels(source="docs", status="failed").inc(total_failed)
+                    raise HTTPException(status_code=502, detail=response.model_dump())
+                sync_state_manager.record_sync_success(
+                    "docs_authoritative",
+                    items_processed=total_processed,
+                    items_failed=total_failed,
+                    metadata={
+                        "run_id": result["run_id"],
+                        "complete": result["complete"],
+                        "promotion_state": result["promotion_state"],
+                    },
+                )
+            else:
+                sync_state_manager.record_sync_start("docs")
+                requested_max_documents = request.options.get(
+                    "max_documents",
+                    settings.spec_backfill_max_documents if request.mode == "full_backfill" else 5000,
+                )
+                max_documents = requested_max_documents
+                if (
+                    not isinstance(requested_max_documents, int)
+                    or isinstance(requested_max_documents, bool)
+                    or requested_max_documents < 1
+                ):
+                    from skald_worker.errors import bad_request
 
-            # Extract totals from nested result structure
-            total_processed = result["total"]["processed"]
-            total_failed = result["total"]["failed"]
+                    raise bad_request("options.max_documents must be a positive integer")
+                max_documents = min(requested_max_documents, settings.spec_backfill_max_documents)
+                updated_since = None if request.mode == "full_backfill" else request.options.get("updated_since")
+                result = await collector.sync_all(
+                    updated_since=updated_since,
+                    max_documents=max_documents,
+                )
+                total = result.get("total", result)
+                total_processed = total.get("processed", 0)
+                total_failed = total.get("failed", 0)
+                total_skipped = total.get("skipped", 0)
+                response = SyncResponse(
+                    source="docs",
+                    mode=request.mode,
+                    status="completed" if total_failed == 0 else "failed",
+                    processed=total_processed,
+                    failed=total_failed,
+                    skipped=total_skipped,
+                    max_documents=max_documents,
+                    progress={"by_type": result.get("by_type", {})},
+                    message=f"Synced {total_processed} documents in {request.mode} mode",
+                )
+                if total_failed and request.mode == "full_backfill":
+                    sync_state_manager.record_sync_failure(
+                        "docs",
+                        f"{request.mode} completed with {total_failed} failed documents",
+                    )
+                    sync_jobs_total.labels(source="docs", status="error").inc()
+                    sync_items_processed_total.labels(source="docs", status="success").inc(total_processed)
+                    sync_items_processed_total.labels(source="docs", status="failed").inc(total_failed)
+                    return JSONResponse(status_code=502, content=response.model_dump(mode="json"))
+                sync_state_manager.record_sync_success(
+                    "docs",
+                    items_processed=total_processed,
+                    items_failed=0,
+                    metadata={
+                        "mode": request.mode,
+                        "updated_since": updated_since,
+                        "max_documents": max_documents,
+                        "by_type": result.get("by_type", {}),
+                    },
+                )
 
-            # Record metrics
             sync_jobs_total.labels(source="docs", status="success").inc()
             sync_job_duration_seconds.labels(source="docs").observe(time.perf_counter() - start_time)
             sync_items_processed_total.labels(source="docs", status="success").inc(total_processed)
             sync_items_processed_total.labels(source="docs", status="failed").inc(total_failed)
-
-            # Record sync state
-            sync_state_manager.record_sync_success(
-                "docs",
-                items_processed=total_processed,
-                items_failed=total_failed,
-                metadata={"max_documents": max_documents, "by_type": result.get("by_type", {})},
-            )
-
-            return SyncResponse(
-                source="docs",
-                status="completed",
-                processed=total_processed,
-                failed=total_failed,
-                message=f"Synced {total_processed} documents",
-            )
+            return response
 
         elif request.source == "notion":
             if not settings.notion_enabled or not settings.notion_token or not settings.notion_root_page_id:

@@ -198,6 +198,40 @@ class TestDocsCollector:
                 assert result["processed"] == 0
                 assert result["failed"] == 1
 
+    @pytest.mark.asyncio
+    async def test_sync_all_uses_one_global_budget_in_deterministic_order(self, collector):
+        """The cap is shared across endpoint types rather than multiplied per endpoint."""
+        calls: list[tuple[str, int]] = []
+
+        async def sync_endpoint(endpoint_type, updated_since=None, max_items=500):
+            calls.append((endpoint_type, max_items))
+            used = min(max_items, 2)
+            return {"processed": used, "failed": 0, "skipped": 0}
+
+        with patch.object(collector, "sync_endpoint", side_effect=sync_endpoint):
+            result = await collector.sync_all(max_documents=3)
+
+        assert calls == [("functions", 3), ("techs", 1)]
+        assert result["total"] == {"processed": 3, "failed": 0, "skipped": 0}
+        assert list(result["by_type"]) == ["functions", "techs", "information", "troubleshoots"]
+        assert result["by_type"]["information"] == {"processed": 0, "failed": 0, "skipped": 0}
+        assert result["by_type"]["troubleshoots"] == {"processed": 0, "failed": 0, "skipped": 0}
+
+    @pytest.mark.asyncio
+    async def test_sync_all_failures_consume_the_shared_budget(self, collector):
+        """Failed attempts count against the global mutation ceiling."""
+        calls: list[tuple[str, int]] = []
+
+        async def sync_endpoint(endpoint_type, updated_since=None, max_items=500):
+            calls.append((endpoint_type, max_items))
+            return {"processed": 0, "failed": max_items, "skipped": 0}
+
+        with patch.object(collector, "sync_endpoint", side_effect=sync_endpoint):
+            result = await collector.sync_all(max_documents=2)
+
+        assert calls == [("functions", 2)]
+        assert result["total"] == {"processed": 0, "failed": 2, "skipped": 0}
+
 
 class TestDocsCollectorSingleton:
     """Test singleton behavior."""

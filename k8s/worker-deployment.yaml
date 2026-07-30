@@ -42,6 +42,7 @@ spec:
                   envFrom:
                       - configMapRef:
                             name: skald-worker-config
+                            optional: false
                       - secretRef:
                             name: skald-worker-secrets
                   resources:

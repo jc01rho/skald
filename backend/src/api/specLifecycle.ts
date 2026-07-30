@@ -67,6 +67,57 @@ const ConflictReview = z.object({
 }).strict()
 const ConflictHistoryQuery = z.object({ project_id: ProjectId })
 const CandidateParams = z.object({ candidate_key: z.string().min(1).max(512) })
+const QualityThresholds = z.object({
+    related_recall_at_50: z.literal(0.95),
+    conflict_recall_at_20: z.literal(0.90),
+    conflict_precision_at_20: z.literal(0.80),
+    conflict_false_positives_per_query_max: z.literal(10),
+    evidence_validity: z.literal(1),
+    phrase_recall_at_10: z.literal(0.95),
+    korean_no_result: z.literal(true),
+}).strict()
+const QualityMetrics = z.object({
+    related_recall_at_50: z.number().min(0).max(1),
+    conflict_recall_at_20: z.number().min(0).max(1),
+    conflict_precision_at_20: z.number().min(0).max(1),
+    conflict_false_positives_per_query_max: z.number().min(0),
+    evidence_validity: z.number().min(0).max(1),
+    phrase_recall_at_10: z.number().min(0).max(1),
+    korean_no_result: z.boolean(),
+}).strict()
+const QualityChecks = z.record(z.string(), z.object({
+    value: z.union([z.number(), z.boolean()]),
+    operator: z.enum(['>=', '<=', '==']),
+    threshold: z.union([z.number(), z.boolean()]),
+    passed: z.boolean(),
+}).strict())
+const QueryManifestRegistration = z.object({
+    project_id: z.string().uuid(),
+    scope_key: z.string().min(1).max(512),
+    reconciliation_run_id: z.string().min(1).max(512),
+    dataset: z.string().trim().min(1).max(512),
+    version: z.string().trim().min(1).max(512),
+    content: z.string().min(1).max(10_000_000),
+}).strict()
+const QualityEvaluation = z.object({
+    schema_version: z.literal('1.0'),
+    kind: z.literal('skald.spec-quality-readiness'),
+    status: z.literal('completed'),
+    pass: z.boolean(),
+    artifact_sha256: Hash,
+    generated_at: z.string().datetime(),
+    reviewed_at: z.string().datetime(),
+    dataset: z.string().trim().min(1).max(512),
+    version: z.string().trim().min(1).max(512),
+    owner: z.string().trim().min(1).max(512),
+    project_id: z.string().uuid(),
+    scope_key: z.string().min(1).max(512),
+    reconciliation_run_id: z.string().min(1).max(512),
+    query_manifest_sha256: Hash,
+    thresholds: QualityThresholds,
+    metrics: QualityMetrics,
+    checks: QualityChecks,
+}).strict()
 
 function validationError(res: Response, error: z.ZodError) {
     return res.status(400).json({ error: { code: 'INVALID_REQUEST', message: 'Request validation failed', issues: error.issues } })
@@ -85,6 +136,26 @@ function sendError(res: Response, error: unknown) {
 
 function actorFor(req: Request, projectId: string): string {
     return req.context?.requestUser?.userInstance?.email || `project-api-key:${projectId}`
+}
+
+async function qualityEvaluationProject(req: Request, projectId: string) {
+    const requestUser = req.context?.requestUser
+    if (!requestUser || requestUser.userType === 'unauthenticatedUser') {
+        throw new SpecLifecycleError('UNAUTHORIZED', 'Unauthorized', 401)
+    }
+    if (requestUser.userType === 'projectAPIKeyUser' || !requestUser.userInstance) {
+        throw new SpecLifecycleError('OPERATIONS_AUTHORIZATION_REQUIRED', 'Operations authorization is required', 403)
+    }
+    const user = requestUser.userInstance
+    if (!user.is_superuser && user.role !== 'operations') {
+        throw new SpecLifecycleError('OPERATIONS_AUTHORIZATION_REQUIRED', 'Operations authorization is required', 403)
+    }
+    if (user.is_superuser) {
+        const project = await DI.projects.findOne({ uuid: projectId }, { populate: ['organization'] })
+        if (!project) throw new SpecLifecycleError('PROJECT_NOT_FOUND', 'Project not found', 404)
+        return project
+    }
+    return resolveEffectiveProject(req, projectId)
 }
 
 export const specLifecycleRouter = express.Router({ mergeParams: true })
@@ -118,6 +189,39 @@ specLifecycleRouter.get('/spec-promotion-status', async (req, res) => {
     try {
         const project = await resolveEffectiveProject(req, parsed.data.project_id)
         return res.json(await new SpecLifecycleService(DI.em).promotionStatus(project, parsed.data.scope_key))
+    } catch (error) {
+        return sendError(res, error)
+    }
+})
+specLifecycleRouter.post('/spec-quality-readiness/query-manifests', async (req, res) => {
+    const parsed = QueryManifestRegistration.safeParse(req.body)
+    if (!parsed.success) return validationError(res, parsed.error)
+    try {
+        const project = await qualityEvaluationProject(req, parsed.data.project_id)
+        return res.status(201).json(await new SpecLifecycleService(DI.em).registerQualityQueryManifest(
+            project,
+            actorFor(req, project.uuid),
+            parsed.data
+        ))
+    } catch (error) {
+        return sendError(res, error)
+    }
+})
+
+specLifecycleRouter.post('/spec-quality-readiness/evaluations', async (req, res) => {
+    const parsed = QualityEvaluation.safeParse(req.body)
+    if (!parsed.success) return validationError(res, parsed.error)
+    try {
+        const project = await qualityEvaluationProject(req, parsed.data.project_id)
+        return res.status(201).json(await new SpecLifecycleService(DI.em).recordQualityEvaluation(
+            project,
+            actorFor(req, project.uuid),
+            {
+                ...parsed.data,
+                generated_at: new Date(parsed.data.generated_at),
+                reviewed_at: new Date(parsed.data.reviewed_at),
+            }
+        ))
     } catch (error) {
         return sendError(res, error)
     }

@@ -12,6 +12,49 @@ export enum SpecPromotionStatus {
 
 export type SpecNativeSurface = 'exact' | 'outgoing' | 'incoming' | 'traversal' | 'related' | 'conflict_candidates'
 
+export interface SpecQualityReadinessThresholds {
+    related_recall_at_50: number
+    conflict_recall_at_20: number
+    conflict_precision_at_20: number
+    conflict_false_positives_per_query_max: number
+    evidence_validity: number
+    phrase_recall_at_10: number
+    korean_no_result: true
+}
+
+export interface SpecQualityReadinessMetrics {
+    related_recall_at_50: number
+    conflict_recall_at_20: number
+    conflict_precision_at_20: number
+    conflict_false_positives_per_query_max: number
+    evidence_validity: number
+    phrase_recall_at_10: number
+    korean_no_result: boolean
+}
+
+export interface SpecQualityReadinessEvidence {
+    schema_version: '1.0'
+    kind: 'skald.spec-quality-readiness'
+    status: 'completed'
+    pass: boolean
+    artifact_sha256: string
+    generated_at: string
+    reviewed_at: string
+    dataset: string
+    version: string
+    owner: string
+    project_id: string
+    scope_key: string
+    reconciliation_run_id: string
+    query_manifest_sha256: string
+    thresholds: SpecQualityReadinessThresholds
+    metrics: SpecQualityReadinessMetrics
+    recorded_at: string
+    recorded_by: string
+    related_ready: boolean
+    conflict_candidates_ready: boolean
+}
+
 export interface SpecCapabilityReadiness {
     exact: boolean
     outgoing: boolean
@@ -48,6 +91,9 @@ export class SpecPromotionState {
     @Property({ nullable: true })
     promoted_at?: Date | null
 
+    @Property({ type: 'jsonb', nullable: true })
+    quality_readiness?: SpecQualityReadinessEvidence | null
+
     @Property()
     created_at!: Date
 
@@ -69,8 +115,10 @@ export class SpecPromotionState {
             outgoing: promoted,
             incoming: promoted,
             traversal: promoted,
-            related: false,
-            conflict_candidates: false,
+            related: promoted && this.quality_readiness?.related_ready === true &&
+                this.quality_readiness.reconciliation_run_id === this.last_clean_run_id,
+            conflict_candidates: promoted && this.quality_readiness?.conflict_candidates_ready === true &&
+                this.quality_readiness.reconciliation_run_id === this.last_clean_run_id,
         }
     }
 
@@ -78,6 +126,7 @@ export class SpecPromotionState {
         if (run.scope_key !== this.scope_key) throw new Error('Reconciliation run scope does not match promotion scope')
 
         this.updated_at = run.completed_at || new Date()
+        if (!run.isCleanAuthoritative()) this.quality_readiness = null
         if (!run.isCleanAuthoritative()) {
             this.consecutive_clean_runs = 0
             this.last_clean_run_id = null
@@ -98,6 +147,8 @@ export class SpecPromotionState {
         ) {
             return
         }
+
+        this.quality_readiness = null
 
         this.previous_clean_run_id = this.last_clean_run_id || null
 

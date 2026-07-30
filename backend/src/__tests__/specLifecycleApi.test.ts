@@ -255,6 +255,7 @@ describe('spec lifecycle API', () => {
             last_clean_completed_at: new Date('2026-07-30T14:00:00.000Z'),
             promoted_at: new Date('2026-07-30T14:00:00.000Z'),
             updated_at: new Date('2026-07-30T14:00:00.000Z'),
+            quality_readiness: null,
         })
         const response = await request(app).get('/api/v1/spec-promotion-status').query({ scope_key: 'github:specs' })
         expect(response.status).toBe(200)

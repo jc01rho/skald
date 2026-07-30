@@ -3,7 +3,10 @@
 import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
+from pydantic import ValidationError
 
+from skald_worker.collectors.docs_collector import get_docs_collector
+from skald_worker.config import Settings
 from skald_worker.middleware.auth import require_api_key
 
 
@@ -116,3 +119,61 @@ class TestVerifyAPIKey:
 
         assert verify_api_key(None) is True
         assert verify_api_key("any-key") is True
+
+
+class TestProductionAuthConfiguration:
+    """Production configuration must fail closed without a worker API key."""
+
+    def test_production_requires_worker_api_key(self):
+        with pytest.raises(ValidationError, match="WORKER_API_KEY is required"):
+            Settings(_env_file=None, environment="production", worker_api_key="")
+
+    def test_production_accepts_worker_api_key(self):
+        configured = Settings(
+            _env_file=None,
+            environment="production",
+            worker_api_key="production-secret",
+        )
+
+        assert configured.worker_api_key == "production-secret"
+
+    def test_development_can_disable_authentication(self):
+        configured = Settings(_env_file=None, environment="development", worker_api_key="")
+
+        assert configured.worker_api_key == ""
+
+    def test_production_protected_docs_requires_spms_api_key(self):
+        with pytest.raises(ValidationError, match="SPMS_API_KEY is required"):
+            Settings(
+                _env_file=None,
+                environment="production",
+                worker_api_key="production-secret",
+                docs_enabled=True,
+                spms_base_url="https://spms.example.com",
+                spms_api_key="",
+            )
+
+    def test_production_unprotected_docs_can_explicitly_disable_spms_auth(self):
+        configured = Settings(
+            _env_file=None,
+            environment="production",
+            worker_api_key="production-secret",
+            docs_enabled=True,
+            spms_base_url="https://spms.internal",
+            spms_api_key="",
+            spms_auth_required=False,
+        )
+
+        assert configured.spms_auth_required is False
+
+
+def test_docs_collector_singleton_uses_spms_bearer_token(monkeypatch):
+    import skald_worker.collectors.docs_collector as docs_module
+
+    monkeypatch.setattr(docs_module.settings, "spms_base_url", "https://spms.example.com")
+    monkeypatch.setattr(docs_module.settings, "spms_api_key", "spms-secret")
+    monkeypatch.setattr(docs_module, "_docs_collector", None)
+
+    collector = get_docs_collector()
+
+    assert collector.client.headers["Authorization"] == "Bearer spms-secret"

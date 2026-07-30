@@ -1,5 +1,5 @@
 import { createHash } from 'crypto'
-import express, { Request, Response } from 'express'
+import express, { NextFunction, Request, Response } from 'express'
 import { z } from 'zod'
 import { DI } from '@/di'
 import { requirePromotedSpecScope, resolveEffectiveProject } from '@/middleware/authMiddleware'
@@ -132,6 +132,28 @@ function traversalAuthScopeHash(req: Request, projectId: string, scopeKey: strin
     throw new SpecRevisionError('AUTH_SCOPE_UNAVAILABLE', 'Authenticated principal identity is unavailable', 401)
 }
 
+function requireQualityReady(surface: 'related' | 'conflict_candidates') {
+    return async (req: Request, res: Response, next: NextFunction) => {
+        try {
+            const project = await projectFor(req, req.body?.project_id)
+            const scopeKey = typeof req.body?.scope_key === 'string' ? req.body.scope_key : 'spms:all'
+            const promotion = await DI.specPromotionStates.findOne({
+                project,
+                scope_key: scopeKey,
+                state: SpecPromotionStatus.PROMOTED,
+            })
+            if (!promotion?.nativeCapabilityReadiness?.()[surface]) {
+                return res.status(409).json({
+                    error: { code: 'SPEC_CAPABILITY_NOT_READY', message: `Spec ${surface} capability is not quality-ready` },
+                })
+            }
+            return next()
+        } catch (error) {
+            return sendError(res, error)
+        }
+    }
+}
+
 function sendError(res: Response, error: unknown) {
     if (error instanceof SpecRevisionError) {
         return res.status(error.status).json({ error: { code: error.code, message: error.message } })
@@ -257,7 +279,7 @@ specRevisionRouter.post('/specs/traverse', requirePromotedSpecScope(), async (re
     }
 })
 
-specRevisionRouter.post('/specs/related', requirePromotedSpecScope(), async (req, res) => {
+specRevisionRouter.post('/specs/related', requirePromotedSpecScope(), requireQualityReady('related'), async (req, res) => {
     const parsed = BatchRequest.safeParse(req.body)
     if (!parsed.success) return validationError(res, parsed.error)
     try {
@@ -268,7 +290,7 @@ specRevisionRouter.post('/specs/related', requirePromotedSpecScope(), async (req
     }
 })
 
-specRevisionRouter.post('/specs/conflict-candidates', requirePromotedSpecScope(), async (req, res) => {
+specRevisionRouter.post('/specs/conflict-candidates', requirePromotedSpecScope(), requireQualityReady('conflict_candidates'), async (req, res) => {
     const parsed = BatchRequest.safeParse(req.body)
     if (!parsed.success) return validationError(res, parsed.error)
     try {

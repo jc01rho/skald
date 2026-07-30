@@ -2,7 +2,12 @@ import { createHash, randomUUID } from 'crypto'
 import { EntityManager } from '@mikro-orm/postgresql'
 import { Project } from '@/entities/Project'
 import { SpecConflictReviewEvent } from '@/entities/SpecConflictReviewEvent'
-import { SpecPromotionState, SpecPromotionStatus } from '@/entities/SpecPromotionState'
+import {
+    SpecPromotionState,
+    SpecPromotionStatus,
+    SpecQualityReadinessEvidence,
+    SpecQualityReadinessMetrics,
+} from '@/entities/SpecPromotionState'
 import { SpecReconciliationRun } from '@/entities/SpecReconciliationRun'
 
 export const CONFLICT_REVIEW_DECISIONS = ['approve', 'reject', 'needs_more_evidence', 'supersede'] as const
@@ -87,6 +92,85 @@ export interface ConflictReviewInput {
     reason: string
     supersedes_event_id?: string | null
 }
+export interface QualityQueryManifestRegistrationInput {
+    scope_key: string
+    reconciliation_run_id: string
+    dataset: string
+    version: string
+    content: string
+}
+
+export interface SpecQualityCheck {
+    value: number | boolean
+    operator: '>=' | '<=' | '=='
+    threshold: number | boolean
+    passed: boolean
+}
+
+export interface SpecQualityEvaluationInput {
+    schema_version: '1.0'
+    kind: 'skald.spec-quality-readiness'
+    status: 'completed'
+    pass: boolean
+    artifact_sha256: string
+    generated_at: Date
+    reviewed_at: Date
+    dataset: string
+    version: string
+    owner: string
+    project_id: string
+    scope_key: string
+    reconciliation_run_id: string
+    query_manifest_sha256: string
+    thresholds: typeof SPEC_QUALITY_THRESHOLDS
+    metrics: SpecQualityReadinessMetrics
+    checks: Record<string, SpecQualityCheck>
+}
+
+export const SPEC_QUALITY_THRESHOLDS = {
+    related_recall_at_50: 0.95,
+    conflict_recall_at_20: 0.90,
+    conflict_precision_at_20: 0.80,
+    conflict_false_positives_per_query_max: 10,
+    evidence_validity: 1.0,
+    phrase_recall_at_10: 0.95,
+    korean_no_result: true,
+} as const
+
+const MAX_QUALITY_REPORT_AGE_MS = 7 * 24 * 60 * 60 * 1000
+const MAX_QUALITY_REVIEW_DELAY_MS = 24 * 60 * 60 * 1000
+
+function canonicalJson(value: unknown): string {
+    if (Array.isArray(value)) return `[${value.map(canonicalJson).join(',')}]`
+    if (value && typeof value === 'object') {
+        return `{${Object.entries(value as Record<string, unknown>)
+            .sort(([left], [right]) => left.localeCompare(right))
+            .map(([key, child]) => `${JSON.stringify(key)}:${canonicalJson(child)}`)
+            .join(',')}}`
+    }
+    if (typeof value === 'number' && Object.is(value, -0)) return '0'
+    return JSON.stringify(value)
+}
+
+export function qualityEvaluationArtifactHash(input: Omit<SpecQualityEvaluationInput, 'artifact_sha256'>): string {
+    return createHash('sha256').update(canonicalJson({
+        ...input,
+        generated_at: input.generated_at.toISOString(),
+        reviewed_at: input.reviewed_at.toISOString(),
+    }), 'utf8').digest('hex')
+}
+
+function expectedQualityChecks(metrics: SpecQualityReadinessMetrics): Record<string, SpecQualityCheck> {
+    return {
+        related_recall_at_50: { value: metrics.related_recall_at_50, operator: '>=', threshold: SPEC_QUALITY_THRESHOLDS.related_recall_at_50, passed: metrics.related_recall_at_50 >= SPEC_QUALITY_THRESHOLDS.related_recall_at_50 },
+        conflict_recall_at_20: { value: metrics.conflict_recall_at_20, operator: '>=', threshold: SPEC_QUALITY_THRESHOLDS.conflict_recall_at_20, passed: metrics.conflict_recall_at_20 >= SPEC_QUALITY_THRESHOLDS.conflict_recall_at_20 },
+        conflict_precision_at_20: { value: metrics.conflict_precision_at_20, operator: '>=', threshold: SPEC_QUALITY_THRESHOLDS.conflict_precision_at_20, passed: metrics.conflict_precision_at_20 >= SPEC_QUALITY_THRESHOLDS.conflict_precision_at_20 },
+        conflict_false_positives_per_query_max: { value: metrics.conflict_false_positives_per_query_max, operator: '<=', threshold: SPEC_QUALITY_THRESHOLDS.conflict_false_positives_per_query_max, passed: metrics.conflict_false_positives_per_query_max <= SPEC_QUALITY_THRESHOLDS.conflict_false_positives_per_query_max },
+        evidence_validity: { value: metrics.evidence_validity, operator: '>=', threshold: SPEC_QUALITY_THRESHOLDS.evidence_validity, passed: metrics.evidence_validity >= SPEC_QUALITY_THRESHOLDS.evidence_validity },
+        phrase_recall_at_10: { value: metrics.phrase_recall_at_10, operator: '>=', threshold: SPEC_QUALITY_THRESHOLDS.phrase_recall_at_10, passed: metrics.phrase_recall_at_10 >= SPEC_QUALITY_THRESHOLDS.phrase_recall_at_10 },
+        korean_no_result: { value: metrics.korean_no_result, operator: '==', threshold: SPEC_QUALITY_THRESHOLDS.korean_no_result, passed: metrics.korean_no_result === SPEC_QUALITY_THRESHOLDS.korean_no_result },
+    }
+}
 
 export class SpecLifecycleError extends Error {
     constructor(
@@ -108,6 +192,7 @@ function promotionResponse(state: SpecPromotionState | null, scopeKey: string) {
               last_clean_run_id: state.last_clean_run_id || null,
               last_clean_completed_at: state.last_clean_completed_at || null,
               promoted_at: state.promoted_at || null,
+              quality_readiness: state.quality_readiness || null,
               updated_at: state.updated_at,
           }
         : {
@@ -118,6 +203,7 @@ function promotionResponse(state: SpecPromotionState | null, scopeKey: string) {
               last_clean_run_id: null,
               last_clean_completed_at: null,
               promoted_at: null,
+              quality_readiness: null,
               updated_at: null,
           }
 }
@@ -334,6 +420,139 @@ export class SpecLifecycleService {
     async promotionStatus(project: Project, scopeKey: string) {
         const state = await this.rootEm.getRepository(SpecPromotionState).findOne({ project, scope_key: scopeKey })
         return promotionResponse(state, scopeKey)
+    }
+
+    async registerQualityQueryManifest(project: Project, actorId: string, input: QualityQueryManifestRegistrationInput) {
+        const digest = createHash('sha256').update(input.content, 'utf8').digest('hex')
+        return this.rootEm.transactional(async (em) => {
+            const reconciliationRun = await em.getRepository(SpecReconciliationRun).findOne({ project, scope_key: input.scope_key, run_id: input.reconciliation_run_id })
+            if (!reconciliationRun?.isCleanAuthoritative()) {
+                throw new SpecLifecycleError('INVALID_QUERY_MANIFEST_RUN', 'Query manifest requires a clean authoritative reconciliation run', 409)
+            }
+            const existing = await em.getConnection().execute<Array<{ query_manifest_sha256: string }>>(
+                `SELECT query_manifest_sha256 FROM skald_spec_quality_query_manifest
+                  WHERE project_id = ? AND scope_key = ? AND reconciliation_run_id = ? AND dataset = ? AND dataset_version = ?`,
+                [project.uuid, input.scope_key, input.reconciliation_run_id, input.dataset, input.version]
+            )
+            if (existing.length && existing[0].query_manifest_sha256 !== digest) {
+                throw new SpecLifecycleError('QUERY_MANIFEST_CONFLICT', 'A different query manifest is already registered for this evaluation binding', 409)
+            }
+            if (!existing.length) {
+                await em.getConnection().execute(
+                    `INSERT INTO skald_spec_quality_query_manifest
+                        (uuid, project_id, scope_key, reconciliation_run_id, dataset, dataset_version,
+                         query_manifest_sha256, content, registered_by, created_at)
+                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+                    [randomUUID(), project.uuid, input.scope_key, input.reconciliation_run_id, input.dataset,
+                        input.version, digest, input.content, actorId, new Date()]
+                )
+            }
+            return { project_id: project.uuid, scope_key: input.scope_key, reconciliation_run_id: input.reconciliation_run_id,
+                dataset: input.dataset, version: input.version, query_manifest_sha256: digest, idempotent_replay: existing.length > 0 }
+        })
+    }
+
+    async recordQualityEvaluation(project: Project, actorId: string, input: SpecQualityEvaluationInput) {
+        return this.rootEm.transactional(async (em) => {
+            await em.getConnection().execute('SELECT pg_advisory_xact_lock(hashtext(?), hashtext(?))', [
+                project.uuid,
+                input.scope_key,
+            ])
+            const state = await em.getRepository(SpecPromotionState).findOne({ project, scope_key: input.scope_key })
+            if (!state) throw new SpecLifecycleError('SPEC_SCOPE_NOT_RECONCILED', 'Spec scope has no reconciliation state', 409)
+            const reconciliationRun = await em.getRepository(SpecReconciliationRun).findOne({
+                project,
+                scope_key: input.scope_key,
+                run_id: input.reconciliation_run_id,
+            })
+
+            const now = Date.now()
+            if (input.project_id !== project.uuid || input.scope_key !== state.scope_key) {
+                throw new SpecLifecycleError('QUALITY_REPORT_SCOPE_MISMATCH', 'Quality report project or scope does not match', 409)
+            }
+            if (
+                !state.last_clean_run_id ||
+                input.reconciliation_run_id !== state.last_clean_run_id ||
+                !reconciliationRun?.isCleanAuthoritative()
+            ) {
+                throw new SpecLifecycleError('STALE_QUALITY_REPORT', 'Quality report does not match the current clean reconciliation run', 409)
+            }
+            if (
+                input.generated_at.getTime() > input.reviewed_at.getTime() ||
+                input.reviewed_at.getTime() > now ||
+                now - input.generated_at.getTime() > MAX_QUALITY_REPORT_AGE_MS ||
+                input.reviewed_at.getTime() - input.generated_at.getTime() > MAX_QUALITY_REVIEW_DELAY_MS ||
+                !reconciliationRun.completed_at ||
+                input.generated_at.getTime() < reconciliationRun.completed_at.getTime()
+            ) {
+                throw new SpecLifecycleError('STALE_QUALITY_REPORT', 'Quality report timestamps are stale or invalid', 409)
+            }
+            if (canonicalJson(input.thresholds) !== canonicalJson(SPEC_QUALITY_THRESHOLDS)) {
+                throw new SpecLifecycleError('INVALID_QUALITY_THRESHOLDS', 'Quality report thresholds do not match server policy', 400)
+            }
+            const { artifact_sha256: _artifactSha256, ...reportPayload } = input
+            const artifactSha256 = qualityEvaluationArtifactHash(reportPayload)
+            if (input.artifact_sha256 !== artifactSha256) {
+                throw new SpecLifecycleError('INVALID_QUALITY_ARTIFACT', 'Quality report artifact digest is invalid', 400)
+            }
+            const expectedChecks = expectedQualityChecks(input.metrics)
+            if (canonicalJson(input.checks) !== canonicalJson(expectedChecks)) {
+                throw new SpecLifecycleError('INVALID_QUALITY_CHECKS', 'Quality report checks do not match fixed readiness gates', 400)
+            }
+            const manifests = await em.getConnection().execute<Array<{ query_manifest_sha256: string }>>(
+                `SELECT query_manifest_sha256 FROM skald_spec_quality_query_manifest
+                  WHERE project_id = ? AND scope_key = ? AND reconciliation_run_id = ? AND dataset = ? AND dataset_version = ?`,
+                [project.uuid, input.scope_key, input.reconciliation_run_id, input.dataset, input.version]
+            )
+            if (manifests.length !== 1 || manifests[0].query_manifest_sha256 !== input.query_manifest_sha256) {
+                throw new SpecLifecycleError('UNREGISTERED_QUERY_MANIFEST', 'Quality report query manifest is not registered for this evaluation binding', 409)
+            }
+
+            const metricsPass = input.metrics.related_recall_at_50 >= SPEC_QUALITY_THRESHOLDS.related_recall_at_50 &&
+                input.metrics.conflict_recall_at_20 >= SPEC_QUALITY_THRESHOLDS.conflict_recall_at_20 &&
+                input.metrics.conflict_precision_at_20 >= SPEC_QUALITY_THRESHOLDS.conflict_precision_at_20 &&
+                input.metrics.conflict_false_positives_per_query_max <= SPEC_QUALITY_THRESHOLDS.conflict_false_positives_per_query_max &&
+                input.metrics.evidence_validity >= SPEC_QUALITY_THRESHOLDS.evidence_validity &&
+                input.metrics.phrase_recall_at_10 >= SPEC_QUALITY_THRESHOLDS.phrase_recall_at_10 &&
+                input.metrics.korean_no_result === SPEC_QUALITY_THRESHOLDS.korean_no_result
+            if (!input.pass || !metricsPass) {
+                throw new SpecLifecycleError('QUALITY_GATES_FAILED', 'Quality report did not pass fixed readiness gates', 409)
+            }
+
+            const recordedAt = new Date()
+            const evidence: SpecQualityReadinessEvidence = {
+                schema_version: input.schema_version,
+                kind: input.kind,
+                status: input.status,
+                pass: input.pass,
+                artifact_sha256: artifactSha256,
+                generated_at: input.generated_at.toISOString(),
+                reviewed_at: input.reviewed_at.toISOString(),
+                dataset: input.dataset,
+                version: input.version,
+                owner: input.owner,
+                project_id: input.project_id,
+                scope_key: input.scope_key,
+                reconciliation_run_id: input.reconciliation_run_id,
+                query_manifest_sha256: input.query_manifest_sha256,
+                thresholds: input.thresholds,
+                metrics: input.metrics,
+                recorded_at: recordedAt.toISOString(),
+                recorded_by: actorId,
+                related_ready: true,
+                conflict_candidates_ready: true,
+            }
+            state.quality_readiness = evidence
+            state.updated_at = recordedAt
+            em.persist(state)
+            await em.flush()
+            return {
+                scope_key: state.scope_key,
+                promotion_state: state.state,
+                quality_readiness: evidence,
+                capabilities: state.nativeCapabilityReadiness(),
+            }
+        })
     }
 
     async recordConflictReview(project: Project, actorId: string, input: ConflictReviewInput) {

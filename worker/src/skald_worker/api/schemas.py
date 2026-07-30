@@ -1,6 +1,6 @@
 """API schemas for request/response models."""
 
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 
@@ -91,6 +91,10 @@ class SyncRequest(BaseModel):
     """Manual sync trigger request."""
 
     source: str = Field(..., description="Source to sync: 'jira', 'docs', or 'notion'")
+    mode: Literal["incremental", "full_backfill", "authoritative"] = Field(
+        default="incremental",
+        description="Docs sync mode; non-doc sources only support incremental",
+    )
     options: dict[str, Any] = Field(default_factory=dict, description="Source-specific options")
 
 
@@ -98,9 +102,17 @@ class SyncResponse(BaseModel):
     """Sync response model."""
 
     source: str
+    mode: Literal["incremental", "full_backfill", "authoritative"] = "incremental"
     status: str
     processed: int
     failed: int
+    skipped: int = 0
+    max_documents: int | None = None
+    run_id: str | None = None
+    complete: bool | None = None
+    count: int | None = None
+    promotion_state: str | None = None
+    progress: dict[str, Any] = Field(default_factory=dict)
     message: str | None = None
 
 

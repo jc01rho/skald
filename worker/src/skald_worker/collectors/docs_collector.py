@@ -254,11 +254,13 @@ class DocsCollector:
     def __init__(
         self,
         base_url: str | None = None,
+        api_key: str | None = None,
         max_retries: int = DEFAULT_MAX_RETRIES,
         retry_min_wait: float = DEFAULT_RETRY_MIN_WAIT,
         retry_max_wait: float = DEFAULT_RETRY_MAX_WAIT,
     ):
         self.base_url = (base_url or settings.spms_base_url).rstrip("/")
+        self.api_key = api_key
         self.max_retries = max_retries
         self.retry_min_wait = retry_min_wait
         self.retry_max_wait = retry_max_wait
@@ -269,6 +271,8 @@ class DocsCollector:
         """Get or create HTTP client."""
         if self._client is None or self._client.is_closed:
             headers = {"Content-Type": "application/json"}
+            if self.api_key:
+                headers["Authorization"] = f"Bearer {self.api_key}"
 
             self._client = httpx.AsyncClient(
                 base_url=self.base_url,
@@ -1101,12 +1105,18 @@ class DocsCollector:
         except Exception as exc:
             manager.record_sync_failure("spms-reconciliation", f"Manifest submission failed: {exc}")
             raise
-        manager.record_sync_success(
-            "spms-reconciliation",
-            items_processed=request.count,
-            items_failed=len(request.errors),
-            metadata={"run_id": run_id, "manifest_hash": request.manifest_hash},
-        )
+        if complete:
+            manager.record_sync_success(
+                "spms-reconciliation",
+                items_processed=request.count,
+                items_failed=len(request.errors),
+                metadata={"run_id": run_id, "manifest_hash": request.manifest_hash},
+            )
+        else:
+            manager.record_sync_failure(
+                "spms-reconciliation",
+                f"Authoritative reconciliation {run_id} was incomplete with {len(request.errors)} errors",
+            )
         return {
             "run_id": run_id,
             "complete": complete,
@@ -1195,18 +1205,23 @@ class DocsCollector:
         updated_since: str | None = None,
         max_documents: int = 5000,
     ) -> dict[str, dict[str, int]]:
-        """Sync all SPMS document types to Skald."""
+        """Sync SPMS document types in stable order under one shared global budget."""
         logger.info("Starting SPMS docs sync", updated_since=updated_since, max_documents=max_documents)
 
-        results = {}
+        results: dict[str, dict[str, int]] = {}
+        remaining = max_documents
 
         for endpoint_type in ["functions", "techs", "information", "troubleshoots"]:
+            if remaining == 0:
+                results[endpoint_type] = {"processed": 0, "failed": 0, "skipped": 0}
+                continue
             endpoint_results = await self.sync_endpoint(
                 endpoint_type=endpoint_type,
                 updated_since=updated_since,
-                max_items=max_documents,
+                max_items=remaining,
             )
             results[endpoint_type] = endpoint_results
+            remaining -= endpoint_results["processed"] + endpoint_results["failed"]
 
         total_processed = sum(r["processed"] for r in results.values())
         total_failed = sum(r["failed"] for r in results.values())
@@ -1238,7 +1253,7 @@ def get_docs_collector() -> DocsCollector:
     """Get or create the singleton docs collector."""
     global _docs_collector
     if _docs_collector is None:
-        _docs_collector = DocsCollector()
+        _docs_collector = DocsCollector(api_key=settings.spms_api_key)
     return _docs_collector
 
 

@@ -19,6 +19,15 @@ logger = structlog.get_logger(__name__)
 api_key_header = APIKeyHeader(name="X-API-Key", auto_error=False)
 
 
+def _bearer_token(authorization: str | None) -> str | None:
+    if not authorization:
+        return None
+    scheme, separator, token = authorization.partition(" ")
+    if separator and scheme.lower() == "bearer" and token:
+        return token
+    return ""
+
+
 def verify_api_key(api_key: str | None) -> bool:
     """Verify the provided API key.
 
@@ -82,6 +91,31 @@ async def require_api_key(
         raise forbidden("Invalid API key")
 
     return api_key
+
+
+async def require_mutation_api_key(
+    request: Request,
+    api_key: Annotated[str | None, Depends(api_key_header)] = None,
+    authorization: Annotated[str | None, Header()] = None,
+) -> str:
+    """Require configured authentication for state-changing worker operations."""
+    configured_key = settings.worker_api_key
+    if not configured_key:
+        logger.error("Worker mutation authentication is not configured", path=request.url.path)
+        raise unauthorized("Worker API key is not configured")
+
+    bearer = _bearer_token(authorization)
+    if bearer == "":
+        raise unauthorized("Authorization must use a Bearer token")
+    if api_key and bearer and not secrets.compare_digest(api_key, bearer):
+        raise forbidden("Conflicting API credentials")
+
+    credential = bearer or api_key
+    if not credential:
+        raise unauthorized("API key required")
+    if not secrets.compare_digest(credential, configured_key):
+        raise forbidden("Invalid API key")
+    return credential
 
 
 async def optional_api_key(
