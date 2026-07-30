@@ -8,12 +8,12 @@ from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
 from apscheduler.triggers.interval import IntervalTrigger
 
+from skald_worker.clients.skald import get_skald_client
 from skald_worker.collectors.docs_collector import get_docs_collector
 from skald_worker.collectors.jira_collector import get_jira_collector
 from skald_worker.collectors.notion_collector import get_notion_collector
 from skald_worker.collectors.release_collector import get_release_collector
 from skald_worker.collectors.userdata_collector import get_userdata_collector
-from skald_worker.clients.skald import get_skald_client
 from skald_worker.config import settings
 
 logger = structlog.get_logger(__name__)
@@ -69,6 +69,24 @@ async def docs_sync_job() -> None:
         )
     except Exception as e:
         logger.error("Scheduled docs sync failed", error=str(e))
+
+async def docs_authoritative_reconciliation_job() -> None:
+    """Scheduled terminal SPMS enumeration for safe absence reconciliation."""
+    logger.info("Starting authoritative docs reconciliation")
+    try:
+        collector = get_docs_collector()
+        result = await collector.sync_authoritative_all(
+            minimum_interval=timedelta(hours=settings.docs_reconciliation_interval_hours),
+            grace_period=timedelta(hours=settings.docs_reconciliation_grace_hours),
+        )
+        _last_runs["docs_reconciliation"] = datetime.now()
+        logger.info(
+            "Authoritative docs reconciliation completed",
+            complete=result["complete"],
+            count=result["count"],
+        )
+    except Exception as e:
+        logger.error("Authoritative docs reconciliation failed", error=str(e))
 
 
 async def release_sync_job() -> None:
@@ -215,6 +233,13 @@ def start_scheduler() -> AsyncIOScheduler:
             cron_hour=settings.docs_sync_cron_hour,
             cron_minute=settings.docs_sync_cron_minute,
             sync_days=settings.docs_sync_days,
+        )
+        _scheduler.add_job(
+            docs_authoritative_reconciliation_job,
+            trigger=IntervalTrigger(hours=settings.docs_reconciliation_interval_hours),
+            id="docs_reconciliation",
+            name="Docs Authoritative Reconciliation",
+            replace_existing=True,
         )
 
     if settings.release_enabled and settings.spms_base_url:

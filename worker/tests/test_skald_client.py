@@ -1,10 +1,14 @@
 """Tests for Skald API client."""
 
-import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
-import httpx
 
-from skald_worker.clients.skald import SkaldClient, get_skald_client
+import pytest
+
+from skald_worker.clients.skald import (
+    SkaldClient,
+    SpecReconciliationManifestRequest,
+    get_skald_client,
+)
 
 
 class TestSkaldClient:
@@ -186,7 +190,7 @@ class TestSkaldClient:
                 updated_memo = {**sample_memo, "contentHash": "new-hash"}
                 mock_update.return_value = updated_memo
 
-                result = await client.upsert_memo(
+                await client.upsert_memo(
                     title="Updated Title",
                     content="New content",  # Different content = different hash
                     reference_id="existing-ref",
@@ -255,6 +259,47 @@ class TestSkaldClient:
 
             mock_request.assert_called_once()
             assert result == chat_response
+
+    @pytest.mark.asyncio
+    async def test_submit_spec_reconciliation_manifest_posts_typed_payload(self, client):
+        mock_response = MagicMock()
+        mock_response.json.return_value = {
+            "run": {"run_id": "run-1"},
+            "promotion": {"state": "canary_eligible"},
+            "idempotent_replay": False,
+        }
+        request = SpecReconciliationManifestRequest(
+            run_id="run-1",
+            scope_key="spms:all",
+            source_system="spms",
+            source_type="all",
+            authoritative=True,
+            complete=False,
+            manifest_hash="a" * 64,
+            count=3,
+            errors=({"endpoint": "techs", "stage": "page", "error": "timeout"},),
+            identity_drift=0,
+            revision_drift=0,
+            authorization_drift=0,
+            relation_drift=0,
+            claim_drift=0,
+            memo_link_drift=0,
+            started_at="2026-07-30T12:00:00+00:00",
+            completed_at=None,
+            lifecycle_evidence=(),
+        )
+
+        with patch.object(client, "_request_with_retry", new_callable=AsyncMock) as mock_request:
+            mock_request.return_value = mock_response
+            receipt = await client.submit_spec_reconciliation_manifest(request)
+
+        mock_request.assert_awaited_once_with(
+            "POST",
+            "/api/v1/spec-reconciliation/manifests",
+            json=request.to_payload(),
+        )
+        assert receipt.run_id == "run-1"
+        assert receipt.promotion_state == "canary_eligible"
 
 
 class TestSkaldClientSingleton:

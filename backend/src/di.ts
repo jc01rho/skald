@@ -42,6 +42,13 @@ import { WikiClaimSourceRef } from '@/entities/WikiClaimSourceRef'
 import { WikiPageLink } from '@/entities/WikiPageLink'
 import { WikiCompileRun } from '@/entities/WikiCompileRun'
 import { ProjectSweepState } from '@/entities/ProjectSweepState'
+import { SpecSource } from '@/entities/SpecSource'
+import { SpecRevision } from '@/entities/SpecRevision'
+import { SpecRelation } from '@/entities/SpecRelation'
+import { SpecClaim } from '@/entities/SpecClaim'
+import { SpecPromotionState } from '@/entities/SpecPromotionState'
+import { SpecReconciliationRun } from '@/entities/SpecReconciliationRun'
+import { SpecConflictReviewEvent } from '@/entities/SpecConflictReviewEvent'
 
 export const DI = {} as {
     server: http.Server
@@ -87,6 +94,13 @@ export const DI = {} as {
     wikiPageLinks: EntityRepository<WikiPageLink>
     wikiCompileRuns: EntityRepository<WikiCompileRun>
     projectSweepStates: EntityRepository<ProjectSweepState>
+    specSources: EntityRepository<SpecSource>
+    specRevisions: EntityRepository<SpecRevision>
+    specRelations: EntityRepository<SpecRelation>
+    specClaims: EntityRepository<SpecClaim>
+    specPromotionStates: EntityRepository<SpecPromotionState>
+    specReconciliationRuns: EntityRepository<SpecReconciliationRun>
+    specConflictReviewEvents: EntityRepository<SpecConflictReviewEvent>
 }
 
 export const initDI = async (): Promise<typeof DI> => {
@@ -132,6 +146,13 @@ export const initDI = async (): Promise<typeof DI> => {
     DI.wikiPageLinks = DI.orm.em.getRepository(WikiPageLink)
     DI.wikiCompileRuns = DI.orm.em.getRepository(WikiCompileRun)
     DI.projectSweepStates = DI.orm.em.getRepository(ProjectSweepState)
+    DI.specSources = DI.orm.em.getRepository(SpecSource)
+    DI.specRevisions = DI.orm.em.getRepository(SpecRevision)
+    DI.specRelations = DI.orm.em.getRepository(SpecRelation)
+    DI.specClaims = DI.orm.em.getRepository(SpecClaim)
+    DI.specPromotionStates = DI.orm.em.getRepository(SpecPromotionState)
+    DI.specReconciliationRuns = DI.orm.em.getRepository(SpecReconciliationRun)
+    DI.specConflictReviewEvents = DI.orm.em.getRepository(SpecConflictReviewEvent)
 
     return DI
 }

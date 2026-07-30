@@ -1,16 +1,33 @@
 """Technical documentation collector service for SPMS."""
 
+import re
+from dataclasses import dataclass
+from datetime import UTC, datetime, timedelta
 from typing import Any
+from uuid import uuid4
 
 import httpx
 import structlog
 from bs4 import BeautifulSoup
 
-from skald_worker.clients.skald import get_skald_client
+from skald_worker.clients.skald import (
+    SpecAbsenceProof,
+    SpecExactRefetchCertificate,
+    SpecLifecycleEvidence,
+    SpecReconciliationManifestRequest,
+    SpecRevisionPublishRequest,
+    canonical_hash,
+    get_skald_client,
+)
 from skald_worker.config import settings
 from skald_worker.retry import with_retry
+from skald_worker.sync_state import SyncStateManager, get_sync_state_manager
 
 logger = structlog.get_logger(__name__)
+
+def _rfc3339_millis(value: datetime) -> str:
+    return value.astimezone(UTC).isoformat(timespec="milliseconds").replace("+00:00", "Z")
+
 
 INFORMATION_PRODUCT_ALIASES = {
     "엔터프라이즈": "sparrow",
@@ -36,6 +53,139 @@ SPMS_ENDPOINTS = {
     "screens": "/api/screens",
     "troubleshoots": "/api/troubleshoots",
 }
+
+FUNCTION_DETAIL_REQUIRED_FIELDS = frozenset(
+    {
+        "id",
+        "function_id",
+        "name",
+        "status",
+        "date_updated",
+        "detail",
+        "related_info",
+        "parent",
+        "product",
+        "actions",
+        "relatedFunctions",
+        "relatedInformation",
+        "project_permission",
+        "system_permission",
+    }
+)
+PARSER_VERSION = "spms-canonical-v1"
+EXTRACTOR_VERSION = "spms-claims-v1"
+DISPLAY_LABEL_PATTERN = re.compile(r"화면에 표시될 때 레이블은\s*(.+?)(?:(?:으로|로)\s+표시됩니다)[.]?")
+
+
+class IncompleteSpmsDetailError(ValueError):
+    """Raised when an SPMS response cannot authoritatively replace a revision."""
+
+
+@dataclass(frozen=True)
+class RelatedInformation:
+    relation_id: str
+    function_spms_id: str
+    information_spms_id: str
+    title: str
+    properties: tuple[str, ...]
+    target_reference_id: str
+    source_url: str
+
+    def read_model(self) -> dict[str, Any]:
+        return {
+            "relation_id": self.relation_id,
+            "information_id": self.information_spms_id,
+            "title": self.title,
+            "properties": list(self.properties),
+            "reference_id": self.target_reference_id,
+            "source_url": self.source_url,
+        }
+
+    def canonical_relation(self) -> dict[str, Any]:
+        return {
+            "relation_type": "USES_INFORMATION",
+            "target": {
+                "source_system": "spms",
+                "source_type": "information",
+                "immutable_source_id": self.information_spms_id,
+                "source_key": self.target_reference_id,
+                "title": self.title,
+                "code": None,
+                "source_url": self.source_url,
+            },
+            "source_relation_id": self.relation_id,
+            "provenance": "spms.related_info",
+            "evidence": {
+                "path": f"related_info[{self.relation_id}]",
+                "label": self.title,
+            },
+            "properties": list(self.properties),
+        }
+
+
+def is_complete_function_detail(item: dict[str, Any]) -> bool:
+    return FUNCTION_DETAIL_REQUIRED_FIELDS.issubset(item)
+
+
+def normalize_related_information(item: dict[str, Any], base_url: str) -> tuple[RelatedInformation, ...]:
+    if "related_info" not in item:
+        raise IncompleteSpmsDetailError("SPMS function detail is missing related_info")
+    raw_relations = item["related_info"]
+    if not isinstance(raw_relations, list):
+        raise IncompleteSpmsDetailError("SPMS related_info must be an array")
+
+    normalized: dict[str, RelatedInformation] = {}
+    for raw in raw_relations:
+        if not isinstance(raw, dict):
+            raise IncompleteSpmsDetailError("SPMS related_info entry must be an object")
+        function_ref = raw.get("functional_specification_id")
+        information_ref = raw.get("Information_Definition_id")
+        relation_id = raw.get("id")
+        if not isinstance(function_ref, dict) or not isinstance(information_ref, dict):
+            raise IncompleteSpmsDetailError("SPMS related_info entry has invalid references")
+        function_id = function_ref.get("id")
+        information_id = information_ref.get("id")
+        if relation_id in (None, "") or function_id in (None, "") or information_id in (None, ""):
+            raise IncompleteSpmsDetailError("SPMS related_info entry is missing an immutable ID")
+        if str(function_id) != str(item.get("id")):
+            raise IncompleteSpmsDetailError("SPMS related_info source ID does not match function detail")
+        properties = information_ref.get("properties", [])
+        if properties is None:
+            properties = []
+        if not isinstance(properties, list):
+            raise IncompleteSpmsDetailError("SPMS related_info properties must be an array")
+        immutable_id = str(information_id)
+        relation = RelatedInformation(
+            relation_id=str(relation_id),
+            function_spms_id=str(function_id),
+            information_spms_id=immutable_id,
+            title=str(information_ref.get("Name") or "").strip(),
+            properties=tuple(sorted({str(value).strip() for value in properties if str(value).strip()})),
+            target_reference_id=f"spms:information:{immutable_id}",
+            source_url=f"{base_url}/enterprise/information/{immutable_id}",
+        )
+        if not relation.title:
+            raise IncompleteSpmsDetailError("SPMS related_info target is missing a title")
+        previous = normalized.get(immutable_id)
+        if previous and previous != relation:
+            raise IncompleteSpmsDetailError(f"Conflicting duplicate related_info target: {immutable_id}")
+        normalized[immutable_id] = relation
+    return tuple(sorted(normalized.values(), key=lambda relation: (int(relation.information_spms_id) if relation.information_spms_id.isdigit() else 2**63, relation.information_spms_id)))
+
+
+def extract_display_label(item: dict[str, Any]) -> tuple[str | None, str | None, str | None]:
+    ui_name = item.get("UI_name")
+    if isinstance(ui_name, str) and ui_name.strip():
+        return ui_name.strip(), "UI_name", ui_name.strip()
+    alias = item.get("alias")
+    if isinstance(alias, str) and alias.strip() and "\n" not in alias:
+        return alias.strip(), "alias", alias.strip()
+    description = item.get("description")
+    if isinstance(description, str):
+        match = DISPLAY_LABEL_PATTERN.search(description)
+        if match:
+            return match.group(1).strip(), "description_section", match.group(0)
+    return None, None, None
 
 
 def html_to_markdown(html: str) -> str:
@@ -389,14 +539,36 @@ class DocsCollector:
             "source_url": f"{self.base_url}{url_path}" if url_path else "",
             "spms_id": item.get("id", ""),
             "search_text": normalize_search_text(title, category, description),
-            "title_tokens": [token for token in {title.strip(), *[part for part in title.replace('/', ' ').split() if part]} if token],
+            "title_tokens": sorted({title.strip(), *[part for part in title.replace('/', ' ').split() if part]} - {""}),
         }
 
         if item_type in ("function", "functions"):
             metadata["api_function_id"] = item.get("function_id", item.get("id", ""))
+            relations = normalize_related_information(item, self.base_url)
+            metadata.update(
+                {
+                    "spms_immutable_id": str(item.get("id", "")),
+                    "source_updated_at": item.get("date_updated") or None,
+                    "source_status": item.get("status") or None,
+                    "source_version": item.get("version") or None,
+                    "parent_function": item.get("parent"),
+                    "product": item.get("product"),
+                    "related_information": [relation.read_model() for relation in relations],
+                    "relation_schema_version": 1,
+                }
+            )
 
         if item_type == "information":
             metadata["search_aliases"] = build_information_search_aliases(title, category, description)
+            display_label, display_label_source, display_label_evidence = extract_display_label(item)
+            metadata.update(
+                {
+                    "canonical_name": title,
+                    "display_label": display_label,
+                    "display_label_source": display_label_source,
+                    "display_label_evidence": display_label_evidence,
+                }
+            )
 
         if item_type in ("troubleshoot", "troubleshoots", "tech", "techs", "information") and product_id:
             metadata["product_id"] = product_id
@@ -428,6 +600,14 @@ class DocsCollector:
             sections.append("## Content\n")
             sections.append(description)
 
+        if item_type in ("function", "functions"):
+            relations = normalize_related_information(item, self.base_url)
+            sections.append("\n## 관련 정보 정의\n")
+            for relation in relations:
+                sections.append(f"- [{relation.title}](/information/{relation.information_spms_id})")
+                if relation.properties:
+                    sections.append(f"  - 속성: {', '.join(relation.properties)}")
+
         content = "\n".join(sections)
         return title, content, metadata
 
@@ -439,15 +619,159 @@ class DocsCollector:
 
         return f"spms:{item_type}:{item_identifier}"
 
-    async def sync_item(self, item: dict[str, Any], item_type: str) -> dict[str, Any]:
+    def build_spec_revision_request(
+        self,
+        item: dict[str, Any],
+        item_type: str,
+        title: str,
+        content: str,
+        metadata: dict[str, Any],
+    ) -> SpecRevisionPublishRequest:
+        source_type = item_type[:-1] if item_type in {"functions", "techs", "troubleshoots"} else item_type
+        immutable_source_id = str(item.get("id", ""))
+        if not immutable_source_id:
+            raise IncompleteSpmsDetailError("SPMS item is missing immutable ID")
+        source_key = f"spms:{source_type}:{immutable_source_id}"
+        code = str(item.get("function_id") or "") or None
+        relations: tuple[dict[str, Any], ...] = ()
+        if source_type == "function":
+            canonical_relations = []
+            for index, relation in enumerate(normalize_related_information(item, self.base_url)):
+                canonical_relation = relation.canonical_relation()
+                canonical_relation["evidence"]["path"] = f"related_info[{index}]"
+                canonical_relations.append(canonical_relation)
+            relations = tuple(canonical_relations)
+        claims: tuple[dict[str, Any], ...] = ()
+        if source_type == "information":
+            label, label_source, evidence_excerpt = extract_display_label(item)
+            if label:
+                evidence = {
+                    "path": label_source,
+                    "excerpt": evidence_excerpt or label,
+                    "hash": canonical_hash(evidence_excerpt or label),
+                }
+                claims = (
+                    {
+                        "subject": source_key,
+                        "predicate": "DISPLAY_LABEL",
+                        "value": label,
+                        "unit": None,
+                        "condition": None,
+                        "object": None,
+                        "evidence": evidence,
+                        "rule_version": EXTRACTOR_VERSION,
+                    },
+                )
+        canonical_payload = dict(item)
+        if source_type == "function":
+            canonical_payload["related_info"] = [
+                {
+                    "id": relation.relation_id,
+                    "functional_specification_id": {"id": relation.function_spms_id},
+                    "Information_Definition_id": {
+                        "id": relation.information_spms_id,
+                        "Name": relation.title,
+                        "properties": list(relation.properties),
+                    },
+                }
+                for relation in normalize_related_information(item, self.base_url)
+            ]
+        source_payload_hash = canonical_hash(canonical_payload)
+        content_hash = canonical_hash(content)
+        metadata_hash = canonical_hash(metadata)
+        relation_hash = canonical_hash(relations)
+        claim_hash = canonical_hash(claims)
+        relation_input_hash = canonical_hash(
+            {
+                "title": title,
+                "metadata": metadata,
+                "source": {
+                    "source_key": source_key,
+                    "source_url": metadata.get("source_url"),
+                    "code": code,
+                },
+                "relations": relations,
+                "parser_version": PARSER_VERSION,
+            }
+        )
+        revision = {
+            "source_revision": f"{item.get('version') or item.get('date_updated') or 'unversioned'}:{source_payload_hash}",
+            "source_updated_at": item.get("date_updated") or None,
+            "parser_version": PARSER_VERSION,
+            "extractor_version": EXTRACTOR_VERSION,
+            "schema_version": "1",
+            "canonical_payload": canonical_payload,
+            "source_payload_hash": source_payload_hash,
+            "content_hash": content_hash,
+            "metadata_hash": metadata_hash,
+            "relation_hash": relation_hash,
+            "claim_hash": claim_hash,
+            "relation_input_hash": relation_input_hash,
+        }
+        idempotency_key = canonical_hash(
+            {
+                "project_id": settings.skald_project_id,
+                "source_key": source_key,
+                "revision": revision,
+                "relations": relations,
+                "claims": claims,
+            }
+        )
+        legacy_reference_id = code or self.build_reference_id(item, item_type)
+        return SpecRevisionPublishRequest(
+            project_id=settings.skald_project_id,
+            idempotency_key=idempotency_key,
+            source={
+                "source_key": source_key,
+                "source_system": "spms",
+                "source_type": source_type,
+                "immutable_source_id": immutable_source_id,
+                "title": title,
+                "code": code,
+                "source_url": metadata.get("source_url") or "",
+                "status": item.get("status") or None,
+                "aliases": [code] if code else [],
+            },
+            revision=revision,
+            memo={
+                "memo_uuid": None,
+                "client_reference_id": legacy_reference_id,
+                "title": title,
+                "content": content,
+                "metadata": {
+                    **metadata,
+                    "source_payload_hash": source_payload_hash,
+                    "content_hash": content_hash,
+                    "metadata_hash": metadata_hash,
+                    "relation_hash": relation_hash,
+                    "claim_hash": claim_hash,
+                    "relation_input_hash": relation_input_hash,
+                },
+                "source": "spms",
+            },
+            relations=relations,
+            claims=claims,
+            expected_relation_count=len(relations),
+            expected_relation_hash=relation_hash,
+            expected_claim_count=len(claims),
+            expected_claim_hash=claim_hash,
+        )
+
+    async def sync_item(self, item: dict[str, Any], item_type: str) -> Any:
         """Sync a single SPMS item to Skald."""
-        # Fetch full content if needed
         item_id = item.get("id")
         function_id = item.get("function_id")
-        if function_id and item_type in ("function", "functions") and "detail" not in item:
-            full_item = await self.fetch_function_detail(function_id)
-            if full_item:
+        if function_id and item_type in ("function", "functions"):
+            list_item_id = item_id
+            if not is_complete_function_detail(item):
+                full_item = await self.fetch_function_detail(function_id)
+                if not full_item:
+                    raise IncompleteSpmsDetailError("Unable to fetch complete SPMS function detail")
+                if str(full_item.get("id")) != str(list_item_id) or str(full_item.get("function_id")) != str(function_id):
+                    raise IncompleteSpmsDetailError("SPMS function detail identity mismatch")
                 item = full_item
+            if not is_complete_function_detail(item):
+                raise IncompleteSpmsDetailError("SPMS function detail is incomplete")
         elif item_id and item_type in ("tech", "techs") and "description" not in item:
             full_item = await self.fetch_tech_detail(item_id)
             if full_item:
@@ -462,16 +786,336 @@ class DocsCollector:
                 item = full_item
 
         title, content, metadata = self.item_to_markdown(item, item_type)
-        reference_id = self.build_reference_id(item, item_type)
-
         skald = get_skald_client()
+        if item_type in ("function", "functions", "information"):
+            request = self.build_spec_revision_request(item, item_type, title, content, metadata)
+            return await skald.stage_and_publish_spec_revision(request)
         return await skald.upsert_memo(
             title=title,
             content=content,
-            reference_id=reference_id,
-            source=item_type,  # Use specific type: functions, techs, information
+            reference_id=self.build_reference_id(item, item_type),
+            source=item_type,
             metadata=metadata,
         )
+
+    async def _exact_refetch_status(
+        self,
+        endpoint_type: str,
+        source_key: str,
+        locator: str | None,
+    ) -> str:
+        """Return present/absent/error from an exact SPMS detail request."""
+        immutable_id = source_key.rsplit(":", 1)[-1]
+        if endpoint_type == "functions" and not locator:
+            return "error"
+        detail_paths = {
+            "functions": f"/api/functions/{locator}",
+            "techs": f"/api/techs/{immutable_id}",
+            "information": f"/api/information/{immutable_id}",
+            "troubleshoots": f"/api/troubleshoots/{immutable_id}",
+        }
+        path = detail_paths[endpoint_type]
+        try:
+            response = await self.client.request("GET", path)
+            if response.status_code == 404:
+                return "absent"
+            response.raise_for_status()
+            payload = response.json()
+            return "present" if str(payload.get("id")) == immutable_id else "error"
+        except (httpx.HTTPError, ValueError, TypeError):
+            return "error"
+
+    async def _fetch_authoritative_page(
+        self,
+        endpoint_type: str,
+        page: int,
+        page_size: int,
+    ) -> list[dict[str, Any]]:
+        """Fetch a page without converting transport failures into terminal empty pages."""
+        params: dict[str, Any] = {"page": page, "size": page_size}
+        if endpoint_type in {"functions", "information"}:
+            params["status"] = "completed"
+        response = await self._request_with_retry("GET", f"/api/{endpoint_type}", params=params)
+        payload = response.json()
+        if not isinstance(payload, list):
+            raise ValueError("SPMS authoritative page is not a list")
+        return payload
+
+    async def _fetch_authoritative_detail(
+        self,
+        endpoint_type: str,
+        item: dict[str, Any],
+    ) -> dict[str, Any]:
+        """Fetch and identity-check the exact detail used for authoritative publication."""
+        immutable_id = str(item.get("id", ""))
+        locator = str(item.get("function_id") or immutable_id)
+        response = await self._request_with_retry("GET", f"/api/{endpoint_type}/{locator}")
+        detail = response.json()
+        if not isinstance(detail, dict) or str(detail.get("id", "")) != immutable_id:
+            raise IncompleteSpmsDetailError("SPMS authoritative detail identity mismatch")
+        if endpoint_type == "functions" and str(detail.get("function_id", "")) != locator:
+            raise IncompleteSpmsDetailError("SPMS authoritative function locator mismatch")
+        return detail
+
+    async def sync_authoritative_endpoint(
+        self,
+        endpoint_type: str,
+        *,
+        state_manager: SyncStateManager | None = None,
+        minimum_interval: timedelta = timedelta(0),
+        grace_period: timedelta = timedelta(0),
+        page_size: int = 50,
+    ) -> dict[str, Any]:
+        """Enumerate an endpoint to its terminal page and reconcile only complete runs."""
+        manager = state_manager or get_sync_state_manager()
+        source = f"spms-{endpoint_type}"
+        existing_state = manager.state.get_source(source)
+        if existing_state.reconciliation_run_id:
+            run_id = existing_state.reconciliation_run_id
+            manifest: dict[str, Any] = dict(existing_state.reconciliation_manifest)
+        else:
+            run_id = str(uuid4())
+            manager.begin_authoritative_reconciliation(source, run_id)
+            manifest = {
+                "run_id": run_id,
+                "endpoint": endpoint_type,
+                "started_at": datetime.now(UTC).isoformat(),
+                "pages": [],
+                "ids": [],
+                "count": 0,
+                "errors": [],
+                "terminal_page": None,
+                "complete": False,
+            }
+            manager.update_reconciliation_manifest(source, manifest)
+        if endpoint_type not in {"functions", "techs", "information", "troubleshoots"}:
+            raise ValueError(f"Unknown authoritative endpoint type: {endpoint_type}")
+
+        seen: set[str] = set(manager.state.get_source(source).pending_snapshot)
+        completed_ids = set(manifest["ids"])
+        page = len(manifest["pages"]) + 1
+        while True:
+            try:
+                items = await self._fetch_authoritative_page(endpoint_type, page, page_size)
+            except Exception as exc:
+                manifest["errors"].append({"page": page, "stage": "page", "error": str(exc)})
+                break
+            if not isinstance(items, list):
+                manifest["errors"].append({"page": page, "stage": "page", "error": "non-list response"})
+                break
+            page_ids = [str(item.get("id", "")) for item in items]
+            manifest["pages"].append({"page": page, "count": len(items), "ids": page_ids})
+            if not items:
+                manifest["terminal_page"] = page
+                break
+            if any(not item_id for item_id in page_ids):
+                manifest["errors"].append({"page": page, "stage": "identity", "error": "missing immutable ID"})
+            duplicates = sorted(item_id for item_id in page_ids if item_id in completed_ids)
+            if duplicates:
+                manifest["errors"].append({"page": page, "stage": "drift", "duplicate_ids": duplicates})
+            for item, item_id in zip(items, page_ids, strict=True):
+                if item_id:
+                    source_type = endpoint_type[:-1] if endpoint_type in {"functions", "techs", "troubleshoots"} else endpoint_type
+                    source_key = f"spms:{source_type}:{item_id}"
+                    manager.record_authoritative_presence(
+                        source,
+                        source_key,
+                        locator=str(item.get("function_id") or item_id),
+                    )
+                    seen.add(item_id)
+                try:
+                    detail = await self._fetch_authoritative_detail(endpoint_type, item)
+                    await self.sync_item(detail, endpoint_type)
+                except Exception as exc:
+                    manifest["errors"].append(
+                        {"page": page, "stage": "detail_or_publish", "id": item_id, "error": str(exc)}
+                    )
+            manifest["ids"] = sorted(seen)
+            completed_ids.update(page_ids)
+            manifest["count"] = len(seen)
+            manager.update_reconciliation_manifest(source, manifest)
+            page += 1
+
+        complete = manifest["terminal_page"] is not None and not manifest["errors"]
+        manifest["complete"] = complete
+        manifest["completed_at"] = datetime.now(UTC).isoformat()
+        manager.update_reconciliation_manifest(source, manifest)
+        prior_absence_keys = set(manager.state.get_source(source).absence_evidence)
+        candidates = manager.finish_authoritative_reconciliation(
+            source,
+            run_id,
+            complete=complete,
+            completed_at=datetime.now(UTC),
+            minimum_interval=minimum_interval,
+            grace_period=grace_period,
+        )
+        lifecycle_evidence: list[SpecLifecycleEvidence] = []
+        candidate_keys = set(candidates)
+        source_state = manager.state.get_source(source)
+        for source_key in sorted(prior_absence_keys - set(source_state.absence_evidence)):
+            lifecycle_evidence.append(
+                SpecLifecycleEvidence(
+                    memo_reference_id=source_key,
+                    observed_at=manifest["completed_at"],
+                    absent=False,
+                    reason="Present in complete authoritative SPMS snapshot",
+                )
+            )
+        for source_key, evidence in sorted(source_state.absence_evidence.items()):
+            checked_at = datetime.now(UTC).isoformat()
+            exact_refetch = None
+            absence_proof = None
+            if source_key in candidate_keys:
+                status = await self._exact_refetch_status(endpoint_type, source_key, evidence.get("locator"))
+                if status == "absent":
+                    certificate = {
+                        "reference_id": source_key,
+                        "outcome": "absent",
+                        "checked_at": checked_at,
+                        "run_id": run_id,
+                    }
+                    exact_refetch = SpecExactRefetchCertificate(
+                        reference_id=source_key,
+                        outcome="absent",
+                        checked_at=checked_at,
+                        run_id=run_id,
+                        certificate_hash=canonical_hash(certificate),
+                    )
+                    first_observed_at = str(evidence["first_absent_at"])
+                    absence_proof = SpecAbsenceProof(
+                        first_run_id=str(evidence["first_absent_run_id"]),
+                        first_observed_at=first_observed_at,
+                        second_run_id=str(evidence["last_absent_run_id"]),
+                        second_observed_at=str(evidence["last_absent_at"]),
+                        grace_deadline=(
+                            datetime.fromisoformat(first_observed_at.replace("Z", "+00:00")) + grace_period
+                        ).isoformat(),
+                    )
+            lifecycle_evidence.append(
+                SpecLifecycleEvidence(
+                    memo_reference_id=source_key,
+                    observed_at=str(evidence["last_absent_at"]),
+                    absent=True,
+                    reason="Absent from complete authoritative SPMS snapshot",
+                    exact_refetch=exact_refetch,
+                    absence_proof=absence_proof,
+                )
+            )
+        manifest["lifecycle_evidence"] = lifecycle_evidence
+        manager.state.get_source(source).reconciliation_manifest = manifest
+        manager.save()
+        return manifest
+
+    async def sync_authoritative_all(
+        self,
+        *,
+        state_manager: SyncStateManager | None = None,
+        minimum_interval: timedelta = timedelta(0),
+        grace_period: timedelta = timedelta(0),
+    ) -> dict[str, Any]:
+        """Run terminal authoritative enumeration and submit its proof to Skald."""
+        manager = state_manager or get_sync_state_manager()
+        by_type = {}
+        for endpoint_type in ("functions", "techs", "information", "troubleshoots"):
+            by_type[endpoint_type] = await self.sync_authoritative_endpoint(
+                endpoint_type,
+                state_manager=state_manager,
+                minimum_interval=minimum_interval,
+                grace_period=grace_period,
+            )
+
+        complete = all(manifest["complete"] for manifest in by_type.values())
+        errors = tuple(
+            {"endpoint": endpoint_type, **error}
+            for endpoint_type, manifest in by_type.items()
+            for error in manifest["errors"]
+        )
+        completed_at = datetime.now(UTC).isoformat()
+        hash_input = {
+            "endpoints": {
+                endpoint_type: {
+                    "ids": manifest["ids"],
+                    "count": manifest["count"],
+                    "complete": manifest["complete"],
+                    "errors": manifest["errors"],
+                }
+                for endpoint_type, manifest in sorted(by_type.items())
+            }
+        }
+        run_id = canonical_hash(
+            {endpoint_type: manifest["run_id"] for endpoint_type, manifest in sorted(by_type.items())}
+        )
+        lifecycle_evidence: list[SpecLifecycleEvidence] = []
+        for manifest in by_type.values():
+            for evidence in manifest["lifecycle_evidence"]:
+                exact_refetch = evidence.exact_refetch
+                if exact_refetch is not None:
+                    checked_at = _rfc3339_millis(datetime.fromisoformat(exact_refetch.checked_at.replace("Z", "+00:00")))
+                    certificate_hash = canonical_hash(
+                        {
+                            "checked_at": checked_at,
+                            "outcome": "absent",
+                            "reference_id": exact_refetch.reference_id,
+                            "run_id": run_id,
+                        }
+                    )
+                    exact_refetch = SpecExactRefetchCertificate(
+                        reference_id=exact_refetch.reference_id,
+                        outcome="absent",
+                        checked_at=checked_at,
+                        run_id=run_id,
+                        certificate_hash=certificate_hash,
+                    )
+                lifecycle_evidence.append(
+                    SpecLifecycleEvidence(
+                        memo_reference_id=evidence.memo_reference_id,
+                        observed_at=evidence.observed_at,
+                        absent=evidence.absent,
+                        reason=evidence.reason,
+                        exact_refetch=exact_refetch,
+                        absence_proof=evidence.absence_proof,
+                    )
+                )
+        request = SpecReconciliationManifestRequest(
+            run_id=run_id,
+            scope_key="spms:all",
+            source_system="spms",
+            source_type="all",
+            authoritative=True,
+            complete=complete,
+            manifest_hash=canonical_hash(hash_input),
+            count=sum(manifest["count"] for manifest in by_type.values()),
+            errors=errors,
+            identity_drift=sum(1 for error in errors if error.get("stage") == "identity"),
+            revision_drift=sum(1 for error in errors if error.get("stage") == "detail_or_publish"),
+            authorization_drift=0,
+            relation_drift=0,
+            claim_drift=0,
+            memo_link_drift=sum(1 for error in errors if error.get("stage") == "drift"),
+            started_at=min(str(manifest["started_at"]) for manifest in by_type.values()),
+            completed_at=completed_at if complete else None,
+            lifecycle_evidence=tuple(lifecycle_evidence) if complete else (),
+        )
+        try:
+            receipt = await get_skald_client().submit_spec_reconciliation_manifest(request)
+        except Exception as exc:
+            manager.record_sync_failure("spms-reconciliation", f"Manifest submission failed: {exc}")
+            raise
+        manager.record_sync_success(
+            "spms-reconciliation",
+            items_processed=request.count,
+            items_failed=len(request.errors),
+            metadata={"run_id": run_id, "manifest_hash": request.manifest_hash},
+        )
+        return {
+            "run_id": run_id,
+            "complete": complete,
+            "count": request.count,
+            "errors": list(errors),
+            "manifest_hash": request.manifest_hash,
+            "by_type": by_type,
+            "promotion_state": receipt.promotion_state,
+        }
 
     async def sync_endpoint(
         self,

@@ -2,7 +2,9 @@
 
 import hashlib
 import json
+from dataclasses import asdict, dataclass
 from typing import Any
+from uuid import UUID
 
 import httpx
 import structlog
@@ -39,6 +41,107 @@ def _legacy_reference_id_from_source(source: str | None, metadata: dict[str, Any
 
     return f"{source}-{spms_id}"
 
+
+def canonical_json(value: Any) -> str:
+    """Serialize JSON-compatible data deterministically for hashing and transport."""
+    return json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+
+
+def canonical_hash(value: Any) -> str:
+    """Return the SHA256 digest of a canonical JSON value."""
+    return hashlib.sha256(canonical_json(value).encode("utf-8")).hexdigest()
+
+
+@dataclass(frozen=True)
+class SpecRevisionPublishRequest:
+    project_id: str
+    idempotency_key: str
+    source: dict[str, Any]
+    revision: dict[str, Any]
+    memo: dict[str, Any]
+    relations: tuple[dict[str, Any], ...]
+    claims: tuple[dict[str, Any], ...]
+    expected_relation_count: int
+    expected_relation_hash: str
+    expected_claim_count: int
+    expected_claim_hash: str
+
+    def to_payload(self) -> dict[str, Any]:
+        return asdict(self)
+
+
+@dataclass(frozen=True)
+class SpecRevisionPublishReceipt:
+    status: str
+    source_id: str
+    source_key: str
+    revision_id: str
+    memo_uuid: str
+    memo_reference_id: str
+    source_payload_hash: str
+    relation_hash: str
+    claim_hash: str
+    idempotent_replay: bool
+
+
+@dataclass(frozen=True)
+class SpecExactRefetchCertificate:
+    reference_id: str
+    outcome: str
+    checked_at: str
+    run_id: str
+    certificate_hash: str
+
+
+@dataclass(frozen=True)
+class SpecAbsenceProof:
+    first_run_id: str
+    first_observed_at: str
+    second_run_id: str
+    second_observed_at: str
+    grace_deadline: str
+
+
+@dataclass(frozen=True)
+class SpecLifecycleEvidence:
+    memo_reference_id: str
+    observed_at: str
+    absent: bool
+    reason: str
+    exact_refetch: SpecExactRefetchCertificate | None = None
+    absence_proof: SpecAbsenceProof | None = None
+
+
+@dataclass(frozen=True)
+class SpecReconciliationManifestRequest:
+    run_id: str
+    scope_key: str
+    source_system: str
+    source_type: str
+    authoritative: bool
+    complete: bool
+    manifest_hash: str
+    count: int
+    errors: tuple[dict[str, Any], ...]
+    identity_drift: int
+    revision_drift: int
+    authorization_drift: int
+    relation_drift: int
+    claim_drift: int
+    memo_link_drift: int
+    started_at: str
+    completed_at: str | None
+    lifecycle_evidence: tuple[SpecLifecycleEvidence, ...]
+
+    def to_payload(self) -> dict[str, Any]:
+        return asdict(self)
+
+
+@dataclass(frozen=True)
+class SpecReconciliationManifestReceipt:
+    run_id: str
+    promotion_state: str
+    idempotent_replay: bool
 
 class SkaldClient:
     """HTTP client for Skald API with automatic retry and circuit breaker."""
@@ -332,6 +435,72 @@ class SkaldClient:
             source=source,
             metadata=metadata,
             tags=tags,
+        )
+
+    async def stage_and_publish_spec_revision(
+        self,
+        request: SpecRevisionPublishRequest,
+    ) -> SpecRevisionPublishReceipt:
+        """Atomically publish a canonical spec revision and validate its receipt."""
+        payload = request.to_payload()
+        response = await self._request_with_retry(
+            "POST",
+            "/api/v1/spec-revisions/stage-and-publish",
+            json=payload,
+        )
+        data = response.json()
+        required_text = (
+            "source_key",
+            "memo_reference_id",
+            "source_payload_hash",
+            "relation_hash",
+            "claim_hash",
+        )
+        required_ids = ("source_id", "revision_id", "memo_uuid")
+        if data.get("status") != "published" or any(not isinstance(data.get(key), str) or not data[key] for key in required_text):
+            raise ValueError("Invalid stage-and-publish receipt")
+        try:
+            for key in required_ids:
+                UUID(str(data.get(key)))
+        except (TypeError, ValueError) as error:
+            raise ValueError("Invalid stage-and-publish receipt IDs") from error
+        expected = {
+            "source_key": request.source["source_key"],
+            "source_payload_hash": request.revision["source_payload_hash"],
+            "relation_hash": request.expected_relation_hash,
+            "claim_hash": request.expected_claim_hash,
+            "memo_reference_id": request.memo["client_reference_id"],
+        }
+        mismatches = [key for key, value in expected.items() if data.get(key) != value]
+        if mismatches:
+            raise ValueError(f"Stage-and-publish receipt mismatch: {', '.join(mismatches)}")
+        if not isinstance(data.get("idempotent_replay"), bool):
+            raise ValueError("Invalid stage-and-publish idempotency receipt")
+        return SpecRevisionPublishReceipt(**{key: data[key] for key in SpecRevisionPublishReceipt.__dataclass_fields__})
+
+    async def submit_spec_reconciliation_manifest(
+        self,
+        request: SpecReconciliationManifestRequest,
+    ) -> SpecReconciliationManifestReceipt:
+        """Submit authoritative reconciliation proof and validate the server receipt."""
+        response = await self._request_with_retry(
+            "POST",
+            "/api/v1/spec-reconciliation/manifests",
+            json=request.to_payload(),
+        )
+        data = response.json()
+        run = data.get("run")
+        promotion = data.get("promotion")
+        if not isinstance(run, dict) or run.get("run_id") != request.run_id:
+            raise ValueError("Invalid reconciliation manifest receipt run")
+        if not isinstance(promotion, dict) or not isinstance(promotion.get("state"), str):
+            raise ValueError("Invalid reconciliation manifest receipt promotion")
+        if not isinstance(data.get("idempotent_replay"), bool):
+            raise ValueError("Invalid reconciliation manifest idempotency receipt")
+        return SpecReconciliationManifestReceipt(
+            run_id=run["run_id"],
+            promotion_state=promotion["state"],
+            idempotent_replay=data["idempotent_replay"],
         )
 
     async def search(

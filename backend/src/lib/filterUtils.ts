@@ -100,20 +100,17 @@ export function buildFilterConditions(filters?: MemoFilter[]): { whereConditions
     for (const filter of filters) {
         if (filter.filter_type === 'native_field' && filter.field === 'tags') {
             // tags are in a separate MemoTag table
-            if (filter.value.length === 0) {
-                if (filter.operator === 'in') {
-                    whereConditions.push('FALSE')
-                }
-                // not_in 빈 배열 = 모든 것 매치 → 조건 스킵
+            if (filter.value.length === 0 && filter.operator === 'in') {
+                whereConditions.push('FALSE')
                 continue
             }
             const normalizedTags = filter.value.map((tag: string) => String(tag))
             const tagSubquery =
                 filter.operator === 'not_in'
-                    ? `EXISTS (
+                    ? `NOT EXISTS (
                     SELECT 1 FROM skald_memotag
                     WHERE skald_memotag.memo_id = skald_memo.uuid
-                    AND skald_memotag.tag != ALL(?::text[])
+                    AND skald_memotag.tag = ANY(?::text[])
                 )`
                     : `EXISTS (
                     SELECT 1 FROM skald_memotag

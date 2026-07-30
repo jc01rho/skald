@@ -25,6 +25,8 @@ import { userRouter } from '@/api/user'
 import { publicMemoSubmissionRouter, authMemoSubmissionRouter, publicMemosRouter } from '@/api/memoSubmission'
 import { publicWikiRouter } from '@/api/publicWiki'
 import { wikiRouter } from '@/api/wiki'
+import { specRevisionRouter } from '@/api/specRevision'
+import { specLifecycleRouter } from '@/api/specLifecycle'
 import { logger } from '@/lib/logger'
 import { posthog } from '@/lib/posthogUtils'
 import { authRateLimiter, generalRateLimiter } from '@/middleware/rateLimitMiddleware'
@@ -119,6 +121,8 @@ export const startExpressServer = async (
     privateRoutesRouter.use('/v1/config', configRouter)
     privateRoutesRouter.use('/v1/memo-submissions', [requireProjectAccess()], authMemoSubmissionRouter)
     privateRoutesRouter.use('/v1/wiki', wikiRouter)
+    privateRoutesRouter.use('/v1', [requireProjectAccess()], specRevisionRouter)
+    privateRoutesRouter.use('/v1', [requireProjectAccess()], specLifecycleRouter)
 
     // register extra private routes (e.g., enterprise features)
     for (const [route, middleware, router] of extraPrivateRoutes) {

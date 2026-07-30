@@ -83,6 +83,14 @@ class Settings(BaseSettings):
         default=True,
         description="Enable technical docs collection",
     )
+    docs_reconciliation_interval_hours: int = Field(
+        default=24,
+        description="Minimum hours separating authoritative clean absence observations",
+    )
+    docs_reconciliation_grace_hours: int = Field(
+        default=48,
+        description="Minimum absence grace period before tombstone-ready evidence",
+    )
     release_enabled: bool = Field(
         default=True,
         description="Enable release status collection",

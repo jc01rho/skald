@@ -18,6 +18,7 @@ import { MemoTag } from '@/entities/MemoTag'
 import { MemoChunk } from '@/entities/MemoChunk'
 import { MemoParentChunk } from '@/entities/MemoParentChunk'
 import { Memo } from '@/entities/Memo'
+import { SpecSource } from '@/entities/SpecSource'
 import { logger } from '@/lib/logger'
 import { deleteFileFromS3 } from '@/lib/s3Utils'
 import { sha256, sha256Buffer } from '@/lib/hashUtils'
@@ -81,6 +82,22 @@ const UpdateMemoRequest = z.object({
     content: z.string().optional().nullable(),
 })
 
+const MemoExactRevisionQuery = z.object({
+    required_revision_id: z.string().uuid().optional(),
+})
+
+const canonicalMemoError = (res: Response, code: 'MEMO_REVISION_MISMATCH' | 'SPEC_PROCESSING', message: string) =>
+    res.status(409).json({ error: { code, message } })
+
+const canonicalMutationError = (res: Response) =>
+    res.status(409).json({
+        error: {
+            code: 'CANONICAL_MEMO_MUTATION_FORBIDDEN',
+            message: 'Canonical spec memos must be changed through stage-and-publish',
+        },
+    })
+
+const specSources = () => DI.specSources || DI.em.getRepository(SpecSource)
 const validateMemoOperationRequestMiddleware = () => {
     return async (req: Request, res: Response, next: NextFunction) => {
         const project = req.context?.requestUser?.project
@@ -221,6 +238,13 @@ export const getMemo = async (req: Request, res: Response) => {
         return res.status(404).json({ error: 'Memo not found' })
     }
 
+    const revisionQuery = MemoExactRevisionQuery.safeParse(req.query)
+    if (!revisionQuery.success) {
+        return res.status(400).json({
+            error: { code: 'INVALID_REQUEST', message: 'required_revision_id must be a UUID' },
+        })
+    }
+
     // Load related data for detailed response
     const [memoContent, memoSummary, memoTags, memoChunks] = await Promise.all([
         DI.memoContents.findOne({ memo }),
@@ -228,6 +252,26 @@ export const getMemo = async (req: Request, res: Response) => {
         DI.memoTags.find({ memo }),
         DI.memoChunks.find({ memo }, { orderBy: { chunk_index: 'asc' } }),
     ])
+
+    const specSource = await specSources().findOne({ project, memo }, { populate: ['active_revision'] })
+    if (specSource) {
+        if (!specSource.active_revision || !memoContent) {
+            return canonicalMemoError(res, 'SPEC_PROCESSING', 'Canonical memo projection is not published')
+        }
+
+        const activeRevisionId = specSource.active_revision.uuid
+        const requiredRevisionId = revisionQuery.data.required_revision_id
+        const currentContentHash = sha256(memoContent.content)
+        if (
+            (requiredRevisionId !== undefined && activeRevisionId !== requiredRevisionId) ||
+            specSource.memo_projection_revision_id !== activeRevisionId ||
+            specSource.active_revision.content_hash !== currentContentHash ||
+            specSource.memo_projection_canonical_hash !== currentContentHash ||
+            memo.content_hash !== currentContentHash
+        ) {
+            return canonicalMemoError(res, 'MEMO_REVISION_MISMATCH', 'Canonical memo revision does not match published content')
+        }
+    }
 
     const processingStatus = memo.processing_status === 'received' ? 'processing' : memo.processing_status
 
@@ -270,6 +314,10 @@ export const updateMemo = async (req: Request, res: Response) => {
 
     if (!memo) {
         return res.status(404).json({ error: 'Memo not found' })
+    }
+
+    if (await specSources().findOne({ project, memo })) {
+        return canonicalMutationError(res)
     }
 
     const validatedData = UpdateMemoRequest.safeParse(req.body)
@@ -425,6 +473,10 @@ export const deleteMemo = async (req: Request, res: Response) => {
 
     if (!memo) {
         return res.status(404).json({ error: 'Memo not found' })
+    }
+
+    if (await specSources().findOne({ project, memo })) {
+        return canonicalMutationError(res)
     }
 
     // Delete file from S3 if it exists
