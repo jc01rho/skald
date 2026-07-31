@@ -373,7 +373,7 @@ export class SpecRevisionService {
             if (source) {
                 const replay = await em.findOne(SpecRevision, {
                     project,
-                    source,
+                    source: { uuid: source.uuid },
                     idempotency_key: input.idempotency_key,
                 })
                 if (replay) {
@@ -460,7 +460,7 @@ export class SpecRevisionService {
                 await em.flush()
             }
 
-            const latest = await em.findOne(SpecRevision, { project, source }, { orderBy: { revision_number: 'desc' } })
+            const latest = await em.findOne(SpecRevision, { project, source: { uuid: source.uuid } }, { orderBy: { revision_number: 'desc' } })
             const revision = em.create(SpecRevision, {
                 uuid: randomUUID(),
                 created_at: now,
