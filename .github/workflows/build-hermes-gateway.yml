@@ -82,10 +82,63 @@ jobs:
               if: github.event_name != 'pull_request'
               run: docker push "${IMAGE_NAME}:${IMAGE_TAG}"
 
-            - name: Record pushed digest
+            - name: Generate canonical Hermes gateway receipt
               if: github.event_name != 'pull_request'
+              env:
+                  RECEIPT_REPOSITORY: ${{ github.repository }}
+                  RECEIPT_RUN_ID: ${{ github.run_id }}
+                  RECEIPT_RUN_ATTEMPT: ${{ github.run_attempt }}
+                  RECEIPT_EVENT: ${{ github.event_name }}
+                  RECEIPT_REF: ${{ github.ref }}
+                  RECEIPT_HEAD_SHA: ${{ github.sha }}
               run: |
                   docker pull "${IMAGE_NAME}:${IMAGE_TAG}"
                   DIGEST_REF="$(docker image inspect --format '{{index .RepoDigests 0}}' "${IMAGE_NAME}:${IMAGE_TAG}")"
-                  test -n "$DIGEST_REF"
-                  printf 'Hermes image: `%s`\n' "$DIGEST_REF" >> "$GITHUB_STEP_SUMMARY"
+                  IMAGE_REPOSITORY="${DIGEST_REF%@*}"
+                  DIGEST="${DIGEST_REF#*@}"
+                  test "$IMAGE_REPOSITORY" = 'ghcr.io/jc01rho/hermes-gateway'
+                  [[ "$DIGEST" =~ ^sha256:[0-9a-f]{64}$ ]]
+                  export RECEIPT_DIGEST="$DIGEST"
+                  export RECEIPT_SUBJECT="${IMAGE_REPOSITORY}@${DIGEST}"
+                  python3 - <<'PY'
+                  import json
+                  import os
+                  from pathlib import Path
+
+                  receipt = {
+                      "schema_version": 1,
+                      "repository": os.environ["RECEIPT_REPOSITORY"],
+                      "workflow_path": ".github/workflows/build-hermes-gateway.yml",
+                      "run_id": int(os.environ["RECEIPT_RUN_ID"]),
+                      "run_attempt": int(os.environ["RECEIPT_RUN_ATTEMPT"]),
+                      "run_url": f"https://github.com/jc01rho/skald/actions/runs/{os.environ['RECEIPT_RUN_ID']}/attempts/{os.environ['RECEIPT_RUN_ATTEMPT']}",
+                      "event": os.environ["RECEIPT_EVENT"],
+                      "ref": os.environ["RECEIPT_REF"],
+                      "head_sha": os.environ["RECEIPT_HEAD_SHA"],
+                      "conclusion": "success",
+                      "image_repository": "ghcr.io/jc01rho/hermes-gateway",
+                      "digest": os.environ["RECEIPT_DIGEST"],
+                      "subject": os.environ["RECEIPT_SUBJECT"],
+                  }
+                  assert receipt["repository"] == "jc01rho/skald"
+                  assert receipt["event"] in {"push", "workflow_dispatch"}
+                  assert receipt["ref"] == "refs/heads/main"
+                  assert len(receipt["head_sha"]) == 40 and all(c in "0123456789abcdef" for c in receipt["head_sha"])
+                  Path("hermes-gateway-receipt.json").write_text(
+                      json.dumps(receipt, sort_keys=True, separators=(",", ":")) + "\n",
+                      encoding="utf-8",
+                  )
+                  PY
+                  printf 'Hermes image: `%s`\n' "$RECEIPT_SUBJECT" >> "$GITHUB_STEP_SUMMARY"
+
+            - name: Upload Hermes gateway receipt
+              if: github.event_name != 'pull_request'
+              uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+              with:
+                  name: hermes-gateway-receipt-${{ github.run_id }}-${{ github.run_attempt }}
+                  path: hermes-gateway-receipt.json
+                  if-no-files-found: error
+                  compression-level: 0
+                  retention-days: 30
+                  overwrite: false
+                  include-hidden-files: false

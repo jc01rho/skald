@@ -9,6 +9,7 @@ RECOVERY_REQUIRED (exit 75).
 from __future__ import annotations
 
 import argparse
+from enum import Enum
 import importlib.util
 import base64
 import copy
@@ -22,6 +23,9 @@ import tempfile
 import stat
 import time
 import uuid
+import urllib.error
+import urllib.parse
+import urllib.request
 import yaml
 from datetime import datetime, timezone
 from pathlib import Path
@@ -44,9 +48,25 @@ if SNAPSHOT_CODEC_SPEC is None or SNAPSHOT_CODEC_SPEC.loader is None:
 SNAPSHOT_CODEC = importlib.util.module_from_spec(SNAPSHOT_CODEC_SPEC)
 SNAPSHOT_CODEC_SPEC.loader.exec_module(SNAPSHOT_CODEC)
 DIGEST_RE = re.compile(r"^[a-z0-9./:_-]+@sha256:[0-9a-f]{64}$")
+RECEIPT_KEYS = {"schema_version", "repository", "workflow_path", "run_id", "run_attempt", "run_url", "event", "ref", "head_sha", "conclusion", "image_repository", "digest", "subject"}
+REPOSITORY = "jc01rho/skald"
+WORKFLOW_PATH = ".github/workflows/build-hermes-gateway.yml"
+IMAGE_REPOSITORY = "ghcr.io/jc01rho/hermes-gateway"
+GH_API_HEADERS = ["-H", "Accept: application/vnd.github+json", "-H", "X-GitHub-Api-Version: 2026-03-10"]
+IMAGE_SENTINEL = "__HERMES_IMAGE__"
+PREVERIFIED_KEYS = {"schema_version", "receipt", "receipt_sha256", "image", "head_sha"}
+
 ACTOR = os.environ.get("HERMES_OPERATION_ACTOR") or f"{os.uname().nodename}:{os.getpid()}:{uuid.uuid4()}"
 REQUIRED_IDENTITY = os.environ.get("HERMES_DEPLOY_IDENTITY", "")
 IDENTITY_VERIFIED = False
+
+class AuthorizationLane(Enum):
+    UNSET = "unset"
+    ORDINARY = "ordinary"
+    OPERATOR = "operator"
+
+
+AUTHORIZATION_LANE = AuthorizationLane.UNSET
 
 # RBAC cannot restrict create by resourceName. Snapshot ConfigMaps are content-
 # addressed, so ConfigMap create/get are resource-scoped; other checks are named.
@@ -134,6 +154,9 @@ class Conflict(Exception):
     pass
 
 
+class RolloutFailure(Exception):
+    pass
+
 def canonical(value: Any) -> str:
     return json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
 
@@ -141,6 +164,16 @@ def canonical(value: Any) -> str:
 def log(event: str, **fields: Any) -> None:
     safe = " ".join(f"{key}={str(value).replace(chr(10), '_')}" for key, value in sorted(fields.items()))
     print(f"hermes_deploy event={event}{(' ' + safe) if safe else ''}", file=sys.stderr)
+
+
+def require_operator_lane() -> None:
+    if AUTHORIZATION_LANE is not AuthorizationLane.OPERATOR:
+        raise Exit(77, "Restricted operator command is unavailable in the ordinary lane")
+
+
+def set_authorization_lane(command: str, mode: str = "") -> None:
+    global AUTHORIZATION_LANE
+    AUTHORIZATION_LANE = AuthorizationLane.ORDINARY if command == "dispatch" and mode == "" else AuthorizationLane.OPERATOR
 
 def operator_identity_matches(whoami: dict[str, Any]) -> bool:
     user_info = whoami.get("status", {}).get("userInfo", {})
@@ -207,6 +240,7 @@ def current_snapshot_names(base: list[str]) -> tuple[str, ...]:
 
 
 def verify_operator_identity() -> None:
+    require_operator_lane()
     global IDENTITY_VERIFIED
     if not REQUIRED_IDENTITY:
         raise Exit(64, "HERMES_DEPLOY_IDENTITY is required (user:<username> or group:<group>)")
@@ -238,9 +272,17 @@ def assert_current_identity() -> None:
 
 def kubectl(args: list[str], *, stdin: bytes | None = None, mutation: bool = False, conclusive_codes: tuple[int, ...] = ()) -> subprocess.CompletedProcess[bytes]:
     global MUTATIONS_ALLOWED
-    if not IDENTITY_VERIFIED:
-        raise Exit(77, "Kubernetes operator identity was not verified")
-    assert_current_identity()
+    if AUTHORIZATION_LANE is AuthorizationLane.OPERATOR:
+        if not IDENTITY_VERIFIED:
+            raise Exit(77, "Kubernetes operator identity was not verified")
+        assert_current_identity()
+    elif AUTHORIZATION_LANE is AuthorizationLane.ORDINARY:
+        if mutation:
+            raise Exit(77, "Generic Kubernetes mutation is unavailable in the ordinary lane")
+        if len(args) != 7 or args[0] != "get" or args[3:6] != ["-n", NAMESPACE, "-o"] or args[6] != "json" or args[1] not in {"configmap", "lease", "deployment"}:
+            raise Exit(77, "Kubernetes command is outside the ordinary named-read surface")
+    else:
+        raise Exit(77, "Authorization lane was not selected")
     if mutation and not MUTATIONS_ALLOWED:
         raise Exit(75, "RECOVERY_REQUIRED: mutation attempted after indeterminate result")
     command = [os.environ.get("KUBECTL", "kubectl"), "--request-timeout", f"{REQUEST_TIMEOUT}s", *args]
@@ -262,6 +304,27 @@ def kubectl(args: list[str], *, stdin: bytes | None = None, mutation: bool = Fal
     return result
 
 
+def ordinary_patch(payload: list[dict[str, Any]]) -> None:
+    global MUTATIONS_ALLOWED
+    if not MUTATIONS_ALLOWED:
+        raise Exit(75, "RECOVERY_REQUIRED: ordinary mutation attempted after indeterminate result")
+    if AUTHORIZATION_LANE is not AuthorizationLane.ORDINARY:
+        raise Exit(77, "Ordinary image patch is unavailable outside the ordinary lane")
+    validate_image_patch(payload)
+    command = [os.environ.get("KUBECTL", "kubectl"), "--request-timeout", f"{REQUEST_TIMEOUT}s", "patch", "deployment", HERMES_DEPLOYMENT, "-n", NAMESPACE, "--type=json", "-p", canonical(payload)]
+    try:
+        result = subprocess.run(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=REQUEST_TIMEOUT + 5)
+    except (subprocess.TimeoutExpired, OSError):
+        MUTATIONS_ALLOWED = False
+        raise Exit(75, "RECOVERY_REQUIRED: ordinary Deployment patch response is unknown")
+    if result.returncode:
+        stderr = result.stderr.decode("utf-8", "replace")
+        if "Conflict" in stderr or "test failed" in stderr or "object has been modified" in stderr:
+            raise Conflict()
+        MUTATIONS_ALLOWED = False
+        raise Exit(75, "RECOVERY_REQUIRED: ordinary Deployment patch result is not conclusive")
+
+
 def recovery_required(message: str) -> None:
     global MUTATIONS_ALLOWED
     MUTATIONS_ALLOWED = False
@@ -269,6 +332,7 @@ def recovery_required(message: str) -> None:
 
 
 def mark_destructive_boundary() -> None:
+    require_operator_lane()
     global DESTRUCTIVE_BOUNDARY_CROSSED
     DESTRUCTIVE_BOUNDARY_CROSSED = True
 
@@ -381,6 +445,7 @@ def exact_keys(value: Any, keys: set[str], message: str) -> None:
 
 
 def create_exact(obj: dict[str, Any]) -> dict[str, Any]:
+    require_operator_lane()
     kubectl(["create", "-f", "-"], stdin=(canonical(obj) + "\n").encode(), mutation=True)
     return readback_mutation(obj)
 def artifact_contract(record: dict[str, Any], data: dict[str, str], key: str, expected_name: str) -> None:
@@ -399,6 +464,7 @@ def artifact_contract(record: dict[str, Any], data: dict[str, str], key: str, ex
 
 
 def replace_exact(obj: dict[str, Any], *, expected_kind: str, expected_name: str) -> dict[str, Any]:
+    require_operator_lane()
     rv = obj.get("metadata", {}).get("resourceVersion")
     if not isinstance(rv, str) or not rv:
         raise Exit(65, "Missing exact resourceVersion CAS token")
@@ -413,6 +479,7 @@ def replace_exact(obj: dict[str, Any], *, expected_kind: str, expected_name: str
 
 
 def acquire() -> dict[str, Any]:
+    require_operator_lane()
     deadline = time.monotonic() + WAIT_SECONDS
     while True:
         lease = get_json("lease", LEASE)
@@ -445,6 +512,7 @@ def assert_lease() -> dict[str, Any]:
 
 
 def release() -> None:
+    require_operator_lane()
     lease = assert_lease()
     desired = copy.deepcopy(lease)
     desired.setdefault("spec", {})["holderIdentity"] = ""
@@ -541,6 +609,7 @@ def validate_snapshot(ref: str, kind: str) -> tuple[dict[str, Any], dict[str, st
 
 
 def mutate_scale(name: str, replicas: int) -> None:
+    require_operator_lane()
     assert_lease()
     patch = canonical({"spec": {"replicas": replicas}}).encode()
     kubectl(["patch", "deployment", name, "-n", NAMESPACE, "--type=merge", "-p", patch.decode()], mutation=True)
@@ -553,6 +622,7 @@ def mutate_scale(name: str, replicas: int) -> None:
 
 
 def apply_bytes(payload: str) -> None:
+    require_operator_lane()
     assert_lease()
     intended = parse_single_object(payload)
     intended.setdefault("metadata", {}).setdefault("namespace", NAMESPACE)
@@ -642,6 +712,7 @@ def smoke(owner: str) -> dict[str, str]:
 
 
 def publish_owner(owner_obj: dict[str, Any], previous: dict[str, Any], owner: str, snapshot_ref: str, smoke_result: dict[str, str], verified_by: str) -> dict[str, Any]:
+    require_operator_lane()
     assert_lease()
     desired_record = dict(previous)
     desired_record.update({"active_owner": owner, "generation": previous["generation"] + 1, "verified_at": datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z"), "verified_by": verified_by, "smoke": smoke_result})
@@ -686,6 +757,7 @@ def hermes_configmap_yaml() -> str:
 
 
 def create_hermes_snapshot(deployment_yaml: str) -> str:
+    require_operator_lane()
     config_yaml = hermes_configmap_yaml()
     image = os.environ["HERMES_IMAGE"]
     required_keys = list(deployment_secret_keys(deployment_yaml, HERMES_DEPLOYMENT))
@@ -721,6 +793,7 @@ def hermes_preflight(rendered: str) -> str:
     return config_yaml
 
 def adopt_legacy() -> tuple[dict[str, Any], dict[str, Any]]:
+    require_operator_lane()
     deployment = get_json("deployment", LEGACY_DEPLOYMENT)
     service = get_json("service", "discord-bot-service")
     configmap = get_json("configmap", "discord-bot-config")
@@ -756,6 +829,7 @@ def adopt_legacy() -> tuple[dict[str, Any], dict[str, Any]]:
     if loaded is None or canonical(loaded[1]) != canonical(owner): recovery_required("initial owner readback failed")
     return loaded
 def cutover(owner_obj: dict[str, Any], record: dict[str, Any]) -> None:
+    require_operator_lane()
     if record["active_owner"] != "legacy": raise Exit(65, "cutover requires active_owner=legacy")
     rendered = render_hermes()
     config_yaml = hermes_preflight(rendered)
@@ -778,6 +852,7 @@ def cutover(owner_obj: dict[str, Any], record: dict[str, Any]) -> None:
 
 
 def upgrade(owner_obj: dict[str, Any], record: dict[str, Any]) -> None:
+    require_operator_lane()
     if record["active_owner"] != "hermes": raise Exit(65, "upgrade requires active_owner=hermes")
     previous_ref = record["hermes_verified_snapshot_ref"]
     rendered = render_hermes()
@@ -795,6 +870,7 @@ def upgrade(owner_obj: dict[str, Any], record: dict[str, Any]) -> None:
 
 
 def rollback(owner_obj: dict[str, Any], record: dict[str, Any]) -> None:
+    require_operator_lane()
     if record["active_owner"] == "legacy":
         smoke_evidence("legacy"); return
     mark_destructive_boundary()
@@ -803,14 +879,374 @@ def rollback(owner_obj: dict[str, Any], record: dict[str, Any]) -> None:
     publish_owner(owner_obj, record, "legacy", record["legacy_snapshot_ref"], result, "rollback")
 
 
-def dispatch(mode: str) -> str:
+def _unique_object(pairs: list[tuple[str, Any]], message: str) -> dict[str, Any]:
+    value: dict[str, Any] = {}
+    for key, item in pairs:
+        if key in value:
+            raise ValueError(message)
+        value[key] = item
+    return value
+
+
+def parse_json_exact(payload: bytes, message: str) -> dict[str, Any]:
+    try:
+        value = json.loads(payload.decode("utf-8"), object_pairs_hook=lambda pairs: _unique_object(pairs, message))
+    except (UnicodeDecodeError, ValueError, TypeError):
+        raise Exit(65, message)
+    if not isinstance(value, dict):
+        raise Exit(65, message)
+    return value
+
+
+def run_checked(command: list[str], message: str, *, cwd: Path | None = None) -> bytes:
+    try:
+        result = subprocess.run(command, cwd=cwd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=REQUEST_TIMEOUT + 5)
+    except (subprocess.TimeoutExpired, OSError):
+        raise Exit(65, message)
+    if result.returncode:
+        raise Exit(65, message)
+    return result.stdout
+
+
+
+def fetch_ghcr_manifest(digest: str) -> tuple[str, bytes]:
+    fixture_path = os.environ.get("HERMES_TEST_GHCR_FIXTURE", "")
+    if fixture_path:
+        try:
+            fixture = parse_json_exact(Path(fixture_path).read_bytes(), "GHCR test fixture is invalid")
+        except OSError:
+            raise Exit(65, "GHCR test fixture is invalid")
+        return str(fixture.get("digest") or ""), canonical({"schemaVersion": fixture.get("schemaVersion")}).encode()
+    opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+    scope = urllib.parse.urlencode({"scope": "repository:jc01rho/hermes-gateway:pull"})
+    try:
+        with opener.open(f"https://ghcr.io/token?{scope}", timeout=REQUEST_TIMEOUT) as response:
+            token_response = parse_json_exact(response.read(), "GHCR token response is invalid")
+        token = token_response.get("token")
+        if not isinstance(token, str) or not token:
+            raise Exit(65, "GHCR pull token is invalid")
+        request = urllib.request.Request(
+            f"https://ghcr.io/v2/jc01rho/hermes-gateway/manifests/{digest}",
+            headers={
+                "Authorization": f"Bearer {token}",
+                "Accept": "application/vnd.oci.image.manifest.v1+json, application/vnd.docker.distribution.manifest.v2+json",
+            },
+        )
+        with opener.open(request, timeout=REQUEST_TIMEOUT) as response:
+            if response.status != 200:
+                raise Exit(65, "GHCR manifest verification failed")
+            observed_digest = response.headers.get("Docker-Content-Digest")
+            body = response.read()
+    except Exit:
+        raise
+    except (OSError, urllib.error.URLError, urllib.error.HTTPError, ValueError):
+        raise Exit(65, "GHCR manifest verification failed")
+    return observed_digest or "", body
+
+
+def validate_receipt_bytes(payload: bytes) -> dict[str, Any]:
+    receipt = parse_json_exact(payload, "Hermes CI receipt is invalid")
+    exact_keys(receipt, RECEIPT_KEYS, "Hermes CI receipt schema is invalid")
+    if payload != (canonical(receipt) + "\n").encode():
+        raise Exit(65, "Hermes CI receipt is not canonical JSON")
+    digest, run_id, attempt = receipt.get("digest"), receipt.get("run_id"), receipt.get("run_attempt")
+    if type(run_id) is not int or run_id < 1 or type(attempt) is not int or attempt < 1:
+        raise Exit(65, "Hermes CI receipt run identity is invalid")
+    if receipt.get("schema_version") != 1 or receipt.get("repository") != REPOSITORY or receipt.get("workflow_path") != WORKFLOW_PATH or receipt.get("ref") != "refs/heads/main" or receipt.get("event") not in {"push", "workflow_dispatch"} or receipt.get("conclusion") != "success" or receipt.get("image_repository") != IMAGE_REPOSITORY:
+        raise Exit(65, "Hermes CI receipt constants are invalid")
+    if not isinstance(receipt.get("head_sha"), str) or re.fullmatch(r"[0-9a-f]{40}", receipt["head_sha"]) is None or not isinstance(digest, str) or re.fullmatch(r"sha256:[0-9a-f]{64}", digest) is None:
+        raise Exit(65, "Hermes CI receipt digest or commit is invalid")
+    if receipt.get("subject") != f"{IMAGE_REPOSITORY}@{digest}" or receipt.get("run_url") != f"https://github.com/{REPOSITORY}/actions/runs/{run_id}/attempts/{attempt}":
+        raise Exit(65, "Hermes CI receipt bindings are invalid")
+    return receipt
+
+
+def load_receipt(path_value: str) -> tuple[dict[str, Any], bytes]:
+    path = Path(path_value)
+    try:
+        info = path.lstat()
+        if stat.S_ISLNK(info.st_mode) or not stat.S_ISREG(info.st_mode) or info.st_uid != os.getuid() or info.st_mode & 0o022 or info.st_size > 16 * 1024:
+            raise Exit(65, "Hermes CI receipt file is not a secure caller-owned regular file")
+        payload = path.read_bytes()
+    except Exit:
+        raise
+    except OSError:
+        raise Exit(65, "Hermes CI receipt file is unreadable")
+    return validate_receipt_bytes(payload), payload
+def verified_candidate_receipt(receipt: dict[str, Any]) -> dict[str, Any]:
+    receipt_bytes = (canonical(receipt) + "\n").encode()
+    return {
+        "schema_version": 1,
+        "receipt": receipt,
+        "receipt_sha256": hashlib.sha256(receipt_bytes).hexdigest(),
+        "image": receipt["subject"],
+        "head_sha": receipt["head_sha"],
+    }
+
+
+
+def load_preverified_candidate(path_value: str, expected_file_sha256: str) -> dict[str, Any]:
+    if not path_value or not expected_file_sha256:
+        raise Exit(64, "Ordinary Hermes candidate requires --preverified-file and --preverified-sha256")
+    if re.fullmatch(r"[0-9a-f]{64}", expected_file_sha256) is None:
+        raise Exit(65, "Hermes preverified envelope expected hash is invalid")
+    path = Path(path_value)
+    try:
+        info = path.lstat()
+        if stat.S_ISLNK(info.st_mode) or not stat.S_ISREG(info.st_mode) or info.st_uid != os.getuid() or stat.S_IMODE(info.st_mode) != 0o600 or info.st_size > 32 * 1024:
+            raise Exit(65, "Hermes preverified receipt file is not an owned mode-0600 regular file")
+        payload = path.read_bytes()
+    except Exit:
+        raise
+    except OSError:
+        raise Exit(65, "Hermes preverified receipt file is unreadable")
+    if hashlib.sha256(payload).hexdigest() != expected_file_sha256:
+        raise Exit(65, "Hermes preverified envelope does not match the verifier output hash")
+    proof = parse_json_exact(payload, "Hermes preverified receipt is invalid")
+    exact_keys(proof, PREVERIFIED_KEYS, "Hermes preverified receipt schema is invalid")
+    if payload != (canonical(proof) + "\n").encode() or proof.get("schema_version") != 1:
+        raise Exit(65, "Hermes preverified receipt is not canonical JSON")
+    receipt = proof.get("receipt")
+    if not isinstance(receipt, dict):
+        raise Exit(65, "Hermes preverified receipt payload is invalid")
+    receipt_bytes = (canonical(receipt) + "\n").encode()
+    validated = validate_receipt_bytes(receipt_bytes)
+    expected_hash = hashlib.sha256(receipt_bytes).hexdigest()
+    image = os.environ.get("HERMES_IMAGE", "")
+    if proof.get("receipt_sha256") != expected_hash or proof.get("image") != validated["subject"] or proof.get("head_sha") != validated["head_sha"] or image != validated["subject"]:
+        raise Exit(65, "Hermes preverified receipt binding is invalid")
+    try:
+        head = run_checked(["git", "rev-parse", "HEAD"], "Unable to resolve local Git commit", cwd=ROOT).decode("ascii").strip()
+    except UnicodeDecodeError:
+        raise Exit(65, "Unable to resolve local Git commit")
+    if head != validated["head_sha"]:
+        raise Exit(65, "Hermes preverified receipt commit does not match local HEAD")
+    return validated
+
+
+
+
+
+def verify_candidate() -> dict[str, Any] | None:
+    image, receipt_path = os.environ.get("HERMES_IMAGE", ""), os.environ.get("HERMES_CI_RECEIPT_FILE", "")
+    if bool(image) != bool(receipt_path):
+        raise Exit(64, "HERMES_IMAGE and HERMES_CI_RECEIPT_FILE must be provided together")
+    if os.environ.get("HERMES_PROVENANCE_BUNDLE", ""):
+        raise Exit(64, "HERMES_PROVENANCE_BUNDLE is unsupported")
+    if not image:
+        return None
+    receipt, local_bytes = load_receipt(receipt_path)
+    if image != receipt["subject"]:
+        raise Exit(65, "HERMES_IMAGE does not match the CI receipt")
+    gh = os.environ.get("GH", "gh")
+    try:
+        version_output = run_checked([gh, "--version"], "GitHub CLI 2.97.x is required").decode("utf-8")
+    except UnicodeDecodeError:
+        raise Exit(65, "GitHub CLI version response is invalid")
+    version_lines = version_output.splitlines()
+    if not version_lines or re.fullmatch(r"gh version 2\.97\.[0-9]+(?: \([^\r\n]+\))?", version_lines[0]) is None:
+        raise Exit(65, "GitHub CLI 2.97.x is required")
+    try:
+        head = run_checked(["git", "rev-parse", "HEAD"], "Unable to resolve local Git commit", cwd=ROOT).decode("ascii").strip()
+    except UnicodeDecodeError:
+        raise Exit(65, "Unable to resolve local Git commit")
+    if head != receipt["head_sha"]:
+        raise Exit(65, "Hermes CI receipt commit does not match local HEAD")
+    run_id, attempt = receipt["run_id"], receipt["run_attempt"]
+    run = parse_json_exact(run_checked([gh, "api", "--method", "GET", *GH_API_HEADERS, f"repos/{REPOSITORY}/actions/runs/{run_id}"], "GitHub Actions run verification failed"), "GitHub Actions run response is invalid")
+    expected_run = {"id":run_id,"run_attempt":attempt,"html_url":f"https://github.com/{REPOSITORY}/actions/runs/{run_id}","event":receipt["event"],"status":"completed","conclusion":"success","head_branch":"main","head_sha":receipt["head_sha"],"path":WORKFLOW_PATH,"repository":{"full_name":REPOSITORY}}
+    observed_run = {key: run.get(key) for key in expected_run}
+    if isinstance(run.get("repository"), dict):
+        observed_run["repository"] = {"full_name": run["repository"].get("full_name")}
+    if observed_run != expected_run:
+        raise Exit(65, "GitHub Actions run does not match the CI receipt")
+    artifact_name = f"hermes-gateway-receipt-{run_id}-{attempt}"
+    artifacts = parse_json_exact(run_checked([gh, "api", "--method", "GET", *GH_API_HEADERS, f"repos/{REPOSITORY}/actions/runs/{run_id}/artifacts?name={artifact_name}&per_page=100"], "GitHub Actions artifact verification failed"), "GitHub Actions artifact response is invalid")
+    entries = artifacts.get("artifacts")
+    if artifacts.get("total_count") != 1 or not isinstance(entries, list) or len(entries) != 1:
+        raise Exit(65, "GitHub Actions receipt artifact is not unique")
+    artifact = entries[0]
+    artifact_digest = artifact.get("digest") if isinstance(artifact, dict) else None
+    workflow_run = artifact.get("workflow_run") if isinstance(artifact, dict) else None
+    if not isinstance(artifact, dict) or artifact.get("name") != artifact_name or artifact.get("expired") is not False or not isinstance(workflow_run, dict) or workflow_run.get("id") != run_id or workflow_run.get("head_sha") != receipt["head_sha"] or not isinstance(artifact_digest, str) or re.fullmatch(r"sha256:[0-9a-f]{64}", artifact_digest) is None:
+        raise Exit(65, "GitHub Actions receipt artifact binding is invalid")
+    with tempfile.TemporaryDirectory(prefix="hermes-receipt-") as directory_name:
+        directory = Path(directory_name); os.chmod(directory, 0o700)
+        run_checked([gh, "run", "download", str(run_id), "--repo", REPOSITORY, "--name", artifact_name, "--dir", str(directory)], "GitHub Actions receipt download failed")
+        downloaded_entries = list(directory.iterdir())
+        if len(downloaded_entries) != 1 or downloaded_entries[0].name != "hermes-gateway-receipt.json":
+            raise Exit(65, "Downloaded receipt artifact content is invalid")
+        try:
+            downloaded_info = downloaded_entries[0].lstat()
+        except OSError:
+            raise Exit(65, "Downloaded receipt artifact content is invalid")
+        if stat.S_ISLNK(downloaded_info.st_mode) or not stat.S_ISREG(downloaded_info.st_mode):
+            raise Exit(65, "Downloaded receipt artifact content is invalid")
+        downloaded = downloaded_entries[0].read_bytes(); validate_receipt_bytes(downloaded)
+        if downloaded != local_bytes or hashlib.sha256(downloaded).digest() != hashlib.sha256(local_bytes).digest():
+            raise Exit(65, "Downloaded receipt does not match caller receipt")
+    observed_digest, body = fetch_ghcr_manifest(receipt["digest"])
+    manifest = parse_json_exact(body, "GHCR manifest response is invalid")
+    if observed_digest != receipt["digest"] or manifest.get("schemaVersion") != 2:
+        raise Exit(65, "GHCR manifest binding is invalid")
+    log("ordinary_candidate_verified", run_id=run_id, head_sha=receipt["head_sha"], digest=receipt["digest"], artifact_digest=artifact_digest)
+    return receipt
+
+
+def emit_verified_candidate() -> dict[str, Any] | None:
+    receipt = verify_candidate()
+    return verified_candidate_receipt(receipt) if receipt is not None else None
+
+
+
+def named_container(items: Any, name: str) -> tuple[int, dict[str, Any]]:
+    matches = [(index, item) for index, item in enumerate(items if isinstance(items, list) else []) if isinstance(item, dict) and item.get("name") == name]
+    if len(matches) != 1 or not isinstance(matches[0][1].get("image"), str):
+        raise Exit(65, f"Deployment requires one named {name} image")
+    return matches[0]
+
+
+def normalized_deployment(obj: dict[str, Any]) -> tuple[dict[str, Any], str, int, int]:
+    value = relevant_object(obj)
+    metadata = value.get("metadata", {})
+    annotations = metadata.get("annotations")
+    if isinstance(annotations, dict):
+        annotations.pop("deployment.kubernetes.io/revision", None)
+        if not annotations:
+            metadata.pop("annotations", None)
+    deployment_spec = value.get("spec", {})
+    for key, default in (("progressDeadlineSeconds", 600), ("revisionHistoryLimit", 10)):
+        if deployment_spec.get(key) == default:
+            deployment_spec.pop(key)
+    spec = deployment_spec.get("template", {}).get("spec", {})
+    for key, default in (("dnsPolicy", "ClusterFirst"), ("schedulerName", "default-scheduler"), ("serviceAccount", "default"), ("serviceAccountName", "default")):
+        if spec.get(key) == default:
+            spec.pop(key)
+    if spec.get("enableServiceLinks") is True:
+        spec.pop("enableServiceLinks")
+    if spec.get("preemptionPolicy") == "PreemptLowerPriority":
+        spec.pop("preemptionPolicy")
+    init_index, init = named_container(spec.get("initContainers"), "sparrow-function-spec"); main_index, main = named_container(spec.get("containers"), HERMES_DEPLOYMENT)
+    if init["image"] != main["image"] or DIGEST_RE.fullmatch(init["image"]) is None:
+        raise Exit(65, "Hermes init and main images must be the same immutable digest")
+    image = init["image"]; init["image"] = IMAGE_SENTINEL; main["image"] = IMAGE_SENTINEL
+    for container in (init, main):
+        for key in ("stdin", "stdinOnce", "tty"):
+            if container.get(key) is False: container.pop(key)
+        if container.get("terminationMessagePath") == "/dev/termination-log": container.pop("terminationMessagePath")
+        if container.get("terminationMessagePolicy") == "File": container.pop("terminationMessagePolicy")
+    return value, image, init_index, main_index
+
+
+def validate_image_patch(payload: list[dict[str, Any]]) -> None:
+    if not isinstance(payload, list) or len(payload) != 5 or any(not isinstance(item, dict) or set(item) != {"op", "path", "value"} for item in payload):
+        raise Exit(77, "Ordinary Deployment patch must contain exactly five operations")
+    paths = [item["path"] for item in payload]
+    if paths[0] != "/metadata/resourceVersion" or re.fullmatch(r"/spec/template/spec/initContainers/[0-9]+/image", paths[1]) is None or re.fullmatch(r"/spec/template/spec/containers/[0-9]+/image", paths[2]) is None or paths[3:] != paths[1:3] or [item["op"] for item in payload] != ["test","test","test","replace","replace"]:
+        raise Exit(77, "Ordinary Deployment patch grammar is invalid")
+    if payload[1]["value"] != payload[2]["value"] or payload[3]["value"] != payload[4]["value"] or DIGEST_RE.fullmatch(payload[1]["value"]) is None or DIGEST_RE.fullmatch(payload[3]["value"]) is None:
+        raise Exit(77, "Ordinary Deployment patch image values are invalid")
+
+
+def image_patch(deployment: dict[str, Any], prior: str, candidate: str) -> list[dict[str, Any]]:
+    _, current, init_index, main_index = normalized_deployment(deployment); rv = deployment.get("metadata", {}).get("resourceVersion")
+    if current != prior or not isinstance(rv, str) or not rv: raise Exit(65, "Hermes Deployment CAS baseline is invalid")
+    init_path, main_path = f"/spec/template/spec/initContainers/{init_index}/image", f"/spec/template/spec/containers/{main_index}/image"
+    payload = [{"op":"test","path":"/metadata/resourceVersion","value":rv},{"op":"test","path":init_path,"value":prior},{"op":"test","path":main_path,"value":prior},{"op":"replace","path":init_path,"value":candidate},{"op":"replace","path":main_path,"value":candidate}]
+    validate_image_patch(payload); return payload
+
+
+def ordinary_state(owner_obj: dict[str, Any], record: dict[str, Any]) -> tuple[dict[str, Any], dict[str, Any], str]:
+    lease = get_json("lease", LEASE); legacy = get_json("deployment", LEGACY_DEPLOYMENT); live = get_json("deployment", HERMES_DEPLOYMENT)
+    if lease is None or holder(lease) or record["active_owner"] != "hermes" or legacy is None or live is None or legacy.get("spec", {}).get("replicas") != 0 or live.get("spec", {}).get("replicas") != 1:
+        raise Exit(65, "Ordinary Hermes authority, Lease, or replica invariant failed")
+    snapshot_record, snapshot_data = validate_snapshot(record["hermes_verified_snapshot_ref"], "hermes"); snapshot = parse_single_object(snapshot_data["deployment.yaml"])
+    normalized_live, current, _, _ = normalized_deployment(live); normalized_snapshot, _, _, _ = normalized_deployment(snapshot)
+    if normalized_live != normalized_snapshot: raise Exit(65, "Live Hermes PodTemplate differs from the verified snapshot")
+    config = get_json("configmap", "hermes-gateway-config"); snapshot_config = parse_single_object(snapshot_data["configmap.yaml"])
+    if config is None or relevant_object(config) != relevant_object(snapshot_config): raise Exit(65, "Live Hermes ConfigMap differs from the verified snapshot")
+    baseline = {"owner":canonical(owner_obj),"lease":canonical(lease),"legacy_rv":legacy.get("metadata", {}).get("resourceVersion"),"snapshot_image":snapshot_record["image"]}
+    return baseline, live, current
+
+
+def assert_ordinary_unchanged(baseline: dict[str, Any], expected_image: str) -> dict[str, Any]:
+    loaded = load_owner(required=True); assert loaded is not None
+    current, live, image = ordinary_state(*loaded)
+    if any(current[key] != baseline[key] for key in ("owner", "lease", "legacy_rv")) or image != expected_image: raise Exit(65, "Ordinary authority or image invariant changed")
+    return live
+
+
+
+def wait_ordinary_rollout(baseline: dict[str, Any], image: str) -> dict[str, Any]:
+    deadline = time.monotonic() + 300
+    while time.monotonic() < deadline:
+        try:
+            live = assert_ordinary_unchanged(baseline, image)
+        except Exit as failure:
+            if failure.code == 75:
+                raise
+            raise RolloutFailure(failure.message)
+        desired, status, generation = live.get("spec", {}).get("replicas", 0), live.get("status", {}), live.get("metadata", {}).get("generation")
+        if status.get("observedGeneration") == generation and status.get("updatedReplicas", 0) == desired and status.get("readyReplicas", 0) == desired and status.get("availableReplicas", 0) == desired and status.get("unavailableReplicas", 0) == 0:
+            return live
+        conditions = status.get("conditions", [])
+        if any(item.get("type") == "Progressing" and item.get("status") == "False" and item.get("reason") == "ProgressDeadlineExceeded" for item in conditions if isinstance(item, dict)):
+            raise RolloutFailure("candidate rollout reported ProgressDeadlineExceeded")
+        time.sleep(2)
+    raise RolloutFailure("candidate rollout timed out")
+
+
+def restore_ordinary_candidate(baseline: dict[str, Any], candidate: str, prior: str, failure: RolloutFailure) -> None:
+    try:
+        restore = assert_ordinary_unchanged(baseline, candidate)
+        ordinary_patch(image_patch(restore, candidate, prior))
+        assert_ordinary_unchanged(baseline, prior)
+        wait_ordinary_rollout(baseline, prior)
+    except Conflict:
+        raise Exit(75, "RECOVERY_REQUIRED: ordinary Hermes restore patch conflicted")
+    except RolloutFailure as restore_failure:
+        raise Exit(75, f"RECOVERY_REQUIRED: Hermes prior image restore was inconclusive: {restore_failure}")
+    except Exit as restore_failure:
+        if restore_failure.code == 75:
+            raise
+        raise Exit(75, f"RECOVERY_REQUIRED: unable to establish safe Hermes restore: {restore_failure.message}")
+    raise Exit(65, f"Hermes candidate rollout failed and prior image was restored: {failure}")
+
+
+def ordinary_dispatch(receipt: dict[str, Any] | None) -> str:
+    loaded = load_owner(required=True); assert loaded is not None
+    owner_obj, record = loaded
+    if record["active_owner"] == "legacy": return "ordinary-legacy-noop"
+    baseline, live, prior = ordinary_state(owner_obj, record)
+    if receipt is None or receipt["subject"] == prior: return "hermes-noop"
+    candidate = receipt["subject"]; live = assert_ordinary_unchanged(baseline, prior)
+    try: ordinary_patch(image_patch(live, prior, candidate))
+    except Conflict: raise Exit(65, "Ordinary Hermes forward patch conflicted")
+    try:
+        assert_ordinary_unchanged(baseline, candidate)
+        wait_ordinary_rollout(baseline, candidate)
+    except RolloutFailure as failure:
+        restore_ordinary_candidate(baseline, candidate, prior, failure)
+    except Exit as failure:
+        if failure.code == 75:
+            raise
+        restore_ordinary_candidate(baseline, candidate, prior, RolloutFailure(failure.message))
+    return "hermes-reconciled"
+
+
+
+def dispatch(mode: str, preverified_file: str = "", preverified_sha256: str = "") -> str:
     if mode not in ("", "cutover", "upgrade", "rollback"):
         raise Exit(64, "HERMES_DEPLOY_MODE must be unset, cutover, upgrade, or rollback")
-    preflight_owner = load_owner(required=mode != "cutover")
     if not mode:
-        assert preflight_owner is not None
-        _, record = preflight_owner
-        return "legacy" if record["active_owner"] == "legacy" else "skip"
+        image = os.environ.get("HERMES_IMAGE", "")
+        if not image:
+            if preverified_file or preverified_sha256:
+                raise Exit(64, "Preverified receipt is not accepted without HERMES_IMAGE")
+            return ordinary_dispatch(None)
+        return ordinary_dispatch(load_preverified_candidate(preverified_file, preverified_sha256))
+
+    preflight_owner = load_owner(required=mode != "cutover")
     if mode in ("cutover", "upgrade"):
         hermes_configmap_yaml()
     acquire()
@@ -849,6 +1285,7 @@ def dispatch(mode: str) -> str:
 
 
 def retained_undeploy() -> None:
+    require_operator_lane()
     load_owner(required=True)  # non-authoritative preflight before waiting on the Lease
     acquire()
     try:
@@ -873,6 +1310,7 @@ def retained_undeploy() -> None:
 
 
 def recover(args: argparse.Namespace) -> None:
+    require_operator_lane()
     global ACTOR
     evidence_path = Path(args.evidence_file)
     try:
@@ -937,14 +1375,21 @@ def recover(args: argparse.Namespace) -> None:
 def main() -> int:
     parser = argparse.ArgumentParser()
     sub = parser.add_subparsers(dest="command", required=True)
-    deploy = sub.add_parser("dispatch"); deploy.add_argument("--mode", default=os.environ.get("HERMES_DEPLOY_MODE", ""))
+    deploy = sub.add_parser("dispatch"); deploy.add_argument("--mode", default=os.environ.get("HERMES_DEPLOY_MODE", "")); deploy.add_argument("--preverified-file", default=""); deploy.add_argument("--preverified-sha256", default="")
+    sub.add_parser("verify-candidate")
     sub.add_parser("retained-undeploy")
     recovery = sub.add_parser("recover")
     recovery.add_argument("--evidence-file", required=True)
     recovery.add_argument("--audit-file", required=True)
     args = parser.parse_args()
-    verify_operator_identity()
-    if args.command == "dispatch": print(dispatch(args.mode))
+    if args.command == "verify-candidate":
+        receipt = emit_verified_candidate()
+        print(canonical(receipt) if receipt is not None else "verified")
+        return 0
+    set_authorization_lane(args.command, args.mode if args.command == "dispatch" else "")
+    if AUTHORIZATION_LANE is AuthorizationLane.OPERATOR:
+        verify_operator_identity()
+    if args.command == "dispatch": print(dispatch(args.mode, getattr(args, "preverified_file", ""), getattr(args, "preverified_sha256", "")))
     elif args.command == "retained-undeploy": retained_undeploy()
     else: recover(args)
     return 0

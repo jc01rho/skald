@@ -94,6 +94,7 @@ def test_workflow_runs_all_offline_pytest_and_pins_actions():
         "actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683",
         "aquasecurity/trivy-action@c07df6fec6fa692e6fd1200d50aaa1fdd66f03c8",
         "docker/login-action@74a5d142397b4f367a81961eba4e8cd7edddf772",
+        "actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02",
     ]
     assert all(re.fullmatch(r"[^@\s]+@[0-9a-f]{40}", action) for action in action_uses)
 

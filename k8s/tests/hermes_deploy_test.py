@@ -14,6 +14,8 @@ ROOT = Path(__file__).resolve().parents[2]
 DEPLOY_SH = ROOT / "k8s" / "deploy.sh"
 STATE_PATH = ROOT / "k8s" / "hermes" / "deploy_state.py"
 SMOKE_PATH = ROOT / "k8s" / "hermes" / "smoke.py"
+WORKFLOW_PATH = ROOT / ".github" / "workflows" / "build-hermes-gateway.yml"
+
 
 
 def load_smoke():
@@ -75,8 +77,432 @@ def load_state():
     module.MUTATIONS_ALLOWED = True
     module.ACTOR = "test-actor"
     module.IDENTITY_VERIFIED = True
+    module.AUTHORIZATION_LANE = module.AuthorizationLane.OPERATOR
     module.assert_current_identity = lambda: None
     return module
+def run_deploy_with_env_file(tmp_path, content, caller_env=None):
+    env_file = tmp_path / "deploy.env"
+    env_file.write_text(content)
+    env = os.environ.copy()
+    for key in (
+        "HERMES_IMAGE",
+        "HERMES_CI_RECEIPT_FILE",
+        "HERMES_PROVENANCE_BUNDLE",
+        "HERMES_DEPLOY_MODE",
+        "HERMES_DEPLOY_IDENTITY",
+    ):
+        env.pop(key, None)
+    env.update(caller_env or {})
+    env["ENV_FILE"] = str(env_file)
+    return subprocess.run(
+        ["bash", str(DEPLOY_SH), "-y"],
+        cwd=ROOT / "k8s",
+        env=env,
+        capture_output=True,
+        text=True,
+    )
+
+def run_env_file_entrypoint_probe(tmp_path, content):
+    env_file = tmp_path / "deploy.env"
+    env_file.write_text(content)
+    event_file = tmp_path / "events"
+    payload_file = tmp_path / "payload-ran"
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+
+    real_python = Path(os.environ.get("PYTHON", os.sys.executable)).resolve()
+    python3 = bin_dir / "python3"
+    python3.write_text(
+        "#!/bin/sh\n"
+        "case \"$1\" in *deploy_state.py) printf 'verifier\\n' >> \"$ENV_PROBE_EVENTS\"; exit 97 ;; esac\n"
+        f"exec {str(real_python)!r} \"$@\"\n"
+    )
+    python3.chmod(0o755)
+    kubectl = bin_dir / "kubectl"
+    kubectl.write_text("#!/bin/sh\nprintf 'kubectl\\n' >> \"$ENV_PROBE_EVENTS\"\nexit 97\n")
+    kubectl.chmod(0o755)
+    payload = bin_dir / "env-payload"
+    payload.write_text("#!/bin/sh\nprintf payload > \"$ENV_PROBE_PAYLOAD\"\n")
+    payload.chmod(0o755)
+
+    env = os.environ.copy()
+    for key in (
+        "HERMES_IMAGE",
+        "HERMES_CI_RECEIPT_FILE",
+        "HERMES_PROVENANCE_BUNDLE",
+        "HERMES_DEPLOY_MODE",
+        "HERMES_DEPLOY_IDENTITY",
+    ):
+        env.pop(key, None)
+    env.update({
+        "ENV_FILE": str(env_file),
+        "ENV_PROBE_EVENTS": str(event_file),
+        "ENV_PROBE_PAYLOAD": str(payload_file),
+        "PATH": f"{bin_dir}{os.pathsep}{env['PATH']}",
+    })
+    completed = subprocess.run(
+        ["bash", str(DEPLOY_SH), "-y"],
+        cwd=ROOT / "k8s",
+        env=env,
+        capture_output=True,
+        text=True,
+    )
+    events = event_file.read_text().splitlines() if event_file.exists() else []
+    return completed, events, payload_file
+
+
+def assert_env_file_rejected_without_execution(tmp_path, content):
+    completed, events, payload_file = run_env_file_entrypoint_probe(tmp_path, content)
+    assert completed.returncode == 64
+    assert not payload_file.exists()
+    assert "verifier" not in events
+    assert "kubectl" not in events
+    assert "data-only dotenv" in completed.stdout + completed.stderr
+
+
+@pytest.mark.parametrize(
+    "content",
+    [
+        "LOG_LEVEL=$(env-payload)\n",
+        "LOG_LEVEL=`env-payload`\n",
+        "env-payload() { env-payload; }\n",
+        "function kubectl { env-payload; }\n",
+        "LOG_LEVEL=ok; env-payload\n",
+        "LOG_LEVEL=ok | env-payload\n",
+        "LOG_LEVEL=ok\nprintf -v HERMES_PREVERIFIED_FILE env-payload\n",
+        "LOG_LEVEL=first\nLOG_LEVEL=second\n",
+        "LOG_LEVEL='unterminated\n",
+    ],
+)
+def test_env_file_is_data_only_at_actual_entrypoint(tmp_path, content):
+    assert_env_file_rejected_without_execution(tmp_path, content)
+
+
+@pytest.mark.parametrize(
+    "key",
+    [
+        "PATH",
+        "BASH_ENV",
+        "ENV",
+        "SHELLOPTS",
+        "BASHOPTS",
+        "CDPATH",
+        "PYTHONPATH",
+        "PYTHONHOME",
+        "KUBECTL",
+        "GH",
+    ],
+)
+def test_env_file_cannot_replace_command_or_python_import_surface(tmp_path, key):
+    assert_env_file_rejected_without_execution(tmp_path, f"{key}=env-payload\n")
+
+
+@pytest.mark.parametrize(
+    "key",
+    [
+        "LD_PRELOAD",
+        "LD_AUDIT",
+        "LD_LIBRARY_PATH",
+        "DYLD_INSERT_LIBRARIES",
+        "HERMES_SKIP_DISCORD_SMOKE",
+        "HERMES_CONFIGMAP_FILE",
+        "HERMES_SMOKE_PROFILE",
+        "HERMES_OPERATION_ACTOR",
+        "HERMES_KUBECTL_TIMEOUT_SECONDS",
+        "HERMES_LEASE_WAIT_SECONDS",
+        "GH_HOST",
+        "GIT_DIR",
+        "GIT_WORK_TREE",
+        "GIT_CONFIG_GLOBAL",
+        "GIT_CONFIG_SYSTEM",
+        "GIT_CONFIG_COUNT",
+        "GIT_CONFIG_KEY_0",
+        "GIT_CONFIG_VALUE_0",
+        "HTTPS_PROXY",
+        "HTTP_PROXY",
+        "ALL_PROXY",
+        "NO_PROXY",
+        "SSL_CERT_FILE",
+        "REQUESTS_CA_BUNDLE",
+        "UNKNOWN_DEPLOY_SETTING",
+    ],
+)
+def test_env_file_allowlist_rejects_execution_and_provenance_controls(tmp_path, key):
+    assert_env_file_rejected_without_execution(tmp_path, f"{key}=env-payload\n")
+
+
+def test_env_file_accepts_supported_data_only_settings_without_shell_expansion(tmp_path):
+    completed, events, payload_file = run_env_file_entrypoint_probe(
+        tmp_path,
+        "\n# local production settings\nexport POSTGRES_DB=skald2\nPOSTGRES_USER=postgres\n"
+        "RABBITMQ_USER=skald\nUI_DOMAIN=ui.skald.local\nAPI_DOMAIN=api.skald.local\n"
+        "LLM_PROVIDER=cli-proxy-api\nCLI_PROXY_API_BASE_URL='$(env-payload) literal'\n"
+        "LLM_DEFAULT_CHAT_MODEL=parrot\nLLM_DEFAULT_CLASSIFICATION_MODEL=parrot\n"
+        "LLM_FALLBACK_CHAIN=parrot\nEMBEDDING_PROVIDER=external\n"
+        "DOCUMENT_EXTRACTION_PROVIDER=docling\nEMBEDDING_SERVICE_URL=http://embedding-service:8000\n"
+        "LOCAL_EMBEDDING_MODEL=all-MiniLM-L6-v2\n"
+        "LOCAL_RERANK_MODEL=cross-encoder/ms-marco-MiniLM-L-6-v2\nRERANK_PROVIDER=ollama\n"
+        "QUERY_LANGUAGE=ko\nEXTERNAL_EMBEDDING_URL=http://embedding.local/embeddings\n"
+        "INTERNAL_RERANK_URL=http://rerank.local/v1/rerank\nLOG_LEVEL=info\n",
+    )
+    assert completed.returncode != 0
+    assert completed.returncode != 64
+    assert events == ["verifier"]
+    assert not payload_file.exists()
+    assert "Environment variables loaded" in completed.stdout + completed.stderr
+
+
+def test_env_file_failure_is_atomic_before_verifier(tmp_path):
+    completed, events, _ = run_env_file_entrypoint_probe(
+        tmp_path,
+        "LOG_LEVEL=info\nLLM_PROVIDER='unterminated\n",
+    )
+    assert completed.returncode == 64
+    assert events == []
+
+
+def run_real_cli_handoff_harness(tmp_path, *, verifier_fails=False):
+    event_file = tmp_path / "events"
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    head_sha = "b" * 40
+    digest = "sha256:" + "a" * 64
+    image = "ghcr.io/jc01rho/hermes-gateway@" + digest
+    receipt = {
+        "schema_version": 1,
+        "repository": "jc01rho/skald",
+        "workflow_path": ".github/workflows/build-hermes-gateway.yml",
+        "run_id": 7,
+        "run_attempt": 2,
+        "run_url": "https://github.com/jc01rho/skald/actions/runs/7/attempts/2",
+        "event": "push",
+        "ref": "refs/heads/main",
+        "head_sha": head_sha,
+        "conclusion": "success",
+        "image_repository": "ghcr.io/jc01rho/hermes-gateway",
+        "digest": digest,
+        "subject": image,
+    }
+    receipt_path = tmp_path / "receipt.json"
+    receipt_path.write_text(json.dumps(receipt, sort_keys=True, separators=(",", ":")) + "\n")
+    receipt_path.chmod(0o600)
+    git = bin_dir / "git"
+    git.write_text("#!/bin/sh\nprintf 'git %s\\n' \"$*\" >> \"$HERMES_TEST_EVENTS\"\nprintf '%s\\n' \"$HERMES_TEST_HEAD\"\n")
+    git.chmod(0o755)
+    gh = bin_dir / "gh"
+    gh.write_text(
+        "#!/bin/bash\n"
+        "printf 'gh %s\\n' \"$*\" >> \"$HERMES_TEST_EVENTS\"\n"
+        "if [ \"${HERMES_TEST_VERIFY_FAIL:-0}\" = 1 ]; then exit 23; fi\n"
+        "case \"$1 $2\" in\n"
+        "  '--version ') printf 'gh version 2.97.1 (fixture)\\n' ;;\n"
+        "  'run download') while [ \"$1\" != '--dir' ]; do shift; done; mkdir -p \"$2\"; cp \"$HERMES_TEST_RECEIPT\" \"$2/hermes-gateway-receipt.json\" ;;\n"
+        "  'api --method') last=; for arg in \"$@\"; do last=\"$arg\"; done; if [[ \"$last\" == *'/artifacts?'* ]]; then printf '%s' \"$HERMES_TEST_ARTIFACT\"; else printf '%s' \"$HERMES_TEST_RUN\"; fi ;;\n"
+        "  *) exit 97 ;;\n"
+        "esac\n"
+    )
+    gh.chmod(0o755)
+    kubectl = bin_dir / "kubectl"
+    kubectl.write_text(
+        "#!/bin/sh\n"
+        "printf 'kubectl %s\\n' \"$*\" >> \"$HERMES_TEST_EVENTS\"\n"
+        "case \"$*\" in\n"
+        "  *'get configmap skald-discord-owner-state'* ) printf '%s' \"$HERMES_TEST_OWNER\" ;;\n"
+        "esac\n"
+    )
+    kubectl.chmod(0o755)
+    harness = tmp_path / "deploy-harness.sh"
+    harness.write_text(
+        "#!/bin/bash\n"
+        f"source {json.dumps(str(DEPLOY_SH))}\n"
+        "check_prerequisites() { kubectl cluster-info; }\n"
+        "create_namespace() { :; }\n"
+        "deploy_traefik() { :; }\n"
+        "create_configs() { :; }\n"
+        "create_pvcs() { :; }\n"
+        "deploy_infrastructure() { :; }\n"
+        "deploy_backend() { :; }\n"
+        "deploy_ai_services() { :; }\n"
+        "deploy_worker() { :; }\n"
+        "deploy_frontend() { :; }\n"
+        "deploy_ingress() { :; }\n"
+        "verify_deployment() { :; }\n"
+        "print_access_info() { :; }\n"
+        "main -y\n"
+    )
+    harness.chmod(0o700)
+    run = {
+        "id": 7, "run_attempt": 2, "html_url": "https://github.com/jc01rho/skald/actions/runs/7",
+        "event": "push", "status": "completed", "conclusion": "success", "head_branch": "main",
+        "head_sha": head_sha, "path": ".github/workflows/build-hermes-gateway.yml",
+        "repository": {"full_name": "jc01rho/skald"},
+    }
+    artifact = {
+        "name": "hermes-gateway-receipt-7-2", "expired": False, "digest": "sha256:" + "c" * 64,
+        "workflow_run": {"id": 7, "head_sha": head_sha},
+    }
+    owner_record = {
+        "schema_version": 1, "namespace": "skald", "active_owner": "legacy", "generation": 1,
+        "legacy_snapshot_ref": "configmap://skald/skald-discord-legacy-" + "d" * 16,
+        "hermes_verified_snapshot_ref": None, "verified_at": "2026-07-30T00:00:00Z",
+        "verified_by": "test", "smoke": {},
+    }
+    (tmp_path / "ghcr-fixture.json").write_text(json.dumps({"digest": digest, "schemaVersion": 2}))
+    owner = {"apiVersion": "v1", "kind": "ConfigMap", "metadata": {"name": "skald-discord-owner-state", "namespace": "skald"}, "data": {"owner.json": json.dumps(owner_record, sort_keys=True, separators=(",", ":"))}}
+
+    env = os.environ.copy()
+    env.update({
+        "PATH": f"{bin_dir}{os.pathsep}{env['PATH']}", "ENV_FILE": str(tmp_path / "missing.env"),
+        "HERMES_IMAGE": image, "HERMES_CI_RECEIPT_FILE": str(receipt_path),
+        "HERMES_TEST_EVENTS": str(event_file), "HERMES_TEST_HEAD": head_sha,
+        "HERMES_TEST_RECEIPT": str(receipt_path), "HERMES_TEST_DIGEST": digest,
+        "HERMES_TEST_GHCR_FIXTURE": str(tmp_path / "ghcr-fixture.json"),
+        "HERMES_TEST_RUN": json.dumps(run, separators=(",", ":")),
+        "HERMES_TEST_ARTIFACT": json.dumps({"total_count": 1, "artifacts": [artifact]}, separators=(",", ":")),
+        "HERMES_TEST_OWNER": json.dumps(owner, separators=(",", ":")),
+        "HERMES_TEST_VERIFY_FAIL": "1" if verifier_fails else "0",
+    })
+    completed = subprocess.run(["bash", str(harness)], cwd=ROOT / "k8s", env=env, capture_output=True, text=True)
+    events = event_file.read_text().splitlines() if event_file.exists() else []
+    return completed, events
+
+
+def test_real_cli_handoff_verifies_once_before_kubernetes_and_late_dispatch_is_local(tmp_path):
+    completed, events = run_real_cli_handoff_harness(tmp_path)
+    assert completed.returncode != 0
+    gh_events = [event for event in events if event.startswith("gh ")]
+    assert len(gh_events) == 4
+    first_kubectl = next(index for index, event in enumerate(events) if event.startswith("kubectl "))
+    assert all(not event.startswith("kubectl ") for event in events[:first_kubectl])
+    assert all(not event.startswith("gh ") for event in events[first_kubectl:])
+    assert events.count("git rev-parse HEAD") == 2
+
+
+def test_real_cli_verifier_failure_runs_zero_kubernetes_commands(tmp_path):
+    completed, events = run_real_cli_handoff_harness(tmp_path, verifier_fails=True)
+    assert completed.returncode != 0
+    assert not any(event.startswith("kubectl ") for event in events)
+    assert "candidate verification failed before Kubernetes access" in completed.stdout + completed.stderr
+
+
+
+@pytest.mark.parametrize(
+    "key",
+    [
+        "HERMES_IMAGE",
+        "HERMES_CI_RECEIPT_FILE",
+        "HERMES_PROVENANCE_BUNDLE",
+        "HERMES_DEPLOY_MODE",
+        "HERMES_DEPLOY_IDENTITY",
+    ],
+)
+@pytest.mark.parametrize(
+    "definition",
+    [
+        "{key}=value\n",
+        "  export {key}=value\n",
+        "{key}=\"value\"\n",
+        "{key}=first\n{key}=second\n",
+    ],
+)
+def test_reserved_hermes_env_file_inputs_fail_before_prerequisites(tmp_path, key, definition):
+    completed = run_deploy_with_env_file(tmp_path, definition.format(key=key))
+    assert completed.returncode == 64
+    output = completed.stdout + completed.stderr
+    assert f"{key} is not an allowed ENV_FILE setting" in output
+    assert "사전 요구사항 확인 중" not in output
+    assert "namespace" not in output.lower()
+    assert "hermes/deploy_state.py" not in output
+
+
+
+@pytest.mark.parametrize("key", [
+    "HERMES_IMAGE_CALLER_VALUE",
+    "HERMES_CI_RECEIPT_FILE_CALLER_VALUE",
+    "HERMES_DEPLOY_MODE_CALLER_VALUE",
+    "HERMES_UNRELATED_HELPER_CALLER_VALUE",
+    "HERMES_PREVERIFIED_SHA256",
+])
+def test_env_file_cannot_override_internal_captures_or_handoff_hash(tmp_path, key):
+    completed = run_deploy_with_env_file(tmp_path, f"{key}=attacker-controlled\n")
+    assert completed.returncode == 64
+    assert f"{key} is not an allowed ENV_FILE setting" in completed.stdout + completed.stderr
+    assert "candidate verification failed" not in completed.stdout + completed.stderr
+
+
+@pytest.mark.parametrize("mode", ["cutover", "upgrade"])
+def test_explicit_candidate_modes_require_image_receipt_pair_before_verifier_or_kubernetes(tmp_path, mode):
+    completed = run_deploy_with_env_file(
+        tmp_path,
+        "",
+        {"HERMES_DEPLOY_MODE": mode, "HERMES_DEPLOY_IDENTITY": "user:alice"},
+    )
+    assert completed.returncode == 64
+    output = completed.stdout + completed.stderr
+    assert f"{mode} requires both HERMES_IMAGE and HERMES_CI_RECEIPT_FILE" in output
+    assert "hermes/deploy_state.py" not in output
+    assert "사전 요구사항 확인 중" not in output
+
+
+def test_rollback_rejects_candidate_pair_before_verifier_or_kubernetes(tmp_path):
+    completed = run_deploy_with_env_file(
+        tmp_path,
+        "",
+        {
+            "HERMES_DEPLOY_MODE": "rollback",
+            "HERMES_DEPLOY_IDENTITY": "user:alice",
+            "HERMES_IMAGE": "ghcr.io/jc01rho/hermes-gateway@sha256:" + "a" * 64,
+            "HERMES_CI_RECEIPT_FILE": str(tmp_path / "receipt.json"),
+        },
+    )
+    assert completed.returncode == 64
+    output = completed.stdout + completed.stderr
+    assert "rollback rejects HERMES_IMAGE and HERMES_CI_RECEIPT_FILE" in output
+    assert "hermes/deploy_state.py" not in output
+    assert "사전 요구사항 확인 중" not in output
+
+def test_reserved_env_file_input_is_rejected_even_when_equal_to_caller(tmp_path):
+    completed = run_deploy_with_env_file(
+        tmp_path,
+        'HERMES_IMAGE="same"\n',
+        {"HERMES_IMAGE": "same"},
+    )
+    assert completed.returncode == 64
+    assert "HERMES_IMAGE is not an allowed ENV_FILE setting" in completed.stdout + completed.stderr
+
+
+def test_caller_provenance_bundle_is_rejected_before_prerequisites(tmp_path):
+    completed = run_deploy_with_env_file(
+        tmp_path,
+        "LOG_LEVEL=info\n",
+        {"HERMES_PROVENANCE_BUNDLE": str(tmp_path / "bundle.json")},
+    )
+    assert completed.returncode == 64
+    output = completed.stdout + completed.stderr
+    assert "only approved provenance protocol" in output
+    assert "사전 요구사항 확인 중" not in output
+
+
+def test_ordinary_candidate_requires_image_receipt_pair(tmp_path):
+    for env in (
+        {"HERMES_IMAGE": "ghcr.io/jc01rho/hermes-gateway@sha256:" + "a" * 64},
+        {"HERMES_CI_RECEIPT_FILE": str(tmp_path / "receipt.json")},
+    ):
+        completed = run_deploy_with_env_file(tmp_path, "LOG_LEVEL=info\n", env)
+        assert completed.returncode == 64
+        assert "requires both HERMES_IMAGE and HERMES_CI_RECEIPT_FILE" in completed.stdout + completed.stderr
+
+
+def test_ordinary_identity_and_explicit_missing_identity_fail_early(tmp_path):
+    ordinary = run_deploy_with_env_file(tmp_path, "", {"HERMES_DEPLOY_IDENTITY": "user:alice"})
+    assert ordinary.returncode == 64
+    assert "not accepted for ordinary" in ordinary.stdout + ordinary.stderr
+
+    explicit = run_deploy_with_env_file(tmp_path, "", {"HERMES_DEPLOY_MODE": "upgrade"})
+    assert explicit.returncode == 64
+    assert "requires caller HERMES_DEPLOY_IDENTITY" in explicit.stdout + explicit.stderr
+
+
 
 def test_operator_identity_preflight_checks_required_and_prohibited_permissions(monkeypatch):
     state = load_state()
@@ -143,7 +569,7 @@ def test_operator_identity_with_required_plus_prohibited_grant_fails_before_muta
 
     monkeypatch.setattr(state.subprocess, "run", run)
     mutated = []
-    monkeypatch.setattr(state, "dispatch", lambda _: mutated.append("dispatch"))
+    monkeypatch.setattr(state, "dispatch", lambda *_: mutated.append("dispatch"))
     monkeypatch.setattr(state.argparse.ArgumentParser, "parse_args", lambda _: SimpleNamespace(command="dispatch", mode="cutover"))
     with pytest.raises(state.Exit) as caught:
         state.main()
@@ -170,15 +596,18 @@ def test_operator_identity_preflight_rejects_wildcard_and_command_path_rechecks_
     assert bypass.value.code == 77
 
 
-def test_deploy_script_passes_required_identity_and_rbac_has_no_decorative_serviceaccount():
+def test_deploy_script_separates_ordinary_and_explicit_identity_and_rbac_has_no_decorative_serviceaccount():
     text = DEPLOY_SH.read_text()
     dispatch = text[text.index("deploy_discord_owner()") : text.index("deploy_discord_bot()")]
+    ordinary_branch = dispatch[dispatch.index("else") : dispatch.index("case \"$result\"")]
     assert 'HERMES_DEPLOY_IDENTITY="$HERMES_DEPLOY_IDENTITY"' in dispatch
+    assert "HERMES_DEPLOY_IDENTITY" not in ordinary_branch
     rbac = yaml.safe_load_all((ROOT / "k8s" / "hermes-deploy-operator-rbac.yaml").read_text())
     objects = list(rbac)
     assert {obj["kind"] for obj in objects} == {"Role", "RoleBinding"}
     binding = next(obj for obj in objects if obj["kind"] == "RoleBinding")
     assert binding["subjects"] == [{"kind": "Group", "name": "hermes-deploy-operators", "apiGroup": "rbac.authorization.k8s.io"}]
+
     role = next(obj for obj in objects if obj["kind"] == "Role")
     grants = {
         (tuple(rule["apiGroups"]), tuple(rule["resources"]), tuple(rule.get("resourceNames", [])), tuple(rule["verbs"]))
@@ -210,10 +639,10 @@ def owner(active="legacy"):
 
 def test_exact_dispatch_unset_uses_durable_owner_only(monkeypatch):
     state = load_state()
+    monkeypatch.delenv("HERMES_IMAGE", raising=False)
     monkeypatch.setattr(state, "load_owner", lambda required=True: ({}, owner("legacy")))
-    assert state.dispatch("") == "legacy"
-    monkeypatch.setattr(state, "load_owner", lambda required=True: ({}, owner("hermes")))
-    assert state.dispatch("") == "skip"
+    assert state.dispatch("") == "ordinary-legacy-noop"
+
 
 
 def test_unknown_mode_rejects_before_cluster_read(monkeypatch):
@@ -224,11 +653,14 @@ def test_unknown_mode_rejects_before_cluster_read(monkeypatch):
     assert caught.value.code == 64
 
 
-def test_ordinary_deploy_cannot_start_legacy_when_owner_is_hermes():
+def test_ordinary_deploy_never_starts_legacy_and_accepts_only_terminal_contract():
     text = DEPLOY_SH.read_text()
     callsite = text[text.index("deploy_discord_owner()") : text.index("deploy_discord_bot()")]
-    assert 'skip)' in callsite
-    assert "deploy_discord_bot" not in callsite[callsite.index("skip)") : callsite.index("managed)")]
+    assert "deploy_discord_bot" not in callsite
+    for result in ("ordinary-legacy-noop", "hermes-noop", "hermes-reconciled", "managed"):
+        assert f"{result})" in callsite
+    for failure in ("restored_after_failed_rollout", "blocked", "result_unknown"):
+        assert failure not in callsite
     main = text[text.index("main()") :]
     assert "deploy_discord_owner" in main
     assert "        deploy_discord_bot\n" not in main
@@ -248,6 +680,41 @@ def test_hermes_image_is_full_separate_immutable_input():
         assert os.environ["HERMES_IMAGE"] in rendered
     finally:
         os.environ.pop("HERMES_IMAGE")
+
+
+
+def test_workflow_emits_exact_canonical_receipt_and_uploads_it_last():
+    workflow = yaml.safe_load(WORKFLOW_PATH.read_text())
+    steps = workflow["jobs"]["build-test-scan-push"]["steps"]
+    generate = next(step for step in steps if step["name"] == "Generate canonical Hermes gateway receipt")
+    upload = steps[-1]
+    assert upload["name"] == "Upload Hermes gateway receipt"
+    assert upload["if"] == "github.event_name != 'pull_request'"
+    assert upload["uses"] == "actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02"
+    assert upload["with"] == {
+        "name": "hermes-gateway-receipt-${{ github.run_id }}-${{ github.run_attempt }}",
+        "path": "hermes-gateway-receipt.json",
+        "if-no-files-found": "error",
+        "compression-level": 0,
+        "retention-days": 30,
+        "overwrite": False,
+        "include-hidden-files": False,
+    }
+    script = generate["run"]
+    expected_keys = {
+        "schema_version", "repository", "workflow_path", "run_id", "run_attempt",
+        "run_url", "event", "ref", "head_sha", "conclusion", "image_repository",
+        "digest", "subject",
+    }
+    assert {key for key in expected_keys if f'"{key}"' in script} == expected_keys
+    assert 'json.dumps(receipt, sort_keys=True, separators=(",", ":")) + "\\n"' in script
+    assert steps.index(generate) > next(i for i, step in enumerate(steps) if step["name"] == "Push immutable commit image")
+
+
+def test_workflow_has_no_attestation_protocol_or_permissions():
+    text = WORKFLOW_PATH.read_text()
+    for forbidden in ("attest-build-provenance", "gh attestation", "id-token: write", "attestations: write"):
+        assert forbidden not in text
 
 
 def test_snapshot_codec_contract_fixed_vector():

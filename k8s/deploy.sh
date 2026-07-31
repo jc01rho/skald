@@ -5,6 +5,20 @@
 
 set -e  # 오류 발생 시 스크립트 중단
 
+# Reserved Hermes deployment inputs are caller-only. Capture their values before
+# defaults or ENV_FILE data can alter them; the dotenv loader exports only the
+# explicit non-secret application-setting allowlist.
+readonly HERMES_IMAGE_CALLER_VALUE="${HERMES_IMAGE-}"
+readonly HERMES_CI_RECEIPT_FILE_CALLER_VALUE="${HERMES_CI_RECEIPT_FILE-}"
+readonly HERMES_PROVENANCE_BUNDLE_CALLER_VALUE="${HERMES_PROVENANCE_BUNDLE-}"
+readonly HERMES_DEPLOY_MODE_CALLER_VALUE="${HERMES_DEPLOY_MODE-}"
+readonly HERMES_DEPLOY_IDENTITY_CALLER_VALUE="${HERMES_DEPLOY_IDENTITY-}"
+readonly SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+HERMES_PREVERIFIED_FILE=""
+HERMES_PREVERIFIED_SHA256=""
+
+
+
 # 색상 정의
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -37,9 +51,11 @@ DOCKER_REGISTRY="${DOCKER_REGISTRY:-ghcr.io/jc01rho}"
 HERMES_IMAGE="${HERMES_IMAGE:-}"
 HERMES_DEPLOY_MODE="${HERMES_DEPLOY_MODE:-}"
 HERMES_DEPLOY_IDENTITY="${HERMES_DEPLOY_IDENTITY:-}"
+HERMES_CI_RECEIPT_FILE="${HERMES_CI_RECEIPT_FILE:-}"
+HERMES_PROVENANCE_BUNDLE="${HERMES_PROVENANCE_BUNDLE:-}"
+
 RETENTION_ACTIVE="${RETENTION_ACTIVE:-true}"
 
-echo "DOCKER_REGISTRY : $DOCKER_REGISTRY"
 SKIP_INGRESS="${SKIP_INGRESS:-false}"
 
 # 환경 변수 파일
@@ -52,19 +68,233 @@ KEEP_DATA="true"
 
 # 강제 응답 관련 변수
 FORCE_YES="false"
+cleanup_hermes_preverified() {
+    if [ -n "$HERMES_PREVERIFIED_FILE" ]; then
+        rm -f -- "$HERMES_PREVERIFIED_FILE"
+        HERMES_PREVERIFIED_FILE=""
+    fi
+}
+trap cleanup_hermes_preverified EXIT HUP INT TERM
 
-# 환경 변수 로드 함수
+
+# ENV_FILE is a strict data-only dotenv file with an explicit application-setting
+# allowlist. Parse the complete file before exporting anything so rejected input
+# cannot partially affect deploy.
 load_env_file() {
     if [ -f "$ENV_FILE" ]; then
         log_info "Loading environment variables from $ENV_FILE..."
-        set -a
-        source "$ENV_FILE"
-        set +a
+
+        local parsed_file parse_status key value
+        parsed_file="$(mktemp "${TMPDIR:-/tmp}/skald-env.XXXXXX")" || {
+            log_error "Unable to create temporary ENV_FILE parse output"
+            return 64
+        }
+        chmod 0600 "$parsed_file" || {
+            rm -f -- "$parsed_file"
+            return 64
+        }
+
+        if python3 - "$ENV_FILE" > "$parsed_file" <<'PY'
+import re
+import sys
+
+path = sys.argv[1]
+identifier = re.compile(r"[A-Za-z_][A-Za-z0-9_]*\Z")
+allowed_keys = {
+    "POSTGRES_DB",
+    "POSTGRES_USER",
+    "RABBITMQ_USER",
+    "UI_DOMAIN",
+    "API_DOMAIN",
+    "LLM_PROVIDER",
+    "CLI_PROXY_API_BASE_URL",
+    "LLM_DEFAULT_CHAT_MODEL",
+    "LLM_DEFAULT_CLASSIFICATION_MODEL",
+    "LLM_FALLBACK_CHAIN",
+    "EMBEDDING_PROVIDER",
+    "DOCUMENT_EXTRACTION_PROVIDER",
+    "EMBEDDING_SERVICE_URL",
+    "LOCAL_EMBEDDING_MODEL",
+    "LOCAL_RERANK_MODEL",
+    "RERANK_PROVIDER",
+    "QUERY_LANGUAGE",
+    "EXTERNAL_EMBEDDING_URL",
+    "INTERNAL_RERANK_URL",
+    "LOG_LEVEL",
+}
+unsafe_unquoted = re.compile(r"[;|&`<>(){}\\]")
+seen = set()
+
+def fail(line_number, message):
+    print(f"ENV_FILE line {line_number}: {message}", file=sys.stderr)
+    raise SystemExit(64)
+
+try:
+    with open(path, "rb") as env_file:
+        raw = env_file.read()
+except OSError as error:
+    print(f"Unable to read ENV_FILE: {error}", file=sys.stderr)
+    raise SystemExit(64)
+
+if b"\0" in raw:
+    print("ENV_FILE contains a NUL byte", file=sys.stderr)
+    raise SystemExit(64)
+try:
+    text = raw.decode("utf-8")
+except UnicodeDecodeError:
+    print("ENV_FILE must be valid UTF-8", file=sys.stderr)
+    raise SystemExit(64)
+
+for line_number, physical_line in enumerate(text.splitlines(), 1):
+    line = physical_line.strip()
+    if not line or line.startswith("#"):
+        continue
+    if line.startswith("export"):
+        match = re.match(r"export[ \t]+", line)
+        if match:
+            line = line[match.end():]
+    if "=" not in line:
+        fail(line_number, "expected KEY=VALUE")
+    key_text, value_text = line.split("=", 1)
+    key = key_text.strip()
+    if not identifier.fullmatch(key):
+        fail(line_number, "invalid variable identifier")
+    if key in seen:
+        fail(line_number, f"duplicate variable {key}")
+    seen.add(key)
+    if key not in allowed_keys:
+        fail(line_number, f"{key} is not an allowed ENV_FILE setting")
+
+    value_text = value_text.strip()
+    if value_text[:1] in ("'", '"'):
+        quote = value_text[0]
+        if len(value_text) < 2 or value_text[-1] != quote:
+            fail(line_number, "malformed quoted value")
+        value = value_text[1:-1]
+        if quote in value:
+            fail(line_number, "quoted value must use one whole matching quote pair")
+    else:
+        if "#" in value_text or unsafe_unquoted.search(value_text) or "$" in value_text:
+            fail(line_number, "unsafe syntax in unquoted value")
+        value = value_text
+    if "\r" in value or "\n" in value:
+        fail(line_number, "multiline values are not supported")
+    sys.stdout.buffer.write(key.encode("utf-8") + b"\0" + value.encode("utf-8") + b"\0")
+PY
+        then
+            parse_status=0
+        else
+            parse_status=$?
+        fi
+        if [ "$parse_status" -ne 0 ]; then
+            rm -f -- "$parsed_file"
+            log_error "ENV_FILE must be a data-only dotenv file"
+            return 64
+        fi
+
+        while IFS= read -r -d '' key && IFS= read -r -d '' value; do
+            printf -v "$key" '%s' "$value"
+            export "$key"
+        done < "$parsed_file"
+        rm -f -- "$parsed_file"
         log_success "Environment variables loaded from $ENV_FILE"
     else
         log_warning "Environment file $ENV_FILE not found, using defaults"
     fi
+
+    HERMES_IMAGE="$HERMES_IMAGE_CALLER_VALUE"
+    HERMES_CI_RECEIPT_FILE="$HERMES_CI_RECEIPT_FILE_CALLER_VALUE"
+    HERMES_PROVENANCE_BUNDLE="$HERMES_PROVENANCE_BUNDLE_CALLER_VALUE"
+    HERMES_DEPLOY_MODE="$HERMES_DEPLOY_MODE_CALLER_VALUE"
+    HERMES_DEPLOY_IDENTITY="$HERMES_DEPLOY_IDENTITY_CALLER_VALUE"
+    HERMES_PREVERIFIED_FILE=""
+    HERMES_PREVERIFIED_SHA256=""
+    readonly HERMES_IMAGE HERMES_CI_RECEIPT_FILE HERMES_PROVENANCE_BUNDLE HERMES_DEPLOY_MODE HERMES_DEPLOY_IDENTITY
 }
+
+validate_hermes_caller_inputs() {
+    if [ -n "$HERMES_PROVENANCE_BUNDLE" ]; then
+        log_error "HERMES_PROVENANCE_BUNDLE is unsupported; the CI receipt is the only approved provenance protocol"
+        return 64
+    fi
+
+    if [ "$UNDEPLOY_MODE" = "true" ]; then
+        if [ -z "$HERMES_DEPLOY_IDENTITY" ] || [[ ! "$HERMES_DEPLOY_IDENTITY" =~ ^(user|group):[^[:space:]]+$ ]]; then
+            log_error "retained undeploy requires caller HERMES_DEPLOY_IDENTITY=user:<name> or group:<name>"
+            return 64
+        fi
+        return 0
+    fi
+
+    case "$HERMES_DEPLOY_MODE" in
+        "")
+            if [ -n "$HERMES_DEPLOY_IDENTITY" ]; then
+                log_error "HERMES_DEPLOY_IDENTITY is not accepted for ordinary deployment"
+                return 64
+            fi
+            if { [ -n "$HERMES_IMAGE" ] && [ -z "$HERMES_CI_RECEIPT_FILE" ]; } || { [ -z "$HERMES_IMAGE" ] && [ -n "$HERMES_CI_RECEIPT_FILE" ]; }; then
+                log_error "ordinary Hermes candidate requires both HERMES_IMAGE and HERMES_CI_RECEIPT_FILE, or neither"
+                return 64
+            fi
+            ;;
+        cutover|upgrade)
+            if [ -z "$HERMES_DEPLOY_IDENTITY" ] || [[ ! "$HERMES_DEPLOY_IDENTITY" =~ ^(user|group):[^[:space:]]+$ ]]; then
+                log_error "explicit Hermes deployment requires caller HERMES_DEPLOY_IDENTITY=user:<name> or group:<name>"
+                return 64
+            fi
+            if [ -z "$HERMES_IMAGE" ] || [ -z "$HERMES_CI_RECEIPT_FILE" ]; then
+                log_error "$HERMES_DEPLOY_MODE requires both HERMES_IMAGE and HERMES_CI_RECEIPT_FILE"
+                return 64
+            fi
+            ;;
+        rollback)
+            if [ -z "$HERMES_DEPLOY_IDENTITY" ] || [[ ! "$HERMES_DEPLOY_IDENTITY" =~ ^(user|group):[^[:space:]]+$ ]]; then
+                log_error "explicit Hermes deployment requires caller HERMES_DEPLOY_IDENTITY=user:<name> or group:<name>"
+                return 64
+            fi
+            if [ -n "$HERMES_IMAGE" ] || [ -n "$HERMES_CI_RECEIPT_FILE" ]; then
+                log_error "rollback rejects HERMES_IMAGE and HERMES_CI_RECEIPT_FILE"
+                return 64
+            fi
+            ;;
+        *)
+            log_error "HERMES_DEPLOY_MODE must be unset, cutover, upgrade, or rollback"
+            return 64
+            ;;
+    esac
+}
+
+
+resolve_hermes_inputs() {
+    load_env_file || return $?
+    validate_hermes_caller_inputs || return $?
+
+    if [ -n "$HERMES_IMAGE" ] && [ -z "$HERMES_DEPLOY_MODE" ]; then
+        local prior_umask
+        prior_umask="$(umask)"
+        umask 077
+        HERMES_PREVERIFIED_FILE="$(mktemp "${TMPDIR:-/tmp}/hermes-preverified.XXXXXX")" || {
+            umask "$prior_umask"
+            log_error "Unable to create secure Hermes verification handoff"
+            return 1
+        }
+        umask "$prior_umask"
+        chmod 0600 "$HERMES_PREVERIFIED_FILE" || return 1
+        local preverified_envelope
+        if ! preverified_envelope="$(python3 "$SCRIPT_DIR/hermes/deploy_state.py" verify-candidate)"; then
+            log_error "Hermes candidate verification failed before Kubernetes access"
+            return 1
+        fi
+        printf '%s\n' "$preverified_envelope" > "$HERMES_PREVERIFIED_FILE" || return 1
+        HERMES_PREVERIFIED_SHA256="$(printf '%s\n' "$preverified_envelope" | python3 -c 'import hashlib,sys; print(hashlib.sha256(sys.stdin.buffer.read()).hexdigest())')" || return 1
+        readonly HERMES_PREVERIFIED_SHA256
+    elif ! python3 "$SCRIPT_DIR/hermes/deploy_state.py" verify-candidate >/dev/null; then
+        log_error "Hermes candidate verification failed before Kubernetes access"
+        return 1
+    fi
+}
+
+
 
 # ConfigMap 생성 함수 (환경 변수 기반)
 generate_configmap_from_env() {
@@ -800,20 +1030,33 @@ deploy_worker() {
 # Hermes/legacy Discord owner dispatch. Durable owner state is authoritative;
 # workload existence is never used to choose an owner.
 deploy_discord_owner() {
-    local state_command=(python3 hermes/deploy_state.py dispatch --mode "$HERMES_DEPLOY_MODE")
+    local state_command=(python3 "$SCRIPT_DIR/hermes/deploy_state.py" dispatch --mode "$HERMES_DEPLOY_MODE")
     local result
+    if [ -z "$HERMES_DEPLOY_MODE" ] && [ -n "$HERMES_IMAGE" ]; then
+        state_command+=(--preverified-file "$HERMES_PREVERIFIED_FILE" --preverified-sha256 "$HERMES_PREVERIFIED_SHA256")
+    fi
 
-    if ! result=$(NAMESPACE="$NAMESPACE" HERMES_IMAGE="$HERMES_IMAGE" HERMES_DEPLOY_IDENTITY="$HERMES_DEPLOY_IDENTITY" "${state_command[@]}"); then
-        log_error "Discord owner orchestration failed; see sanitized hermes_deploy diagnostics"
-        return 1
+    if [ -n "$HERMES_DEPLOY_MODE" ]; then
+        if ! result=$(NAMESPACE="$NAMESPACE" HERMES_IMAGE="$HERMES_IMAGE" HERMES_CI_RECEIPT_FILE="$HERMES_CI_RECEIPT_FILE" HERMES_DEPLOY_IDENTITY="$HERMES_DEPLOY_IDENTITY" "${state_command[@]}"); then
+            log_error "Discord owner orchestration failed; see sanitized hermes_deploy diagnostics"
+            return 1
+        fi
+    else
+        if ! result=$(NAMESPACE="$NAMESPACE" HERMES_IMAGE="$HERMES_IMAGE" "${state_command[@]}"); then
+            log_error "Discord owner orchestration failed; see sanitized hermes_deploy diagnostics"
+            return 1
+        fi
     fi
 
     case "$result" in
-        legacy)
-            deploy_discord_bot
+        ordinary-legacy-noop)
+            log_info "discord_owner=legacy action=noop ordinary_deploy=true"
             ;;
-        skip)
-            log_info "discord_owner=hermes action=skip_legacy ordinary_deploy=true"
+        hermes-noop)
+            log_info "discord_owner=hermes action=noop ordinary_deploy=true"
+            ;;
+        hermes-reconciled)
+            log_success "Hermes ordinary image reconciliation completed"
             ;;
         managed)
             log_success "Hermes Discord owner transition completed"
@@ -824,6 +1067,7 @@ deploy_discord_owner() {
             ;;
     esac
 }
+
 
 deploy_discord_bot() {
     log_info "Step 7.6: Discord Bot 배포"
@@ -1479,6 +1723,8 @@ undeploy() {
 
 # 메인 함수
 main() {
+    resolve_hermes_inputs || return $?
+
     if [ "$UNDEPLOY_MODE" = "true" ]; then
         undeploy
     else
@@ -1499,9 +1745,7 @@ main() {
         echo "  도커 레지스트리: $DOCKER_REGISTRY"
         echo "  Ingress 건너뛰기: $SKIP_INGRESS"
         echo
-        
-        # 환경 변수 로드
-        load_env_file
+
         
         # 배포 단계 실행
         check_prerequisites
@@ -1564,13 +1808,15 @@ show_help() {
     echo "환경변수:"
     echo "  IMAGE_TAG              공통 이미지 태그 (기본값: latest)"
     echo "  UI_IMAGE_TAG           UI 전용 이미지 태그 (기본값: IMAGE_TAG 값)"
-    echo "  HERMES_IMAGE          Hermes full immutable image digest (required for cutover/upgrade)"
-    echo "  HERMES_DEPLOY_MODE    unset, cutover, upgrade, or rollback"
-    echo "  HERMES_DEPLOY_IDENTITY required user:<username> or group:<group> from kubectl auth whoami"
+    echo "  HERMES_IMAGE           caller-only immutable image subject; paired with receipt in ordinary mode"
+    echo "  HERMES_CI_RECEIPT_FILE caller-only canonical GitHub Actions receipt path"
+    echo "  HERMES_PROVENANCE_BUNDLE unsupported; nonempty values are rejected"
+    echo "  HERMES_DEPLOY_MODE     caller-only: unset, cutover, upgrade, or rollback"
+    echo "  HERMES_DEPLOY_IDENTITY caller-only restricted identity; explicit modes only"
     echo "  RETENTION_ACTIVE      preserve Discord rollback authority on undeploy (default: true)"
     echo "  DOCKER_REGISTRY        도커 레지스트리 (기본값: ghcr.io/skaldlabs)"
     echo "  SKIP_INGRESS           Ingress 건너뛰기 (기본값: false)"
-    echo "  ENV_FILE              환경 변수 파일 경로 (기본값: .env.prod)"
+    echo "  ENV_FILE              strict data-only dotenv path; no shell expansion (default: .env.prod)"
     echo
     echo "예시:"
     echo "  $0                                    # 기본 설정으로 배포"
@@ -1633,4 +1879,6 @@ while [[ $# -gt 0 ]]; do
 done
 
 # 스크립트 실행
-main "$@"
+if [ "${BASH_SOURCE[0]}" = "$0" ]; then
+    main "$@"
+fi

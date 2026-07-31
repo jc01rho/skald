@@ -24,6 +24,7 @@ def load_state():
     module.MUTATIONS_ALLOWED = True
     module.ACTOR = "test-actor"
     module.IDENTITY_VERIFIED = True
+    module.AUTHORIZATION_LANE = module.AuthorizationLane.OPERATOR
     module.assert_current_identity = lambda: None
     return module
 
@@ -605,3 +606,338 @@ def test_recovery_requires_private_evidence_permissions(tmp_path):
     with pytest.raises(state.Exit) as caught:
         state.recover(SimpleNamespace(evidence_file=str(evidence), audit_file=str(tmp_path / "audit.json")))
     assert caught.value.code == 64
+
+
+def test_ordinary_lane_blocks_operator_and_generic_mutation_before_subprocess(monkeypatch):
+    state = load_state()
+    state.AUTHORIZATION_LANE = state.AuthorizationLane.ORDINARY
+    calls = []
+    monkeypatch.setattr(state.subprocess, "run", lambda *args, **kwargs: calls.append(args) or SimpleNamespace(returncode=0, stdout=b"", stderr=b""))
+    with pytest.raises(state.Exit) as caught:
+        state.acquire()
+    assert caught.value.code == 77
+    with pytest.raises(state.Exit) as caught:
+        state.kubectl(["patch", "deployment", "hermes-gateway"], mutation=True)
+    assert caught.value.code == 77
+    assert calls == []
+
+
+def test_exact_five_operation_two_image_patch_contract():
+    state = load_state()
+    image = "ghcr.io/jc01rho/hermes-gateway@sha256:" + "a" * 64
+    candidate = "ghcr.io/jc01rho/hermes-gateway@sha256:" + "b" * 64
+    deployment = {
+        "metadata": {"resourceVersion": "17"},
+        "spec": {"template": {"spec": {
+            "initContainers": [{"name": "sparrow-function-spec", "image": image}],
+            "containers": [{"name": "hermes-gateway", "image": image}],
+        }}},
+    }
+    patch = state.image_patch(deployment, image, candidate)
+    assert [item["op"] for item in patch] == ["test", "test", "test", "replace", "replace"]
+    assert patch[0] == {"op": "test", "path": "/metadata/resourceVersion", "value": "17"}
+    assert patch[1]["value"] == patch[2]["value"] == image
+    assert patch[3]["value"] == patch[4]["value"] == candidate
+    assert patch[1]["path"] == patch[3]["path"]
+    assert patch[2]["path"] == patch[4]["path"]
+
+
+@pytest.mark.parametrize("mutation", [
+    lambda patch: patch + [{"op": "replace", "path": "/spec/replicas", "value": 1}],
+    lambda patch: [{**patch[0], "path": "/status"}, *patch[1:]],
+    lambda patch: [{**patch[3], "op": "add"} if index == 3 else item for index, item in enumerate(patch)],
+    lambda patch: [{**patch[4], "value": "ghcr.io/jc01rho/hermes-gateway@sha256:" + "c" * 64} if index == 4 else item for index, item in enumerate(patch)],
+])
+def test_image_patch_rejects_extra_op_path_grammar_and_mixed_candidate(mutation):
+    state = load_state()
+    prior = "ghcr.io/jc01rho/hermes-gateway@sha256:" + "a" * 64
+    candidate = "ghcr.io/jc01rho/hermes-gateway@sha256:" + "b" * 64
+    base = [
+        {"op":"test","path":"/metadata/resourceVersion","value":"1"},
+        {"op":"test","path":"/spec/template/spec/initContainers/0/image","value":prior},
+        {"op":"test","path":"/spec/template/spec/containers/0/image","value":prior},
+        {"op":"replace","path":"/spec/template/spec/initContainers/0/image","value":candidate},
+        {"op":"replace","path":"/spec/template/spec/containers/0/image","value":candidate},
+    ]
+    with pytest.raises(state.Exit) as caught:
+        state.validate_image_patch(mutation(base))
+    assert caught.value.code == 77
+
+
+def test_normalization_rejects_missing_duplicate_or_mixed_named_images():
+    state = load_state()
+    image = "ghcr.io/jc01rho/hermes-gateway@sha256:" + "a" * 64
+    base = {"spec":{"template":{"spec":{"initContainers":[{"name":"sparrow-function-spec","image":image}],"containers":[{"name":"hermes-gateway","image":image}]}}}}
+    variants = []
+    missing = json.loads(json.dumps(base)); missing["spec"]["template"]["spec"]["containers"] = [] ; variants.append(missing)
+    duplicate = json.loads(json.dumps(base)); duplicate["spec"]["template"]["spec"]["initContainers"].append({"name":"sparrow-function-spec","image":image}); variants.append(duplicate)
+    mixed = json.loads(json.dumps(base)); mixed["spec"]["template"]["spec"]["containers"][0]["image"] = "ghcr.io/jc01rho/hermes-gateway@sha256:" + "b" * 64; variants.append(mixed)
+    for variant in variants:
+        with pytest.raises(state.Exit):
+            state.normalized_deployment(variant)
+
+
+def test_receipt_is_exact_canonical_and_duplicate_keys_fail():
+    state = load_state()
+    digest = "sha256:" + "a" * 64
+    receipt = {
+        "schema_version":1,"repository":"jc01rho/skald","workflow_path":".github/workflows/build-hermes-gateway.yml",
+        "run_id":7,"run_attempt":2,"run_url":"https://github.com/jc01rho/skald/actions/runs/7/attempts/2",
+        "event":"push","ref":"refs/heads/main","head_sha":"b" * 40,"conclusion":"success",
+        "image_repository":"ghcr.io/jc01rho/hermes-gateway","digest":digest,
+        "subject":"ghcr.io/jc01rho/hermes-gateway@" + digest,
+    }
+    payload = (state.canonical(receipt) + "\n").encode()
+    assert state.validate_receipt_bytes(payload) == receipt
+    with pytest.raises(state.Exit):
+        state.validate_receipt_bytes(payload.replace(b'"run_id":7', b'"run_id":7,"run_id":7'))
+    with pytest.raises(state.Exit):
+        state.validate_receipt_bytes(payload.rstrip())
+
+
+def candidate_fixture(state):
+    digest = "sha256:" + "a" * 64
+    receipt = {
+        "schema_version":1,"repository":"jc01rho/skald","workflow_path":".github/workflows/build-hermes-gateway.yml",
+        "run_id":7,"run_attempt":2,"run_url":"https://github.com/jc01rho/skald/actions/runs/7/attempts/2",
+        "event":"push","ref":"refs/heads/main","head_sha":"b" * 40,"conclusion":"success",
+        "image_repository":"ghcr.io/jc01rho/hermes-gateway","digest":digest,
+        "subject":"ghcr.io/jc01rho/hermes-gateway@" + digest,
+    }
+    run = {
+        "id":7,"run_attempt":2,"html_url":"https://github.com/jc01rho/skald/actions/runs/7",
+        "event":"push","status":"completed","conclusion":"success","head_branch":"main",
+        "head_sha":"b" * 40,"path":".github/workflows/build-hermes-gateway.yml",
+        "repository":{"id":1,"full_name":"jc01rho/skald","private":True},
+        "created_at":"2026-07-30T00:00:00Z",
+    }
+    artifact = {
+        "id":91,"name":"hermes-gateway-receipt-7-2","size_in_bytes":1024,"expired":False,
+        "digest":"sha256:" + "c" * 64,
+        "workflow_run":{"id":7,"repository_id":11,"head_repository_id":11,"head_branch":"main","head_sha":"b" * 40},
+        "archive_download_url":"https://api.github.com/repos/jc01rho/skald/actions/artifacts/91/zip",
+    }
+    return receipt, run, artifact
+
+
+def install_candidate_protocol(monkeypatch, state, tmp_path, *, case="success"):
+    receipt, run, artifact = candidate_fixture(state)
+    if case == "wrong_ref": receipt["ref"] = "refs/heads/release"
+    elif case == "wrong_subject": receipt["subject"] = "ghcr.io/jc01rho/other@" + receipt["digest"]
+    elif case == "wrong_digest": receipt["digest"] = "sha256:not-a-digest"
+    receipt_bytes = (state.canonical(receipt) + "\n").encode()
+    receipt_path = tmp_path / "caller-receipt.json"
+    receipt_path.write_bytes(receipt_bytes); receipt_path.chmod(0o600)
+    monkeypatch.setenv("HERMES_IMAGE", receipt["subject"])
+    monkeypatch.setenv("HERMES_CI_RECEIPT_FILE", str(receipt_path))
+    monkeypatch.setenv("GH", "gh")
+    commands = []
+
+    def fake_run(command, **kwargs):
+        commands.append((command, kwargs.get("cwd")))
+        if command == ["gh", "--version"]:
+            return SimpleNamespace(returncode=0, stdout=b"gh version 2.97.1 (fixture)\n", stderr=b"")
+        if command == ["git", "rev-parse", "HEAD"]:
+            head = "d" * 40 if case == "wrong_local_sha" else receipt["head_sha"]
+            return SimpleNamespace(returncode=0, stdout=(head + "\n").encode(), stderr=b"")
+        if command[-1] == "repos/jc01rho/skald/actions/runs/7":
+            observed = json.loads(json.dumps(run))
+            mutations = {
+                "wrong_run": ("id", 8), "wrong_workflow": ("path", ".github/workflows/other.yml"),
+                "wrong_event": ("event", "workflow_dispatch"), "wrong_sha": ("head_sha", "d" * 40),
+                "wrong_conclusion": ("conclusion", "failure"), "wrong_status": ("status", "in_progress"),
+                "wrong_attempt": ("run_attempt", 3), "wrong_url": ("html_url", "https://github.com/jc01rho/skald/actions/runs/8"),
+            }
+            if case in mutations:
+                key, value = mutations[case]; observed[key] = value
+            return SimpleNamespace(returncode=0, stdout=json.dumps(observed).encode(), stderr=b"")
+        if command[-1].endswith("/artifacts?name=hermes-gateway-receipt-7-2&per_page=100"):
+            observed = json.loads(json.dumps(artifact))
+            if case == "artifact_expiry": observed["expired"] = True
+            elif case == "artifact_binding_id": observed["workflow_run"]["id"] = 8
+            elif case == "artifact_binding_sha": observed["workflow_run"]["head_sha"] = "d" * 40
+            entries = [observed, json.loads(json.dumps(observed))] if case == "artifact_duplicates" else [observed]
+            return SimpleNamespace(returncode=0, stdout=json.dumps({"total_count":len(entries),"artifacts":entries}).encode(), stderr=b"")
+        if command[:3] == ["gh", "run", "download"]:
+            directory = Path(command[command.index("--dir") + 1])
+            target = directory / "hermes-gateway-receipt.json"
+            if case == "artifact_symlink":
+                source = tmp_path / "symlink-receipt.json"; source.write_bytes(receipt_bytes); target.symlink_to(source)
+            else:
+                target.write_bytes(b"{}\n" if case == "artifact_content" else receipt_bytes)
+            if case == "artifact_extra_file": (directory / "extra").write_text("unexpected")
+            return SimpleNamespace(returncode=0, stdout=b"", stderr=b"")
+        pytest.fail(f"unexpected subprocess argv: {command}")
+
+    monkeypatch.setattr(state.subprocess, "run", fake_run)
+    observed_digest = "sha256:" + "d" * 64 if case == "ghcr_mismatch" else receipt["digest"]
+    monkeypatch.setattr(state, "fetch_ghcr_manifest", lambda _digest: (observed_digest, b'{"schemaVersion":2}'))
+    monkeypatch.setattr(state, "kubectl", lambda *_args, **_kwargs: pytest.fail("candidate verification must not invoke kubectl"))
+    return receipt, commands
+
+
+def test_verify_candidate_accepts_official_github_shapes_and_exact_protocol(monkeypatch, tmp_path):
+    state = load_state()
+    receipt, commands = install_candidate_protocol(monkeypatch, state, tmp_path)
+    assert state.verify_candidate() == receipt
+    artifact_name = "hermes-gateway-receipt-7-2"
+    assert [command for command, _ in commands[:4]] == [
+        ["gh", "--version"],
+        ["git", "rev-parse", "HEAD"],
+        ["gh", "api", "--method", "GET", *state.GH_API_HEADERS, "repos/jc01rho/skald/actions/runs/7"],
+        ["gh", "api", "--method", "GET", *state.GH_API_HEADERS, f"repos/jc01rho/skald/actions/runs/7/artifacts?name={artifact_name}&per_page=100"],
+    ]
+    assert commands[1][1] == state.ROOT
+    assert commands[4][0][:8] == ["gh", "run", "download", "7", "--repo", "jc01rho/skald", "--name", artifact_name]
+    assert commands[4][0][8] == "--dir"
+    assert len(commands) == 5
+
+
+@pytest.mark.parametrize("case", [
+    "wrong_run", "wrong_workflow", "wrong_ref", "wrong_event", "wrong_local_sha", "wrong_sha",
+    "wrong_conclusion", "wrong_status", "wrong_attempt", "wrong_url", "wrong_subject", "wrong_digest",
+    "artifact_duplicates", "artifact_expiry", "artifact_binding_id", "artifact_binding_sha", "artifact_content", "artifact_extra_file",
+    "artifact_symlink", "ghcr_mismatch",
+])
+def test_verify_candidate_negative_protocol_is_fail_closed(monkeypatch, tmp_path, case):
+    state = load_state()
+    _, commands = install_candidate_protocol(monkeypatch, state, tmp_path, case=case)
+    with pytest.raises(state.Exit) as caught:
+        state.verify_candidate()
+    assert caught.value.code == 65
+    assert all(command[0] != "kubectl" for command, _ in commands)
+
+
+def test_verify_candidate_cli_emits_canonical_preverified_receipt(monkeypatch, capsys):
+    state = load_state()
+    receipt = {
+        "schema_version":1,"repository":"jc01rho/skald","workflow_path":".github/workflows/build-hermes-gateway.yml",
+        "run_id":7,"run_attempt":2,"run_url":"https://github.com/jc01rho/skald/actions/runs/7/attempts/2",
+        "event":"push","ref":"refs/heads/main","head_sha":"b" * 40,"conclusion":"success",
+        "image_repository":"ghcr.io/jc01rho/hermes-gateway","digest":"sha256:" + "a" * 64,
+        "subject":"ghcr.io/jc01rho/hermes-gateway@sha256:" + "a" * 64,
+    }
+    monkeypatch.setattr(state, "verify_candidate", lambda: receipt)
+    monkeypatch.setattr(state, "set_authorization_lane", lambda *_: pytest.fail("standalone verifier must not select a Kubernetes lane"))
+    monkeypatch.setattr(state, "verify_operator_identity", lambda: pytest.fail("standalone verifier must not check Kubernetes identity"))
+    monkeypatch.setattr(state, "load_owner", lambda **_: pytest.fail("standalone verifier must not read owner state"))
+    monkeypatch.setattr(state.sys, "argv", [str(STATE_PATH), "verify-candidate"])
+    assert state.main() == 0
+    assert capsys.readouterr().out == state.canonical(state.verified_candidate_receipt(receipt)) + "\n"
+
+
+def test_candidate_dispatch_requires_matching_secure_preverified_receipt_before_kubernetes(monkeypatch, tmp_path):
+    state = load_state()
+    state.AUTHORIZATION_LANE = state.AuthorizationLane.ORDINARY
+    receipt, _, _ = candidate_fixture(state)
+    monkeypatch.setenv("HERMES_IMAGE", receipt["subject"])
+    monkeypatch.setattr(state, "load_owner", lambda **_: pytest.fail("proof must validate before Kubernetes"))
+    with pytest.raises(state.Exit) as missing:
+        state.dispatch("")
+    assert missing.value.code == 64
+
+    proof = state.verified_candidate_receipt(receipt)
+    proof["receipt_sha256"] = "0" * 64
+    path = tmp_path / "preverified.json"
+    payload = (state.canonical(proof) + "\n").encode()
+    path.write_bytes(payload)
+    path.chmod(0o600)
+    with pytest.raises(state.Exit) as mismatch:
+        state.dispatch("", str(path), __import__("hashlib").sha256(payload).hexdigest())
+    assert mismatch.value.code == 65
+
+
+def test_preverified_receipt_local_validation_uses_only_git_and_no_remote_calls(monkeypatch, tmp_path):
+    state = load_state()
+    receipt, _, _ = candidate_fixture(state)
+    monkeypatch.setenv("HERMES_IMAGE", receipt["subject"])
+    path = tmp_path / "preverified.json"
+    payload = (state.canonical(state.verified_candidate_receipt(receipt)) + "\n").encode()
+    path.write_bytes(payload)
+    path.chmod(0o600)
+    expected = __import__("hashlib").sha256(payload).hexdigest()
+    commands = []
+    def fake_run(command, **kwargs):
+        commands.append(command)
+        assert command == ["git", "rev-parse", "HEAD"]
+        return SimpleNamespace(returncode=0, stdout=(receipt["head_sha"] + "\n").encode(), stderr=b"")
+    monkeypatch.setattr(state.subprocess, "run", fake_run)
+    assert state.load_preverified_candidate(str(path), expected) == receipt
+    assert commands == [["git", "rev-parse", "HEAD"]]
+
+
+def test_preverified_envelope_replacement_and_expected_hash_mismatch_fail_before_parse(monkeypatch, tmp_path):
+    state = load_state()
+    receipt, _, _ = candidate_fixture(state)
+    monkeypatch.setenv("HERMES_IMAGE", receipt["subject"])
+    original = (state.canonical(state.verified_candidate_receipt(receipt)) + "\n").encode()
+    expected = __import__("hashlib").sha256(original).hexdigest()
+    path = tmp_path / "preverified.json"
+    path.write_bytes(original)
+    path.chmod(0o600)
+    path.write_bytes(b"{}\n")
+    monkeypatch.setattr(state, "parse_json_exact", lambda *_: pytest.fail("hash mismatch must reject before parse"))
+    with pytest.raises(state.Exit) as replaced:
+        state.load_preverified_candidate(str(path), expected)
+    assert replaced.value.code == 65
+    with pytest.raises(state.Exit) as wrong_expected:
+        state.load_preverified_candidate(str(path), "f" * 64)
+    assert wrong_expected.value.code == 65
+
+
+def test_legacy_ordinary_dispatch_is_zero_write(monkeypatch):
+    state = load_state()
+    state.AUTHORIZATION_LANE = state.AuthorizationLane.ORDINARY
+    monkeypatch.setattr(state, "load_owner", lambda **kwargs: ({"metadata":{"resourceVersion":"1"}}, owner("legacy")))
+    monkeypatch.setattr(state, "ordinary_patch", lambda *_: pytest.fail("legacy ordinary must not patch"))
+    assert state.ordinary_dispatch(None) == "ordinary-legacy-noop"
+
+
+def test_candidate_timeout_attempts_one_shot_cas_restore(monkeypatch):
+    state = load_state()
+    prior = "ghcr.io/jc01rho/hermes-gateway@sha256:" + "a" * 64
+    candidate = "ghcr.io/jc01rho/hermes-gateway@sha256:" + "b" * 64
+    baseline = {"owner": "o", "lease": "l", "legacy_rv": "1"}
+    live = {"metadata": {"resourceVersion": "1"}}
+    monkeypatch.setattr(state, "load_owner", lambda required=True: ({}, owner("hermes")))
+    monkeypatch.setattr(state, "ordinary_state", lambda *_: (baseline, live, prior))
+    monkeypatch.setattr(state, "assert_ordinary_unchanged", lambda _baseline, image: {"metadata": {"resourceVersion": "2" if image == candidate else "3"}})
+    monkeypatch.setattr(state, "image_patch", lambda _live, old, new: [{"old": old, "new": new}])
+    patches = []
+    monkeypatch.setattr(state, "ordinary_patch", lambda patch: patches.append(patch))
+    rollouts = []
+    def wait(_baseline, image):
+        rollouts.append(image)
+        if image == candidate:
+            raise state.RolloutFailure("candidate rollout timed out")
+    monkeypatch.setattr(state, "wait_ordinary_rollout", wait)
+    with pytest.raises(state.Exit) as caught:
+        state.ordinary_dispatch({"subject": candidate})
+    assert caught.value.code == 65
+    assert patches == [[{"old": prior, "new": candidate}], [{"old": candidate, "new": prior}]]
+    assert rollouts == [candidate, prior]
+
+
+def test_conclusive_candidate_invariant_drift_attempts_restore(monkeypatch):
+    state = load_state()
+    prior = "ghcr.io/jc01rho/hermes-gateway@sha256:" + "a" * 64
+    candidate = "ghcr.io/jc01rho/hermes-gateway@sha256:" + "b" * 64
+    baseline = {"owner": "o", "lease": "l", "legacy_rv": "1"}
+    live = {"metadata": {"resourceVersion": "1"}}
+    monkeypatch.setattr(state, "load_owner", lambda required=True: ({}, owner("hermes")))
+    monkeypatch.setattr(state, "ordinary_state", lambda *_: (baseline, live, prior))
+    observations = iter([{"metadata": {"resourceVersion": "1"}}, state.Exit(65, "conclusive status drift"), {"metadata": {"resourceVersion": "2"}}, {"metadata": {"resourceVersion": "3"}}])
+    def unchanged(*_):
+        value = next(observations)
+        if isinstance(value, Exception):
+            raise value
+        return value
+    monkeypatch.setattr(state, "assert_ordinary_unchanged", unchanged)
+    monkeypatch.setattr(state, "image_patch", lambda _live, old, new: [{"old": old, "new": new}])
+    patches = []
+    monkeypatch.setattr(state, "ordinary_patch", lambda patch: patches.append(patch))
+    monkeypatch.setattr(state, "wait_ordinary_rollout", lambda *_: None)
+    with pytest.raises(state.Exit) as caught:
+        state.ordinary_dispatch({"subject": candidate})
+    assert caught.value.code == 65
+    assert patches == [[{"old": prior, "new": candidate}], [{"old": candidate, "new": prior}]]
