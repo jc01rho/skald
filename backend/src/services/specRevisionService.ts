@@ -1,5 +1,5 @@
 import { createHash, createHmac, randomUUID, timingSafeEqual } from 'crypto'
-import { IsolationLevel, TransactionPropagation } from '@mikro-orm/core'
+import { IsolationLevel } from '@mikro-orm/core'
 import { EntityManager } from '@mikro-orm/postgresql'
 import { Memo } from '@/entities/Memo'
 import { MemoContent } from '@/entities/MemoContent'
@@ -352,7 +352,8 @@ export class SpecRevisionService {
 
     async stageAndPublish(project: Project, input: StageAndPublishInput) {
         const normalized = this.validate(input)
-        return this.rootEm.transactional(async (em) => {
+        const transactionEm = this.rootEm.fork({ clear: true, useContext: false, keepTransactionContext: false })
+        return transactionEm.transactional(async (em) => {
             await em.getConnection().execute('SELECT pg_advisory_xact_lock(hashtext(?), hashtext(?))', [
                 project.uuid,
                 input.source.source_key,
@@ -560,7 +561,7 @@ export class SpecRevisionService {
             source.active_revision = revision
             await em.flush()
             return this.receipt(source, revision, false)
-        }, { clear: true, propagation: TransactionPropagation.REQUIRES_NEW })
+        }, { clear: true })
     }
 
     private receipt(source: SpecSource, revision: SpecRevision, replay: boolean) {
