@@ -397,6 +397,7 @@ export class SpecRevisionService {
             }
 
             let memo = source?.memo
+            let createdMemo = false
             if (!memo && input.memo.memo_uuid) memo = await em.findOne(Memo, { project, uuid: input.memo.memo_uuid }) || undefined
             if (!memo) memo = await em.findOne(Memo, { project, client_reference_id: input.memo.client_reference_id }) || undefined
             const now = new Date()
@@ -417,6 +418,7 @@ export class SpecRevisionService {
                     project,
                 })
                 em.persist(memo)
+                createdMemo = true
             } else {
                 memo.updated_at = now
                 memo.title = input.memo.title
@@ -433,6 +435,7 @@ export class SpecRevisionService {
             } else {
                 memoContent.content = input.memo.content
             }
+            if (createdMemo) await em.flush()
 
             if (!source) {
                 source = em.create(SpecSource, {
@@ -447,7 +450,7 @@ export class SpecRevisionService {
                     memo_reference_id: input.memo.client_reference_id,
                     memo_projection_revision_id: randomUUID(),
                     memo_projection_canonical_hash: input.revision.content_hash,
-                    memo,
+                    memo: memo,
                     active_revision: null,
                     project,
                 })
