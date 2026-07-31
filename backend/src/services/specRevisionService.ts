@@ -455,6 +455,8 @@ export class SpecRevisionService {
                     project,
                 })
                 em.persist(source)
+                source.memo = memo
+                em.getUnitOfWork().computeChangeSet(source)
                 await em.flush()
             }
 
