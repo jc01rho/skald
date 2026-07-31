@@ -25,6 +25,17 @@ DEFAULT_RETRY_MIN_WAIT = 1.0
 DEFAULT_RETRY_MAX_WAIT = 30.0
 
 
+class SkaldClientRequestError(httpx.HTTPStatusError):
+    """Non-retryable client error that must not mark Skald as unavailable."""
+
+
+
+def sha256_text(value: str) -> str:
+    """Return the SHA256 digest of an exact UTF-8 string."""
+    return hashlib.sha256(value.encode("utf-8")).hexdigest()
+
+
+
 def _legacy_reference_id_from_source(source: str | None, metadata: dict[str, Any] | None) -> str | None:
     if not source or not metadata:
         return None
@@ -50,6 +61,21 @@ def canonical_json(value: Any) -> str:
 def canonical_hash(value: Any) -> str:
     """Return the SHA256 digest of a canonical JSON value."""
     return hashlib.sha256(canonical_json(value).encode("utf-8")).hexdigest()
+
+
+def _raise_for_status(response: httpx.Response) -> None:
+    """Raise client errors separately so they do not open the service circuit."""
+    if 400 <= response.status_code < 500 and response.status_code not in {408, 429}:
+        message = f"Client error '{response.status_code} {response.reason_phrase}' for url '{response.request.url}'"
+        try:
+            detail = response.text.strip()
+        except httpx.ResponseNotRead:
+            detail = ""
+        if detail:
+            message = f"{message}: {detail}"
+        raise SkaldClientRequestError(message, request=response.request, response=response)
+    response.raise_for_status()
+
 
 
 @dataclass(frozen=True)
@@ -174,6 +200,7 @@ class SkaldClient:
                     failure_threshold=settings.circuit_breaker_failure_threshold,
                     recovery_timeout=settings.circuit_breaker_recovery_timeout,
                     success_threshold=settings.circuit_breaker_success_threshold,
+                    exclude_exceptions=(SkaldClientRequestError,),
                 ),
             )
 
@@ -219,7 +246,7 @@ class SkaldClient:
 
             async def _do_request() -> httpx.Response:
                 response = await self.client.request(method, url, **kwargs)
-                response.raise_for_status()
+                _raise_for_status(response)
                 return response
 
             return await with_retry(

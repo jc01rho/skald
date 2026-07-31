@@ -3,7 +3,7 @@ from uuid import uuid4
 
 import pytest
 
-from skald_worker.clients.skald import SkaldClient
+from skald_worker.clients.skald import SkaldClient, canonical_hash, sha256_text
 from skald_worker.collectors.docs_collector import DocsCollector
 from skald_worker.sync_state import SyncStateManager
 
@@ -62,6 +62,19 @@ def test_canonical_hashes_are_order_independent_and_relation_input_tracks_title_
     changed_source["function_id"] = "SVR-MY-REQUEST-LIST-V2-R"
     changed = build_request(changed_source)
     assert changed.revision["relation_input_hash"] != request_a.revision["relation_input_hash"]
+
+    assert request_a.revision["content_hash"] == sha256_text(request_a.memo["content"])
+    assert request_a.revision["metadata_hash"] == canonical_hash(request_a.memo["metadata"])
+    assert request_a.revision["relation_hash"] == canonical_hash(request_a.relations)
+    assert request_a.revision["claim_hash"] == canonical_hash(request_a.claims)
+    assert request_a.revision["relation_input_hash"] == canonical_hash(
+        {
+            "source": request_a.source,
+            "memo_title": request_a.memo["title"],
+            "memo_metadata": request_a.memo["metadata"],
+            "relations": request_a.relations,
+        }
+    )
 
 
 @pytest.mark.asyncio

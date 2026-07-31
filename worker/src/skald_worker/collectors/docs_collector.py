@@ -18,6 +18,7 @@ from skald_worker.clients.skald import (
     SpecRevisionPublishRequest,
     canonical_hash,
     get_skald_client,
+    sha256_text,
 )
 from skald_worker.config import settings
 from skald_worker.retry import with_retry
@@ -652,7 +653,7 @@ class DocsCollector:
                 evidence = {
                     "path": label_source,
                     "excerpt": evidence_excerpt or label,
-                    "hash": canonical_hash(evidence_excerpt or label),
+                    "hash": sha256_text(evidence_excerpt or label),
                 }
                 claims = (
                     {
@@ -681,21 +682,35 @@ class DocsCollector:
                 for relation in normalize_related_information(item, self.base_url)
             ]
         source_payload_hash = canonical_hash(canonical_payload)
-        content_hash = canonical_hash(content)
-        metadata_hash = canonical_hash(metadata)
         relation_hash = canonical_hash(relations)
         claim_hash = canonical_hash(claims)
+        source = {
+            "source_key": source_key,
+            "source_system": "spms",
+            "source_type": source_type,
+            "immutable_source_id": immutable_source_id,
+            "title": title,
+            "code": code,
+            "source_url": metadata.get("source_url") or None,
+            "status": item.get("status") or None,
+            "aliases": [code] if code else [],
+        }
+        memo = {
+            "memo_uuid": None,
+            "client_reference_id": code or self.build_reference_id(item, item_type),
+            "title": title,
+            "content": content,
+            "metadata": metadata,
+            "source": "spms",
+        }
+        content_hash = sha256_text(content)
+        metadata_hash = canonical_hash(memo["metadata"])
         relation_input_hash = canonical_hash(
             {
-                "title": title,
-                "metadata": metadata,
-                "source": {
-                    "source_key": source_key,
-                    "source_url": metadata.get("source_url"),
-                    "code": code,
-                },
+                "source": source,
+                "memo_title": memo["title"],
+                "memo_metadata": memo["metadata"],
                 "relations": relations,
-                "parser_version": PARSER_VERSION,
             }
         )
         revision = {
@@ -721,38 +736,12 @@ class DocsCollector:
                 "claims": claims,
             }
         )
-        legacy_reference_id = code or self.build_reference_id(item, item_type)
         return SpecRevisionPublishRequest(
             project_id=settings.skald_project_id,
             idempotency_key=idempotency_key,
-            source={
-                "source_key": source_key,
-                "source_system": "spms",
-                "source_type": source_type,
-                "immutable_source_id": immutable_source_id,
-                "title": title,
-                "code": code,
-                "source_url": metadata.get("source_url") or "",
-                "status": item.get("status") or None,
-                "aliases": [code] if code else [],
-            },
+            source=source,
             revision=revision,
-            memo={
-                "memo_uuid": None,
-                "client_reference_id": legacy_reference_id,
-                "title": title,
-                "content": content,
-                "metadata": {
-                    **metadata,
-                    "source_payload_hash": source_payload_hash,
-                    "content_hash": content_hash,
-                    "metadata_hash": metadata_hash,
-                    "relation_hash": relation_hash,
-                    "claim_hash": claim_hash,
-                    "relation_input_hash": relation_input_hash,
-                },
-                "source": "spms",
-            },
+            memo=memo,
             relations=relations,
             claims=claims,
             expected_relation_count=len(relations),

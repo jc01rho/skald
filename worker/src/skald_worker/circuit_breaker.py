@@ -63,6 +63,7 @@ class CircuitBreakerState:
     success_count: int = 0
     last_failure_time: float = 0.0
     last_state_change: float = field(default_factory=time.time)
+    recovery_pending: bool = False
 
     # For half-open state: only allow one request through at a time
     half_open_lock: asyncio.Lock = field(default_factory=asyncio.Lock)
@@ -103,6 +104,9 @@ class CircuitBreaker:
     def state(self) -> CircuitState:
         """Get current circuit state, potentially transitioning from OPEN to HALF_OPEN."""
         if self._state.state == CircuitState.OPEN:
+            if self._state.recovery_pending:
+                self._state.recovery_pending = False
+                return CircuitState.OPEN
             if self._should_attempt_recovery():
                 self._transition_to(CircuitState.HALF_OPEN)
         return self._state.state
@@ -140,8 +144,12 @@ class CircuitBreaker:
         if new_state == CircuitState.CLOSED:
             self._state.failure_count = 0
             self._state.success_count = 0
+            self._state.recovery_pending = False
+        elif new_state == CircuitState.OPEN:
+            self._state.recovery_pending = old_state == CircuitState.HALF_OPEN
         elif new_state == CircuitState.HALF_OPEN:
             self._state.success_count = 0
+            self._state.recovery_pending = False
 
         logger.info(
             "Circuit breaker state change",
@@ -189,9 +197,8 @@ class CircuitBreaker:
         if self._state.state == CircuitState.HALF_OPEN:
             # Any failure in half-open state reopens the circuit
             self._transition_to(CircuitState.OPEN)
-        elif self._state.state == CircuitState.CLOSED:
-            if self._state.failure_count >= self.config.failure_threshold:
-                self._transition_to(CircuitState.OPEN)
+        elif self._state.state == CircuitState.CLOSED and self._state.failure_count >= self.config.failure_threshold:
+            self._transition_to(CircuitState.OPEN)
 
         logger.warning(
             "Circuit breaker recorded failure",
