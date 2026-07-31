@@ -1118,6 +1118,9 @@ def normalized_deployment(obj: dict[str, Any]) -> tuple[dict[str, Any], str, int
     for key, default in (("progressDeadlineSeconds", 600), ("revisionHistoryLimit", 10)):
         if deployment_spec.get(key) == default:
             deployment_spec.pop(key)
+    template_metadata = deployment_spec.get("template", {}).get("metadata", {})
+    if template_metadata.get("creationTimestamp") is None:
+        template_metadata.pop("creationTimestamp", None)
     spec = deployment_spec.get("template", {}).get("spec", {})
     for key, default in (("dnsPolicy", "ClusterFirst"), ("schedulerName", "default-scheduler"), ("serviceAccount", "default"), ("serviceAccountName", "default")):
         if spec.get(key) == default:
@@ -1135,6 +1138,14 @@ def normalized_deployment(obj: dict[str, Any]) -> tuple[dict[str, Any], str, int
             if container.get(key) is False: container.pop(key)
         if container.get("terminationMessagePath") == "/dev/termination-log": container.pop("terminationMessagePath")
         if container.get("terminationMessagePolicy") == "File": container.pop("terminationMessagePolicy")
+        if container.get("resources") == {}:
+            container.pop("resources")
+    for volume in spec.get("volumes") or []:
+        if not isinstance(volume, dict):
+            continue
+        config_map = volume.get("configMap")
+        if isinstance(config_map, dict) and config_map.get("defaultMode") == 420:
+            config_map.pop("defaultMode")
     return value, image, init_index, main_index
 
 

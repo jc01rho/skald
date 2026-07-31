@@ -599,9 +599,8 @@ def test_operator_identity_preflight_rejects_wildcard_and_command_path_rechecks_
 def test_deploy_script_separates_ordinary_and_explicit_identity_and_rbac_has_no_decorative_serviceaccount():
     text = DEPLOY_SH.read_text()
     dispatch = text[text.index("deploy_discord_owner()") : text.index("deploy_discord_bot()")]
-    ordinary_branch = dispatch[dispatch.index("else") : dispatch.index("case \"$result\"")]
-    assert 'HERMES_DEPLOY_IDENTITY="$HERMES_DEPLOY_IDENTITY"' in dispatch
-    assert "HERMES_DEPLOY_IDENTITY" not in ordinary_branch
+    assert 'state_command=(python3 "$SCRIPT_DIR/hermes/deploy_state.py" dispatch --mode "$HERMES_DEPLOY_MODE")' in dispatch
+    assert 'NAMESPACE="$NAMESPACE" HERMES_DEPLOY_IDENTITY=' not in dispatch
     rbac = yaml.safe_load_all((ROOT / "k8s" / "hermes-deploy-operator-rbac.yaml").read_text())
     objects = list(rbac)
     assert {obj["kind"] for obj in objects} == {"Role", "RoleBinding"}

@@ -1037,12 +1037,12 @@ deploy_discord_owner() {
     fi
 
     if [ -n "$HERMES_DEPLOY_MODE" ]; then
-        if ! result=$(NAMESPACE="$NAMESPACE" HERMES_IMAGE="$HERMES_IMAGE" HERMES_CI_RECEIPT_FILE="$HERMES_CI_RECEIPT_FILE" HERMES_DEPLOY_IDENTITY="$HERMES_DEPLOY_IDENTITY" "${state_command[@]}"); then
+        if ! result=$("${state_command[@]}"); then
             log_error "Discord owner orchestration failed; see sanitized hermes_deploy diagnostics"
             return 1
         fi
     else
-        if ! result=$(NAMESPACE="$NAMESPACE" HERMES_IMAGE="$HERMES_IMAGE" "${state_command[@]}"); then
+        if ! result=$("${state_command[@]}"); then
             log_error "Discord owner orchestration failed; see sanitized hermes_deploy diagnostics"
             return 1
         fi
