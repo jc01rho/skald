@@ -352,8 +352,7 @@ export class SpecRevisionService {
 
     async stageAndPublish(project: Project, input: StageAndPublishInput) {
         const normalized = this.validate(input)
-        const transactionEm = this.rootEm.fork({ clear: true, useContext: false })
-        return transactionEm.transactional(async (em) => {
+        return this.rootEm.transactional(async (em) => {
             await em.getConnection().execute('SELECT pg_advisory_xact_lock(hashtext(?), hashtext(?))', [
                 project.uuid,
                 input.source.source_key,
@@ -561,7 +560,7 @@ export class SpecRevisionService {
             source.active_revision = revision
             await em.flush()
             return this.receipt(source, revision, false)
-        })
+        }, { clear: true })
     }
 
     private receipt(source: SpecSource, revision: SpecRevision, replay: boolean) {
