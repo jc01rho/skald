@@ -560,7 +560,7 @@ export class SpecRevisionService {
             source.active_revision = revision
             await em.flush()
             return this.receipt(source, revision, false)
-        }, { clear: true })
+        }, { clear: true, ignoreNestedTransactions: true })
     }
 
     private receipt(source: SpecSource, revision: SpecRevision, replay: boolean) {
