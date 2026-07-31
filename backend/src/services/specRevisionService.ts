@@ -366,8 +366,9 @@ export class SpecRevisionService {
                     source_type: input.source.source_type,
                     immutable_source_id: input.source.immutable_source_id,
                 },
-                { populate: ['active_revision', 'memo'], lockMode: 2 }
+                { lockMode: 2 }
             )
+            if (source) await em.populate(source, ['active_revision', 'memo'])
 
             if (source) {
                 const replay = await em.findOne(SpecRevision, {
