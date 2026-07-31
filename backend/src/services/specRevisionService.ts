@@ -352,7 +352,8 @@ export class SpecRevisionService {
 
     async stageAndPublish(project: Project, input: StageAndPublishInput) {
         const normalized = this.validate(input)
-        return this.rootEm.transactional(async (em) => {
+        const transactionEm = this.rootEm.fork({ clear: true, useContext: false })
+        return transactionEm.transactional(async (em) => {
             await em.getConnection().execute('SELECT pg_advisory_xact_lock(hashtext(?), hashtext(?))', [
                 project.uuid,
                 input.source.source_key,
