@@ -32,7 +32,16 @@ def function_item(title="처리한 결재 목록 조회", properties=None):
                     "Name": "결재 대상 항목 이름",
                     "properties": properties or ["고유값", "필터 가능"],
                 },
-            }
+            },
+            {
+                "id": 1788,
+                "functional_specification_id": {"id": 574},
+                "Information_Definition_id": {
+                    "id": 27,
+                    "Name": "프로젝트 이름",
+                    "properties": ["필터 가능", "간단 검색"],
+                },
+            },
         ],
     }
 
@@ -62,6 +71,10 @@ def test_canonical_hashes_are_order_independent_and_relation_input_tracks_title_
     changed_source["function_id"] = "SVR-MY-REQUEST-LIST-V2-R"
     changed = build_request(changed_source)
     assert changed.revision["relation_input_hash"] != request_a.revision["relation_input_hash"]
+    assert [relation["target"]["source_key"] for relation in request_a.relations] == [
+        "spms:information:1243",
+        "spms:information:27",
+    ]
 
     assert request_a.revision["content_hash"] == sha256_text(request_a.memo["content"])
     assert request_a.revision["metadata_hash"] == canonical_hash(request_a.memo["metadata"])

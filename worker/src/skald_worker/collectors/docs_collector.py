@@ -17,6 +17,7 @@ from skald_worker.clients.skald import (
     SpecReconciliationManifestRequest,
     SpecRevisionPublishRequest,
     canonical_hash,
+    canonical_json,
     get_skald_client,
     sha256_text,
 )
@@ -187,6 +188,48 @@ def extract_display_label(item: dict[str, Any]) -> tuple[str | None, str | None,
         if match:
             return match.group(1).strip(), "description_section", match.group(0)
     return None, None, None
+
+
+def normalize_spec_relations(relations: tuple[dict[str, Any], ...]) -> tuple[dict[str, Any], ...]:
+    """Match backend relation normalization before hashing and transport."""
+    normalized: dict[str, dict[str, Any]] = {}
+    for relation in relations:
+        value = {
+            **relation,
+            "properties": sorted({str(item).strip() for item in relation["properties"] if str(item).strip()}),
+        }
+        identity = "\0".join(
+            (
+                value["relation_type"],
+                value["target"]["source_key"],
+                value["source_relation_id"] or "",
+            )
+        )
+        previous = normalized.get(identity)
+        if previous is not None and previous != value:
+            raise IncompleteSpmsDetailError("Duplicate relation identity has different data")
+        normalized[identity] = value
+    return tuple(normalized[key] for key in sorted(normalized))
+
+
+def normalize_spec_claims(claims: tuple[dict[str, Any], ...]) -> tuple[dict[str, Any], ...]:
+    """Match backend claim ordering before hashing and transport."""
+    def sort_key(claim: dict[str, Any]) -> str:
+        return canonical_json(
+            [
+                claim["subject"],
+                claim["predicate"],
+                canonical_json(claim["value"]),
+                claim["unit"] or "",
+                claim["condition"] or "",
+                claim["object"] or "",
+                claim["evidence"]["path"],
+                claim["rule_version"],
+            ]
+        )
+
+    return tuple(sorted(claims, key=sort_key))
+
 
 
 def html_to_markdown(html: str) -> str:
@@ -667,6 +710,8 @@ class DocsCollector:
                         "rule_version": EXTRACTOR_VERSION,
                     },
                 )
+        relations = normalize_spec_relations(relations)
+        claims = normalize_spec_claims(claims)
         canonical_payload = dict(item)
         if source_type == "function":
             canonical_payload["related_info"] = [
