@@ -490,6 +490,8 @@ export class SpecRevisionService {
                 project,
             })
             em.persist(revision)
+            revision.source = source
+            em.getUnitOfWork().computeChangeSet(revision)
             await em.flush()
             await em.nativeUpdate(
                 SpecRelation,
@@ -499,24 +501,27 @@ export class SpecRevisionService {
 
             for (const relation of normalized.relations) {
                 const target = await em.findOne(SpecSource, { project, spec_id: relation.target.source_key })
-                em.persist(
-                    em.create(SpecRelation, {
-                        uuid: randomUUID(),
-                        created_at: now,
-                        relation_id: sha256Json([source.uuid, revision.uuid, relation.relation_type, relation.target.source_key, relation.source_relation_id]),
-                        kind: relation.relation_type,
-                        unresolved_target_spec_id: target ? null : relation.target.source_key,
-                        source_relation_id: relation.source_relation_id,
-                        display_label: relation.target.title,
-                        provenance: { source: relation.provenance },
-                        evidence: [relation.evidence],
-                        properties: { values: relation.properties, target: relation.target },
-                        source,
-                        source_revision: revision,
-                        target_source: target || null,
-                        project,
-                    })
-                )
+                const persistedRelation = em.create(SpecRelation, {
+                    uuid: randomUUID(),
+                    created_at: now,
+                    relation_id: sha256Json([source.uuid, revision.uuid, relation.relation_type, relation.target.source_key, relation.source_relation_id]),
+                    kind: relation.relation_type,
+                    unresolved_target_spec_id: target ? null : relation.target.source_key,
+                    source_relation_id: relation.source_relation_id,
+                    display_label: relation.target.title,
+                    provenance: { source: relation.provenance },
+                    evidence: [relation.evidence],
+                    properties: { values: relation.properties, target: relation.target },
+                    source,
+                    source_revision: revision,
+                    target_source: target || null,
+                    project,
+                })
+                em.persist(persistedRelation)
+                persistedRelation.source = source
+                persistedRelation.source_revision = revision
+                if (target) persistedRelation.target_source = target
+                em.getUnitOfWork().computeChangeSet(persistedRelation)
             }
             for (const claim of normalized.claims) {
                 em.persist(
