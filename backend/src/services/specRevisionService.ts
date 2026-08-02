@@ -564,6 +564,13 @@ export class SpecRevisionService {
             source.memo = memo
             source.active_revision = revision
             await em.flush()
+            const inserted = await em.getConnection().execute<Array<{ revision_id: string }>>(
+                `SELECT uuid AS revision_id FROM skald_spec_revision WHERE project_id = ? AND uuid = ?`,
+                [project.uuid, revision.uuid]
+            )
+            if (inserted.length !== 1) {
+                throw new SpecRevisionError('PUBLICATION_NOT_PERSISTED', 'Canonical revision was not persisted', 503)
+            }
             return this.receipt(source, revision, false)
         }, { clear: false, propagation: TransactionPropagation.REQUIRES_NEW })
         const persisted = await this.rootEm.getConnection().execute<Array<{ revision_id: string }>>(
