@@ -1140,7 +1140,7 @@ class DocsCollector:
             source_type="all",
             authoritative=True,
             complete=complete,
-            manifest_hash=canonical_hash(hash_input),
+            manifest_hash=canonical_hash(hash_input) if complete else None,
             count=sum(manifest["count"] for manifest in by_type.values()),
             errors=errors,
             identity_drift=sum(1 for error in errors if error.get("stage") == "identity"),

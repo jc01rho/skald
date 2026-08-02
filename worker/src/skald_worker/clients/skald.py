@@ -143,7 +143,7 @@ class SpecReconciliationManifestRequest:
     source_type: str
     authoritative: bool
     complete: bool
-    manifest_hash: str
+    manifest_hash: str | None
     count: int
     errors: tuple[dict[str, Any], ...]
     identity_drift: int
