@@ -352,8 +352,7 @@ export class SpecRevisionService {
 
     async stageAndPublish(project: Project, input: StageAndPublishInput) {
         const normalized = this.validate(input)
-        const em = this.rootEm.fork({ clear: true, useContext: false, disableContextResolution: true, keepTransactionContext: false })
-        const receipt = await em.transactional(async (em) => {
+        const receipt = await this.rootEm.transactional(async (em) => {
             const managedProject = await em.findOneOrFail(Project, { uuid: project.uuid })
             const transaction = em.getTransactionContext()
             await em.getConnection().execute(
@@ -577,7 +576,7 @@ export class SpecRevisionService {
                 throw new SpecRevisionError('PUBLICATION_NOT_PERSISTED', 'Canonical revision was not persisted', 503)
             }
             return this.receipt(source, revision, false)
-        }, { clear: false, propagation: TransactionPropagation.REQUIRES_NEW })
+        }, { clear: true, propagation: TransactionPropagation.REQUIRES_NEW })
         const persisted = await this.rootEm.getConnection().execute<Array<{ revision_id: string }>>(
             `SELECT r.uuid AS revision_id
                FROM skald_spec_revision r
