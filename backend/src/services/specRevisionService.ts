@@ -352,18 +352,19 @@ export class SpecRevisionService {
 
     async stageAndPublish(project: Project, input: StageAndPublishInput) {
         const normalized = this.validate(input)
+        const projectId = input.project_id
         const em = this.rootEm.fork({ clear: true, useContext: false, disableContextResolution: true, keepTransactionContext: false })
         const receipt = await (async () => {
             await em.begin()
             try {
                 const value = await em.transactional(async (em) => {
-            const managedProject = await em.findOneOrFail(Project, { uuid: project.uuid })
+                    const managedProject = await em.findOneOrFail(Project, { uuid: projectId })
             const transaction = em.getTransactionContext()
             if (!transaction) {
                 throw new SpecRevisionError('TRANSACTION_UNAVAILABLE', 'Canonical publication transaction is unavailable', 503)
             }
             await transaction.raw('SELECT pg_advisory_xact_lock(hashtext(?), hashtext(?))', [
-                project.uuid,
+                    projectId,
                 input.source.source_key,
             ])
 
@@ -462,7 +463,7 @@ export class SpecRevisionService {
                     memo_projection_canonical_hash: input.revision.content_hash,
                     memo_id: memo.uuid,
                     active_revision_id: null,
-                    project_id: managedProject.uuid,
+                    project_id: projectId,
                 })
                 source = await em.findOneOrFail(SpecSource, { project: managedProject, uuid: sourceId })
             }
@@ -515,7 +516,7 @@ export class SpecRevisionService {
                 relation_input_hash: revision.relation_input_hash,
                 canonical_hash: revision.canonical_hash,
                 source_id: source.uuid,
-                project_id: managedProject.uuid,
+                project_id: projectId,
             })
             em.merge(revision)
             await em.nativeUpdate(
@@ -603,7 +604,7 @@ export class SpecRevisionService {
                JOIN skald_spec_source s
                  ON s.project_id = r.project_id AND s.uuid = r.source_id
               WHERE r.project_id = ? AND r.uuid = ? AND s.uuid = ?`,
-            [project.uuid, receipt.revision_id, receipt.source_id]
+            [projectId, receipt.revision_id, receipt.source_id]
         )
         if (persisted.length !== 1) {
             throw new SpecRevisionError('PUBLICATION_NOT_PERSISTED', 'Canonical revision was not persisted', 503)
