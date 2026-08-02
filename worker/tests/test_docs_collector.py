@@ -142,6 +142,21 @@ class TestSpmsSync:
         assert request.source["immutable_source_id"] == "17"
         assert request.source["code"] == "SVR-17"
 
+    def test_null_information_relation_is_ignored(self, collector):
+        item = {
+            "id": 94,
+            "function_id": "SVR-USER-GROUP-U",
+            "related_info": [
+                {
+                    "id": 328,
+                    "functional_specification_id": {"id": 94},
+                    "Information_Definition_id": None,
+                }
+            ],
+        }
+
+        assert collector.build_spec_revision_request(item, "functions", "title", "content", {}).relations == ()
+
     @pytest.mark.asyncio
     async def test_sync_endpoint_paginates_until_terminal_page(self, collector):
         pages = [

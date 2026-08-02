@@ -144,6 +144,8 @@ def normalize_related_information(item: dict[str, Any], base_url: str) -> tuple[
         function_ref = raw.get("functional_specification_id")
         information_ref = raw.get("Information_Definition_id")
         relation_id = raw.get("id")
+        if information_ref is None:
+            continue
         if not isinstance(function_ref, dict) or not isinstance(information_ref, dict):
             raise IncompleteSpmsDetailError("SPMS related_info entry has invalid references")
         function_id = function_ref.get("id")
