@@ -352,7 +352,7 @@ export class SpecRevisionService {
 
     async stageAndPublish(project: Project, input: StageAndPublishInput) {
         const normalized = this.validate(input)
-        const em = this.rootEm.fork({ clear: true, useContext: false, keepTransactionContext: false })
+        const em = this.rootEm.fork({ clear: true, useContext: false, disableContextResolution: true, keepTransactionContext: false })
         const receipt = await em.transactional(async (em) => {
             const managedProject = await em.findOneOrFail(Project, { uuid: project.uuid })
             const transaction = em.getTransactionContext()
