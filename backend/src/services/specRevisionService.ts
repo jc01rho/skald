@@ -498,12 +498,13 @@ export class SpecRevisionService {
             })
             revision.source = source
             revision.project = managedProject
-            await em.insert(SpecRevision, revision)
+            await em.insert(SpecRevision, revision, { ctx: transaction })
             em.merge(revision)
             await em.nativeUpdate(
                 SpecRelation,
                 { project: managedProject, unresolved_target_spec_id: source.spec_id, target_source: null },
-                { target_source: source, unresolved_target_spec_id: null }
+                { target_source: source, unresolved_target_spec_id: null },
+                { ctx: transaction }
             )
 
             for (const relation of normalized.relations) {
