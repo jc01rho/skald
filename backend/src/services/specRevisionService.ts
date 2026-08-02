@@ -352,7 +352,11 @@ export class SpecRevisionService {
 
     async stageAndPublish(project: Project, input: StageAndPublishInput) {
         const normalized = this.validate(input)
-        const receipt = await this.rootEm.transactional(async (em) => {
+        const em = this.rootEm.fork({ clear: true, useContext: false, disableContextResolution: true, keepTransactionContext: false })
+        const receipt = await (async () => {
+            await em.begin()
+            try {
+                const value = await em.transactional(async (em) => {
             const managedProject = await em.findOneOrFail(Project, { uuid: project.uuid })
             const transaction = em.getTransactionContext()
             if (!transaction) {
@@ -585,7 +589,14 @@ export class SpecRevisionService {
             source.active_revision = revision
             await em.flush()
             return this.receipt(source, revision, false)
-        }, { clear: true, propagation: TransactionPropagation.REQUIRES_NEW })
+                }, { propagation: TransactionPropagation.MANDATORY })
+                await em.commit()
+                return value
+            } catch (error) {
+                if (em.isInTransaction()) await em.rollback()
+                throw error
+            }
+        })()
         const persisted = await this.rootEm.getConnection().execute<Array<{ revision_id: string }>>(
             `SELECT r.uuid AS revision_id
                FROM skald_spec_revision r
