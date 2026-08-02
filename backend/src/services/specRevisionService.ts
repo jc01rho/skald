@@ -353,7 +353,7 @@ export class SpecRevisionService {
     async stageAndPublish(project: Project, input: StageAndPublishInput) {
         const normalized = this.validate(input)
         const em = this.rootEm.fork({ clear: true, useContext: false, disableContextResolution: true, keepTransactionContext: false })
-        return em.transactional(async (em) => {
+        const receipt = await em.transactional(async (em) => {
             const managedProject = await em.findOneOrFail(Project, { uuid: project.uuid })
             await em.getConnection().execute('SELECT pg_advisory_xact_lock(hashtext(?), hashtext(?))', [
                 project.uuid,
@@ -564,16 +564,20 @@ export class SpecRevisionService {
             source.memo = memo
             source.active_revision = revision
             await em.flush()
-            const persisted = await em.findOne(SpecRevision, {
-                project: managedProject,
-                uuid: revision.uuid,
-                source: { project: managedProject, uuid: source.uuid },
-            })
-            if (!persisted) {
-                throw new SpecRevisionError('PUBLICATION_NOT_PERSISTED', 'Canonical revision was not persisted', 503)
-            }
             return this.receipt(source, revision, false)
         }, { clear: false, propagation: TransactionPropagation.REQUIRES_NEW })
+        const persisted = await this.rootEm.getConnection().execute<Array<{ revision_id: string }>>(
+            `SELECT r.uuid AS revision_id
+               FROM skald_spec_revision r
+               JOIN skald_spec_source s
+                 ON s.project_id = r.project_id AND s.uuid = r.source_id
+              WHERE r.project_id = ? AND r.uuid = ? AND s.uuid = ?`,
+            [project.uuid, receipt.revision_id, receipt.source_id]
+        )
+        if (persisted.length !== 1) {
+            throw new SpecRevisionError('PUBLICATION_NOT_PERSISTED', 'Canonical revision was not persisted', 503)
+        }
+        return receipt
     }
 
     private receipt(source: SpecSource, revision: SpecRevision, replay: boolean) {
