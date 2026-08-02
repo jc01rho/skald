@@ -484,7 +484,7 @@ export class SpecRevisionService {
             }
 
             const latest = await em.findOne(SpecRevision, { project: managedProject, source: { project: managedProject, uuid: source.uuid } }, { orderBy: { revision_number: 'desc' } })
-            const revision = em.create(SpecRevision, {
+            const revision = {
                 uuid: randomUUID(),
                 created_at: now,
                 revision_number: (latest?.revision_number || 0) + 1,
@@ -509,11 +509,8 @@ export class SpecRevisionService {
                 claim_hash: input.revision.claim_hash,
                 relation_input_hash: input.revision.relation_input_hash,
                 canonical_hash: input.revision.relation_input_hash,
-                source,
-                project: managedProject,
-            }, { persist: false })
-            revision.source = source
-            revision.project = managedProject
+            }
+            const revisionRef = em.getReference(SpecRevision, revision.uuid)
             await transaction('skald_spec_revision').insert({
                 uuid: revision.uuid,
                 created_at: revision.created_at,
@@ -554,13 +551,13 @@ export class SpecRevisionService {
                     evidence: [relation.evidence],
                     properties: { values: relation.properties, target: relation.target },
                     source,
-                    source_revision: revision,
+                    source_revision: revisionRef,
                     target_source: target || null,
                     project: managedProject,
                 })
                 em.persist(persistedRelation)
                 persistedRelation.source = source
-                persistedRelation.source_revision = revision
+                persistedRelation.source_revision = revisionRef
                 if (target) persistedRelation.target_source = target
                 em.getUnitOfWork().computeChangeSet(persistedRelation)
             }
@@ -585,7 +582,7 @@ export class SpecRevisionService {
                     extractor_version: input.revision.extractor_version,
                     rule_version: claim.rule_version,
                     source,
-                    source_revision: revision,
+                    source_revision: revisionRef,
                     project: managedProject,
                 }, { persist: false })
                 await transaction('skald_spec_claim').insert({
