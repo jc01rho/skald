@@ -625,6 +625,7 @@ export class SpecRevisionService {
                     active_revision_id: revision.uuid,
                 })
             if (!('__canonicalNative' in source)) await em.flush()
+            await transaction.raw('SET CONSTRAINTS ALL IMMEDIATE')
             source.spec_id = input.source.source_key
             source.memo_reference_id = input.memo.client_reference_id
             source.memo = memo
