@@ -494,7 +494,25 @@ export class SpecRevisionService {
             })
             revision.source = source
             revision.project = managedProject
-            await em.insert(SpecRevision, revision, { ctx: transaction })
+            await transaction('skald_spec_revision').insert({
+                uuid: revision.uuid,
+                created_at: revision.created_at,
+                revision_number: revision.revision_number,
+                idempotency_key: revision.idempotency_key,
+                title: revision.title,
+                display_label: revision.display_label,
+                content: revision.content,
+                metadata: revision.metadata,
+                payload_hash: revision.payload_hash,
+                content_hash: revision.content_hash,
+                metadata_hash: revision.metadata_hash,
+                relation_hash: revision.relation_hash,
+                claim_hash: revision.claim_hash,
+                relation_input_hash: revision.relation_input_hash,
+                canonical_hash: revision.canonical_hash,
+                source_id: source.uuid,
+                project_id: managedProject.uuid,
+            })
             em.merge(revision)
             await em.nativeUpdate(
                 SpecRelation,
