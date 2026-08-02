@@ -469,6 +469,16 @@ export class SpecRevisionService {
                     active_revision_id: null,
                     project_id: projectId,
                 })
+                const insertedSource = await transaction('skald_spec_source')
+                    .where({ uuid: sourceId })
+                    .first('project_id', 'memo_id', 'memo_reference_id')
+                if (!insertedSource || insertedSource.project_id !== projectId) {
+                    throw new SpecRevisionError(
+                        'SOURCE_PROJECT_MISMATCH',
+                        `Canonical source project mismatch: expected ${projectId}, got ${insertedSource?.project_id || 'missing'}`,
+                        503
+                    )
+                }
                 source = await em.findOneOrFail(SpecSource, { project: managedProject, uuid: sourceId })
             }
 
