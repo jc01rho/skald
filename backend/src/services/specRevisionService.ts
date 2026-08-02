@@ -355,6 +355,9 @@ export class SpecRevisionService {
         const receipt = await this.rootEm.transactional(async (em) => {
             const managedProject = await em.findOneOrFail(Project, { uuid: project.uuid })
             const transaction = em.getTransactionContext()
+            if (!transaction) {
+                throw new SpecRevisionError('TRANSACTION_UNAVAILABLE', 'Canonical publication transaction is unavailable', 503)
+            }
             await em.getConnection().execute(
                 'SELECT pg_advisory_xact_lock(hashtext(?), hashtext(?))',
                 [project.uuid, input.source.source_key],
