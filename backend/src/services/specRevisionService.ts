@@ -491,11 +491,10 @@ export class SpecRevisionService {
                 source,
                 project: managedProject,
             })
-            em.persist(revision)
             revision.source = source
             revision.project = managedProject
-            em.getUnitOfWork().computeChangeSet(revision)
-            await em.flush()
+            await em.insert(SpecRevision, revision)
+            em.merge(revision)
             await em.nativeUpdate(
                 SpecRelation,
                 { project: managedProject, unresolved_target_spec_id: source.spec_id, target_source: null },
