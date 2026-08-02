@@ -511,7 +511,7 @@ export class SpecRevisionService {
                 canonical_hash: input.revision.relation_input_hash,
                 source,
                 project: managedProject,
-            })
+            }, { persist: false })
             revision.source = source
             revision.project = managedProject
             await transaction('skald_spec_revision').insert({
@@ -587,12 +587,30 @@ export class SpecRevisionService {
                     source,
                     source_revision: revision,
                     project: managedProject,
+                }, { persist: false })
+                await transaction('skald_spec_claim').insert({
+                    uuid: persistedClaim.uuid,
+                    created_at: persistedClaim.created_at,
+                    claim_id: persistedClaim.claim_id,
+                    kind: persistedClaim.kind,
+                    text: persistedClaim.text,
+                    display_label: persistedClaim.display_label,
+                    subject: persistedClaim.subject,
+                    predicate: persistedClaim.predicate,
+                    value: persistedClaim.value,
+                    unit: persistedClaim.unit,
+                    condition: persistedClaim.condition,
+                    object: persistedClaim.object,
+                    evidence_excerpt: persistedClaim.evidence_excerpt,
+                    evidence_path: persistedClaim.evidence_path,
+                    evidence_hash: persistedClaim.evidence_hash,
+                    evidence: persistedClaim.evidence,
+                    extractor_version: persistedClaim.extractor_version,
+                    rule_version: persistedClaim.rule_version,
+                    source_id: source.uuid,
+                    source_revision_id: revision.uuid,
+                    project_id: projectId,
                 })
-                em.persist(persistedClaim)
-                persistedClaim.source = source
-                persistedClaim.source_revision = revision
-                persistedClaim.project = managedProject
-                em.getUnitOfWork().computeChangeSet(persistedClaim)
             }
             await transaction('skald_spec_source')
                 .where({ project_id: projectId, uuid: source.uuid })
