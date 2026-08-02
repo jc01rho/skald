@@ -493,6 +493,7 @@ export class SpecRevisionService {
             })
             em.persist(revision)
             revision.source = source
+            revision.project = managedProject
             em.getUnitOfWork().computeChangeSet(revision)
             await em.flush()
             await em.nativeUpdate(
