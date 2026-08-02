@@ -479,7 +479,7 @@ export class SpecRevisionService {
                         503
                     )
                 }
-                source = await em.findOneOrFail(SpecSource, { project: managedProject, uuid: sourceId })
+                source = em.getReference(SpecSource, sourceId)
             }
 
             const latest = await em.findOne(SpecRevision, { project: managedProject, source: { project: managedProject, uuid: source.uuid } }, { orderBy: { revision_number: 'desc' } })
@@ -594,15 +594,22 @@ export class SpecRevisionService {
                 persistedClaim.project = managedProject
                 em.getUnitOfWork().computeChangeSet(persistedClaim)
             }
-            source.updated_at = now
-            source.spec_id = input.source.source_key
-            source.source_locator = input.source.source_url || input.source.source_key
-            source.memo_reference_id = input.memo.client_reference_id
-            source.memo_projection_revision_id = revision.uuid
-            source.memo_projection_canonical_hash = input.revision.content_hash
-            source.memo = memo
-            source.active_revision = revision
+            await transaction('skald_spec_source')
+                .where({ project_id: projectId, uuid: source.uuid })
+                .update({
+                    updated_at: now,
+                    spec_id: input.source.source_key,
+                    source_locator: input.source.source_url || input.source.source_key,
+                    memo_reference_id: input.memo.client_reference_id,
+                    memo_projection_revision_id: revision.uuid,
+                    memo_projection_canonical_hash: input.revision.content_hash,
+                    memo_id: memo.uuid,
+                    active_revision_id: revision.uuid,
+                })
             await em.flush()
+            source.spec_id = input.source.source_key
+            source.memo_reference_id = input.memo.client_reference_id
+            source.memo = memo
             return this.receipt(source, revision, false)
                 }, { propagation: TransactionPropagation.MANDATORY })
                 await em.commit()
