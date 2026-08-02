@@ -626,10 +626,18 @@ export class SpecRevisionService {
                 })
             if (!('__canonicalNative' in source)) await em.flush()
             await transaction.raw('SET CONSTRAINTS ALL IMMEDIATE')
-            source.spec_id = input.source.source_key
-            source.memo_reference_id = input.memo.client_reference_id
-            source.memo = memo
-            return this.receipt(source, revision, false)
+            return {
+                status: 'published',
+                source_id: source.uuid,
+                source_key: input.source.source_key,
+                revision_id: revision.uuid,
+                memo_uuid: memo.uuid,
+                memo_reference_id: input.memo.client_reference_id,
+                source_payload_hash: revision.payload_hash,
+                relation_hash: revision.relation_hash,
+                claim_hash: revision.claim_hash,
+                idempotent_replay: false,
+            }
                 }, { propagation: TransactionPropagation.MANDATORY })
                 await em.commit()
                 return value
