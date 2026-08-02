@@ -25,6 +25,8 @@ from skald_worker.clients.skald import get_skald_client
 from skald_worker.collectors.docs_collector import get_docs_collector
 from skald_worker.collectors.jira_collector import get_jira_collector
 from skald_worker.collectors.notion_collector import get_notion_collector
+from skald_worker.collectors.release_collector import get_release_collector
+from skald_worker.collectors.userdata_collector import get_userdata_collector
 from skald_worker.config import settings
 from skald_worker.errors import (
     circuit_breaker_open,
@@ -420,10 +422,46 @@ async def trigger_sync(
             sync_jobs_total.labels(source="notion", status="success").inc()
             return response
 
+        elif request.source in {"release", "userdata"}:
+            enabled = settings.release_enabled if request.source == "release" else settings.userdata_enabled
+            if not enabled or not settings.spms_base_url:
+                sync_jobs_total.labels(source=request.source, status="error").inc()
+                raise integration_not_configured(request.source.title())
+
+            sync_state_manager.record_sync_start(request.source)
+            collector = get_release_collector() if request.source == "release" else get_userdata_collector()
+            result = await collector.sync_all()
+            processed = result["processed"]
+            failed = result["failed"]
+            response = SyncResponse(
+                source=request.source,
+                status="completed" if failed == 0 else "failed",
+                processed=processed,
+                failed=failed,
+                message=f"Synced {processed} {request.source} items",
+            )
+            sync_job_duration_seconds.labels(source=request.source).observe(time.perf_counter() - start_time)
+            sync_items_processed_total.labels(source=request.source, status="success").inc(processed)
+            sync_items_processed_total.labels(source=request.source, status="failed").inc(failed)
+            if failed > 0:
+                sync_jobs_total.labels(source=request.source, status="error").inc()
+                sync_state_manager.record_sync_failure(
+                    request.source,
+                    f"Incremental sync completed with {failed} failed items",
+                )
+                return JSONResponse(status_code=502, content=response.model_dump(mode="json"))
+            sync_jobs_total.labels(source=request.source, status="success").inc()
+            sync_state_manager.record_sync_success(
+                request.source,
+                items_processed=processed,
+                items_failed=0,
+            )
+            return response
+
         else:
             from skald_worker.errors import bad_request
 
-            raise bad_request(f"Unknown source: {request.source}. Valid sources: jira, docs, notion")
+            raise bad_request(f"Unknown source: {request.source}. Valid sources: jira, docs, notion, release, userdata")
 
     except HTTPException:
         raise
