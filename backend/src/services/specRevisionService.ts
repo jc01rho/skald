@@ -443,8 +443,9 @@ export class SpecRevisionService {
             if (createdMemo) await em.flush()
 
             if (!source) {
-                source = em.create(SpecSource, {
-                    uuid: randomUUID(),
+                const sourceId = randomUUID()
+                await transaction('skald_spec_source').insert({
+                    uuid: sourceId,
                     created_at: now,
                     updated_at: now,
                     spec_id: input.source.source_key,
@@ -455,14 +456,11 @@ export class SpecRevisionService {
                     memo_reference_id: input.memo.client_reference_id,
                     memo_projection_revision_id: randomUUID(),
                     memo_projection_canonical_hash: input.revision.content_hash,
-                    memo: memo,
-                    active_revision: null,
-                    project: managedProject,
+                    memo_id: memo.uuid,
+                    active_revision_id: null,
+                    project_id: managedProject.uuid,
                 })
-                em.persist(source)
-                source.memo = memo
-                em.getUnitOfWork().computeChangeSet(source)
-                await em.flush()
+                source = await em.findOneOrFail(SpecSource, { project: managedProject, uuid: sourceId })
             }
 
             const latest = await em.findOne(SpecRevision, { project: managedProject, source: { project: managedProject, uuid: source.uuid } }, { orderBy: { revision_number: 'desc' } })
