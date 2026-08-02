@@ -217,7 +217,7 @@ specRevisionRouter.post('/spec-revisions/stage-and-publish', async (req, res) =>
     if (!parsed.success) return validationError(res, parsed.error)
     try {
         const project = await projectFor(req, parsed.data.project_id)
-        const receipt = await new SpecRevisionService(DI.em).stageAndPublish(project, parsed.data as Parameters<SpecRevisionService['stageAndPublish']>[1])
+        const receipt = await new SpecRevisionService(DI.orm.em).stageAndPublish(project, parsed.data as Parameters<SpecRevisionService['stageAndPublish']>[1])
         return res.status(receipt.idempotent_replay ? 200 : 201).json(receipt)
     } catch (error) {
         return sendError(res, error)
