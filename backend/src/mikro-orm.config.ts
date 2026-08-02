@@ -1,16 +1,12 @@
 import { defineConfig } from '@mikro-orm/postgresql'
 import { Migrator } from '@mikro-orm/migrations'
 import path from 'path'
-import { DB_NAME, DB_USER, DB_PASSWORD, DB_HOST, DB_PORT } from './settings'
+import { DATABASE_URL } from './settings'
 
 export default defineConfig({
     entities: [path.join(__dirname, 'entities')], // compiled entities
     entitiesTs: [path.join(__dirname, 'entities')], // source entity location
-    dbName: DB_NAME,
-    user: DB_USER,
-    password: DB_PASSWORD,
-    host: DB_HOST,
-    port: DB_PORT,
+    clientUrl: DATABASE_URL,
     extensions: [Migrator],
     pool: {
         // Guidance from: https://knexjs.org/guide/#pool
