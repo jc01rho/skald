@@ -480,6 +480,7 @@ export class SpecRevisionService {
                     )
                 }
                 source = em.getReference(SpecSource, sourceId)
+                Object.defineProperty(source, '__canonicalNative', { value: true })
             }
 
             const latest = await em.findOne(SpecRevision, { project: managedProject, source: { project: managedProject, uuid: source.uuid } }, { orderBy: { revision_number: 'desc' } })
@@ -532,7 +533,6 @@ export class SpecRevisionService {
                 source_id: source.uuid,
                 project_id: projectId,
             })
-            em.merge(revision)
             await em.nativeUpdate(
                 SpecRelation,
                 { project: managedProject, unresolved_target_spec_id: source.spec_id, target_source: null },
@@ -606,7 +606,7 @@ export class SpecRevisionService {
                     memo_id: memo.uuid,
                     active_revision_id: revision.uuid,
                 })
-            await em.flush()
+            if (!('__canonicalNative' in source)) await em.flush()
             source.spec_id = input.source.source_key
             source.memo_reference_id = input.memo.client_reference_id
             source.memo = memo
