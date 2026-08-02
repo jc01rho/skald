@@ -358,12 +358,10 @@ export class SpecRevisionService {
             if (!transaction) {
                 throw new SpecRevisionError('TRANSACTION_UNAVAILABLE', 'Canonical publication transaction is unavailable', 503)
             }
-            await em.getConnection().execute(
-                'SELECT pg_advisory_xact_lock(hashtext(?), hashtext(?))',
-                [project.uuid, input.source.source_key],
-                'all',
-                transaction
-            )
+            await transaction.raw('SELECT pg_advisory_xact_lock(hashtext(?), hashtext(?))', [
+                project.uuid,
+                input.source.source_key,
+            ])
 
             let source = await em.findOne(
                 SpecSource,
@@ -570,12 +568,10 @@ export class SpecRevisionService {
             source.memo = memo
             source.active_revision = revision
             await em.flush()
-            const inserted = await em.getConnection().execute<Array<{ revision_id: string }>>(
-                `SELECT uuid AS revision_id FROM skald_spec_revision WHERE project_id = ? AND uuid = ?`,
-                [project.uuid, revision.uuid],
-                'all',
-                transaction
-            )
+            const inserted = await transaction
+                .select('uuid as revision_id')
+                .from('skald_spec_revision')
+                .where({ project_id: project.uuid, uuid: revision.uuid })
             if (inserted.length !== 1) {
                 throw new SpecRevisionError('PUBLICATION_NOT_PERSISTED', 'Canonical revision was not persisted', 503)
             }
