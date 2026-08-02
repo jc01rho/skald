@@ -363,6 +363,10 @@ export class SpecRevisionService {
             if (!transaction) {
                 throw new SpecRevisionError('TRANSACTION_UNAVAILABLE', 'Canonical publication transaction is unavailable', 503)
             }
+            const projectExists = await transaction('skald_project').where({ uuid: projectId }).first('uuid')
+            if (!projectExists) {
+                throw new SpecRevisionError('PROJECT_NOT_FOUND_IN_TRANSACTION', `Project ${projectId} is unavailable in publication transaction`, 503)
+            }
             await transaction.raw('SELECT pg_advisory_xact_lock(hashtext(?), hashtext(?))', [
                     projectId,
                 input.source.source_key,
