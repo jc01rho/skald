@@ -526,31 +526,34 @@ export class SpecRevisionService {
                 em.getUnitOfWork().computeChangeSet(persistedRelation)
             }
             for (const claim of normalized.claims) {
-                em.persist(
-                    em.create(SpecClaim, {
-                        uuid: randomUUID(),
-                        created_at: now,
-                        claim_id: sha256Json([source.uuid, revision.uuid, claim]),
-                        kind: claim.predicate,
-                        text: `${claim.subject} ${claim.predicate} ${canonicalJson(claim.value)}`,
-                        display_label: claim.subject,
-                        subject: claim.subject,
-                        predicate: claim.predicate,
-                        value: canonicalJson(claim.value),
-                        unit: claim.unit,
-                        condition: claim.condition,
-                        object: claim.object,
-                        evidence_excerpt: claim.evidence.excerpt,
-                        evidence_path: claim.evidence.path,
-                        evidence_hash: claim.evidence.hash,
-                        evidence: [claim.evidence],
-                        extractor_version: input.revision.extractor_version,
-                        rule_version: claim.rule_version,
-                        source,
-                        source_revision: revision,
-                        project: managedProject,
-                    })
-                )
+                const persistedClaim = em.create(SpecClaim, {
+                    uuid: randomUUID(),
+                    created_at: now,
+                    claim_id: sha256Json([source.uuid, revision.uuid, claim]),
+                    kind: claim.predicate,
+                    text: `${claim.subject} ${claim.predicate} ${canonicalJson(claim.value)}`,
+                    display_label: claim.subject,
+                    subject: claim.subject,
+                    predicate: claim.predicate,
+                    value: canonicalJson(claim.value),
+                    unit: claim.unit,
+                    condition: claim.condition,
+                    object: claim.object,
+                    evidence_excerpt: claim.evidence.excerpt,
+                    evidence_path: claim.evidence.path,
+                    evidence_hash: claim.evidence.hash,
+                    evidence: [claim.evidence],
+                    extractor_version: input.revision.extractor_version,
+                    rule_version: claim.rule_version,
+                    source,
+                    source_revision: revision,
+                    project: managedProject,
+                })
+                em.persist(persistedClaim)
+                persistedClaim.source = source
+                persistedClaim.source_revision = revision
+                persistedClaim.project = managedProject
+                em.getUnitOfWork().computeChangeSet(persistedClaim)
             }
             source.updated_at = now
             source.spec_id = input.source.source_key
