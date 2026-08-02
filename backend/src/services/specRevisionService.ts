@@ -564,6 +564,14 @@ export class SpecRevisionService {
             source.memo = memo
             source.active_revision = revision
             await em.flush()
+            const persisted = await em.findOne(SpecRevision, {
+                project: managedProject,
+                uuid: revision.uuid,
+                source: { project: managedProject, uuid: source.uuid },
+            })
+            if (!persisted) {
+                throw new SpecRevisionError('PUBLICATION_NOT_PERSISTED', 'Canonical revision was not persisted', 503)
+            }
             return this.receipt(source, revision, false)
         }, { clear: false, propagation: TransactionPropagation.REQUIRES_NEW })
     }
