@@ -52,9 +52,16 @@ class TestAPIRoutes:
                 yield app
 
     @pytest.fixture
-    def client(self, app):
-        """Create test client."""
-        return TestClient(app, headers={"X-API-Key": "test-worker-key"})
+    def client(self, app, tmp_path, monkeypatch):
+        """Create test client with an isolated sync-state file."""
+        monkeypatch.setattr("skald_worker.sync_state.settings.sync_state_file", str(tmp_path / "sync-state.json"))
+        import skald_worker.sync_state as sync_state
+
+        sync_state._sync_state_manager = None
+        try:
+            yield TestClient(app, headers={"X-API-Key": "test-worker-key"})
+        finally:
+            sync_state._sync_state_manager = None
 
     def test_search_endpoint(self, client):
         """Test search endpoint."""
@@ -147,9 +154,10 @@ class TestAPIRoutes:
                 json={"source": "jira", "options": {"max_results": 100}},
             )
 
-            assert response.status_code == 200
+            assert response.status_code == 502
             data = response.json()
             assert data["source"] == "jira"
+            assert data["status"] == "failed"
             assert data["processed"] == 9
 
     def test_sync_docs_incremental_endpoint(self, client):
@@ -173,9 +181,10 @@ class TestAPIRoutes:
                 },
             )
 
-            assert response.status_code == 200
+            assert response.status_code == 502
             data = response.json()
             assert data["mode"] == "incremental"
+            assert data["status"] == "failed"
             assert data["processed"] == 50
             assert data["skipped"] == 3
             mock_collector.sync_all.assert_awaited_once_with(
@@ -307,6 +316,27 @@ class TestAPIRoutes:
         state_manager.record_sync_success.assert_not_called()
         jobs_metric.labels.assert_any_call(source="docs", status="error")
 
+
+    def test_sync_notion_route_does_not_duplicate_collector_state_ownership(self, client):
+        state_manager = MagicMock()
+        result = {"processed": 4, "failed": 1}
+        with (
+            patch("skald_worker.api.routes.get_notion_collector") as mock_get_collector,
+            patch("skald_worker.api.routes.get_sync_state_manager", return_value=state_manager),
+            patch("skald_worker.api.routes.settings.notion_enabled", True),
+            patch("skald_worker.api.routes.settings.notion_token", "token"),
+            patch("skald_worker.api.routes.settings.notion_root_page_id", "root"),
+        ):
+            mock_collector = AsyncMock()
+            mock_collector.sync_all.return_value = result
+            mock_get_collector.return_value = mock_collector
+
+            response = client.post("/sync", json={"source": "notion"})
+
+        assert response.status_code == 502
+        state_manager.record_sync_start.assert_not_called()
+        state_manager.record_sync_success.assert_not_called()
+        state_manager.record_sync_failure.assert_not_called()
     def test_sync_docs_failure_is_reported(self, client):
         """Collector failures do not return a misleading completed response."""
         with patch("skald_worker.api.routes.get_docs_collector") as mock_get_collector:
@@ -353,9 +383,9 @@ class TestAPIRoutes:
 
         assert response.status_code == 401
 
-    def test_sync_accepts_configured_bearer_and_rejects_missing_bearer(self, app, monkeypatch):
+    def test_sync_accepts_configured_bearer_and_rejects_missing_bearer(self, client, monkeypatch):
         """Configured bearer credentials work; absent or incorrect bearer credentials do not."""
-        monkeypatch.setattr("skald_worker.middleware.auth.settings.worker_api_key", "sync-secret")
+        monkeypatch.setattr("skald_worker.middleware.auth.settings.worker_api_key", "test-worker-key")
         with patch("skald_worker.api.routes.get_docs_collector") as mock_get_collector:
             mock_collector = AsyncMock()
             mock_collector.sync_all.return_value = {
@@ -363,15 +393,14 @@ class TestAPIRoutes:
                 "by_type": {},
             }
             mock_get_collector.return_value = mock_collector
-            client = TestClient(app)
 
             accepted = client.post(
                 "/sync",
-                headers={"Authorization": "Bearer sync-secret"},
+                headers={"Authorization": "Bearer test-worker-key"},
                 json={"source": "docs", "mode": "incremental"},
             )
-            missing = client.post("/sync", json={"source": "docs", "mode": "incremental"})
-            wrong = client.post(
+            missing = TestClient(client.app).post("/sync", json={"source": "docs", "mode": "incremental"})
+            wrong = TestClient(client.app).post(
                 "/sync",
                 headers={"Authorization": "Bearer wrong"},
                 json={"source": "docs", "mode": "incremental"},

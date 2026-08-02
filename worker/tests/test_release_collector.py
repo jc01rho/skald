@@ -119,15 +119,17 @@ class TestReleaseCollector:
         mock_skald = AsyncMock()
         mock_skald.upsert_memo.return_value = sample_memo
 
-        with patch.object(collector, "fetch_version_detail", new=AsyncMock(return_value=sample_release_detail)):
-            with patch.object(collector, "fetch_release_notes", new=AsyncMock(return_value=sample_release_notes)):
-                with patch.object(
-                    collector,
-                    "fetch_version_issues",
-                    new=AsyncMock(side_effect=[[sample_release_issue]] * 4),
-                ):
-                    with patch("skald_worker.collectors.release_collector.get_skald_client", return_value=mock_skald):
-                        await collector.sync_release(sample_release_summary)
+        with (
+            patch.object(collector, "fetch_version_detail", new=AsyncMock(return_value=sample_release_detail)),
+            patch.object(collector, "fetch_release_notes", new=AsyncMock(return_value=sample_release_notes)),
+            patch.object(
+                collector,
+                "fetch_version_issues",
+                new=AsyncMock(side_effect=[[sample_release_issue]] * 4),
+            ),
+            patch("skald_worker.collectors.release_collector.get_skald_client", return_value=mock_skald),
+        ):
+            await collector.sync_release(sample_release_summary)
 
         call_kwargs = mock_skald.upsert_memo.call_args.kwargs
         assert call_kwargs["reference_id"] == "spms:release:12065"
@@ -140,13 +142,32 @@ class TestReleaseCollector:
         mock_skald = AsyncMock()
         mock_skald.upsert_memo.return_value = sample_memo
 
-        with patch.object(collector, "fetch_versions", new=AsyncMock(return_value=[sample_release_summary])):
-            with patch.object(collector, "sync_release", new=AsyncMock(return_value=sample_memo)):
-                result = await collector.sync_all(max_versions=10)
+        with (
+            patch.object(collector, "fetch_versions", new=AsyncMock(return_value=[sample_release_summary])),
+            patch.object(collector, "sync_release", new=AsyncMock(return_value=sample_memo)),
+        ):
+            result = await collector.sync_all(max_versions=10)
 
         assert result["total"] == 1
         assert result["processed"] == 1
         assert result["failed"] == 0
+
+    @pytest.mark.asyncio
+    async def test_release_notes_http_500_is_counted(self, collector, sample_release_summary):
+        import httpx
+
+        request = httpx.Request("GET", "https://spms.test/api/releases/versions/12065/notes")
+        response = httpx.Response(500, request=request)
+        error = httpx.HTTPStatusError("server error", request=request, response=response)
+
+        with (
+            patch.object(collector, "fetch_versions", new=AsyncMock(return_value=[sample_release_summary])),
+            patch.object(collector, "fetch_version_detail", new=AsyncMock(return_value={"id": "12065"})),
+            patch.object(collector, "_request_with_retry", new=AsyncMock(side_effect=error)),
+        ):
+            result = await collector.sync_all(max_versions=10)
+
+        assert result == {"total": 1, "processed": 0, "failed": 1}
 
 
 class TestReleaseCollectorSingleton:

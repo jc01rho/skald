@@ -11,24 +11,25 @@ import {
 const Hash = z.string().regex(/^[0-9a-f]{64}$/)
 const ProjectId = z.string().uuid().optional()
 const Drift = z.number().int().min(0)
+const CanonicalTimestamp = z.string().datetime({ offset: false, precision: 3 })
 const LifecycleEvidence = z.object({
     memo_reference_id: z.string().min(1).max(512),
     absent: z.boolean(),
     reason: z.string().trim().min(1),
-    observed_at: z.string().datetime(),
+    observed_at: CanonicalTimestamp,
     exact_refetch: z.object({
         reference_id: z.string().min(1).max(512),
         outcome: z.literal('absent'),
-        checked_at: z.string().datetime(),
+        checked_at: CanonicalTimestamp,
         run_id: z.string().min(1).max(512),
         certificate_hash: Hash,
     }).strict().nullable().optional(),
     absence_proof: z.object({
         first_run_id: z.string().min(1).max(512),
-        first_observed_at: z.string().datetime(),
+        first_observed_at: CanonicalTimestamp,
         second_run_id: z.string().min(1).max(512),
-        second_observed_at: z.string().datetime(),
-        grace_deadline: z.string().datetime(),
+        second_observed_at: CanonicalTimestamp,
+        grace_deadline: CanonicalTimestamp,
     }).strict().nullable().optional(),
 }).strict()
 const Manifest = z.object({
@@ -48,8 +49,8 @@ const Manifest = z.object({
     relation_drift: Drift.default(0),
     claim_drift: Drift.default(0),
     memo_link_drift: Drift.default(0),
-    started_at: z.string().datetime(),
-    completed_at: z.string().datetime().nullable().optional(),
+    started_at: CanonicalTimestamp,
+    completed_at: CanonicalTimestamp.nullable().optional(),
     lifecycle_evidence: z.array(LifecycleEvidence).max(5000).default([]),
 }).strict()
 const PromotionQuery = z.object({ project_id: ProjectId, scope_key: z.string().min(1).max(512) })

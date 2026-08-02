@@ -1,7 +1,9 @@
 """Tests for Notion collector discovery behavior."""
 
+from datetime import datetime
+from unittest.mock import AsyncMock, MagicMock
+
 import pytest
-from unittest.mock import AsyncMock
 
 from skald_worker.collectors.notion_collector import NotionCollector
 
@@ -293,12 +295,17 @@ class TestNotionCollector:
             def record_sync_start(self, source: str) -> None:
                 assert source == "notion"
 
+            def get_cursor(self, source: str):
+                assert source == "notion"
+                return None
+
             def get_last_sync_time(self, source: str):
                 assert source == "notion"
                 return "should-not-be-used"
 
             def record_sync_success(self, source: str, **kwargs) -> None:
                 assert source == "notion"
+                assert kwargs["cursor"].endswith("Z")
 
             def record_sync_failure(self, source: str, error: str) -> None:  # pragma: no cover
                 raise AssertionError(error)
@@ -318,3 +325,64 @@ class TestNotionCollector:
 
         assert result == {"processed": 1, "failed": 0}
         assert seen_cutoff_times == [None]
+
+    @pytest.mark.asyncio
+    async def test_incremental_saved_cursor_compares_with_notion_timestamp(self, monkeypatch):
+        collector = NotionCollector(token="test-token", root_page_id="root-page")
+        sync_manager = MagicMock()
+        sync_manager.get_cursor.return_value = "2026-08-02T01:00:00.000Z"
+        monkeypatch.setattr(
+            "skald_worker.collectors.notion_collector.get_sync_state_manager",
+            lambda: sync_manager,
+        )
+        monkeypatch.setattr(collector, "_sync_page", AsyncMock(return_value=("skipped", None)))
+        monkeypatch.setattr(collector, "discover_child_pages", AsyncMock(return_value=[]))
+
+        result = await collector.sync_all()
+
+        assert result == {"processed": 0, "failed": 0}
+        cutoff = collector._sync_page.await_args.kwargs["cutoff_time"]
+        assert cutoff == datetime(2026, 8, 2, 1, 0, 0)
+
+    @pytest.mark.asyncio
+    async def test_sync_all_failed_page_records_failure_without_advancing_success(self, monkeypatch):
+        collector = NotionCollector(token="test-token", root_page_id="root-page")
+        sync_manager = MagicMock()
+        sync_manager.get_last_sync_time.return_value = None
+        monkeypatch.setattr(
+            "skald_worker.collectors.notion_collector.get_sync_state_manager",
+            lambda: sync_manager,
+        )
+        monkeypatch.setattr(collector, "_sync_page", AsyncMock(return_value=("failed", None)))
+        monkeypatch.setattr(collector, "discover_child_pages", AsyncMock(return_value=[]))
+
+        result = await collector.sync_all()
+
+        assert result == {"processed": 0, "failed": 1}
+        sync_manager.record_sync_failure.assert_called_once_with(
+            "notion",
+            "Notion sync completed with 1 failed pages",
+        )
+        sync_manager.record_sync_success.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_sync_all_discovery_failure_records_failure_and_propagates(self, monkeypatch):
+        collector = NotionCollector(token="test-token", root_page_id="root-page")
+        sync_manager = MagicMock()
+        sync_manager.get_last_sync_time.return_value = None
+        monkeypatch.setattr(
+            "skald_worker.collectors.notion_collector.get_sync_state_manager",
+            lambda: sync_manager,
+        )
+        monkeypatch.setattr(collector, "_sync_page", AsyncMock(return_value=("processed", {})))
+        monkeypatch.setattr(
+            collector,
+            "discover_child_pages",
+            AsyncMock(side_effect=RuntimeError("Notion pagination exhausted")),
+        )
+
+        with pytest.raises(RuntimeError, match="Notion pagination exhausted"):
+            await collector.sync_all()
+
+        sync_manager.record_sync_failure.assert_called_once_with("notion", "Notion pagination exhausted")
+        sync_manager.record_sync_success.assert_not_called()

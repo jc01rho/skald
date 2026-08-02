@@ -3,7 +3,12 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from skald_worker.clients.skald import SpecExactRefetchCertificate, SpecLifecycleEvidence, canonical_hash
+from skald_worker.clients.skald import (
+    SpecAbsenceProof,
+    SpecExactRefetchCertificate,
+    SpecLifecycleEvidence,
+    canonical_hash,
+)
 from skald_worker.collectors.docs_collector import DocsCollector
 from skald_worker.sync_state import SyncStateManager
 
@@ -128,20 +133,26 @@ def test_two_separated_complete_absence_runs_require_grace_and_survive_restart(t
     assert manager.finish_authoritative_reconciliation("spms-techs", "baseline", complete=True, completed_at=base) == ()
 
     manager.begin_authoritative_reconciliation("spms-techs", "absence-1")
-    assert manager.finish_authoritative_reconciliation(
-        "spms-techs", "absence-1", complete=True, completed_at=base + timedelta(hours=1)
-    ) == ()
+    assert (
+        manager.finish_authoritative_reconciliation(
+            "spms-techs", "absence-1", complete=True, completed_at=base + timedelta(hours=1)
+        )
+        == ()
+    )
 
     restarted = SyncStateManager(str(state_file))
     restarted.begin_authoritative_reconciliation("spms-techs", "absence-too-soon")
-    assert restarted.finish_authoritative_reconciliation(
-        "spms-techs",
-        "absence-too-soon",
-        complete=True,
-        completed_at=base + timedelta(hours=2),
-        minimum_interval=timedelta(hours=24),
-        grace_period=timedelta(hours=48),
-    ) == ()
+    assert (
+        restarted.finish_authoritative_reconciliation(
+            "spms-techs",
+            "absence-too-soon",
+            complete=True,
+            completed_at=base + timedelta(hours=2),
+            minimum_interval=timedelta(hours=24),
+            grace_period=timedelta(hours=48),
+        )
+        == ()
+    )
 
     restarted.begin_authoritative_reconciliation("spms-techs", "absence-2")
     assert restarted.finish_authoritative_reconciliation(
@@ -215,18 +226,23 @@ async def test_authoritative_all_submits_repeatable_manifest_and_server_owned_li
                         run_id=f"run-{endpoint}",
                         certificate_hash="0" * 64,
                     ),
+                    absence_proof=SpecAbsenceProof(
+                        first_run_id="absence-1",
+                        first_observed_at="2026-07-28T10:00:00.123456+00:00",
+                        second_run_id=f"run-{endpoint}",
+                        second_observed_at="2026-07-30T12:59:59.987654+00:00",
+                        grace_deadline="2026-07-30T10:00:00.123456+00:00",
+                    ),
                 )
-            ] if endpoint == "techs" else [],
+            ]
+            if endpoint == "techs"
+            else [],
         }
         for endpoint in ("functions", "techs", "information", "troubleshoots")
     }
-    collector.sync_authoritative_endpoint = AsyncMock(
-        side_effect=lambda endpoint, **kwargs: manifests[endpoint]
-    )
+    collector.sync_authoritative_endpoint = AsyncMock(side_effect=lambda endpoint, **kwargs: manifests[endpoint])
     skald = MagicMock()
-    skald.submit_spec_reconciliation_manifest = AsyncMock(
-        return_value=MagicMock(promotion_state="promoted")
-    )
+    skald.submit_spec_reconciliation_manifest = AsyncMock(return_value=MagicMock(promotion_state="promoted"))
 
     with patch("skald_worker.collectors.docs_collector.get_skald_client", return_value=skald):
         first = await collector.sync_authoritative_all(state_manager=manager)
@@ -252,6 +268,15 @@ async def test_authoritative_all_submits_repeatable_manifest_and_server_owned_li
     assert first["promotion_state"] == "promoted"
     assert second["promotion_state"] == "promoted"
     assert manager.state.get_source("spms-reconciliation").last_error is None
+    payload = first_request.to_payload()
+    assert payload["started_at"] == "2026-07-30T12:00:00.000Z"
+    assert payload["completed_at"].endswith("Z") and len(payload["completed_at"].split(".")[1]) == 4
+    assert payload["lifecycle_evidence"][0]["observed_at"] == "2026-07-30T13:00:00.000Z"
+    assert payload["lifecycle_evidence"][0]["exact_refetch"]["checked_at"] == "2026-07-30T12:59:59.123Z"
+    proof = payload["lifecycle_evidence"][0]["absence_proof"]
+    assert proof["first_observed_at"] == "2026-07-28T10:00:00.123Z"
+    assert proof["second_observed_at"] == "2026-07-30T12:59:59.987Z"
+    assert proof["grace_deadline"] == "2026-07-30T10:00:00.123Z"
 
 
 @pytest.mark.asyncio

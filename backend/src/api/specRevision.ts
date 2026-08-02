@@ -6,7 +6,6 @@ import { requirePromotedSpecScope, resolveEffectiveProject } from '@/middleware/
 
 import { SpecRevisionError, SpecRevisionService } from '@/services/specRevisionService'
 import { SpecPromotionStatus } from '@/entities/SpecPromotionState'
-import { Project } from '@/entities/Project'
 
 const Hash = z.string().regex(/^[0-9a-f]{64}$/)
 const NullableString = z.string().nullable()
@@ -218,9 +217,7 @@ specRevisionRouter.post('/spec-revisions/stage-and-publish', async (req, res) =>
     if (!parsed.success) return validationError(res, parsed.error)
     try {
         const project = await projectFor(req, parsed.data.project_id)
-        const projectId = project.uuid
-        const detachedProject = await DI.em.fork({ clear: true, useContext: false }).findOneOrFail(Project, { uuid: projectId })
-        const receipt = await new SpecRevisionService(DI.em).stageAndPublish(detachedProject, parsed.data as Parameters<SpecRevisionService['stageAndPublish']>[1])
+        const receipt = await new SpecRevisionService(DI.em).stageAndPublish(project, parsed.data as Parameters<SpecRevisionService['stageAndPublish']>[1])
         return res.status(receipt.idempotent_replay ? 200 : 201).json(receipt)
     } catch (error) {
         return sendError(res, error)

@@ -2,6 +2,7 @@
 
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import httpx
 import pytest
 
 from skald_worker.circuit_breaker import CircuitBreaker, CircuitBreakerConfig
@@ -159,10 +160,13 @@ class TestSkaldClient:
 
     @pytest.mark.asyncio
     async def test_client_error_does_not_open_shared_circuit(self):
-        breaker = CircuitBreaker("skald-api-test", CircuitBreakerConfig(
-            failure_threshold=1,
-            exclude_exceptions=(SkaldClientRequestError,),
-        ))
+        breaker = CircuitBreaker(
+            "skald-api-test",
+            CircuitBreakerConfig(
+                failure_threshold=1,
+                exclude_exceptions=(SkaldClientRequestError,),
+            ),
+        )
         client = SkaldClient(
             base_url="https://api.skald.test",
             api_key="test-api-key",
@@ -185,6 +189,40 @@ class TestSkaldClient:
 
         assert breaker.is_closed
         assert breaker.get_status()["failure_count"] == 0
+
+    @pytest.mark.asyncio
+    async def test_stage_and_publish_retries_transient_statuses_but_not_client_errors(self):
+        breaker = CircuitBreaker(
+            "stage-publish-retry-test",
+            CircuitBreakerConfig(failure_threshold=5, recovery_timeout=30.0, success_threshold=2),
+        )
+        client = SkaldClient(
+            base_url="https://api.skald.test",
+            api_key="test-api-key",
+            project_id="test-project-id",
+            max_retries=3,
+            retry_min_wait=0,
+            retry_max_wait=0,
+            circuit_breaker=breaker,
+        )
+        request = httpx.Request("POST", "https://api.skald.test/api/v1/spec-revisions/stage-and-publish")
+        responses = [
+            httpx.Response(503, request=request),
+            httpx.Response(408, request=request),
+            httpx.Response(201, request=request, json={"status": "published"}),
+        ]
+        client._client = MagicMock(is_closed=False)
+        client._client.request = AsyncMock(side_effect=responses)
+
+        response = await client._request_with_retry("POST", "/api/v1/spec-revisions/stage-and-publish", json={})
+
+        assert response.status_code == 201
+        assert client._client.request.await_count == 3
+
+        client._client.request = AsyncMock(return_value=httpx.Response(422, request=request, text="invalid payload"))
+        with pytest.raises(SkaldClientRequestError, match="invalid payload"):
+            await client._request_with_retry("POST", "/api/v1/spec-revisions/stage-and-publish", json={})
+        assert client._client.request.await_count == 1
 
     @pytest.mark.asyncio
     async def test_upsert_memo_creates_new(self, client, sample_memo):

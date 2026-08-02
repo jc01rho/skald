@@ -263,27 +263,30 @@ async def trigger_sync(
 
             result = await collector.sync_all(jql=jql, max_results=max_results)
 
-            # Record metrics
-            sync_jobs_total.labels(source="jira", status="success").inc()
             sync_job_duration_seconds.labels(source="jira").observe(time.perf_counter() - start_time)
             sync_items_processed_total.labels(source="jira", status="success").inc(result["processed"])
             sync_items_processed_total.labels(source="jira", status="failed").inc(result["failed"])
-
-            # Record sync state
-            sync_state_manager.record_sync_success(
-                "jira",
-                items_processed=result["processed"],
-                items_failed=result["failed"],
-                metadata={"jql": jql, "max_results": max_results},
-            )
-
-            return SyncResponse(
+            response = SyncResponse(
                 source="jira",
-                status="completed",
+                status="completed" if result["failed"] == 0 else "failed",
                 processed=result["processed"],
                 failed=result["failed"],
                 message=f"Synced {result['processed']} issues",
             )
+            if result["failed"] > 0:
+                sync_jobs_total.labels(source="jira", status="error").inc()
+                sync_state_manager.record_sync_failure(
+                    "jira", f"Incremental sync completed with {result['failed']} failed issues"
+                )
+                return JSONResponse(status_code=502, content=response.model_dump(mode="json"))
+            sync_jobs_total.labels(source="jira", status="success").inc()
+            sync_state_manager.record_sync_success(
+                "jira",
+                items_processed=result["processed"],
+                items_failed=0,
+                metadata={"jql": jql, "max_results": max_results},
+            )
+            return response
 
         elif request.source == "docs":
             if not settings.docs_enabled or not settings.spms_base_url:
@@ -303,7 +306,7 @@ async def trigger_sync(
                 response = SyncResponse(
                     source="docs",
                     mode="authoritative",
-                    status="completed" if result["complete"] else "incomplete",
+                    status="completed" if result["complete"] and total_failed == 0 else "incomplete",
                     processed=total_processed,
                     failed=total_failed,
                     run_id=result["run_id"],
@@ -313,7 +316,7 @@ async def trigger_sync(
                     progress={"by_type": result.get("by_type", {}), "errors": result.get("errors", [])},
                     message=f"Authoritative reconciliation observed {result['count']} documents",
                 )
-                if not result["complete"]:
+                if not result["complete"] or total_failed > 0:
                     failure_message = f"Authoritative reconciliation {result['run_id']} was incomplete"
                     sync_state_manager.record_sync_failure("docs_authoritative", failure_message)
                     sync_jobs_total.labels(source="docs", status="error").inc()
@@ -365,12 +368,13 @@ async def trigger_sync(
                     progress={"by_type": result.get("by_type", {})},
                     message=f"Synced {total_processed} documents in {request.mode} mode",
                 )
-                if total_failed and request.mode == "full_backfill":
+                if total_failed > 0:
                     sync_state_manager.record_sync_failure(
                         "docs",
                         f"{request.mode} completed with {total_failed} failed documents",
                     )
                     sync_jobs_total.labels(source="docs", status="error").inc()
+                    sync_job_duration_seconds.labels(source="docs").observe(time.perf_counter() - start_time)
                     sync_items_processed_total.labels(source="docs", status="success").inc(total_processed)
                     sync_items_processed_total.labels(source="docs", status="failed").inc(total_failed)
                     return JSONResponse(status_code=502, content=response.model_dump(mode="json"))
@@ -397,29 +401,24 @@ async def trigger_sync(
                 sync_jobs_total.labels(source="notion", status="error").inc()
                 raise integration_not_configured("Notion")
 
-            sync_state_manager.record_sync_start("notion")
             collector = get_notion_collector()
             result = await collector.sync_all()
 
-            sync_jobs_total.labels(source="notion", status="success").inc()
             sync_job_duration_seconds.labels(source="notion").observe(time.perf_counter() - start_time)
             sync_items_processed_total.labels(source="notion", status="success").inc(result["processed"])
             sync_items_processed_total.labels(source="notion", status="failed").inc(result["failed"])
-
-            sync_state_manager.record_sync_success(
-                "notion",
-                items_processed=result["processed"],
-                items_failed=result["failed"],
-                metadata={"root_page_id": settings.notion_root_page_id},
-            )
-
-            return SyncResponse(
+            response = SyncResponse(
                 source="notion",
-                status="completed",
+                status="completed" if result["failed"] == 0 else "failed",
                 processed=result["processed"],
                 failed=result["failed"],
                 message=f"Synced {result['processed']} Notion pages",
             )
+            if result["failed"] > 0:
+                sync_jobs_total.labels(source="notion", status="error").inc()
+                return JSONResponse(status_code=502, content=response.model_dump(mode="json"))
+            sync_jobs_total.labels(source="notion", status="success").inc()
+            return response
 
         else:
             from skald_worker.errors import bad_request
@@ -431,12 +430,14 @@ async def trigger_sync(
 
     except CircuitBreakerError as e:
         sync_jobs_total.labels(source=request.source, status="circuit_open").inc()
-        sync_state_manager.record_sync_failure(request.source, f"Circuit breaker open: {e.name}")
+        if request.source != "notion":
+            sync_state_manager.record_sync_failure(request.source, f"Circuit breaker open: {e.name}")
         circuit_breaker_rejections_total.labels(name=e.name).inc()
         raise circuit_breaker_open("Skald", e.recovery_time) from e
 
     except Exception as e:
         sync_jobs_total.labels(source=request.source, status="error").inc()
-        sync_state_manager.record_sync_failure(request.source, str(e))
+        if request.source != "notion":
+            sync_state_manager.record_sync_failure(request.source, str(e))
         logger.error("Sync failed", source=request.source, error=str(e))
         raise internal_error(f"Sync failed: {e}") from e

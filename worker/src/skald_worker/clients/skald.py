@@ -29,11 +29,9 @@ class SkaldClientRequestError(httpx.HTTPStatusError):
     """Non-retryable client error that must not mark Skald as unavailable."""
 
 
-
 def sha256_text(value: str) -> str:
     """Return the SHA256 digest of an exact UTF-8 string."""
     return hashlib.sha256(value.encode("utf-8")).hexdigest()
-
 
 
 def _legacy_reference_id_from_source(source: str | None, metadata: dict[str, Any] | None) -> str | None:
@@ -75,7 +73,6 @@ def _raise_for_status(response: httpx.Response) -> None:
             message = f"{message}: {detail}"
         raise SkaldClientRequestError(message, request=response.request, response=response)
     response.raise_for_status()
-
 
 
 @dataclass(frozen=True)
@@ -168,6 +165,7 @@ class SpecReconciliationManifestReceipt:
     run_id: str
     promotion_state: str
     idempotent_replay: bool
+
 
 class SkaldClient:
     """HTTP client for Skald API with automatic retry and circuit breaker."""
@@ -484,7 +482,9 @@ class SkaldClient:
             "claim_hash",
         )
         required_ids = ("source_id", "revision_id", "memo_uuid")
-        if data.get("status") != "published" or any(not isinstance(data.get(key), str) or not data[key] for key in required_text):
+        if data.get("status") != "published" or any(
+            not isinstance(data.get(key), str) or not data[key] for key in required_text
+        ):
             raise ValueError("Invalid stage-and-publish receipt")
         try:
             for key in required_ids:

@@ -18,6 +18,9 @@ def configure_startup(monkeypatch, scheduler, *, backfill: bool, authoritative: 
     monkeypatch.setattr(scheduler.settings, "notion_enabled", False)
     monkeypatch.setattr(scheduler.settings, "notion_token", "")
     monkeypatch.setattr(scheduler.settings, "notion_root_page_id", "")
+    state_manager = MagicMock()
+    state_manager.state = MagicMock()
+    monkeypatch.setattr(scheduler, "get_sync_state_manager", lambda: state_manager)
 
 
 @pytest.mark.asyncio
@@ -101,3 +104,70 @@ async def test_bootstrap_skips_idempotently_when_canonical_projection_exists(mon
 
     docs_collector.sync_all.assert_not_called()
     docs_collector.sync_authoritative_all.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_bootstrap_attempts_independent_sources_then_raises(monkeypatch):
+    import skald_worker.scheduler as scheduler
+
+    configure_startup(monkeypatch, scheduler, backfill=True, authoritative=False)
+    monkeypatch.setattr(scheduler.settings, "notion_enabled", True)
+    monkeypatch.setattr(scheduler.settings, "notion_token", "token")
+    monkeypatch.setattr(scheduler.settings, "notion_root_page_id", "root")
+    skald = AsyncMock()
+    monkeypatch.setattr(scheduler, "get_skald_client", lambda: skald)
+    spms = AsyncMock(side_effect=RuntimeError("SPMS startup failed"))
+    notion = AsyncMock(side_effect=RuntimeError("Notion startup failed"))
+    monkeypatch.setattr(scheduler, "_bootstrap_initial_spms_sync", spms)
+    monkeypatch.setattr(scheduler, "_bootstrap_initial_notion_sync", notion)
+    monkeypatch.setattr(scheduler, "_record_durable_failure", MagicMock())
+
+    with pytest.raises(ExceptionGroup) as exc_info:
+        await bootstrap_initial_full_sync()
+
+    assert [str(error) for error in exc_info.value.exceptions] == [
+        "SPMS startup failed",
+        "Notion startup failed",
+    ]
+    spms.assert_awaited_once_with(skald)
+    notion.assert_awaited_once_with(skald)
+
+
+@pytest.mark.asyncio
+async def test_scheduled_docs_failure_propagates_and_does_not_advance_last_run(monkeypatch):
+    import skald_worker.scheduler as scheduler
+
+    scheduler._last_runs.pop("docs", None)
+    collector = AsyncMock()
+    collector.sync_all.return_value = {"total": {"processed": 3, "failed": 1}}
+    monkeypatch.setattr(scheduler, "get_docs_collector", lambda: collector)
+    durable_failure = MagicMock()
+    monkeypatch.setattr(scheduler, "_record_durable_failure", durable_failure)
+
+    with pytest.raises(RuntimeError, match="docs sync completed with 1 failed items"):
+        await scheduler.docs_sync_job()
+
+    assert "docs" not in scheduler._last_runs
+    durable_failure.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_bootstrap_corrupt_state_prevents_startup_mutations(monkeypatch):
+    import skald_worker.scheduler as scheduler
+    from skald_worker.sync_state import SyncStateCorruptionError
+
+    configure_startup(monkeypatch, scheduler, backfill=True, authoritative=False)
+
+    class CorruptStateManager:
+        @property
+        def state(self):
+            raise SyncStateCorruptionError("corrupt state")
+
+    monkeypatch.setattr(scheduler, "get_sync_state_manager", lambda: CorruptStateManager())
+    spms = AsyncMock()
+    monkeypatch.setattr(scheduler, "_bootstrap_initial_spms_sync", spms)
+
+    with pytest.raises(SyncStateCorruptionError, match="corrupt state"):
+        await bootstrap_initial_full_sync()
+
+    spms.assert_not_awaited()

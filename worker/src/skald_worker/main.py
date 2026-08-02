@@ -1,10 +1,9 @@
 """Main FastAPI application entry point."""
 
-import asyncio
 import logging
 import time
 from collections.abc import AsyncGenerator
-from contextlib import asynccontextmanager, suppress
+from contextlib import asynccontextmanager
 
 import structlog
 from fastapi import FastAPI, Request, Response
@@ -37,9 +36,7 @@ def configure_logging() -> None:
 
     structlog.configure(
         processors=processors,
-        wrapper_class=structlog.make_filtering_bound_logger(
-            getattr(logging, settings.log_level.upper(), logging.INFO)
-        ),
+        wrapper_class=structlog.make_filtering_bound_logger(getattr(logging, settings.log_level.upper(), logging.INFO)),
         context_class=dict,
         logger_factory=structlog.PrintLoggerFactory(),
         cache_logger_on_first_use=True,
@@ -65,19 +62,15 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     # Initialize metrics
     init_metrics(version=__version__, environment=settings.environment)
 
-    # Start scheduler
+    # Run enabled startup mutations before exposing the service or starting periodic jobs.
+    await bootstrap_initial_full_sync()
     start_scheduler()
-    bootstrap_task = asyncio.create_task(bootstrap_initial_full_sync())
 
     try:
         yield
     finally:
         # Shutdown
         logger.info("Shutting down Skald Worker")
-        if not bootstrap_task.done():
-            bootstrap_task.cancel()
-            with suppress(asyncio.CancelledError):
-                await bootstrap_task
         stop_scheduler()
 
 

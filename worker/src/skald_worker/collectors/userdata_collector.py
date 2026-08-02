@@ -1,7 +1,10 @@
 """Customer userdata collector service for SPMS."""
 
-from datetime import datetime, timezone
+import re
+import unicodedata
+from datetime import UTC, datetime
 from typing import Any
+from urllib.parse import quote
 
 import httpx
 import structlog
@@ -17,6 +20,22 @@ DEFAULT_RETRY_MIN_WAIT = 1.0
 DEFAULT_RETRY_MAX_WAIT = 30.0
 
 
+def _normalize_text(value: Any) -> str:
+    """Normalize external text while removing control and Unicode whitespace hazards."""
+    normalized = unicodedata.normalize("NFKC", str(value or ""))
+    return " ".join(part for part in re.split(r"[\s\x00-\x1f\x7f]+", normalized.strip()) if part)
+
+
+def _userdata_identity(item: dict[str, Any]) -> tuple[str, str]:
+    project_code = _normalize_text(item.get("projectCode"))
+    reference = _normalize_text(item.get("reference"))
+    identity = project_code or reference
+    if not identity:
+        raise ValueError("Userdata projectCode/reference must not be empty")
+    sanitized = quote(re.sub(r"\s+", "-", identity), safe="-._~")
+    return project_code or identity, sanitized
+
+
 def _format_userdata_timestamp(value: Any) -> str:
     if value in (None, ""):
         return ""
@@ -24,7 +43,7 @@ def _format_userdata_timestamp(value: Any) -> str:
         timestamp = int(value) / 1000
     except (TypeError, ValueError):
         return str(value)
-    return datetime.fromtimestamp(timestamp, tz=timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
+    return datetime.fromtimestamp(timestamp, tz=UTC).strftime("%Y-%m-%d %H:%M:%S UTC")
 
 
 class UserdataCollector:
@@ -76,17 +95,17 @@ class UserdataCollector:
             return response.json()
         except httpx.HTTPError as exc:
             logger.error("Failed to fetch userdata", error=str(exc))
-            return []
+            raise
 
     def build_reference_id(self, item: dict[str, Any]) -> str:
-        project_code = str(item.get("projectCode", ""))
-        return f"spms:userdata:{project_code}"
+        _, identity = _userdata_identity(item)
+        return f"spms:userdata:{identity}"
 
     def userdata_to_markdown(self, item: dict[str, Any]) -> tuple[str, str, dict[str, Any], list[str]]:
-        project_code = str(item.get("projectCode", ""))
-        site = str(item.get("site", ""))
-        product = str(item.get("product", ""))
-        version = str(item.get("version", ""))
+        project_code, _ = _userdata_identity(item)
+        site = _normalize_text(item.get("site"))
+        product = _normalize_text(item.get("product"))
+        version = _normalize_text(item.get("version"))
         title = f"{site} {project_code} 고객 사용자 데이터".strip()
         collected_at = _format_userdata_timestamp(item.get("timestamp"))
 
@@ -97,6 +116,7 @@ class UserdataCollector:
             "product": product,
             "version": version,
             "timestamp": item.get("timestamp"),
+            "reference": _normalize_text(item.get("reference")),
             "collected_at": collected_at,
             "source_url": f"{self.base_url}/api/userdata",
         }
@@ -104,6 +124,12 @@ class UserdataCollector:
         tags = ["userdata", product, version, site]
         tags = [tag for tag in tags if tag]
         tags = list(dict.fromkeys(tags))
+        clients = [_normalize_text(value) for value in item.get("client", [])]
+        clients = [value for value in clients if value]
+        languages = [_normalize_text(value) for value in item.get("language", [])]
+        languages = [value for value in languages if value]
+        frameworks = [_normalize_text(value) for value in item.get("framework", [])]
+        frameworks = [value for value in frameworks if value]
 
         lines = [f"# {title}", "", "## 고객 정보", "", "| Field | Value |", "|-------|-------|"]
         lines.append(f"| Project Code | {project_code} |")
@@ -113,29 +139,31 @@ class UserdataCollector:
         lines.append(f"| Collected At | {collected_at} |")
         lines.append("")
 
-        lines.extend([
-            "## 사용량 통계",
-            "",
-            "| Metric | Value |",
-            "|--------|-------|",
-            f"| Users | {item.get('users')} |",
-            f"| User Groups | {item.get('userGroups')} |",
-            f"| Projects | {item.get('projects')} |",
-            f"| Analyses | {item.get('analyses')} |",
-            f"| Issues | {item.get('issues')} |",
-            "",
-            "## 사용 클라이언트",
-            "",
-            *([f"- {value}" for value in item.get("client", [])] or ["- 없음"]),
-            "",
-            "## 사용 언어",
-            "",
-            *([f"- {value}" for value in item.get("language", [])] or ["- 없음"]),
-            "",
-            "## 사용 프레임워크",
-            "",
-            *([f"- {value}" for value in item.get("framework", [])] or ["- 없음"]),
-        ])
+        lines.extend(
+            [
+                "## 사용량 통계",
+                "",
+                "| Metric | Value |",
+                "|--------|-------|",
+                f"| Users | {item.get('users')} |",
+                f"| User Groups | {item.get('userGroups')} |",
+                f"| Projects | {item.get('projects')} |",
+                f"| Analyses | {item.get('analyses')} |",
+                f"| Issues | {item.get('issues')} |",
+                "",
+                "## 사용 클라이언트",
+                "",
+                *([f"- {value}" for value in clients] or ["- 없음"]),
+                "",
+                "## 사용 언어",
+                "",
+                *([f"- {value}" for value in languages] or ["- 없음"]),
+                "",
+                "## 사용 프레임워크",
+                "",
+                *([f"- {value}" for value in frameworks] or ["- 없음"]),
+            ]
+        )
 
         return title, "\n".join(lines), metadata, tags
 

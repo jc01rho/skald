@@ -111,9 +111,7 @@ class NotionCollector:
         self.max_retries = max_retries
         self.retry_min_wait = retry_min_wait
         self.retry_max_wait = retry_max_wait
-        self.rate_limit_rps = (
-            rate_limit_rps if rate_limit_rps is not None else settings.notion_rate_limit_rps
-        )
+        self.rate_limit_rps = rate_limit_rps if rate_limit_rps is not None else settings.notion_rate_limit_rps
 
         self._client: AsyncClient | None = None
         self._last_request_time = 0.0
@@ -302,104 +300,97 @@ class NotionCollector:
 
         discovered_pages: list[dict[str, Any]] = []
 
-        try:
-            blocks = await self.fetch_all_block_children(page_id)
-            for block in blocks:
-                block_type = block.get("type")
+        blocks = await self.fetch_all_block_children(page_id)
+        for block in blocks:
+            block_type = block.get("type")
 
-                if block_type == "child_page":
-                    child_page_id = block.get("id")
-                    if not child_page_id or child_page_id in seen_page_ids:
-                        continue
+            if block_type == "child_page":
+                child_page_id = block.get("id")
+                if not child_page_id or child_page_id in seen_page_ids:
+                    continue
 
-                    page_metadata = await self.fetch_page(child_page_id)
-                    child_title = self._extract_page_title(page_metadata)
-                    discovered_pages.append(
-                        {
-                            "id": child_page_id,
-                            "title": child_title,
-                            "last_edited_time": page_metadata.get("last_edited_time"),
-                            "depth": current_depth + 1,
-                            "parent_id": page_id,
-                        }
+                page_metadata = await self.fetch_page(child_page_id)
+                child_title = self._extract_page_title(page_metadata)
+                discovered_pages.append(
+                    {
+                        "id": child_page_id,
+                        "title": child_title,
+                        "last_edited_time": page_metadata.get("last_edited_time"),
+                        "depth": current_depth + 1,
+                        "parent_id": page_id,
+                    }
+                )
+                seen_page_ids.add(child_page_id)
+
+                if len(discovered_pages) >= self.max_pages:
+                    logger.warning(
+                        "Max pages limit reached during child page discovery",
+                        max_pages=self.max_pages,
                     )
-                    seen_page_ids.add(child_page_id)
+                    break
 
-                    if len(discovered_pages) >= self.max_pages:
-                        logger.warning(
-                            "Max pages limit reached during child page discovery",
-                            max_pages=self.max_pages,
-                        )
-                        break
+                nested_pages = await self.discover_child_pages(
+                    child_page_id,
+                    current_depth=current_depth + 1,
+                    seen_page_ids=seen_page_ids,
+                )
+                discovered_pages.extend(nested_pages)
 
-                    nested_pages = await self.discover_child_pages(
-                        child_page_id,
-                        current_depth=current_depth + 1,
-                        seen_page_ids=seen_page_ids,
+                if len(discovered_pages) >= self.max_pages:
+                    logger.warning(
+                        "Max pages limit reached after recursive discovery",
+                        max_pages=self.max_pages,
                     )
-                    discovered_pages.extend(nested_pages)
+                    break
 
-                    if len(discovered_pages) >= self.max_pages:
-                        logger.warning(
-                            "Max pages limit reached after recursive discovery",
-                            max_pages=self.max_pages,
-                        )
-                        break
+                continue
 
+            if block_type != "child_database":
+                continue
+
+            database_id = block.get("id")
+            if not database_id:
+                continue
+
+            remaining_slots = self.max_pages - len(discovered_pages)
+            if remaining_slots <= 0:
+                logger.warning(
+                    "Max pages limit reached during database page discovery",
+                    max_pages=self.max_pages,
+                )
+                break
+
+            database_entries = await self.fetch_all_database_entries(
+                database_id,
+                max_results=remaining_slots,
+            )
+
+            for entry in database_entries:
+                entry_id = entry.get("id")
+                if not entry_id or entry_id in seen_page_ids:
                     continue
 
-                if block_type != "child_database":
-                    continue
+                entry_title = self._extract_page_title(entry)
+                discovered_pages.append(
+                    {
+                        "id": entry_id,
+                        "title": entry_title,
+                        "last_edited_time": entry.get("last_edited_time"),
+                        "depth": current_depth + 1,
+                        "parent_id": page_id,
+                    }
+                )
+                seen_page_ids.add(entry_id)
 
-                database_id = block.get("id")
-                if not database_id:
-                    continue
-
-                remaining_slots = self.max_pages - len(discovered_pages)
-                if remaining_slots <= 0:
+                if len(discovered_pages) >= self.max_pages:
                     logger.warning(
                         "Max pages limit reached during database page discovery",
                         max_pages=self.max_pages,
                     )
                     break
 
-                database_entries = await self.fetch_all_database_entries(
-                    database_id,
-                    max_results=remaining_slots,
-                )
-
-                for entry in database_entries:
-                    entry_id = entry.get("id")
-                    if not entry_id or entry_id in seen_page_ids:
-                        continue
-
-                    entry_title = self._extract_page_title(entry)
-                    discovered_pages.append(
-                        {
-                            "id": entry_id,
-                            "title": entry_title,
-                            "last_edited_time": entry.get("last_edited_time"),
-                            "depth": current_depth + 1,
-                            "parent_id": page_id,
-                        }
-                    )
-                    seen_page_ids.add(entry_id)
-
-                    if len(discovered_pages) >= self.max_pages:
-                        logger.warning(
-                            "Max pages limit reached during database page discovery",
-                            max_pages=self.max_pages,
-                        )
-                        break
-
-                if len(discovered_pages) >= self.max_pages:
-                    break
-        except Exception as exc:
-            logger.error(
-                "Failed to discover child pages",
-                page_id=page_id,
-                error=str(exc),
-            )
+            if len(discovered_pages) >= self.max_pages:
+                break
 
         return discovered_pages[: self.max_pages]
 
@@ -514,12 +505,22 @@ class NotionCollector:
             return {"processed": 0, "failed": 0}
 
         sync_manager = get_sync_state_manager()
+        run_started_at = datetime.now(UTC)
         sync_manager.record_sync_start("notion")
 
-        last_sync_time = None if force_full else sync_manager.get_last_sync_time("notion")
+        last_sync_time = None
+        if not force_full:
+            cursor = sync_manager.get_cursor("notion")
+            if isinstance(cursor, str) and cursor:
+                last_sync_time = _parse_timestamp(cursor)
+                if last_sync_time is None:
+                    raise ValueError("Invalid persisted Notion sync cursor")
+            else:
+                last_sync_time = sync_manager.get_last_sync_time("notion")
         processed = 0
         failed = 0
         skipped = 0
+        failure_recording_started = False
 
         logger.info(
             "Starting Notion sync",
@@ -571,28 +572,43 @@ class NotionCollector:
                 else:
                     skipped += 1
 
+            if failed > 0:
+                error_message = f"Notion sync completed with {failed} failed pages"
+                failure_recording_started = True
+                sync_manager.record_sync_failure("notion", error_message)
+                logger.error(
+                    "Notion sync completed with failures",
+                    processed=processed,
+                    failed=failed,
+                    skipped=skipped,
+                )
+                return {"processed": processed, "failed": failed}
+
             sync_manager.record_sync_success(
                 "notion",
                 items_processed=processed,
-                items_failed=failed,
+                items_failed=0,
                 metadata={
                     "skipped": skipped,
                     "root_page_id": self.root_page_id,
+                    "watermark": run_started_at.isoformat(timespec="milliseconds").replace("+00:00", "Z"),
                 },
+                cursor=run_started_at.isoformat(timespec="milliseconds").replace("+00:00", "Z"),
             )
 
             logger.info(
                 "Notion sync completed",
                 processed=processed,
-                failed=failed,
+                failed=0,
                 skipped=skipped,
             )
-            return {"processed": processed, "failed": failed}
+            return {"processed": processed, "failed": 0}
         except Exception as exc:
             error_message = str(exc)
-            sync_manager.record_sync_failure("notion", error_message)
+            if not failure_recording_started:
+                sync_manager.record_sync_failure("notion", error_message)
             logger.error("Notion sync failed", error=error_message)
-            return {"processed": processed, "failed": failed + 1}
+            raise
 
 
 _notion_collector: NotionCollector | None = None

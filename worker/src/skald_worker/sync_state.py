@@ -5,6 +5,8 @@ already synced items after worker restarts.
 """
 
 import json
+import os
+import tempfile
 from dataclasses import asdict, dataclass, field
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -15,6 +17,15 @@ import structlog
 from skald_worker.config import settings
 
 logger = structlog.get_logger(__name__)
+
+
+class SyncStateCorruptionError(RuntimeError):
+    """Raised when durable sync state exists but cannot be safely loaded."""
+def _rfc3339_millis(value: datetime | None = None) -> str:
+    timestamp = value or datetime.now(UTC)
+    if timestamp.tzinfo is None:
+        timestamp = timestamp.replace(tzinfo=UTC)
+    return timestamp.astimezone(UTC).isoformat(timespec="milliseconds").replace("+00:00", "Z")
 
 
 @dataclass
@@ -46,8 +57,8 @@ class SyncState:
 
     version: str = "1.0"
     sources: dict[str, SourceSyncState] = field(default_factory=dict)
-    created_at: str = field(default_factory=lambda: datetime.utcnow().isoformat() + "Z")
-    updated_at: str = field(default_factory=lambda: datetime.utcnow().isoformat() + "Z")
+    created_at: str = field(default_factory=_rfc3339_millis)
+    updated_at: str = field(default_factory=_rfc3339_millis)
 
     def get_source(self, source_name: str) -> SourceSyncState:
         """Get or create sync state for a source."""
@@ -77,8 +88,8 @@ class SyncState:
         return cls(
             version=data.get("version", "1.0"),
             sources=sources,
-            created_at=data.get("created_at", datetime.utcnow().isoformat() + "Z"),
-            updated_at=data.get("updated_at", datetime.utcnow().isoformat() + "Z"),
+            created_at=data.get("created_at", _rfc3339_millis()),
+            updated_at=data.get("updated_at", _rfc3339_millis()),
         )
 
 
@@ -98,7 +109,7 @@ class SyncStateManager:
         return self._state
 
     def _load(self) -> SyncState:
-        """Load sync state from file."""
+        """Load sync state from file, failing closed when durable evidence is corrupt."""
         if not self.state_file.exists():
             logger.info("No sync state file found, starting fresh", path=str(self.state_file))
             return SyncState()
@@ -106,40 +117,58 @@ class SyncStateManager:
         try:
             with open(self.state_file) as f:
                 data = json.load(f)
+            if not isinstance(data, dict):
+                raise TypeError("sync state root must be an object")
             state = SyncState.from_dict(data)
-            logger.info(
-                "Loaded sync state",
+        except Exception as exc:
+            logger.error(
+                "Failed to load durable sync state",
                 path=str(self.state_file),
-                sources=list(state.sources.keys()),
+                error=str(exc),
             )
-            return state
-        except (json.JSONDecodeError, OSError) as e:
-            logger.warning(
-                "Failed to load sync state, starting fresh",
-                path=str(self.state_file),
-                error=str(e),
-            )
-            return SyncState()
+            raise SyncStateCorruptionError(f"Corrupt sync state at {self.state_file}: {exc}") from exc
+
+        logger.info(
+            "Loaded sync state",
+            path=str(self.state_file),
+            sources=list(state.sources.keys()),
+        )
+        return state
 
     def save(self) -> None:
         """Save sync state to file."""
         if self._state is None:
             return
 
-        self._state.updated_at = datetime.utcnow().isoformat() + "Z"
+        self._state.updated_at = _rfc3339_millis()
 
         try:
-            # Ensure directory exists
-            self.state_file.parent.mkdir(parents=True, exist_ok=True)
+            self.state_file.parent.mkdir(mode=0o770, parents=True, exist_ok=True)
 
-            # Write atomically via temp file
-            temp_file = self.state_file.with_suffix(".tmp")
-            with open(temp_file, "w") as f:
-                json.dump(self._state.to_dict(), f, indent=2)
-
-            # Atomic rename
-            temp_file.replace(self.state_file)
-
+            # Keep the temporary file on the same volume so os.replace remains atomic.
+            descriptor, temp_name = tempfile.mkstemp(
+                dir=self.state_file.parent,
+                prefix=f".{self.state_file.name}.",
+                suffix=".tmp",
+            )
+            temp_file = Path(temp_name)
+            try:
+                os.fchmod(descriptor, 0o660)
+                with os.fdopen(descriptor, "w") as file_handle:
+                    descriptor = -1
+                    json.dump(self._state.to_dict(), file_handle, indent=2)
+                    file_handle.flush()
+                    os.fsync(file_handle.fileno())
+                os.replace(temp_file, self.state_file)
+                directory_fd = os.open(self.state_file.parent, os.O_RDONLY)
+                try:
+                    os.fsync(directory_fd)
+                finally:
+                    os.close(directory_fd)
+            finally:
+                if descriptor >= 0:
+                    os.close(descriptor)
+                temp_file.unlink(missing_ok=True)
             self._dirty = False
             logger.debug("Saved sync state", path=str(self.state_file))
 
@@ -175,7 +204,7 @@ class SyncStateManager:
             source: Source name
         """
         source_state = self.state.get_source(source)
-        source_state.last_sync_time = datetime.utcnow().isoformat() + "Z"
+        source_state.last_sync_time = _rfc3339_millis()
         self._dirty = True
 
     def record_sync_success(
@@ -196,7 +225,7 @@ class SyncStateManager:
             metadata: Optional additional metadata
         """
         source_state = self.state.get_source(source)
-        now = datetime.utcnow().isoformat() + "Z"
+        now = _rfc3339_millis()
 
         source_state.last_successful_sync = now
         source_state.items_processed = items_processed
@@ -226,7 +255,7 @@ class SyncStateManager:
         """
         source_state = self.state.get_source(source)
         source_state.last_error = error
-        source_state.last_sync_time = datetime.utcnow().isoformat() + "Z"
+        source_state.last_sync_time = _rfc3339_millis()
 
         self._dirty = True
         self.save()
@@ -349,9 +378,9 @@ class SyncStateManager:
             if prior is None:
                 source_state.absence_evidence[source_key] = {
                     "first_absent_run_id": run_id,
-                    "first_absent_at": now.isoformat(),
+                    "first_absent_at": _rfc3339_millis(now),
                     "last_absent_run_id": run_id,
-                    "last_absent_at": now.isoformat(),
+                    "last_absent_at": _rfc3339_millis(now),
                     "complete_absence_runs": 1,
                     "locator": source_state.authoritative_locators.get(source_key),
                 }
@@ -368,7 +397,7 @@ class SyncStateManager:
                 **prior,
                 "locator": prior.get("locator") or source_state.authoritative_locators.get(source_key),
                 "last_absent_run_id": run_id,
-                "last_absent_at": now.isoformat(),
+                "last_absent_at": _rfc3339_millis(now),
                 "complete_absence_runs": runs,
             }
             source_state.absence_evidence[source_key] = evidence

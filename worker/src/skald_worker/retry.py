@@ -11,6 +11,7 @@ from tenacity import (
     before_sleep_log,
     retry,
     retry_any,
+    retry_if_exception,
     retry_if_exception_type,
     stop_after_attempt,
     wait_exponential,
@@ -32,7 +33,7 @@ RETRYABLE_EXCEPTIONS = (
 )
 
 # HTTP status codes that should trigger a retry
-RETRYABLE_STATUS_CODES = {429, 500, 502, 503, 504}
+RETRYABLE_STATUS_CODES = {408, 429}
 
 
 def is_retryable_httpx_error(exc: BaseException) -> bool:
@@ -48,14 +49,13 @@ def is_retryable_httpx_error(exc: BaseException) -> bool:
         return True
 
     if isinstance(exc, httpx.HTTPStatusError):
-        return exc.response.status_code in RETRYABLE_STATUS_CODES
+        status_code = exc.response.status_code
+        return status_code in RETRYABLE_STATUS_CODES or 500 <= status_code < 600
 
     return False
 
 
-def retry_if_retryable_httpx_error(exc: BaseException) -> bool:
-    """Tenacity retry predicate for httpx errors."""
-    return is_retryable_httpx_error(exc)
+retry_if_retryable_httpx_error = retry_if_exception(is_retryable_httpx_error)
 
 
 # Default retry configuration for async HTTP calls

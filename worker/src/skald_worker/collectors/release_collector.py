@@ -1,6 +1,6 @@
 """Release status collector service for SPMS."""
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 from urllib.parse import quote
 
@@ -49,7 +49,7 @@ def _format_epoch_millis(value: Any) -> str:
     except (TypeError, ValueError):
         return str(value)
 
-    return datetime.fromtimestamp(timestamp, tz=timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
+    return datetime.fromtimestamp(timestamp, tz=UTC).strftime("%Y-%m-%d %H:%M:%S UTC")
 
 
 def _extract_option_values(values: Any) -> list[str]:
@@ -212,15 +212,15 @@ class ReleaseCollector:
             return response.json()
         except httpx.HTTPError as exc:
             logger.error("Failed to fetch release versions", error=str(exc))
-            return []
+            raise
 
-    async def fetch_version_detail(self, version_id: str) -> dict[str, Any] | None:
+    async def fetch_version_detail(self, version_id: str) -> dict[str, Any]:
         try:
             response = await self._request_with_retry("GET", f"/api/releases/versions/{version_id}")
             return response.json()
         except httpx.HTTPError as exc:
             logger.error("Failed to fetch release detail", version_id=version_id, error=str(exc))
-            return None
+            raise
 
     async def fetch_release_notes(self, version_id: str) -> dict[str, Any] | None:
         try:
@@ -231,10 +231,10 @@ class ReleaseCollector:
                 logger.info("Release notes not found", version_id=version_id)
                 return None
             logger.error("Failed to fetch release notes", version_id=version_id, error=str(exc))
-            return None
+            raise
         except httpx.HTTPError as exc:
             logger.error("Failed to fetch release notes", version_id=version_id, error=str(exc))
-            return None
+            raise
 
     async def fetch_version_issues(
         self,
@@ -261,7 +261,7 @@ class ReleaseCollector:
                 query=query,
                 error=str(exc),
             )
-            return []
+            raise
 
     def build_reference_id(self, version_id: str) -> str:
         return f"spms:release:{version_id}"
@@ -328,35 +328,37 @@ class ReleaseCollector:
             lines.append(f"| DevCenter ID | {detail.get('devcenterId')} |")
         lines.append("")
 
-        lines.extend([
-            "## 릴리즈 노트 메타데이터",
-            "",
-            "| Field | Value |",
-            "|-------|-------|",
-            f"| Status | {(release_notes or {}).get('status', '')} |",
-            f"| Updated At | {(release_notes or {}).get('date_updated', '')} |",
-            f"| Released On | {(release_notes or {}).get('released_on', '')} |",
-            "",
-            "## 릴리즈 노트",
-            "",
-            *_format_release_notes_items((release_notes or {}).get("all_desc")),
-            "",
-            "## 로드맵 이슈",
-            "",
-            *_format_issue_lines(roadmap_issues),
-            "",
-            "## 제품 요구사항",
-            "",
-            *_format_issue_lines(requirement_issues),
-            "",
-            "## 장애",
-            "",
-            *_format_issue_lines(incident_issues),
-            "",
-            "## 체커",
-            "",
-            *_format_issue_lines(checker_issues),
-        ])
+        lines.extend(
+            [
+                "## 릴리즈 노트 메타데이터",
+                "",
+                "| Field | Value |",
+                "|-------|-------|",
+                f"| Status | {(release_notes or {}).get('status', '')} |",
+                f"| Updated At | {(release_notes or {}).get('date_updated', '')} |",
+                f"| Released On | {(release_notes or {}).get('released_on', '')} |",
+                "",
+                "## 릴리즈 노트",
+                "",
+                *_format_release_notes_items((release_notes or {}).get("all_desc")),
+                "",
+                "## 로드맵 이슈",
+                "",
+                *_format_issue_lines(roadmap_issues),
+                "",
+                "## 제품 요구사항",
+                "",
+                *_format_issue_lines(requirement_issues),
+                "",
+                "## 장애",
+                "",
+                *_format_issue_lines(incident_issues),
+                "",
+                "## 체커",
+                "",
+                *_format_issue_lines(checker_issues),
+            ]
+        )
 
         return title, "\n".join(lines), metadata, tags
 
@@ -368,7 +370,9 @@ class ReleaseCollector:
 
         release_notes = await self.fetch_release_notes(version_id)
         roadmap_issues = await self.fetch_version_issues(version_id, "제품 요구사항", ROADMAP_REQUIREMENTS_QUERY)
-        requirement_issues = await self.fetch_version_issues(version_id, "제품 요구사항", NON_ROADMAP_REQUIREMENTS_QUERY)
+        requirement_issues = await self.fetch_version_issues(
+            version_id, "제품 요구사항", NON_ROADMAP_REQUIREMENTS_QUERY
+        )
         incident_issues = await self.fetch_version_issues(version_id, "장애")
         checker_issues = await self.fetch_version_issues(version_id, "체커")
 

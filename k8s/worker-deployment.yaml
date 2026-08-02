@@ -1,3 +1,19 @@
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+    name: skald-worker-state
+    namespace: skald
+    labels:
+        app: skald
+        component: worker
+        environment: production
+spec:
+    accessModes:
+        - ReadWriteOnce
+    resources:
+        requests:
+            storage: 1Gi
+---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -9,6 +25,8 @@ metadata:
         environment: production
 spec:
     replicas: 1
+    strategy:
+        type: Recreate
     selector:
         matchLabels:
             app: skald
@@ -28,6 +46,7 @@ spec:
                 runAsNonRoot: true
                 runAsUser: 1000
                 fsGroup: 1000
+                fsGroupChangePolicy: OnRootMismatch
             containers:
                 - name: worker
                   image: ghcr.io/jc01rho/skald-worker-v2:latest
@@ -52,6 +71,13 @@ spec:
                       limits:
                           memory: '512Mi'
                           cpu: '500m'
+                  startupProbe:
+                      httpGet:
+                          path: /health
+                          port: http
+                      periodSeconds: 10
+                      timeoutSeconds: 5
+                      failureThreshold: 180
                   livenessProbe:
                       httpGet:
                           path: /health
@@ -77,9 +103,14 @@ spec:
                   volumeMounts:
                       - name: tmp
                         mountPath: /tmp
+                      - name: sync-state
+                        mountPath: /var/lib/skald-worker
             volumes:
                 - name: tmp
                   emptyDir: {}
+                - name: sync-state
+                  persistentVolumeClaim:
+                      claimName: skald-worker-state
             affinity:
                 nodeAffinity:
                     requiredDuringSchedulingIgnoredDuringExecution:

@@ -1,6 +1,5 @@
 """Tests for worker application lifespan behavior."""
 
-import asyncio
 from unittest.mock import MagicMock
 
 import pytest
@@ -16,12 +15,12 @@ async def test_lifespan_stops_scheduler_when_app_raises(monkeypatch):
     start_scheduler = MagicMock()
     stop_scheduler = MagicMock()
 
-    async def never_finishes():
-        await asyncio.sleep(60)
+    async def completes():
+        return None
 
     monkeypatch.setattr(main, "start_scheduler", start_scheduler)
     monkeypatch.setattr(main, "stop_scheduler", stop_scheduler)
-    monkeypatch.setattr(main, "bootstrap_initial_full_sync", never_finishes)
+    monkeypatch.setattr(main, "bootstrap_initial_full_sync", completes)
 
     manager = lifespan(MagicMock())
     await manager.__aenter__()
@@ -34,3 +33,25 @@ async def test_lifespan_stops_scheduler_when_app_raises(monkeypatch):
     start_scheduler.assert_called_once()
     stop_scheduler.assert_called_once()
     assert result is False
+
+
+@pytest.mark.asyncio
+async def test_lifespan_bootstrap_failure_prevents_scheduler_start(monkeypatch):
+    import skald_worker.main as main
+
+    start_scheduler = MagicMock()
+    stop_scheduler = MagicMock()
+
+    async def fails():
+        raise RuntimeError("bootstrap failed")
+
+    monkeypatch.setattr(main, "start_scheduler", start_scheduler)
+    monkeypatch.setattr(main, "stop_scheduler", stop_scheduler)
+    monkeypatch.setattr(main, "bootstrap_initial_full_sync", fails)
+
+    manager = lifespan(MagicMock())
+    with pytest.raises(RuntimeError, match="bootstrap failed"):
+        await manager.__aenter__()
+
+    start_scheduler.assert_not_called()
+    stop_scheduler.assert_not_called()

@@ -131,8 +131,9 @@ See `src/skald_worker/config.py` for the full settings model.
 | `NOTION_SYNC_CRON_HOUR`      | Daily Notion sync hour                 | `1`                                                                 |
 | `NOTION_SYNC_CRON_MINUTE`    | Daily Notion sync minute               | `0`                                                                 |
 | `WORKER_API_KEY`             | Optional auth key for worker endpoints | empty                                                               |
-| `SYNC_STATE_FILE`            | Local sync state persistence file      | `/tmp/skald-worker-sync-state.json`                                 |
+| `SYNC_STATE_FILE`            | Durable sync state persistence file    | `/var/lib/skald-worker/sync-state.json`                              |
 
+The root production Worker deployment mounts `/var/lib/skald-worker` from the `skald-worker-state` PVC, so successful cursors and authoritative reconciliation manifests survive Pod replacement and Deployment rollouts.
 ## Architecture
 
 ```text

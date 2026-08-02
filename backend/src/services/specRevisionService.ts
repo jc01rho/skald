@@ -354,6 +354,7 @@ export class SpecRevisionService {
         const normalized = this.validate(input)
         const transactionEm = this.rootEm.fork({ clear: true, useContext: false, keepTransactionContext: false })
         return transactionEm.transactional(async (em) => {
+            const managedProject = await em.findOneOrFail(Project, { uuid: project.uuid })
             await em.getConnection().execute('SELECT pg_advisory_xact_lock(hashtext(?), hashtext(?))', [
                 project.uuid,
                 input.source.source_key,
@@ -362,7 +363,7 @@ export class SpecRevisionService {
             let source = await em.findOne(
                 SpecSource,
                 {
-                    project,
+                    project: managedProject,
                     source_system: input.source.source_system,
                     source_type: input.source.source_type,
                     immutable_source_id: input.source.immutable_source_id,
@@ -373,8 +374,8 @@ export class SpecRevisionService {
 
             if (source) {
                 const replay = await em.findOne(SpecRevision, {
-                    project,
-                    source: { project, uuid: source.uuid },
+                    project: managedProject,
+                    source: { project: managedProject, uuid: source.uuid },
                     idempotency_key: input.idempotency_key,
                 })
                 if (replay) {
@@ -399,8 +400,8 @@ export class SpecRevisionService {
 
             let memo = source?.memo
             let createdMemo = false
-            if (!memo && input.memo.memo_uuid) memo = await em.findOne(Memo, { project, uuid: input.memo.memo_uuid }) || undefined
-            if (!memo) memo = await em.findOne(Memo, { project, client_reference_id: input.memo.client_reference_id }) || undefined
+            if (!memo && input.memo.memo_uuid) memo = await em.findOne(Memo, { project: managedProject, uuid: input.memo.memo_uuid }) || undefined
+            if (!memo) memo = await em.findOne(Memo, { project: managedProject, client_reference_id: input.memo.client_reference_id }) || undefined
             const now = new Date()
             if (!memo) {
                 memo = em.create(Memo, {
@@ -416,7 +417,7 @@ export class SpecRevisionService {
                     type: 'plaintext',
                     source: input.memo.source,
                     client_reference_id: input.memo.client_reference_id,
-                    project,
+                    project: managedProject,
                 })
                 em.persist(memo)
                 createdMemo = true
@@ -429,9 +430,9 @@ export class SpecRevisionService {
                 memo.source = input.memo.source
                 memo.client_reference_id = input.memo.client_reference_id
             }
-            let memoContent = await em.findOne(MemoContent, { project, memo })
+            let memoContent = await em.findOne(MemoContent, { project: managedProject, memo })
             if (!memoContent) {
-                memoContent = em.create(MemoContent, { uuid: randomUUID(), project, memo, content: input.memo.content })
+                memoContent = em.create(MemoContent, { uuid: randomUUID(), project: managedProject, memo, content: input.memo.content })
                 em.persist(memoContent)
             } else {
                 memoContent.content = input.memo.content
@@ -453,7 +454,7 @@ export class SpecRevisionService {
                     memo_projection_canonical_hash: input.revision.content_hash,
                     memo: memo,
                     active_revision: null,
-                    project,
+                    project: managedProject,
                 })
                 em.persist(source)
                 source.memo = memo
@@ -461,7 +462,7 @@ export class SpecRevisionService {
                 await em.flush()
             }
 
-            const latest = await em.findOne(SpecRevision, { project, source: { project, uuid: source.uuid } }, { orderBy: { revision_number: 'desc' } })
+            const latest = await em.findOne(SpecRevision, { project: managedProject, source: { project: managedProject, uuid: source.uuid } }, { orderBy: { revision_number: 'desc' } })
             const revision = em.create(SpecRevision, {
                 uuid: randomUUID(),
                 created_at: now,
@@ -488,7 +489,7 @@ export class SpecRevisionService {
                 relation_input_hash: input.revision.relation_input_hash,
                 canonical_hash: input.revision.relation_input_hash,
                 source,
-                project,
+                project: managedProject,
             })
             em.persist(revision)
             revision.source = source
@@ -496,12 +497,12 @@ export class SpecRevisionService {
             await em.flush()
             await em.nativeUpdate(
                 SpecRelation,
-                { project, unresolved_target_spec_id: source.spec_id, target_source: null },
+                { project: managedProject, unresolved_target_spec_id: source.spec_id, target_source: null },
                 { target_source: source, unresolved_target_spec_id: null }
             )
 
             for (const relation of normalized.relations) {
-                const target = await em.findOne(SpecSource, { project, spec_id: relation.target.source_key })
+                const target = await em.findOne(SpecSource, { project: managedProject, spec_id: relation.target.source_key })
                 const persistedRelation = em.create(SpecRelation, {
                     uuid: randomUUID(),
                     created_at: now,
@@ -516,7 +517,7 @@ export class SpecRevisionService {
                     source,
                     source_revision: revision,
                     target_source: target || null,
-                    project,
+                    project: managedProject,
                 })
                 em.persist(persistedRelation)
                 persistedRelation.source = source
@@ -547,7 +548,7 @@ export class SpecRevisionService {
                         rule_version: claim.rule_version,
                         source,
                         source_revision: revision,
-                        project,
+                        project: managedProject,
                     })
                 )
             }

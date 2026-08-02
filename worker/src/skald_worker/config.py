@@ -236,8 +236,8 @@ class Settings(BaseSettings):
 
     # Sync State Persistence
     sync_state_file: str = Field(
-        default="/tmp/skald-worker-sync-state.json",
-        description="Path to file for persisting sync state",
+        default="/var/lib/skald-worker/sync-state.json",
+        description="Path to durable file for persisting sync state",
     )
 
 

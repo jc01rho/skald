@@ -1,12 +1,13 @@
 """Tests for Jira collector."""
 
-import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
+
+import pytest
 
 from skald_worker.collectors.jira_collector import (
     JiraCollector,
-    jira_issue_to_markdown,
     get_jira_collector,
+    jira_issue_to_markdown,
 )
 
 
@@ -89,12 +90,14 @@ class TestJiraCollector:
         mock_jira = MagicMock()
         mock_jira.search_issues.return_value = [sample_jira_issue]
 
-        with patch.object(collector, "_jira", mock_jira):
-            with patch.object(collector, "_fetch_issues_sync", return_value=[sample_jira_issue]):
-                issues = await collector.fetch_issues(max_results=10)
+        with (
+            patch.object(collector, "_jira", mock_jira),
+            patch.object(collector, "_fetch_issues_sync", return_value=[sample_jira_issue]),
+        ):
+            issues = await collector.fetch_issues(max_results=10)
 
-                assert len(issues) == 1
-                assert issues[0].key == "TEST-123"
+            assert len(issues) == 1
+            assert issues[0].key == "TEST-123"
 
     @pytest.mark.asyncio
     async def test_sync_issue(self, collector, sample_jira_issue, sample_memo):
@@ -103,11 +106,11 @@ class TestJiraCollector:
         mock_skald.upsert_memo.return_value = sample_memo
 
         with patch("skald_worker.collectors.jira_collector.get_skald_client", return_value=mock_skald):
-            result = await collector.sync_issue(sample_jira_issue)
+            await collector.sync_issue(sample_jira_issue)
 
             mock_skald.upsert_memo.assert_called_once()
             call_kwargs = mock_skald.upsert_memo.call_args.kwargs
-            assert call_kwargs["reference_id"] == "jira:TEST-123"
+            assert call_kwargs["reference_id"] == "TEST-123"
             assert call_kwargs["source"] == "jira"
             assert "TEST-123" in call_kwargs["title"]
             assert "tags" in call_kwargs  # New: tags are now passed
@@ -150,12 +153,14 @@ class TestJiraCollector:
         mock_skald = AsyncMock()
         mock_skald.search.return_value = sample_search_results
 
-        with patch.object(collector, "_fetch_single_issue_sync", return_value=sample_jira_issue):
-            with patch("skald_worker.collectors.jira_collector.get_skald_client", return_value=mock_skald):
-                result = await collector.find_similar_issues("TEST-123", limit=5)
+        with (
+            patch.object(collector, "_fetch_single_issue_sync", return_value=sample_jira_issue),
+            patch("skald_worker.collectors.jira_collector.get_skald_client", return_value=mock_skald),
+        ):
+            result = await collector.find_similar_issues("TEST-123", limit=5)
 
-                assert result["issue_key"] == "TEST-123"
-                assert len(result["similar_issues"]) > 0
+            assert result["issue_key"] == "TEST-123"
+            assert len(result["similar_issues"]) > 0
 
 
 class TestJiraCollectorSingleton:

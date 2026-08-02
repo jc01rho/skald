@@ -27,6 +27,7 @@ from skald_worker.sync_state import SyncStateManager, get_sync_state_manager
 
 logger = structlog.get_logger(__name__)
 
+
 def _rfc3339_millis(value: datetime) -> str:
     return value.astimezone(UTC).isoformat(timespec="milliseconds").replace("+00:00", "Z")
 
@@ -172,7 +173,15 @@ def normalize_related_information(item: dict[str, Any], base_url: str) -> tuple[
         if previous and previous != relation:
             raise IncompleteSpmsDetailError(f"Conflicting duplicate related_info target: {immutable_id}")
         normalized[immutable_id] = relation
-    return tuple(sorted(normalized.values(), key=lambda relation: (int(relation.information_spms_id) if relation.information_spms_id.isdigit() else 2**63, relation.information_spms_id)))
+    return tuple(
+        sorted(
+            normalized.values(),
+            key=lambda relation: (
+                int(relation.information_spms_id) if relation.information_spms_id.isdigit() else 2**63,
+                relation.information_spms_id,
+            ),
+        )
+    )
 
 
 def extract_display_label(item: dict[str, Any]) -> tuple[str | None, str | None, str | None]:
@@ -214,6 +223,7 @@ def normalize_spec_relations(relations: tuple[dict[str, Any], ...]) -> tuple[dic
 
 def normalize_spec_claims(claims: tuple[dict[str, Any], ...]) -> tuple[dict[str, Any], ...]:
     """Match backend claim ordering before hashing and transport."""
+
     def sort_key(claim: dict[str, Any]) -> str:
         return canonical_json(
             [
@@ -229,7 +239,6 @@ def normalize_spec_claims(claims: tuple[dict[str, Any], ...]) -> tuple[dict[str,
         )
 
     return tuple(sorted(claims, key=sort_key))
-
 
 
 def html_to_markdown(html: str) -> str:
@@ -374,12 +383,11 @@ class DocsCollector:
         if updated_since:
             params["updatedSince"] = updated_since
 
-        try:
-            response = await self._request_with_retry("GET", "/api/functions", params=params)
-            return response.json()
-        except httpx.HTTPError as e:
-            logger.error("Failed to fetch functions", error=str(e))
-            return []
+        response = await self._request_with_retry("GET", "/api/functions", params=params)
+        payload = response.json()
+        if not isinstance(payload, list):
+            raise ValueError("SPMS functions page is not a list")
+        return payload
 
     async def fetch_techs(
         self,
@@ -395,12 +403,11 @@ class DocsCollector:
         if updated_since:
             params["updatedSince"] = updated_since
 
-        try:
-            response = await self._request_with_retry("GET", "/api/techs", params=params)
-            return response.json()
-        except httpx.HTTPError as e:
-            logger.error("Failed to fetch techs", error=str(e))
-            return []
+        response = await self._request_with_retry("GET", "/api/techs", params=params)
+        payload = response.json()
+        if not isinstance(payload, list):
+            raise ValueError("SPMS techs page is not a list")
+        return payload
 
     async def fetch_information(
         self,
@@ -417,12 +424,11 @@ class DocsCollector:
         if updated_since:
             params["updatedSince"] = updated_since
 
-        try:
-            response = await self._request_with_retry("GET", "/api/information", params=params)
-            return response.json()
-        except httpx.HTTPError as e:
-            logger.error("Failed to fetch information", error=str(e))
-            return []
+        response = await self._request_with_retry("GET", "/api/information", params=params)
+        payload = response.json()
+        if not isinstance(payload, list):
+            raise ValueError("SPMS information page is not a list")
+        return payload
 
     async def fetch_screens(
         self,
@@ -439,12 +445,11 @@ class DocsCollector:
         if updated_since:
             params["updatedSince"] = updated_since
 
-        try:
-            response = await self._request_with_retry("GET", "/api/screens", params=params)
-            return response.json()
-        except httpx.HTTPError as e:
-            logger.error("Failed to fetch screens", error=str(e))
-            return []
+        response = await self._request_with_retry("GET", "/api/screens", params=params)
+        payload = response.json()
+        if not isinstance(payload, list):
+            raise ValueError("SPMS screens page is not a list")
+        return payload
 
     async def fetch_troubleshoots(
         self,
@@ -460,58 +465,51 @@ class DocsCollector:
         if updated_since:
             params["updatedSince"] = updated_since
 
-        try:
-            response = await self._request_with_retry("GET", "/api/troubleshoots", params=params)
-            return response.json()
-        except httpx.HTTPError as e:
-            logger.error("Failed to fetch troubleshoots", error=str(e))
-            return []
+        response = await self._request_with_retry("GET", "/api/troubleshoots", params=params)
+        payload = response.json()
+        if not isinstance(payload, list):
+            raise ValueError("SPMS troubleshoots page is not a list")
+        return payload
 
-    async def fetch_function_detail(self, function_id: str) -> dict[str, Any] | None:
+    async def fetch_function_detail(self, function_id: str) -> dict[str, Any]:
         """Fetch function detail from SPMS using function_id (e.g., SVR-MY-RISKY-RULE-R)."""
-        try:
-            response = await self._request_with_retry("GET", f"/api/functions/{function_id}")
-            return response.json()
-        except httpx.HTTPError as e:
-            logger.error("Failed to fetch function detail", function_id=function_id, error=str(e))
-            return None
-            return None
+        response = await self._request_with_retry("GET", f"/api/functions/{function_id}")
+        payload = response.json()
+        if not isinstance(payload, dict):
+            raise IncompleteSpmsDetailError("SPMS function detail is not an object")
+        return payload
 
-    async def fetch_tech_detail(self, tech_id: int) -> dict[str, Any] | None:
+    async def fetch_tech_detail(self, tech_id: int) -> dict[str, Any]:
         """Fetch tech document detail from SPMS."""
-        try:
-            response = await self._request_with_retry("GET", f"/api/techs/{tech_id}")
-            return response.json()
-        except httpx.HTTPError as e:
-            logger.error("Failed to fetch tech detail", tech_id=tech_id, error=str(e))
-            return None
+        response = await self._request_with_retry("GET", f"/api/techs/{tech_id}")
+        payload = response.json()
+        if not isinstance(payload, dict):
+            raise IncompleteSpmsDetailError("SPMS tech detail is not an object")
+        return payload
 
-    async def fetch_information_detail(self, info_id: int) -> dict[str, Any] | None:
+    async def fetch_information_detail(self, info_id: int) -> dict[str, Any]:
         """Fetch information detail from SPMS."""
-        try:
-            response = await self._request_with_retry("GET", f"/api/information/{info_id}")
-            return response.json()
-        except httpx.HTTPError as e:
-            logger.error("Failed to fetch information detail", info_id=info_id, error=str(e))
-            return None
+        response = await self._request_with_retry("GET", f"/api/information/{info_id}")
+        payload = response.json()
+        if not isinstance(payload, dict):
+            raise IncompleteSpmsDetailError("SPMS information detail is not an object")
+        return payload
 
-    async def fetch_screen_detail(self, screen_id: int) -> dict[str, Any] | None:
+    async def fetch_screen_detail(self, screen_id: int) -> dict[str, Any]:
         """Fetch screen detail from SPMS."""
-        try:
-            response = await self._request_with_retry("GET", f"/api/screens/{screen_id}")
-            return response.json()
-        except httpx.HTTPError as e:
-            logger.error("Failed to fetch screen detail", screen_id=screen_id, error=str(e))
-            return None
+        response = await self._request_with_retry("GET", f"/api/screens/{screen_id}")
+        payload = response.json()
+        if not isinstance(payload, dict):
+            raise IncompleteSpmsDetailError("SPMS screen detail is not an object")
+        return payload
 
-    async def fetch_troubleshoot_detail(self, troubleshoot_id: int) -> dict[str, Any] | None:
+    async def fetch_troubleshoot_detail(self, troubleshoot_id: int) -> dict[str, Any]:
         """Fetch troubleshoot detail from SPMS."""
-        try:
-            response = await self._request_with_retry("GET", f"/api/troubleshoots/{troubleshoot_id}")
-            return response.json()
-        except httpx.HTTPError as e:
-            logger.error("Failed to fetch troubleshoot detail", troubleshoot_id=troubleshoot_id, error=str(e))
-            return None
+        response = await self._request_with_retry("GET", f"/api/troubleshoots/{troubleshoot_id}")
+        payload = response.json()
+        if not isinstance(payload, dict):
+            raise IncompleteSpmsDetailError("SPMS troubleshoot detail is not an object")
+        return payload
 
     def item_to_markdown(self, item: dict[str, Any], item_type: str) -> tuple[str, str, dict[str, Any]]:
         """Convert SPMS item to markdown format for Skald memo."""
@@ -587,7 +585,7 @@ class DocsCollector:
             "source_url": f"{self.base_url}{url_path}" if url_path else "",
             "spms_id": item.get("id", ""),
             "search_text": normalize_search_text(title, category, description),
-            "title_tokens": sorted({title.strip(), *[part for part in title.replace('/', ' ').split() if part]} - {""}),
+            "title_tokens": sorted({title.strip(), *[part for part in title.replace("/", " ").split() if part]} - {""}),
         }
 
         if item_type in ("function", "functions"):
@@ -805,23 +803,19 @@ class DocsCollector:
                 full_item = await self.fetch_function_detail(function_id)
                 if not full_item:
                     raise IncompleteSpmsDetailError("Unable to fetch complete SPMS function detail")
-                if str(full_item.get("id")) != str(list_item_id) or str(full_item.get("function_id")) != str(function_id):
+                if str(full_item.get("id")) != str(list_item_id) or str(full_item.get("function_id")) != str(
+                    function_id
+                ):
                     raise IncompleteSpmsDetailError("SPMS function detail identity mismatch")
                 item = full_item
             if not is_complete_function_detail(item):
                 raise IncompleteSpmsDetailError("SPMS function detail is incomplete")
         elif item_id and item_type in ("tech", "techs") and "description" not in item:
-            full_item = await self.fetch_tech_detail(item_id)
-            if full_item:
-                item = full_item
+            item = await self.fetch_tech_detail(item_id)
         elif item_id and item_type == "information" and "Content" not in item:
-            full_item = await self.fetch_information_detail(item_id)
-            if full_item:
-                item = full_item
+            item = await self.fetch_information_detail(item_id)
         elif item_id and item_type in ("troubleshoot", "troubleshoots") and "issue_sum" not in item:
-            full_item = await self.fetch_troubleshoot_detail(item_id)
-            if full_item:
-                item = full_item
+            item = await self.fetch_troubleshoot_detail(item_id)
 
         title, content, metadata = self.item_to_markdown(item, item_type)
         skald = get_skald_client()
@@ -917,7 +911,7 @@ class DocsCollector:
             manifest = {
                 "run_id": run_id,
                 "endpoint": endpoint_type,
-                "started_at": datetime.now(UTC).isoformat(),
+                "started_at": _rfc3339_millis(datetime.now(UTC)),
                 "pages": [],
                 "ids": [],
                 "count": 0,
@@ -953,7 +947,11 @@ class DocsCollector:
                 manifest["errors"].append({"page": page, "stage": "drift", "duplicate_ids": duplicates})
             for item, item_id in zip(items, page_ids, strict=True):
                 if item_id:
-                    source_type = endpoint_type[:-1] if endpoint_type in {"functions", "techs", "troubleshoots"} else endpoint_type
+                    source_type = (
+                        endpoint_type[:-1]
+                        if endpoint_type in {"functions", "techs", "troubleshoots"}
+                        else endpoint_type
+                    )
                     source_key = f"spms:{source_type}:{item_id}"
                     manager.record_authoritative_presence(
                         source,
@@ -976,7 +974,7 @@ class DocsCollector:
 
         complete = manifest["terminal_page"] is not None and not manifest["errors"]
         manifest["complete"] = complete
-        manifest["completed_at"] = datetime.now(UTC).isoformat()
+        manifest["completed_at"] = _rfc3339_millis(datetime.now(UTC))
         manager.update_reconciliation_manifest(source, manifest)
         prior_absence_keys = set(manager.state.get_source(source).absence_evidence)
         candidates = manager.finish_authoritative_reconciliation(
@@ -1000,7 +998,7 @@ class DocsCollector:
                 )
             )
         for source_key, evidence in sorted(source_state.absence_evidence.items()):
-            checked_at = datetime.now(UTC).isoformat()
+            checked_at = _rfc3339_millis(datetime.now(UTC))
             exact_refetch = None
             absence_proof = None
             if source_key in candidate_keys:
@@ -1019,20 +1017,22 @@ class DocsCollector:
                         run_id=run_id,
                         certificate_hash=canonical_hash(certificate),
                     )
-                    first_observed_at = str(evidence["first_absent_at"])
+                    first_observed = datetime.fromisoformat(str(evidence["first_absent_at"]).replace("Z", "+00:00"))
                     absence_proof = SpecAbsenceProof(
                         first_run_id=str(evidence["first_absent_run_id"]),
-                        first_observed_at=first_observed_at,
+                        first_observed_at=_rfc3339_millis(first_observed),
                         second_run_id=str(evidence["last_absent_run_id"]),
-                        second_observed_at=str(evidence["last_absent_at"]),
-                        grace_deadline=(
-                            datetime.fromisoformat(first_observed_at.replace("Z", "+00:00")) + grace_period
-                        ).isoformat(),
+                        second_observed_at=_rfc3339_millis(
+                            datetime.fromisoformat(str(evidence["last_absent_at"]).replace("Z", "+00:00"))
+                        ),
+                        grace_deadline=_rfc3339_millis(first_observed + grace_period),
                     )
             lifecycle_evidence.append(
                 SpecLifecycleEvidence(
                     memo_reference_id=source_key,
-                    observed_at=str(evidence["last_absent_at"]),
+                    observed_at=_rfc3339_millis(
+                        datetime.fromisoformat(str(evidence["last_absent_at"]).replace("Z", "+00:00"))
+                    ),
                     absent=True,
                     reason="Absent from complete authoritative SPMS snapshot",
                     exact_refetch=exact_refetch,
@@ -1068,7 +1068,7 @@ class DocsCollector:
             for endpoint_type, manifest in by_type.items()
             for error in manifest["errors"]
         )
-        completed_at = datetime.now(UTC).isoformat()
+        completed_at = _rfc3339_millis(datetime.now(UTC))
         hash_input = {
             "endpoints": {
                 endpoint_type: {
@@ -1088,7 +1088,9 @@ class DocsCollector:
             for evidence in manifest["lifecycle_evidence"]:
                 exact_refetch = evidence.exact_refetch
                 if exact_refetch is not None:
-                    checked_at = _rfc3339_millis(datetime.fromisoformat(exact_refetch.checked_at.replace("Z", "+00:00")))
+                    checked_at = _rfc3339_millis(
+                        datetime.fromisoformat(exact_refetch.checked_at.replace("Z", "+00:00"))
+                    )
                     certificate_hash = canonical_hash(
                         {
                             "checked_at": checked_at,
@@ -1104,14 +1106,31 @@ class DocsCollector:
                         run_id=run_id,
                         certificate_hash=certificate_hash,
                     )
+                absence_proof = evidence.absence_proof
+                if absence_proof is not None:
+                    absence_proof = SpecAbsenceProof(
+                        first_run_id=absence_proof.first_run_id,
+                        first_observed_at=_rfc3339_millis(
+                            datetime.fromisoformat(absence_proof.first_observed_at.replace("Z", "+00:00"))
+                        ),
+                        second_run_id=absence_proof.second_run_id,
+                        second_observed_at=_rfc3339_millis(
+                            datetime.fromisoformat(absence_proof.second_observed_at.replace("Z", "+00:00"))
+                        ),
+                        grace_deadline=_rfc3339_millis(
+                            datetime.fromisoformat(absence_proof.grace_deadline.replace("Z", "+00:00"))
+                        ),
+                    )
                 lifecycle_evidence.append(
                     SpecLifecycleEvidence(
                         memo_reference_id=evidence.memo_reference_id,
-                        observed_at=evidence.observed_at,
+                        observed_at=_rfc3339_millis(
+                            datetime.fromisoformat(evidence.observed_at.replace("Z", "+00:00"))
+                        ),
                         absent=evidence.absent,
                         reason=evidence.reason,
                         exact_refetch=exact_refetch,
-                        absence_proof=evidence.absence_proof,
+                        absence_proof=absence_proof,
                     )
                 )
         request = SpecReconciliationManifestRequest(
@@ -1130,7 +1149,10 @@ class DocsCollector:
             relation_drift=0,
             claim_drift=0,
             memo_link_drift=sum(1 for error in errors if error.get("stage") == "drift"),
-            started_at=min(str(manifest["started_at"]) for manifest in by_type.values()),
+            started_at=min(
+                _rfc3339_millis(datetime.fromisoformat(str(manifest["started_at"]).replace("Z", "+00:00")))
+                for manifest in by_type.values()
+            ),
             completed_at=completed_at if complete else None,
             lifecycle_evidence=tuple(lifecycle_evidence) if complete else (),
         )
@@ -1186,8 +1208,7 @@ class DocsCollector:
 
         fetch_method = fetch_methods.get(endpoint_type)
         if not fetch_method:
-            logger.error(f"Unknown endpoint type: {endpoint_type}")
-            return {"processed": 0, "failed": 0, "skipped": 0}
+            raise ValueError(f"Unknown endpoint type: {endpoint_type}")
 
         while processed + failed < max_items:
             items = await fetch_method(

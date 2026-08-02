@@ -136,6 +136,36 @@ describe('spec lifecycle API', () => {
         expect(submit.mock.calls[0][1].lifecycle_evidence[0]).not.toHaveProperty('absence_proof')
     })
 
+    it.each([
+        ['offset started_at', { started_at: '2026-07-30T12:00:00+00:00' }],
+        ['non-millisecond started_at', { started_at: '2026-07-30T12:00:00Z' }],
+        ['offset observed_at', {
+            lifecycle_evidence: [{
+                memo_reference_id: 'spec-1',
+                absent: false,
+                reason: 'present',
+                observed_at: '2026-07-30T13:00:00+00:00',
+            }],
+        }],
+    ])('rejects non-canonical reconciliation timestamps: %s', async (_name, override) => {
+        DI.em = {} as any
+        const submit = jest.spyOn(SpecLifecycleService.prototype, 'submitManifest')
+        const response = await request(app).post('/api/v1/spec-reconciliation/manifests').send({
+            run_id: 'run-invalid-time',
+            scope_key: 'github:specs',
+            authoritative: true,
+            complete: true,
+            manifest_hash: hash,
+            started_at: '2026-07-30T12:00:00.000Z',
+            completed_at: '2026-07-30T13:00:00.000Z',
+            lifecycle_evidence: [],
+            ...override,
+        })
+
+        expect(response.status).toBe(400)
+        expect(submit).not.toHaveBeenCalled()
+    })
+
     it('rejects incomplete manifests that try to publish lifecycle evidence', async () => {
         DI.em = {} as any
         jest.spyOn(SpecLifecycleService.prototype, 'submitManifest').mockRejectedValue(
