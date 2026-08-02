@@ -355,10 +355,13 @@ export class SpecRevisionService {
         const em = this.rootEm.fork({ clear: true, useContext: false, keepTransactionContext: false })
         const receipt = await em.transactional(async (em) => {
             const managedProject = await em.findOneOrFail(Project, { uuid: project.uuid })
-            await em.getConnection().execute('SELECT pg_advisory_xact_lock(hashtext(?), hashtext(?))', [
-                project.uuid,
-                input.source.source_key,
-            ])
+            const transaction = em.getTransactionContext()
+            await em.getConnection().execute(
+                'SELECT pg_advisory_xact_lock(hashtext(?), hashtext(?))',
+                [project.uuid, input.source.source_key],
+                'all',
+                transaction
+            )
 
             let source = await em.findOne(
                 SpecSource,
@@ -566,7 +569,9 @@ export class SpecRevisionService {
             await em.flush()
             const inserted = await em.getConnection().execute<Array<{ revision_id: string }>>(
                 `SELECT uuid AS revision_id FROM skald_spec_revision WHERE project_id = ? AND uuid = ?`,
-                [project.uuid, revision.uuid]
+                [project.uuid, revision.uuid],
+                'all',
+                transaction
             )
             if (inserted.length !== 1) {
                 throw new SpecRevisionError('PUBLICATION_NOT_PERSISTED', 'Canonical revision was not persisted', 503)
