@@ -101,6 +101,152 @@ function validInput(): StageAndPublishInput {
     }
 }
 
+type RelationRow = Record<string, any>
+
+function nativeTransaction(sources: RelationRow[] = []) {
+    const relations: RelationRow[] = []
+    const transaction = (table: string) => {
+        let filters: Record<string, unknown> = {}
+        let sourceKeys: string[] | null = null
+        const builder = {
+            where(values: Record<string, unknown>) {
+                filters = { ...filters, ...values }
+                return builder
+            },
+            whereIn(column: string, values: string[]) {
+                if (column === 'spec_id') sourceKeys = values
+                return builder
+            },
+            async select(...columns: string[]) {
+                const rows = table === 'skald_spec_source' ? sources : relations
+                return rows
+                    .filter((row) => Object.entries(filters).every(([key, value]) => row[key] === value))
+                    .filter((row) => sourceKeys === null || sourceKeys.includes(row.spec_id))
+                    .map((row) => Object.fromEntries(columns.map((column) => [column, row[column]])))
+            },
+            insert(row: RelationRow) {
+                return {
+                    onConflict() {
+                        return {
+                            async ignore() {
+                                const duplicate = relations.some(
+                                    (value) =>
+                                        value.project_id === row.project_id &&
+                                        value.source_revision_id === row.source_revision_id &&
+                                        value.relation_id === row.relation_id
+                                )
+                                if (!duplicate) relations.push({ ...row })
+                            },
+                        }
+                    },
+                }
+            },
+            async update(values: RelationRow) {
+                let count = 0
+                for (const row of relations) {
+                    if (Object.entries(filters).every(([key, value]) => row[key] === value)) {
+                        Object.assign(row, values)
+                        count += 1
+                    }
+                }
+                return count
+            },
+        }
+        return builder
+    }
+    return { transaction, relations }
+}
+
+describe('SpecRevisionService canonical relation persistence', () => {
+    const projectId = '8ec25f25-3d26-4b85-a465-88bd69298117'
+    const sourceId = '92c9dcf0-99be-43d0-89ed-563cf161a909'
+    const revisionId = '9465c376-d4c6-40c3-b429-7d77f6b31829'
+
+    async function persist(service: SpecRevisionService, transaction: any, input: StageAndPublishInput) {
+        await (service as any).ensureCanonicalRelations(
+            transaction,
+            projectId,
+            sourceId,
+            revisionId,
+            service.validate(input).relations,
+            input.expected_relation_hash,
+            new Date('2026-08-03T00:00:00.000Z')
+        )
+    }
+
+    it('persists exact canonical relation data natively for a new revision', async () => {
+        const service = new SpecRevisionService({} as EntityManager)
+        const input = validInput()
+        const db = nativeTransaction([
+            { uuid: 'aa09be85-c0d7-4d78-8528-b107e4b411c4', project_id: projectId, spec_id: input.relations[0].target.source_key },
+        ])
+
+        await persist(service, db.transaction, input)
+
+        expect(db.relations).toHaveLength(1)
+        expect(db.relations[0]).toMatchObject({
+            project_id: projectId,
+            source_id: sourceId,
+            source_revision_id: revisionId,
+            target_source_id: 'aa09be85-c0d7-4d78-8528-b107e4b411c4',
+            unresolved_target_spec_id: null,
+            kind: 'USES_INFORMATION',
+            source_relation_id: 'related-info-1243',
+        })
+        expect(JSON.parse(db.relations[0].properties)).toEqual({
+            values: ['required'],
+            target: input.relations[0].target,
+        })
+    })
+
+    it('persists an unresolved target and resolves it transactionally when the target source is published', async () => {
+        const service = new SpecRevisionService({} as EntityManager)
+        const input = validInput()
+        const db = nativeTransaction()
+        await persist(service, db.transaction, input)
+        expect(db.relations[0]).toMatchObject({
+            target_source_id: null,
+            unresolved_target_spec_id: input.relations[0].target.source_key,
+        })
+
+        await (service as any).resolveUnresolvedRelations(
+            db.transaction,
+            projectId,
+            'aa09be85-c0d7-4d78-8528-b107e4b411c4',
+            input.relations[0].target.source_key
+        )
+
+        expect(db.relations[0]).toMatchObject({
+            target_source_id: 'aa09be85-c0d7-4d78-8528-b107e4b411c4',
+            unresolved_target_spec_id: null,
+        })
+    })
+
+    it('repairs absent canonical relation rows during idempotent replay', async () => {
+        const service = new SpecRevisionService({} as EntityManager)
+        const input = validInput()
+        const db = nativeTransaction()
+
+        await persist(service, db.transaction, input)
+
+        expect(db.relations).toHaveLength(input.expected_relation_count)
+        expect(db.relations[0].unresolved_target_spec_id).toBe(input.relations[0].target.source_key)
+    })
+
+    it('does not duplicate canonical relation rows on repeated identical replay', async () => {
+        const service = new SpecRevisionService({} as EntityManager)
+        const input = validInput()
+        const db = nativeTransaction()
+
+        await persist(service, db.transaction, input)
+        const relationId = db.relations[0].relation_id
+        await persist(service, db.transaction, input)
+
+        expect(db.relations).toHaveLength(1)
+        expect(db.relations[0].relation_id).toBe(relationId)
+    })
+})
+
 describe('SpecRevisionService validation', () => {
     const service = new SpecRevisionService({} as EntityManager)
 

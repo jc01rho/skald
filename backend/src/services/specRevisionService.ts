@@ -6,7 +6,6 @@ import { MemoContent } from '@/entities/MemoContent'
 import { Project } from '@/entities/Project'
 import { SECRET_KEY } from '@/settings'
 import { SpecClaim } from '@/entities/SpecClaim'
-import { SpecRelation } from '@/entities/SpecRelation'
 import { SpecRevision } from '@/entities/SpecRevision'
 import { SpecSource } from '@/entities/SpecSource'
 import { SpecTraversalSnapshot } from '@/entities/SpecTraversalSnapshot'
@@ -43,7 +42,7 @@ export interface SpecClaimInput {
 }
 
 export interface StageAndPublishInput {
-    project_id?: string
+    project_id: string
     idempotency_key: string
     source: {
         source_key: string
@@ -367,10 +366,10 @@ export class SpecRevisionService {
             if (!projectExists) {
                 throw new SpecRevisionError('PROJECT_NOT_FOUND_IN_TRANSACTION', `Project ${projectId} is unavailable in publication transaction`, 503)
             }
-            await transaction.raw('SELECT pg_advisory_xact_lock(hashtext(?), hashtext(?))', [
-                    projectId,
-                input.source.source_key,
-            ])
+            const relationLockKeys = [input.source.source_key, ...normalized.relations.map((relation) => relation.target.source_key)]
+            for (const lockKey of [...new Set(relationLockKeys)].sort(compareUnicode)) {
+                await transaction.raw('SELECT pg_advisory_xact_lock(hashtext(?), hashtext(?))', [projectId, lockKey])
+            }
 
             let source = await em.findOne(
                 SpecSource,
@@ -394,6 +393,16 @@ export class SpecRevisionService {
                     if (replay.payload_hash !== input.revision.source_payload_hash || replay.canonical_hash !== input.revision.relation_input_hash) {
                         throw new SpecRevisionError('IDEMPOTENCY_CONFLICT', 'Idempotency key was reused with different content', 409)
                     }
+                    await this.resolveUnresolvedRelations(transaction, projectId, source.uuid, source.spec_id)
+                    await this.ensureCanonicalRelations(
+                        transaction,
+                        projectId,
+                        source.uuid,
+                        replay.uuid,
+                        normalized.relations,
+                        replay.relation_hash,
+                        replay.created_at
+                    )
                     return this.receipt(source, replay, true)
                 }
                 const activeMetadata = source.active_revision?.metadata as Record<string, unknown> | undefined
@@ -530,37 +539,16 @@ export class SpecRevisionService {
                 source_id: source.uuid,
                 project_id: projectId,
             })
-            await em.nativeUpdate(
-                SpecRelation,
-                { project: managedProject, unresolved_target_spec_id: source.spec_id, target_source: null },
-                { target_source: source, unresolved_target_spec_id: null },
-                { ctx: transaction }
+            await this.resolveUnresolvedRelations(transaction, projectId, source.uuid, input.source.source_key)
+            await this.ensureCanonicalRelations(
+                transaction,
+                projectId,
+                source.uuid,
+                revision.uuid,
+                normalized.relations,
+                revision.relation_hash,
+                now
             )
-
-            for (const relation of normalized.relations) {
-                const target = await em.findOne(SpecSource, { project: managedProject, spec_id: relation.target.source_key })
-                const persistedRelation = em.create(SpecRelation, {
-                    uuid: randomUUID(),
-                    created_at: now,
-                    relation_id: sha256Json([source.uuid, revision.uuid, relation.relation_type, relation.target.source_key, relation.source_relation_id]),
-                    kind: relation.relation_type,
-                    unresolved_target_spec_id: target ? null : relation.target.source_key,
-                    source_relation_id: relation.source_relation_id,
-                    display_label: relation.target.title,
-                    provenance: { source: relation.provenance },
-                    evidence: [relation.evidence],
-                    properties: { values: relation.properties, target: relation.target },
-                    source,
-                    source_revision: revisionRef,
-                    target_source: target || null,
-                    project: managedProject,
-                })
-                em.persist(persistedRelation)
-                persistedRelation.source = source
-                persistedRelation.source_revision = revisionRef
-                if (target) persistedRelation.target_source = target
-                em.getUnitOfWork().computeChangeSet(persistedRelation)
-            }
             for (const claim of normalized.claims) {
                 const persistedClaim = em.create(SpecClaim, {
                     uuid: randomUUID(),
@@ -655,6 +643,99 @@ export class SpecRevisionService {
             throw new SpecRevisionError('PUBLICATION_NOT_PERSISTED', 'Canonical revision was not persisted', 503)
         }
         return receipt
+    }
+
+    private async resolveUnresolvedRelations(
+        transaction: any,
+        projectId: string,
+        targetSourceId: string,
+        targetSpecId: string
+    ) {
+        await transaction('skald_spec_relation')
+            .where({
+                project_id: projectId,
+                target_source_id: null,
+                unresolved_target_spec_id: targetSpecId,
+            })
+            .update({ target_source_id: targetSourceId, unresolved_target_spec_id: null })
+    }
+
+    private async ensureCanonicalRelations(
+        transaction: any,
+        projectId: string,
+        sourceId: string,
+        revisionId: string,
+        relations: SpecRelationInput[],
+        expectedHash: string,
+        createdAt: Date
+    ) {
+        const targetKeys = [...new Set(relations.map((relation) => relation.target.source_key))]
+        const targetRows = targetKeys.length
+            ? await transaction('skald_spec_source')
+                  .where({ project_id: projectId })
+                  .whereIn('spec_id', targetKeys)
+                  .select('uuid', 'spec_id')
+            : []
+        const targetIds = new Map<string, string>(targetRows.map((row: any) => [row.spec_id, row.uuid]))
+        const existingRows = await transaction('skald_spec_relation')
+            .where({ project_id: projectId, source_id: sourceId, source_revision_id: revisionId })
+            .select('relation_id')
+        const existingIds = new Set<string>(existingRows.map((row: any) => row.relation_id))
+
+        for (const relation of relations) {
+            const relationId = sha256Json([
+                sourceId,
+                revisionId,
+                relation.relation_type,
+                relation.target.source_key,
+                relation.source_relation_id,
+            ])
+            if (existingIds.has(relationId)) continue
+            const targetSourceId = targetIds.get(relation.target.source_key) || null
+            await transaction('skald_spec_relation')
+                .insert({
+                    uuid: randomUUID(),
+                    created_at: createdAt,
+                    relation_id: relationId,
+                    kind: relation.relation_type,
+                    unresolved_target_spec_id: targetSourceId ? null : relation.target.source_key,
+                    source_relation_id: relation.source_relation_id,
+                    display_label: relation.target.title,
+                    provenance: JSON.stringify({ source: relation.provenance }),
+                    evidence: JSON.stringify([relation.evidence]),
+                    properties: JSON.stringify({ values: relation.properties, target: relation.target }),
+                    source_id: sourceId,
+                    source_revision_id: revisionId,
+                    target_source_id: targetSourceId,
+                    project_id: projectId,
+                })
+                .onConflict(['project_id', 'source_revision_id', 'relation_id'])
+                .ignore()
+        }
+
+        const persistedRows = await transaction('skald_spec_relation')
+            .where({ project_id: projectId, source_id: sourceId, source_revision_id: revisionId })
+            .select('kind', 'source_relation_id', 'provenance', 'evidence', 'properties')
+        const materialized = persistedRows.map((row: any) => {
+            const provenance = typeof row.provenance === 'string' ? JSON.parse(row.provenance) : row.provenance
+            const evidence = typeof row.evidence === 'string' ? JSON.parse(row.evidence) : row.evidence
+            const properties = typeof row.properties === 'string' ? JSON.parse(row.properties) : row.properties
+            return {
+                relation_type: row.kind,
+                target: properties.target,
+                source_relation_id: row.source_relation_id,
+                provenance: provenance.source,
+                evidence: evidence[0],
+                properties: properties.values,
+            } as SpecRelationInput
+        })
+        if (materialized.length !== relations.length || sha256Json(normalizeRelations(materialized)) !== expectedHash) {
+            throw new SpecRevisionError(
+                'RELATION_PERSISTENCE_MISMATCH',
+                'Canonical relation rows do not materially represent the submitted relation set',
+                503
+            )
+        }
     }
 
     private receipt(source: SpecSource, revision: SpecRevision, replay: boolean) {
