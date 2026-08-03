@@ -855,7 +855,8 @@ export class SpecRevisionService {
         const snapshotId = randomUUID()
         const expiresAt = new Date(now.getTime() + TRAVERSAL_TTL_MS)
         await this.rootEm.transactional(async (em) => {
-            const root = await this.exact(project, request.locator, em)
+            const managedProject = await em.findOneOrFail(Project, { uuid: project.uuid })
+            const root = await this.exact(managedProject, request.locator, em)
             const visited = new Set<string>([root.spec_id])
             const nodes: any[] = [root]
             const edges: any[] = []
@@ -912,7 +913,7 @@ export class SpecRevisionService {
                 item_count: items.length,
                 graph_watermark: watermark?.graph_watermark ? new Date(watermark.graph_watermark) : null,
                 promotion_watermark: watermark?.promotion_watermark ? new Date(watermark.promotion_watermark) : null,
-                project,
+                project: managedProject,
             })
             em.persist(snapshot)
             for (let ordinal = 0; ordinal < items.length; ordinal += 1) {
@@ -922,7 +923,7 @@ export class SpecRevisionService {
                     item_type: items[ordinal].item_type,
                     payload: items[ordinal].payload,
                     snapshot,
-                    project,
+                    project: managedProject,
                 }))
             }
         }, { isolationLevel: IsolationLevel.REPEATABLE_READ })
