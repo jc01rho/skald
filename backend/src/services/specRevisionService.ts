@@ -968,9 +968,9 @@ export class SpecRevisionService {
             : null
         return {
             snapshot_id: snapshot.uuid,
-            expires_at: snapshot.expires_at.toISOString(),
-            graph_watermark: snapshot.graph_watermark?.toISOString() || null,
-            promotion_watermark: snapshot.promotion_watermark?.toISOString() || null,
+            expires_at: new Date(snapshot.expires_at).toISOString(),
+            graph_watermark: snapshot.graph_watermark ? new Date(snapshot.graph_watermark).toISOString() : null,
+            promotion_watermark: snapshot.promotion_watermark ? new Date(snapshot.promotion_watermark).toISOString() : null,
             items: rows.map((row) => ({ ordinal: row.ordinal, type: row.item_type, value: row.payload })),
             next_cursor: nextCursor,
             depth: snapshot.traversal_depth,
