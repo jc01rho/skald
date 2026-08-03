@@ -9,7 +9,6 @@ import { SpecClaim } from '@/entities/SpecClaim'
 import { SpecRevision } from '@/entities/SpecRevision'
 import { SpecSource } from '@/entities/SpecSource'
 import { SpecTraversalSnapshot } from '@/entities/SpecTraversalSnapshot'
-import { SpecTraversalSnapshotItem } from '@/entities/SpecTraversalSnapshotItem'
 
 export interface SpecTargetInput {
     source_system: string
@@ -943,10 +942,16 @@ export class SpecRevisionService {
         if (offset > snapshot.item_count) {
             throw new SpecRevisionError('INVALID_TRAVERSAL_CURSOR', 'Traversal cursor offset is invalid', 400)
         }
-        const rows = await this.rootEm.find(
-            SpecTraversalSnapshotItem,
-            { project, snapshot, ordinal: { $gte: offset, $lt: offset + pageSize } },
-            { orderBy: { ordinal: 'asc' } }
+        const rows = await this.rootEm.getConnection().execute<Array<{
+            ordinal: number
+            item_type: string
+            payload: Record<string, unknown>
+        }>>(
+            `SELECT ordinal, item_type, payload
+               FROM skald_spec_traversal_snapshot_item
+              WHERE project_id = ? AND snapshot_id = ? AND ordinal >= ? AND ordinal < ?
+              ORDER BY ordinal ASC`,
+            [project.uuid, snapshot.uuid, offset, offset + pageSize]
         )
         const nextOffset = offset + rows.length
         const nextCursor = nextOffset < snapshot.item_count
