@@ -139,7 +139,7 @@ export class SpecPromotionState {
 
         if (this.last_clean_run_id === run.run_id) return
 
-        const previousCompletedAt = this.last_clean_completed_at
+        const previousCompletedAt = this.last_clean_completed_at ? new Date(this.last_clean_completed_at) : null
         if (
             previousCompletedAt &&
             run.completed_at &&

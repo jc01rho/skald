@@ -52,6 +52,26 @@ describe('spec lifecycle promotion timing', () => {
             state: SpecPromotionStatus.PROMOTED,
         })
     })
+    it('accepts a database-hydrated string timestamp from the prior clean run', () => {
+        const promotion = Object.assign(new SpecPromotionState(), {
+            scope_key: 'github:specs',
+            created_at: new Date('2026-07-30T12:00:00.000Z'),
+            updated_at: new Date('2026-07-30T13:00:00.000Z'),
+            consecutive_clean_runs: 1,
+            last_clean_run_id: 'run-1',
+            last_clean_completed_at: '2026-07-30T13:00:00.000Z' as unknown as Date,
+            state: SpecPromotionStatus.CANARY_ELIGIBLE,
+        })
+
+        promotion.applyAuthoritativeRun(cleanRun('run-2', '2026-07-30T14:00:00.000Z'))
+
+        expect(promotion).toMatchObject({
+            consecutive_clean_runs: 2,
+            previous_clean_run_id: 'run-1',
+            last_clean_run_id: 'run-2',
+            state: SpecPromotionStatus.PROMOTED,
+        })
+    })
 })
 
 describe('exact refetch certificate contract', () => {
