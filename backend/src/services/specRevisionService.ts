@@ -898,34 +898,25 @@ export class SpecRevisionService {
                          WHERE project_id = ? AND state = 'promoted') AS promotion_watermark`,
                 [project.uuid, project.uuid]
             )
-            const snapshot = em.create(SpecTraversalSnapshot, {
-                uuid: snapshotId,
-                created_at: now,
-                expires_at: expiresAt,
-                filter_hash: filterHash,
-                auth_scope_hash: request.auth_scope_hash,
-                root_locator: request.locator,
-                max_depth: maxDepth,
-                max_nodes: maxNodes,
-                traversal_depth: depth,
-                traversal_complete: complete,
-                truncated_reason: truncatedReason,
-                item_count: items.length,
-                graph_watermark: watermark?.graph_watermark ? new Date(watermark.graph_watermark) : null,
-                promotion_watermark: watermark?.promotion_watermark ? new Date(watermark.promotion_watermark) : null,
-                project: managedProject,
-            })
-            em.persist(snapshot)
+            await em.getConnection().execute(
+                `INSERT INTO skald_spec_traversal_snapshot
+                    (uuid, created_at, expires_at, filter_hash, auth_scope_hash, root_locator,
+                     max_depth, max_nodes, traversal_depth, traversal_complete, truncated_reason,
+                     item_count, graph_watermark, promotion_watermark, project_id)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+                [snapshotId, now, expiresAt, filterHash, request.auth_scope_hash, request.locator,
+                 maxDepth, maxNodes, depth, complete, truncatedReason, items.length,
+                 watermark?.graph_watermark || null, watermark?.promotion_watermark || null, managedProject.uuid]
+            )
             for (let ordinal = 0; ordinal < items.length; ordinal += 1) {
-                em.persist(em.create(SpecTraversalSnapshotItem, {
-                    uuid: randomUUID(),
-                    ordinal,
-                    item_type: items[ordinal].item_type,
-                    payload: items[ordinal].payload,
-                    snapshot,
-                    project: managedProject,
-                }))
+                await em.getConnection().execute(
+                    `INSERT INTO skald_spec_traversal_snapshot_item
+                        (uuid, ordinal, item_type, payload, snapshot_id, project_id)
+                     VALUES (?, ?, ?, ?::jsonb, ?, ?)`,
+                    [randomUUID(), ordinal, items[ordinal].item_type, JSON.stringify(items[ordinal].payload), snapshotId, managedProject.uuid]
+                )
             }
+            await em.getConnection().execute('SET CONSTRAINTS ALL IMMEDIATE')
         }, { isolationLevel: IsolationLevel.REPEATABLE_READ })
         return this.readTraversalSnapshotPage(project, snapshotId, 0, pageSize, filterHash, request.auth_scope_hash, now)
     }
