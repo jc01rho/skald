@@ -14,7 +14,7 @@ def test_image_is_pinned_and_runtime_argv_is_exact():
     assert "--platform" not in dockerfile
     assert "sh -c" not in dockerfile
     assert "3c27eb6234bf91b8ceee9e9071591b31e9b148cb" in dockerfile
-    assert "56c73b961b545f5da27027762f2ca69bdd18a0a4" not in dockerfile
+    assert "3d1aefa0ab293b77d9ba68e2c7efe6d8b12136a4" not in dockerfile
     assert "git" in dockerfile
     assert "bash" in dockerfile
     assert "BUN_VERSION=1.3.14" in dockerfile
@@ -112,7 +112,7 @@ def test_image_layout_and_runtime_functional_spec_acquisition():
     config = (ROOT / "config" / "config.yaml.example").read_text()
 
     source = "https://gitlab.git.sparrow.local/mcp-servers/functional-spec.git"
-    revision = "56c73b961b545f5da27027762f2ca69bdd18a0a4"
+    revision = "3d1aefa0ab293b77d9ba68e2c7efe6d8b12136a4"
 
     assert 'git clone https://github.com/NousResearch/hermes-agent.git "${HERMES_HOME}/hermes-agent"' in dockerfile
     assert "uv sync --frozen --no-dev --extra mcp" in dockerfile
