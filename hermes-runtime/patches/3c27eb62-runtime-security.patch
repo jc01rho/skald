@@ -1,0 +1,26 @@
+diff --git a/gateway/run.py b/gateway/run.py
+index 24d501b5b..738dfde42 100644
+--- a/gateway/run.py
++++ b/gateway/run.py
+@@ -17189,7 +17189,7 @@ class GatewayRunner(GatewayAuthorizationMixin, GatewayKanbanWatchersMixin, Gatew
+             # Default first-contact note: a brief self-introduction.
+             _intro_note = (
+                 "[System note: This is the user's very first message ever. "
+-                "Briefly introduce yourself and mention that /help shows available commands. "
++                "Briefly introduce yourself without advertising slash commands. "
+                 "Keep the introduction concise -- one or two sentences max.]"
+             )
+             # Opt-in structured profile-build path. When enabled (default
+diff --git a/pyproject.toml b/pyproject.toml
+index b9578f3fc..2085ded77 100644
+--- a/pyproject.toml
++++ b/pyproject.toml
+@@ -84,7 +84,7 @@ dependencies = [
+   "urllib3>=2.7.0,<3",
+   # cryptography is pulled in transitively by PyJWT[crypto]; pin it explicitly
+   # so the WeCom/Weixin crypto paths can't drift below the CVE-fixed floor.
+-  "cryptography==48.0.1",  # CVE-2026-39892, CVE-2026-34073, GHSA-537c-gmf6-5ccf; ==48.0.1 (not 49.x): msal and alibabacloud-tea-openapi cap <49, hindsight-api-slim needs >=48.0.1
++  "cryptography==50.0.0",  # CVE-2026-69247 and CVE-2026-69249
+   # Windows has no IANA tzdata shipped with the OS, so Python's ``zoneinfo``
+   # (PEP 615) raises ``ZoneInfoNotFoundError`` for every non-UTC timezone
+   # out of the box.  ``tzdata`` ships the Olson database as a data package

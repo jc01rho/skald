@@ -27,7 +27,7 @@ def test_image_is_pinned_and_runtime_argv_is_exact():
 
 
 
-def test_downstream_patch_is_pinned_and_removes_slash_command_advertising():
+def test_downstream_patch_and_cryptography_overlay_are_pinned():
     dockerfile = (ROOT / "Dockerfile").read_text()
     versions = dict(
         line.split("=", 1)
@@ -45,13 +45,18 @@ def test_downstream_patch_is_pinned_and_removes_slash_command_advertising():
     assert "UV_PYTHON=/usr/local/bin/python uv sync --frozen --no-dev --extra mcp" in dockerfile
     assert "uv sync --frozen --no-dev" in dockerfile
     assert "uv lock" not in dockerfile
-    assert "uv pip install" not in dockerfile
+    assert f"ARG HERMES_CRYPTOGRAPHY_VERSION={versions['HERMES_CRYPTOGRAPHY_VERSION']}" in dockerfile
+    assert '--exclude-newer-package "cryptography=2026-08-01T00:00:00Z"' in dockerfile
+    assert '"cryptography==${HERMES_CRYPTOGRAPHY_VERSION}"' in dockerfile
+    assert "uv pip check --python .venv/bin/python" in dockerfile
 
     patch = patch_path.read_text()
     assert "diff --git a/gateway/run.py b/gateway/run.py" in patch
-    assert "diff --git a/pyproject.toml b/pyproject.toml" not in patch
+    assert "diff --git a/pyproject.toml b/pyproject.toml" in patch
     assert "diff --git a/uv.lock b/uv.lock" not in patch
     assert "Briefly introduce yourself without advertising slash commands." in patch
+    assert f'"cryptography=={versions["HERMES_CRYPTOGRAPHY_VERSION"]}"' in patch
+    assert "CVE-2026-69247 and CVE-2026-69249" in patch
     assert "+                \"Briefly introduce yourself and mention that /help shows available commands." not in patch
 
 

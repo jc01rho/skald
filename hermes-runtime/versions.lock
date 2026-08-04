@@ -2,8 +2,9 @@
 # container start, so these values do not claim effective post-start immutability.
 HERMES_VERSION=0.20.0
 HERMES_REVISION=3c27eb6234bf91b8ceee9e9071591b31e9b148cb
-HERMES_DOWNSTREAM_PATCH=patches/3c27eb62-no-slash-command-advertising.patch
-HERMES_DOWNSTREAM_PATCH_SHA256=8ce4d6b2e89611c281bef69009f59c44124a25ab2eab25fffece1d41e531b185
+HERMES_DOWNSTREAM_PATCH=patches/3c27eb62-runtime-security.patch
+HERMES_DOWNSTREAM_PATCH_SHA256=059f57ae5683c1861283f7eeaeb125a045a4b90e3a5ab63152c325228d53b388
+HERMES_CRYPTOGRAPHY_VERSION=50.0.0
 HERMES_SOURCE=https://github.com/NousResearch/hermes-agent.git
 SPARROW_FUNCTION_SPEC_REVISION=56c73b961b545f5da27027762f2ca69bdd18a0a4
 SPARROW_FUNCTION_SPEC_SOURCE=https://gitlab.git.sparrow.local/mcp-servers/functional-spec.git
