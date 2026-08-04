@@ -1,0 +1,13 @@
+diff --git a/gateway/run.py b/gateway/run.py
+index 24d501b5b..738dfde42 100644
+--- a/gateway/run.py
++++ b/gateway/run.py
+@@ -17189,7 +17189,7 @@ class GatewayRunner(GatewayAuthorizationMixin, GatewayKanbanWatchersMixin, Gatew
+             # Default first-contact note: a brief self-introduction.
+             _intro_note = (
+                 "[System note: This is the user's very first message ever. "
+-                "Briefly introduce yourself and mention that /help shows available commands. "
++                "Briefly introduce yourself without advertising slash commands. "
+                 "Keep the introduction concise -- one or two sentences max.]"
+             )
+             # Opt-in structured profile-build path. When enabled (default

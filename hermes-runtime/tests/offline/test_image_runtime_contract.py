@@ -13,8 +13,8 @@ def test_image_is_pinned_and_runtime_argv_is_exact():
     assert re.search(r'^CMD \["gateway", "run"\]$', dockerfile, re.MULTILINE)
     assert "--platform" not in dockerfile
     assert "sh -c" not in dockerfile
-    assert "339d968689a3b91c5f537d7198ff28abde32ab3b" in dockerfile
-    assert "c4b6941b4b7bfb054040960099616019a901e745" not in dockerfile
+    assert "3c27eb6234bf91b8ceee9e9071591b31e9b148cb" in dockerfile
+    assert "56c73b961b545f5da27027762f2ca69bdd18a0a4" not in dockerfile
     assert "git" in dockerfile
     assert "bash" in dockerfile
     assert "BUN_VERSION=1.3.14" in dockerfile
@@ -27,39 +27,30 @@ def test_image_is_pinned_and_runtime_argv_is_exact():
 
 
 
-def test_security_patch_is_pinned_and_updates_manifests_together():
+def test_downstream_patch_is_pinned_and_removes_slash_command_advertising():
     dockerfile = (ROOT / "Dockerfile").read_text()
     versions = dict(
         line.split("=", 1)
         for line in (ROOT / "versions.lock").read_text().splitlines()
         if line and not line.startswith("#")
     )
-    patch_path = ROOT / versions["HERMES_SECURITY_PATCH"]
+    patch_path = ROOT / versions["HERMES_DOWNSTREAM_PATCH"]
 
     assert patch_path.is_file()
-    assert hashlib.sha256(patch_path.read_bytes()).hexdigest() == versions["HERMES_SECURITY_PATCH_SHA256"]
-    assert f"ARG HERMES_SECURITY_PATCH={versions['HERMES_SECURITY_PATCH']}" in dockerfile
-    assert f"ARG HERMES_SECURITY_PATCH_SHA256={versions['HERMES_SECURITY_PATCH_SHA256']}" in dockerfile
-    assert "git -C \"${HERMES_HOME}/hermes-agent\" apply --check /tmp/hermes-security.patch" in dockerfile
+    assert hashlib.sha256(patch_path.read_bytes()).hexdigest() == versions["HERMES_DOWNSTREAM_PATCH_SHA256"]
+    assert f"ARG HERMES_DOWNSTREAM_PATCH={versions['HERMES_DOWNSTREAM_PATCH']}" in dockerfile
+    assert f"ARG HERMES_DOWNSTREAM_PATCH_SHA256={versions['HERMES_DOWNSTREAM_PATCH_SHA256']}" in dockerfile
+    assert "git -C \"${HERMES_HOME}/hermes-agent\" apply --check /tmp/hermes-downstream.patch" in dockerfile
     assert dockerfile.index("apply --check") < dockerfile.index("uv sync --frozen --no-dev")
+    assert "UV_PYTHON=/usr/local/bin/python uv sync --frozen --no-dev --extra mcp" in dockerfile
     assert "uv sync --frozen --no-dev" in dockerfile
     assert "uv lock" not in dockerfile
     assert "uv pip install" not in dockerfile
 
     patch = patch_path.read_text()
-    assert "diff --git a/pyproject.toml b/pyproject.toml" in patch
-    assert "diff --git a/uv.lock b/uv.lock" in patch
-    assert '+  "Pillow==12.3.0",' in patch
-    assert '+  "cryptography==48.0.1"' in patch
-    assert '"starlette==1.3.1"' in patch
-    assert '"python-multipart==0.0.32"' in patch
-    assert '+version = "12.3.0"' in patch
-    assert '+version = "48.0.1"' in patch
-    assert '+version = "1.3.1"' in patch
-    assert '+version = "0.0.32"' in patch
-    assert '"mcp==1.28.1"' in patch
-    assert '+version = "1.28.1"' in patch
-    assert '-mcp = ["mcp==1.26.0"' in patch
+    assert "diff --git a/gateway/run.py b/gateway/run.py" in patch
+    assert "diff --git a/pyproject.toml b/pyproject.toml" not in patch
+    assert "diff --git a/uv.lock b/uv.lock" not in patch
     assert "Briefly introduce yourself without advertising slash commands." in patch
     assert "+                \"Briefly introduce yourself and mention that /help shows available commands." not in patch
 
@@ -115,7 +106,7 @@ def test_image_layout_and_runtime_functional_spec_acquisition():
     config = (ROOT / "config" / "config.yaml.example").read_text()
 
     source = "https://gitlab.git.sparrow.local/mcp-servers/functional-spec.git"
-    revision = "c4b6941b4b7bfb054040960099616019a901e745"
+    revision = "56c73b961b545f5da27027762f2ca69bdd18a0a4"
 
     assert 'git clone https://github.com/NousResearch/hermes-agent.git "${HERMES_HOME}/hermes-agent"' in dockerfile
     assert "uv sync --frozen --no-dev --extra mcp" in dockerfile
@@ -170,7 +161,7 @@ def test_image_layout_and_runtime_functional_spec_acquisition():
     assert "name: DISCORD_HOME_CHANNEL_NAME" in manifest
     assert "key: DISCORD_HOME_CHANNEL_NAME" in manifest
     assert "DISCORD_ALLOW_ALL_USERS" in manifest
-    assert "skald.io/hermes-config-revision: 'functional-spec-v6'" in manifest
+    assert "skald.io/hermes-config-revision: 'functional-spec-v7'" in manifest
     assert 'allowed_channels: "*"' in config
     assert "slash_commands: false" in config
     assert "onboarding:\n  profile_build: off" in config
