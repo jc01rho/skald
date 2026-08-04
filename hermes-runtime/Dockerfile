@@ -39,6 +39,7 @@ RUN git clone https://github.com/NousResearch/hermes-agent.git "${HERMES_HOME}/h
     && UV_PYTHON=/usr/local/bin/python uv sync --frozen --no-dev --extra mcp \
     && UV_PYTHON=/usr/local/bin/python uv pip install --python .venv/bin/python --only-binary=:all: --exclude-newer-package "cryptography=2026-08-01T00:00:00Z" "cryptography==${HERMES_CRYPTOGRAPHY_VERSION}" \
     && UV_PYTHON=/usr/local/bin/python uv pip check --python .venv/bin/python \
+    && rm -rf /root/.cache/uv \
     && rm /tmp/hermes-downstream.patch \
     && ln -s "${HERMES_HOME}/hermes-agent/.venv/bin/hermes" /usr/local/bin/hermes
 

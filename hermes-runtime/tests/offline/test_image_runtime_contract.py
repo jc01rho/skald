@@ -49,6 +49,7 @@ def test_downstream_patch_and_cryptography_overlay_are_pinned():
     assert '--exclude-newer-package "cryptography=2026-08-01T00:00:00Z"' in dockerfile
     assert '"cryptography==${HERMES_CRYPTOGRAPHY_VERSION}"' in dockerfile
     assert "uv pip check --python .venv/bin/python" in dockerfile
+    assert "rm -rf /root/.cache/uv" in dockerfile
 
     patch = patch_path.read_text()
     assert "diff --git a/gateway/run.py b/gateway/run.py" in patch
