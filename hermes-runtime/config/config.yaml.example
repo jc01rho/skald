@@ -39,10 +39,5 @@ agent:
 
 mcp_servers:
   sparrow-function-spec:
-    command: /bin/bash
-    args:
-      - /opt/sparrow-function-spec/scripts/run-with-auto-update.sh
-    env:
-      PATH: /opt/bun/bin:/usr/local/bin:/usr/bin:/bin
-      GIT_SSL_NO_VERIFY: "true"
+    url: https://mcp.skald.sparrow.local/mcp
     enabled: true
