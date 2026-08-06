@@ -112,7 +112,11 @@ def test_image_layout_and_runtime_functional_spec_acquisition():
     config = (ROOT / "config" / "config.yaml.example").read_text()
 
     source = "https://gitlab.git.sparrow.local/mcp-servers/functional-spec.git"
-    revision = "3d1aefa0ab293b77d9ba68e2c7efe6d8b12136a4"
+    revision = next(
+        line.split("=", 1)[1]
+        for line in (ROOT / "versions.lock").read_text().splitlines()
+        if line.startswith("SPARROW_FUNCTION_SPEC_REVISION=")
+    )
 
     assert 'git clone https://github.com/NousResearch/hermes-agent.git "${HERMES_HOME}/hermes-agent"' in dockerfile
     assert "uv sync --frozen --no-dev --extra mcp" in dockerfile
