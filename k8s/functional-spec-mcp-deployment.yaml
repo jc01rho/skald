@@ -35,6 +35,8 @@ spec:
     spec:
       serviceAccountName: functional-spec-mcp
       automountServiceAccountToken: false
+      imagePullSecrets:
+        - name: ghcr-pull-secret
       securityContext:
         runAsNonRoot: true
         runAsUser: 10001

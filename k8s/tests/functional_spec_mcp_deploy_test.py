@@ -21,6 +21,9 @@ def test_functional_spec_mcp_uses_single_recreated_session_aware_pod():
 
     assert deployment["spec"]["replicas"] == 1
     assert deployment["spec"]["strategy"] == {"type": "Recreate"}
+    assert deployment["spec"]["template"]["spec"]["imagePullSecrets"] == [
+        {"name": "ghcr-pull-secret"}
+    ]
     assert container["image"].startswith("ghcr.io/jc01rho/sparrow-function-spec-mcp@sha256:")
     assert container["readinessProbe"]["httpGet"] == {"path": "/healthz", "port": "http"}
     assert container["livenessProbe"]["httpGet"] == {"path": "/healthz", "port": "http"}
