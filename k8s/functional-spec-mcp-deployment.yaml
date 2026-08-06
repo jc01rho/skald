@@ -46,7 +46,7 @@ spec:
           type: RuntimeDefault
       containers:
         - name: functional-spec-mcp
-          image: ghcr.io/jc01rho/sparrow-function-spec-mcp@sha256:cf0270e190056e2be31c139dfed39056cfbefc9ad6efd17f0df5c559ab456f46
+          image: ghcr.io/jc01rho/sparrow-function-spec-mcp@sha256:c15d3cdfa5817ac900ea5994d61574191e3ce630f1ae97f5ee02b48d8705ee7f
           imagePullPolicy: IfNotPresent
           ports:
             - name: http
@@ -55,12 +55,6 @@ spec:
           envFrom:
             - configMapRef:
                 name: functional-spec-mcp-config
-          env:
-            - name: MCP_AUTH_TOKEN
-              valueFrom:
-                secretKeyRef:
-                  name: functional-spec-mcp-secrets
-                  key: MCP_AUTH_TOKEN
           readinessProbe:
             httpGet:
               path: /healthz

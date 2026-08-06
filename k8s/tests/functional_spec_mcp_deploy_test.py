@@ -27,15 +27,7 @@ def test_functional_spec_mcp_uses_single_recreated_session_aware_pod():
     assert container["image"].startswith("ghcr.io/jc01rho/sparrow-function-spec-mcp@sha256:")
     assert container["readinessProbe"]["httpGet"] == {"path": "/healthz", "port": "http"}
     assert container["livenessProbe"]["httpGet"] == {"path": "/healthz", "port": "http"}
-    assert {
-        "name": "MCP_AUTH_TOKEN",
-        "valueFrom": {
-            "secretKeyRef": {
-                "name": "functional-spec-mcp-secrets",
-                "key": "MCP_AUTH_TOKEN",
-            }
-        },
-    } in container["env"]
+    assert "env" not in container
 
 
 def test_functional_spec_mcp_uses_its_own_envoy_gateway_and_mcp_route():

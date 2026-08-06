@@ -1114,17 +1114,8 @@ Ingress와 분리된 `envoy-gateway-small-class` Gateway로 노출되며, MetalL
 
 1. `functional-spec-mcp-deployment.yaml`의 GHCR digest가 검증하려는 MCP
    commit의 image인지 확인합니다.
-2. Secret 예제를 복사해 실제 32자 이상 랜덤 bearer token으로 교체합니다.
-3. local Secret은 Git에 추가하지 않습니다.
 
-```bash
-cd k8s
-cp functional-spec-mcp-secret.yaml.example functional-spec-mcp-secret.local.yaml
-openssl rand -hex 32
-```
-
-생성한 값을 `functional-spec-mcp-secret.local.yaml`의 `MCP_AUTH_TOKEN`에
-넣은 다음, 일반 배포 순서대로 `./deploy.sh -y`를 실행합니다. deploy script는
+일반 배포 순서대로 `./deploy.sh -y`를 실행합니다. deploy script는
 ConfigMap, ClusterIP Service, Deployment, cert-manager Certificate, 전용
 Envoy Gateway, HTTPRoute를 적용하고 Deployment rollout, TLS Certificate,
 Gateway `Programmed` 상태를 모두 기다립니다.
@@ -1137,10 +1128,9 @@ kubectl get deployment,service,gateway,httproute,certificate -n skald \
 kubectl rollout status deployment/functional-spec-mcp -n skald
 ```
 
-`/healthz`는 Kubernetes probe 전용이며 인증이 필요 없습니다. `/mcp`는 모든
-요청에 `Authorization: Bearer <MCP_AUTH_TOKEN>`을 요구하고, browser Origin은
-`MCP_ALLOWED_ORIGINS` allowlist에 있어야 합니다. client는 initialization
-응답의 `Mcp-Session-Id`를 모든 후속 요청에 유지해야 합니다.
+`/healthz`와 `/mcp`는 모두 인증이 필요 없습니다. browser Origin은
+`MCP_ALLOWED_ORIGINS` allowlist에 있어야 하며, client는 initialization 응답의
+`Mcp-Session-Id`를 모든 후속 요청에 유지해야 합니다.
 
 ## 부록: 빠른 시작 스크립트
 

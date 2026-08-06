@@ -49,8 +49,8 @@ spec:
                       - |
                         find /opt/sparrow-function-spec -mindepth 1 -maxdepth 1 -exec rm -rf -- {} +
                         git -c http.sslVerify=false clone https://gitlab.git.sparrow.local/mcp-servers/functional-spec.git /opt/sparrow-function-spec
-                              git -C /opt/sparrow-function-spec checkout --detach 0ade007f0cecb7d5d69566fe8f7bb9eef1ce6f6e
-                              test "$(git -C /opt/sparrow-function-spec rev-parse HEAD)" = "0ade007f0cecb7d5d69566fe8f7bb9eef1ce6f6e"
+                              git -C /opt/sparrow-function-spec checkout --detach 6ec5742b2175b869323f1811ff438415d9d6a1bf
+                              test "$(git -C /opt/sparrow-function-spec rev-parse HEAD)" = "6ec5742b2175b869323f1811ff438415d9d6a1bf"
                         cd /opt/sparrow-function-spec
                         bun install --frozen-lockfile
                   securityContext:

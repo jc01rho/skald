@@ -1154,18 +1154,6 @@ deploy_discord_bot() {
 deploy_functional_spec_mcp() {
     log_info "Step 7.7: Sparrow 기능 명세 HTTP MCP 배포"
 
-    if [ -f "functional-spec-mcp-secret.local.yaml" ]; then
-        if kubectl apply -f functional-spec-mcp-secret.local.yaml -n "$NAMESPACE"; then
-            log_success "Functional spec MCP Secret 생성 완료 (local)"
-        else
-            log_error "Functional spec MCP Secret 생성 실패"
-            exit 1
-        fi
-    elif ! kubectl get secret functional-spec-mcp-secrets -n "$NAMESPACE" &> /dev/null; then
-        log_error "functional-spec-mcp-secrets가 없습니다. functional-spec-mcp-secret.yaml.example을 복사한 local Secret을 준비하세요."
-        exit 1
-    fi
-
     for manifest in \
         functional-spec-mcp-configmap.yaml \
         functional-spec-mcp-service.yaml \
