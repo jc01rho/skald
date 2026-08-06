@@ -20,6 +20,7 @@
 10. [트러블슈팅](#10-트러블슈팅)
 11. [참고 자료](#11-참고-자료)
 12. [검증 보고서](#12-검증-보고서)
+13. [Functional spec HTTP MCP](#functional-spec-http-mcp)
 
 ---
 
@@ -1101,6 +1102,45 @@ Hermes ConfigMap은 `/var/lib/hermes/config.yaml`로 mount됩니다. Secret 값�
 이 목록은 remediation 완료 목록이 아닙니다. 별도 승인된 후속 작업만 해당 위험을 변경할 수 있습니다.
 
 ---
+
+## Functional spec HTTP MCP
+
+`functional-spec-mcp`는 stdio가 아닌 Streamable HTTP MCP endpoint를
+`https://mcp.skald.sparrow.local/mcp`에 제공합니다. 이는 일반 Skald NGINX
+Ingress와 분리된 `envoy-gateway-small-class` Gateway로 노출되며, MetalLB가
+전용 Gateway Service의 외부 IP를 할당합니다.
+
+### 배포 전 준비
+
+1. `functional-spec-mcp-deployment.yaml`의 GHCR digest가 검증하려는 MCP
+   commit의 image인지 확인합니다.
+2. Secret 예제를 복사해 실제 32자 이상 랜덤 bearer token으로 교체합니다.
+3. local Secret은 Git에 추가하지 않습니다.
+
+```bash
+cd k8s
+cp functional-spec-mcp-secret.yaml.example functional-spec-mcp-secret.local.yaml
+openssl rand -hex 32
+```
+
+생성한 값을 `functional-spec-mcp-secret.local.yaml`의 `MCP_AUTH_TOKEN`에
+넣은 다음, 일반 배포 순서대로 `./deploy.sh -y`를 실행합니다. deploy script는
+ConfigMap, ClusterIP Service, Deployment, cert-manager Certificate, 전용
+Envoy Gateway, HTTPRoute를 적용하고 Deployment rollout, TLS Certificate,
+Gateway `Programmed` 상태를 모두 기다립니다.
+
+### 운영 검증
+
+```bash
+kubectl get deployment,service,gateway,httproute,certificate -n skald \
+  -l component=functional-spec-mcp
+kubectl rollout status deployment/functional-spec-mcp -n skald
+```
+
+`/healthz`는 Kubernetes probe 전용이며 인증이 필요 없습니다. `/mcp`는 모든
+요청에 `Authorization: Bearer <MCP_AUTH_TOKEN>`을 요구하고, browser Origin은
+`MCP_ALLOWED_ORIGINS` allowlist에 있어야 합니다. client는 initialization
+응답의 `Mcp-Session-Id`를 모든 후속 요청에 유지해야 합니다.
 
 ## 부록: 빠른 시작 스크립트
 

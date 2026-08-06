@@ -126,7 +126,7 @@ def test_function_spec_init_is_restart_idempotent_and_does_not_mask_clone_failur
     init = manifest["spec"]["template"]["spec"]["initContainers"][0]
     script = init["args"][0]
     source = "https://gitlab.git.sparrow.local/mcp-servers/functional-spec.git"
-    revision = "3d1aefa0ab293b77d9ba68e2c7efe6d8b12136a4"
+    revision = "0ade007f0cecb7d5d69566fe8f7bb9eef1ce6f6e"
 
     origin = tmp_path / "origin"
     subprocess.run(["git", "init", str(origin)], check=True, capture_output=True)

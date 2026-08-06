@@ -146,6 +146,7 @@ fetch_wikipedia_articles.py
 .coverage
 .env.prod
 .env.dev
+k8s/functional-spec-mcp-secret.local.yaml
 
 # we use pnpm
 package-lock.json 

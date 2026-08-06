@@ -1,0 +1,16 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: functional-spec-mcp-config
+  namespace: skald
+  labels:
+    app: skald
+    component: functional-spec-mcp
+    environment: production
+data:
+  SKALD_BASE_URL: http://api-service.skald.svc.cluster.local:8000/
+  SKALD_PROJECT_ID: 66c94d7d-e530-4b59-837e-efa496c6b265
+  MCP_TRANSPORT: http
+  MCP_HTTP_HOST: 0.0.0.0
+  MCP_HTTP_PORT: "8080"
+  MCP_ALLOWED_ORIGINS: ""

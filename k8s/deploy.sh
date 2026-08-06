@@ -1150,6 +1150,54 @@ deploy_discord_bot() {
     rm -f /tmp/discord-bot-deployment.yaml
 }
 
+# Step 7.7: Sparrow 기능 명세 HTTP MCP 배포
+deploy_functional_spec_mcp() {
+    log_info "Step 7.7: Sparrow 기능 명세 HTTP MCP 배포"
+
+    if [ -f "functional-spec-mcp-secret.local.yaml" ]; then
+        if kubectl apply -f functional-spec-mcp-secret.local.yaml -n "$NAMESPACE"; then
+            log_success "Functional spec MCP Secret 생성 완료 (local)"
+        else
+            log_error "Functional spec MCP Secret 생성 실패"
+            exit 1
+        fi
+    elif ! kubectl get secret functional-spec-mcp-secrets -n "$NAMESPACE" &> /dev/null; then
+        log_error "functional-spec-mcp-secrets가 없습니다. functional-spec-mcp-secret.yaml.example을 복사한 local Secret을 준비하세요."
+        exit 1
+    fi
+
+    for manifest in \
+        functional-spec-mcp-configmap.yaml \
+        functional-spec-mcp-service.yaml \
+        functional-spec-mcp-deployment.yaml \
+        functional-spec-mcp-gateway.yaml \
+        functional-spec-mcp-httproute.yaml; do
+        if kubectl apply -f "$manifest" -n "$NAMESPACE"; then
+            log_success "$manifest 적용 완료"
+        else
+            log_error "$manifest 적용 실패"
+            exit 1
+        fi
+    done
+
+    if ! kubectl rollout status deployment/functional-spec-mcp -n "$NAMESPACE" --timeout=300s; then
+        log_error "Functional spec MCP Deployment rollout 실패"
+        exit 1
+    fi
+
+    if ! kubectl wait --for=condition=Ready certificate/functional-spec-mcp-tls -n "$NAMESPACE" --timeout=300s; then
+        log_error "Functional spec MCP TLS Certificate 준비 실패"
+        exit 1
+    fi
+
+    if ! kubectl wait --for=condition=Programmed gateway/functional-spec-mcp-gateway -n "$NAMESPACE" --timeout=300s; then
+        log_error "Functional spec MCP Envoy Gateway 준비 실패"
+        exit 1
+    fi
+
+    log_success "Sparrow 기능 명세 HTTP MCP 배포 완료"
+}
+
 # Step 8: Ingress 설정
 deploy_ingress() {
     if [ "$SKIP_INGRESS" = "true" ]; then
@@ -1770,6 +1818,7 @@ main() {
         deploy_discord_owner
         deploy_frontend
         deploy_ingress
+        deploy_functional_spec_mcp
         verify_deployment
         print_access_info
         

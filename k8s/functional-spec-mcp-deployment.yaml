@@ -1,0 +1,90 @@
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: functional-spec-mcp
+  namespace: skald
+  labels:
+    app: skald
+    component: functional-spec-mcp
+    environment: production
+automountServiceAccountToken: false
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: functional-spec-mcp
+  namespace: skald
+  labels:
+    app: skald
+    component: functional-spec-mcp
+    environment: production
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: skald
+      component: functional-spec-mcp
+  template:
+    metadata:
+      labels:
+        app: skald
+        component: functional-spec-mcp
+        environment: production
+    spec:
+      serviceAccountName: functional-spec-mcp
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        runAsGroup: 10001
+        fsGroup: 10001
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: functional-spec-mcp
+          image: ghcr.io/jc01rho/sparrow-function-spec-mcp@sha256:cf0270e190056e2be31c139dfed39056cfbefc9ad6efd17f0df5c559ab456f46
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http
+              containerPort: 8080
+              protocol: TCP
+          envFrom:
+            - configMapRef:
+                name: functional-spec-mcp-config
+          env:
+            - name: MCP_AUTH_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: functional-spec-mcp-secrets
+                  key: MCP_AUTH_TOKEN
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            initialDelaySeconds: 2
+            periodSeconds: 5
+            timeoutSeconds: 2
+            failureThreshold: 3
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            timeoutSeconds: 2
+            failureThreshold: 3
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop:
+                - ALL
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi

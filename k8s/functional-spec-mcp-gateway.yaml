@@ -1,0 +1,42 @@
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: functional-spec-mcp-tls
+  namespace: skald
+  labels:
+    app: skald
+    component: functional-spec-mcp
+    environment: production
+spec:
+  secretName: functional-spec-mcp-tls
+  dnsNames:
+    - mcp.skald.sparrow.local
+  issuerRef:
+    name: sparrow-local-cluster-issuer
+    kind: ClusterIssuer
+    group: cert-manager.io
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: Gateway
+metadata:
+  name: functional-spec-mcp-gateway
+  namespace: skald
+  labels:
+    app: skald
+    component: functional-spec-mcp
+    environment: production
+spec:
+  gatewayClassName: envoy-gateway-small-class
+  listeners:
+    - name: https
+      hostname: mcp.skald.sparrow.local
+      port: 443
+      protocol: HTTPS
+      tls:
+        mode: Terminate
+        certificateRefs:
+          - kind: Secret
+            name: functional-spec-mcp-tls
+      allowedRoutes:
+        namespaces:
+          from: Same
