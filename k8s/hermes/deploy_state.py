@@ -1106,7 +1106,7 @@ def named_container(items: Any, name: str) -> tuple[int, dict[str, Any]]:
     return matches[0]
 
 
-def normalized_deployment(obj: dict[str, Any]) -> tuple[dict[str, Any], str, int, int]:
+def normalized_deployment(obj: dict[str, Any]) -> tuple[dict[str, Any], str, int]:
     value = relevant_object(obj)
     metadata = value.get("metadata", {})
     annotations = metadata.get("annotations")
@@ -1129,11 +1129,11 @@ def normalized_deployment(obj: dict[str, Any]) -> tuple[dict[str, Any], str, int
         spec.pop("enableServiceLinks")
     if spec.get("preemptionPolicy") == "PreemptLowerPriority":
         spec.pop("preemptionPolicy")
-    init_index, init = named_container(spec.get("initContainers"), "sparrow-function-spec"); main_index, main = named_container(spec.get("containers"), HERMES_DEPLOYMENT)
-    if init["image"] != main["image"] or DIGEST_RE.fullmatch(init["image"]) is None:
-        raise Exit(65, "Hermes init and main images must be the same immutable digest")
-    image = init["image"]; init["image"] = IMAGE_SENTINEL; main["image"] = IMAGE_SENTINEL
-    for container in (init, main):
+    main_index, main = named_container(spec.get("containers"), HERMES_DEPLOYMENT)
+    if DIGEST_RE.fullmatch(main["image"]) is None:
+        raise Exit(65, "Hermes image must be an immutable digest")
+    image = main["image"]; main["image"] = IMAGE_SENTINEL
+    for container in (main,):
         for key in ("stdin", "stdinOnce", "tty"):
             if container.get(key) is False: container.pop(key)
         if container.get("terminationMessagePath") == "/dev/termination-log": container.pop("terminationMessagePath")
@@ -1146,24 +1146,24 @@ def normalized_deployment(obj: dict[str, Any]) -> tuple[dict[str, Any], str, int
         config_map = volume.get("configMap")
         if isinstance(config_map, dict) and config_map.get("defaultMode") == 420:
             config_map.pop("defaultMode")
-    return value, image, init_index, main_index
+    return value, image, main_index
 
 
 def validate_image_patch(payload: list[dict[str, Any]]) -> None:
-    if not isinstance(payload, list) or len(payload) != 5 or any(not isinstance(item, dict) or set(item) != {"op", "path", "value"} for item in payload):
-        raise Exit(77, "Ordinary Deployment patch must contain exactly five operations")
+    if not isinstance(payload, list) or len(payload) != 3 or any(not isinstance(item, dict) or set(item) != {"op", "path", "value"} for item in payload):
+        raise Exit(77, "Ordinary Deployment patch must contain exactly three operations")
     paths = [item["path"] for item in payload]
-    if paths[0] != "/metadata/resourceVersion" or re.fullmatch(r"/spec/template/spec/initContainers/[0-9]+/image", paths[1]) is None or re.fullmatch(r"/spec/template/spec/containers/[0-9]+/image", paths[2]) is None or paths[3:] != paths[1:3] or [item["op"] for item in payload] != ["test","test","test","replace","replace"]:
+    if paths[0] != "/metadata/resourceVersion" or re.fullmatch(r"/spec/template/spec/containers/[0-9]+/image", paths[1]) is None or paths[2] != paths[1] or [item["op"] for item in payload] != ["test","test","replace"]:
         raise Exit(77, "Ordinary Deployment patch grammar is invalid")
-    if payload[1]["value"] != payload[2]["value"] or payload[3]["value"] != payload[4]["value"] or DIGEST_RE.fullmatch(payload[1]["value"]) is None or DIGEST_RE.fullmatch(payload[3]["value"]) is None:
+    if DIGEST_RE.fullmatch(payload[1]["value"]) is None or DIGEST_RE.fullmatch(payload[2]["value"]) is None:
         raise Exit(77, "Ordinary Deployment patch image values are invalid")
 
 
 def image_patch(deployment: dict[str, Any], prior: str, candidate: str) -> list[dict[str, Any]]:
-    _, current, init_index, main_index = normalized_deployment(deployment); rv = deployment.get("metadata", {}).get("resourceVersion")
+    _, current, main_index = normalized_deployment(deployment); rv = deployment.get("metadata", {}).get("resourceVersion")
     if current != prior or not isinstance(rv, str) or not rv: raise Exit(65, "Hermes Deployment CAS baseline is invalid")
-    init_path, main_path = f"/spec/template/spec/initContainers/{init_index}/image", f"/spec/template/spec/containers/{main_index}/image"
-    payload = [{"op":"test","path":"/metadata/resourceVersion","value":rv},{"op":"test","path":init_path,"value":prior},{"op":"test","path":main_path,"value":prior},{"op":"replace","path":init_path,"value":candidate},{"op":"replace","path":main_path,"value":candidate}]
+    main_path = f"/spec/template/spec/containers/{main_index}/image"
+    payload = [{"op":"test","path":"/metadata/resourceVersion","value":rv},{"op":"test","path":main_path,"value":prior},{"op":"replace","path":main_path,"value":candidate}]
     validate_image_patch(payload); return payload
 
 
@@ -1172,7 +1172,7 @@ def ordinary_state(owner_obj: dict[str, Any], record: dict[str, Any]) -> tuple[d
     if lease is None or holder(lease) or record["active_owner"] != "hermes" or legacy is None or live is None or legacy.get("spec", {}).get("replicas") != 0 or live.get("spec", {}).get("replicas") != 1:
         raise Exit(65, "Ordinary Hermes authority, Lease, or replica invariant failed")
     snapshot_record, snapshot_data = validate_snapshot(record["hermes_verified_snapshot_ref"], "hermes"); snapshot = parse_single_object(snapshot_data["deployment.yaml"])
-    normalized_live, current, _, _ = normalized_deployment(live); normalized_snapshot, _, _, _ = normalized_deployment(snapshot)
+    normalized_live, current, _ = normalized_deployment(live); normalized_snapshot, _, _ = normalized_deployment(snapshot)
     if normalized_live != normalized_snapshot: raise Exit(65, "Live Hermes PodTemplate differs from the verified snapshot")
     config = get_json("configmap", "hermes-gateway-config"); snapshot_config = parse_single_object(snapshot_data["configmap.yaml"])
     if config is None or relevant_object(config) != relevant_object(snapshot_config): raise Exit(65, "Live Hermes ConfigMap differs from the verified snapshot")

@@ -23,7 +23,7 @@ def test_image_is_pinned_and_runtime_argv_is_exact():
     assert f"PYTHON_BASE={python_base}" in lock
     assert "slim-bookworm" not in dockerfile
     assert "BUN_VERSION=1.3.14" in lock
-    assert "SPARROW_FUNCTION_SPEC_SOURCE=https://gitlab.git.sparrow.local/mcp-servers/functional-spec.git" in lock
+    assert "SPARROW_FUNCTION_SPEC_" not in lock
 
 
 
@@ -106,61 +106,33 @@ def test_workflow_runs_all_offline_pytest_and_pins_actions():
         )
 
 
-def test_image_layout_and_runtime_functional_spec_acquisition():
+def test_image_layout_and_http_functional_spec_mcp_contract():
     dockerfile = (ROOT / "Dockerfile").read_text()
     manifest = (ROOT.parent / "k8s" / "hermes-gateway-deployment.yaml").read_text()
     config = (ROOT / "config" / "config.yaml.example").read_text()
 
-    source = "https://gitlab.git.sparrow.local/mcp-servers/functional-spec.git"
-    revision = next(
-        line.split("=", 1)[1]
-        for line in (ROOT / "versions.lock").read_text().splitlines()
-        if line.startswith("SPARROW_FUNCTION_SPEC_REVISION=")
-    )
-
     assert 'git clone https://github.com/NousResearch/hermes-agent.git "${HERMES_HOME}/hermes-agent"' in dockerfile
     assert "uv sync --frozen --no-dev --extra mcp" in dockerfile
-    assert source not in dockerfile
-    assert revision not in dockerfile
     assert "http.sslVerify=false" not in dockerfile
     assert "rm -rf \"${HERMES_HOME}/hermes-agent/.git\"" not in dockerfile
     assert "command: ['hermes']" in manifest
     assert "args: ['gateway', 'run']" in manifest
-    assert manifest.count("image: HERMES_IMAGE") == 2
-    assert f"git -c http.sslVerify=false clone {source} /opt/sparrow-function-spec" in manifest
-    assert "find /opt/sparrow-function-spec -mindepth 1 -maxdepth 1 -exec rm -rf -- {} +" in manifest
-    assert "rm -rf /opt/sparrow-function-spec/*" not in manifest
-    assert "|| true" not in manifest
-    assert manifest.count("http.sslVerify=false") == 1
-    assert "git@gitlab.git.sparrow.local" not in manifest
-    assert "--mount=type=ssh" not in manifest
-    assert "GIT_SSL_NO_VERIFY" not in manifest
-    assert "git config" not in manifest
-    assert f"git -C /opt/sparrow-function-spec checkout --detach {revision}" in manifest
-    assert f'test "$(git -C /opt/sparrow-function-spec rev-parse HEAD)" = "{revision}"' in manifest
-    assert "bun install --frozen-lockfile" in manifest
+    assert manifest.count("image: HERMES_IMAGE") == 1
+    assert "sparrow-function-spec" not in manifest
+    assert "http.sslVerify=false" not in manifest
+    assert "bun install --frozen-lockfile" not in manifest
     assert "chown -R" not in manifest
-    assert manifest.count("name: sparrow-function-spec") == 4
-    assert manifest.count("mountPath: /opt/sparrow-function-spec") == 2
-    assert "emptyDir: {}" in manifest
-    assert manifest.count("runAsNonRoot: true") >= 2
-    assert manifest.count("runAsUser: 10001") >= 2
-    assert manifest.count("runAsGroup: 10001") >= 2
-    assert manifest.count("name: GIT_CONFIG_COUNT") == 2
-    assert manifest.count("name: GIT_CONFIG_KEY_0") == 2
-    assert manifest.count("name: GIT_CONFIG_VALUE_0") == 2
-    assert manifest.count("value: safe.directory") == 2
-    assert "command: /bin/bash" in config
-    assert "- /opt/sparrow-function-spec/scripts/run-with-auto-update.sh" in config
     assert config.count("sparrow-function-spec:") == 1
+    assert "url: https://mcp.skald.sparrow.local/mcp" in config
+    assert "enabled: true" in config
+    assert "command:" not in config
+    assert "/opt/sparrow-function-spec" not in config
     assert "platform_toolsets:\n  discord: []" in config
     assert "provider: skald-proxy" in config
     assert "key_env: OPENAI_API_KEY" in config
     assert "${OPENAI_MODEL}" not in config
     assert "${OPENAI_BASE_URL}" not in config
     assert "disabled_toolsets:\n    - kanban" in config
-    assert "PATH: /opt/bun/bin:/usr/local/bin:/usr/bin:/bin" in config
-    assert 'GIT_SSL_NO_VERIFY: "true"' in config
     assert "name: DISCORD_ALLOW_ALL_USERS" in manifest
     assert "key: DISCORD_ALLOW_ALL_USERS" in manifest
     assert "name: DISCORD_ALLOWED_USERS" not in manifest
@@ -171,7 +143,7 @@ def test_image_layout_and_runtime_functional_spec_acquisition():
     assert "name: DISCORD_HOME_CHANNEL_NAME" in manifest
     assert "key: DISCORD_HOME_CHANNEL_NAME" in manifest
     assert "DISCORD_ALLOW_ALL_USERS" in manifest
-    assert "skald.io/hermes-config-revision: 'functional-spec-v7'" in manifest
+    assert "skald.io/hermes-config-revision: 'functional-spec-http-v1'" in manifest
     assert 'allowed_channels: "*"' in config
     assert "slash_commands: false" in config
     assert "onboarding:\n  profile_build: off" in config

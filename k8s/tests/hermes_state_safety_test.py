@@ -3,7 +3,6 @@ from __future__ import annotations
 import hashlib
 import importlib.util
 import json
-import os
 import subprocess
 from datetime import datetime, timezone
 from pathlib import Path
@@ -121,54 +120,15 @@ def test_readback_rejects_other_omissions_and_terminal_value_drift(intended_cont
     assert not state.intended_fields_match(intended, observed)
 
 
-def test_function_spec_init_is_restart_idempotent_and_does_not_mask_clone_failure(tmp_path):
+def test_function_spec_http_mcp_does_not_require_init_container():
     manifest = yaml.safe_load((ROOT / "k8s" / "hermes-gateway-deployment.yaml").read_text())
-    init = manifest["spec"]["template"]["spec"]["initContainers"][0]
-    script = init["args"][0]
-    source = "https://gitlab.git.sparrow.local/mcp-servers/functional-spec.git"
-    revision = "6ec5742b2175b869323f1811ff438415d9d6a1bf"
-
-    origin = tmp_path / "origin"
-    subprocess.run(["git", "init", str(origin)], check=True, capture_output=True)
-    subprocess.run(["git", "-C", str(origin), "config", "user.email", "test@example.com"], check=True)
-    subprocess.run(["git", "-C", str(origin), "config", "user.name", "Test"], check=True)
-    (origin / "contract.txt").write_text("expected\n")
-    subprocess.run(["git", "-C", str(origin), "add", "contract.txt"], check=True)
-    subprocess.run(["git", "-C", str(origin), "commit", "-m", "fixture"], check=True, capture_output=True)
-    commit = subprocess.run(
-        ["git", "-C", str(origin), "rev-parse", "HEAD"], check=True, capture_output=True, text=True
-    ).stdout.strip()
-
-    destination = tmp_path / "sparrow-function-spec"
-    destination.mkdir()
-    bin_dir = tmp_path / "bin"
-    bin_dir.mkdir()
-    for command in ("bun",):
-        executable = bin_dir / command
-        executable.write_text("#!/bin/sh\nexit 0\n")
-        executable.chmod(0o755)
-    runnable = script.replace("/opt/sparrow-function-spec", str(destination)).replace(source, str(origin)).replace(revision, commit)
-    env = {**os.environ, "PATH": f"{bin_dir}:{os.environ['PATH']}"}
-
-    for stale_name in ("visible", ".hidden"):
-        (destination / stale_name).write_text("stale\n")
-    subprocess.run(["/bin/bash", "-ec", runnable], check=True, env=env, capture_output=True)
-    assert (destination / "contract.txt").read_text() == "expected\n"
-    assert not (destination / ".hidden").exists()
-
-    (destination / ".restart-stale").write_text("stale\n")
-    subprocess.run(["/bin/bash", "-ec", runnable], check=True, env=env, capture_output=True)
-    assert not (destination / ".restart-stale").exists()
-    assert subprocess.run(
-        ["git", "-C", str(destination), "rev-parse", "HEAD"], check=True, capture_output=True, text=True
-    ).stdout.strip() == commit
-
-    failed = subprocess.run(
-        ["/bin/bash", "-ec", runnable.replace(str(origin), str(tmp_path / "missing-origin"))],
-        env=env,
-        capture_output=True,
+    spec = manifest["spec"]["template"]["spec"]
+    assert "initContainers" not in spec
+    assert all(
+        mount["mountPath"] != "/opt/sparrow-function-spec"
+        for container in spec["containers"]
+        for mount in container.get("volumeMounts", [])
     )
-    assert failed.returncode != 0
 
 def hermes_snapshot(state):
     deployment = (ROOT / "k8s" / "hermes-gateway-deployment.yaml").read_text().replace("HERMES_IMAGE", "registry.example/hermes@sha256:" + "a" * 64)
@@ -622,31 +582,28 @@ def test_ordinary_lane_blocks_operator_and_generic_mutation_before_subprocess(mo
     assert calls == []
 
 
-def test_exact_five_operation_two_image_patch_contract():
+def test_exact_three_operation_single_image_patch_contract():
     state = load_state()
     image = "ghcr.io/jc01rho/hermes-gateway@sha256:" + "a" * 64
     candidate = "ghcr.io/jc01rho/hermes-gateway@sha256:" + "b" * 64
     deployment = {
         "metadata": {"resourceVersion": "17"},
         "spec": {"template": {"spec": {
-            "initContainers": [{"name": "sparrow-function-spec", "image": image}],
             "containers": [{"name": "hermes-gateway", "image": image}],
         }}},
     }
     patch = state.image_patch(deployment, image, candidate)
-    assert [item["op"] for item in patch] == ["test", "test", "test", "replace", "replace"]
+    assert [item["op"] for item in patch] == ["test", "test", "replace"]
     assert patch[0] == {"op": "test", "path": "/metadata/resourceVersion", "value": "17"}
-    assert patch[1]["value"] == patch[2]["value"] == image
-    assert patch[3]["value"] == patch[4]["value"] == candidate
-    assert patch[1]["path"] == patch[3]["path"]
-    assert patch[2]["path"] == patch[4]["path"]
+    assert patch[1]["value"] == image
+    assert patch[2]["value"] == candidate
+    assert patch[1]["path"] == patch[2]["path"]
 
 
 @pytest.mark.parametrize("mutation", [
     lambda patch: patch + [{"op": "replace", "path": "/spec/replicas", "value": 1}],
     lambda patch: [{**patch[0], "path": "/status"}, *patch[1:]],
-    lambda patch: [{**patch[3], "op": "add"} if index == 3 else item for index, item in enumerate(patch)],
-    lambda patch: [{**patch[4], "value": "ghcr.io/jc01rho/hermes-gateway@sha256:" + "c" * 64} if index == 4 else item for index, item in enumerate(patch)],
+    lambda patch: [{**patch[2], "op": "add"} if index == 2 else item for index, item in enumerate(patch)],
 ])
 def test_image_patch_rejects_extra_op_path_grammar_and_mixed_candidate(mutation):
     state = load_state()
@@ -654,9 +611,7 @@ def test_image_patch_rejects_extra_op_path_grammar_and_mixed_candidate(mutation)
     candidate = "ghcr.io/jc01rho/hermes-gateway@sha256:" + "b" * 64
     base = [
         {"op":"test","path":"/metadata/resourceVersion","value":"1"},
-        {"op":"test","path":"/spec/template/spec/initContainers/0/image","value":prior},
         {"op":"test","path":"/spec/template/spec/containers/0/image","value":prior},
-        {"op":"replace","path":"/spec/template/spec/initContainers/0/image","value":candidate},
         {"op":"replace","path":"/spec/template/spec/containers/0/image","value":candidate},
     ]
     with pytest.raises(state.Exit) as caught:
@@ -667,11 +622,10 @@ def test_image_patch_rejects_extra_op_path_grammar_and_mixed_candidate(mutation)
 def test_normalization_rejects_missing_duplicate_or_mixed_named_images():
     state = load_state()
     image = "ghcr.io/jc01rho/hermes-gateway@sha256:" + "a" * 64
-    base = {"spec":{"template":{"spec":{"initContainers":[{"name":"sparrow-function-spec","image":image}],"containers":[{"name":"hermes-gateway","image":image}]}}}}
+    base = {"spec":{"template":{"spec":{"containers":[{"name":"hermes-gateway","image":image}]}}}}
     variants = []
     missing = json.loads(json.dumps(base)); missing["spec"]["template"]["spec"]["containers"] = [] ; variants.append(missing)
-    duplicate = json.loads(json.dumps(base)); duplicate["spec"]["template"]["spec"]["initContainers"].append({"name":"sparrow-function-spec","image":image}); variants.append(duplicate)
-    mixed = json.loads(json.dumps(base)); mixed["spec"]["template"]["spec"]["containers"][0]["image"] = "ghcr.io/jc01rho/hermes-gateway@sha256:" + "b" * 64; variants.append(mixed)
+    duplicate = json.loads(json.dumps(base)); duplicate["spec"]["template"]["spec"]["containers"].append({"name":"hermes-gateway","image":image}); variants.append(duplicate)
     for variant in variants:
         with pytest.raises(state.Exit):
             state.normalized_deployment(variant)

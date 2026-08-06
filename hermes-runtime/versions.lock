@@ -1,15 +1,11 @@
-# Build-start pins. The accepted sparrow wrapper may update its checkout after
-# container start, so these values do not claim effective post-start immutability.
+# Build-start pins.
 HERMES_VERSION=0.20.0
 HERMES_REVISION=3c27eb6234bf91b8ceee9e9071591b31e9b148cb
 HERMES_DOWNSTREAM_PATCH=patches/3c27eb62-runtime-security.patch
 HERMES_DOWNSTREAM_PATCH_SHA256=059f57ae5683c1861283f7eeaeb125a045a4b90e3a5ab63152c325228d53b388
 HERMES_CRYPTOGRAPHY_VERSION=50.0.0
 HERMES_SOURCE=https://github.com/NousResearch/hermes-agent.git
-SPARROW_FUNCTION_SPEC_REVISION=6ec5742b2175b869323f1811ff438415d9d6a1bf
-SPARROW_FUNCTION_SPEC_SOURCE=https://gitlab.git.sparrow.local/mcp-servers/functional-spec.git
 BUN_VERSION=1.3.14
 BUN_LINUX_X64_SHA256=951ee2aee855f08595aeec6225226a298d3fea83a3dcd6465c09cbccdf7e848f
 PYTHON_BASE=python:3.12.13-slim-trixie@sha256:57cd7c3a7a273101a6485ba99423ee568157882804b1124b4dd04266317710de
 HERMES_LOCKFILE=uv.lock
-SPARROW_FUNCTION_SPEC_LOCKFILE=bun.lock

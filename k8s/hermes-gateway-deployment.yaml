@@ -16,7 +16,7 @@ spec:
     template:
         metadata:
             annotations:
-                skald.io/hermes-config-revision: 'functional-spec-v7'
+                skald.io/hermes-config-revision: 'functional-spec-http-v1'
             labels:
                 app: skald
                 component: hermes-gateway
@@ -31,40 +31,6 @@ spec:
                 fsGroup: 10001
                 seccompProfile:
                     type: RuntimeDefault
-            initContainers:
-                - name: sparrow-function-spec
-                  image: HERMES_IMAGE
-                  imagePullPolicy: IfNotPresent
-                  env:
-                      - name: GIT_CONFIG_COUNT
-                        value: "1"
-                      - name: GIT_CONFIG_KEY_0
-                        value: safe.directory
-                      - name: GIT_CONFIG_VALUE_0
-                        value: /opt/sparrow-function-spec
-                  command:
-                      - /bin/bash
-                      - -ec
-                  args:
-                      - |
-                        find /opt/sparrow-function-spec -mindepth 1 -maxdepth 1 -exec rm -rf -- {} +
-                        git -c http.sslVerify=false clone https://gitlab.git.sparrow.local/mcp-servers/functional-spec.git /opt/sparrow-function-spec
-                              git -C /opt/sparrow-function-spec checkout --detach 6ec5742b2175b869323f1811ff438415d9d6a1bf
-                              test "$(git -C /opt/sparrow-function-spec rev-parse HEAD)" = "6ec5742b2175b869323f1811ff438415d9d6a1bf"
-                        cd /opt/sparrow-function-spec
-                        bun install --frozen-lockfile
-                  securityContext:
-                      runAsNonRoot: true
-                      runAsUser: 10001
-                      runAsGroup: 10001
-                      allowPrivilegeEscalation: false
-                      readOnlyRootFilesystem: false
-                      capabilities:
-                          drop:
-                              - ALL
-                  volumeMounts:
-                      - name: sparrow-function-spec
-                        mountPath: /opt/sparrow-function-spec
             containers:
                 - name: hermes-gateway
                   image: HERMES_IMAGE
@@ -129,12 +95,6 @@ spec:
                             configMapKeyRef:
                                 name: hermes-gateway-config
                                 key: DISCORD_HOME_CHANNEL_NAME
-                      - name: GIT_CONFIG_COUNT
-                        value: "1"
-                      - name: GIT_CONFIG_KEY_0
-                        value: safe.directory
-                      - name: GIT_CONFIG_VALUE_0
-                        value: /opt/sparrow-function-spec
                   resources:
                       requests:
                           cpu: '250m'
@@ -157,8 +117,6 @@ spec:
                         mountPath: /var/lib/hermes/SOUL.md
                         subPath: SOUL.md
                         readOnly: true
-                      - name: sparrow-function-spec
-                        mountPath: /opt/sparrow-function-spec
             volumes:
                 - name: hermes-config
                   configMap:
@@ -168,7 +126,5 @@ spec:
                             path: config.yaml
                           - key: SOUL.md
                             path: SOUL.md
-                - name: sparrow-function-spec
-                  emptyDir: {}
             restartPolicy: Always
             terminationGracePeriodSeconds: 30
