@@ -701,12 +701,12 @@ def test_rendered_hermes_template_hashes_configmap_content(monkeypatch, tmp_path
     monkeypatch.setenv("HERMES_IMAGE", image)
     monkeypatch.setenv("HERMES_CONFIGMAP_FILE", str(config))
 
-    first = yaml.safe_load(state.render_hermes())
+    first = yaml.safe_load(state.bind_hermes_config_checksum(state.render_hermes(), config.read_text()))
     first_checksum = first["spec"]["template"]["metadata"]["annotations"]["skald.io/hermes-config-sha256"]
     assert first_checksum == hashlib.sha256(config.read_bytes()).hexdigest()
 
     config.write_text("apiVersion: v1\nkind: ConfigMap\ndata:\n  config.yaml: second\n")
-    second = yaml.safe_load(state.render_hermes())
+    second = yaml.safe_load(state.bind_hermes_config_checksum(state.render_hermes(), config.read_text()))
     second_checksum = second["spec"]["template"]["metadata"]["annotations"]["skald.io/hermes-config-sha256"]
     assert second_checksum == hashlib.sha256(config.read_bytes()).hexdigest()
     assert second_checksum != first_checksum

@@ -940,16 +940,17 @@ def render_hermes() -> str:
     image = os.environ.get("HERMES_IMAGE", "")
     if not DIGEST_RE.fullmatch(image):
         raise Exit(64, "HERMES_IMAGE must be a full immutable image digest independent of IMAGE_TAG")
-    config_sha256 = hashlib.sha256(hermes_configmap_yaml().encode()).hexdigest()
     source = (K8S / "hermes-gateway-deployment.yaml").read_text()
-    rendered = (
-        source.replace("${HERMES_IMAGE}", image)
-        .replace("image: HERMES_IMAGE", f"image: {image}")
-        .replace("__HERMES_CONFIG_SHA256__", config_sha256)
-    )
-    if "${HERMES_IMAGE}" in rendered or "image: HERMES_IMAGE" in rendered or "__HERMES_CONFIG_SHA256__" in rendered:
+    rendered = source.replace("${HERMES_IMAGE}", image).replace("image: HERMES_IMAGE", f"image: {image}")
+    if "${HERMES_IMAGE}" in rendered or "image: HERMES_IMAGE" in rendered:
         raise Exit(65, "Hermes image rendering failed")
     return rendered
+
+
+def bind_hermes_config_checksum(rendered: str, config_yaml: str) -> str:
+    if rendered.count("__HERMES_CONFIG_SHA256__") != 1:
+        raise Exit(65, "Hermes manifest must contain exactly one ConfigMap checksum placeholder")
+    return rendered.replace("__HERMES_CONFIG_SHA256__", hashlib.sha256(config_yaml.encode()).hexdigest())
 
 
 def hermes_configmap_yaml() -> str:
@@ -1042,6 +1043,7 @@ def cutover(owner_obj: dict[str, Any], record: dict[str, Any]) -> None:
     if record["active_owner"] != "legacy": raise Exit(65, "cutover requires active_owner=legacy")
     rendered = render_hermes()
     config_yaml = hermes_preflight(rendered)
+    rendered = bind_hermes_config_checksum(rendered, config_yaml)
     smoke_evidence("legacy")  # preflight before stopping legacy
     previous_ref = record["legacy_snapshot_ref"]
     try:
@@ -1066,6 +1068,7 @@ def upgrade(owner_obj: dict[str, Any], record: dict[str, Any]) -> None:
     previous_ref = record["hermes_verified_snapshot_ref"]
     rendered = render_hermes()
     config_yaml = hermes_preflight(rendered)
+    rendered = bind_hermes_config_checksum(rendered, config_yaml)
     try:
         mark_destructive_boundary()
         mutate_scale(LEGACY_DEPLOYMENT, 0) if get_json("deployment", LEGACY_DEPLOYMENT, allow_missing=True) else None
