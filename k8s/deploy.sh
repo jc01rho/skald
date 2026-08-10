@@ -1193,7 +1193,23 @@ deploy_functional_spec_mcp() {
         exit 1
     fi
 
-    if ! kubectl rollout status statefulset/functional-spec-mcp-worker-7487abfe -n "$NAMESPACE" --timeout=300s; then
+    local worker_statefulset="functional-spec-mcp-worker-7487abfe"
+    local worker_update_strategy
+    worker_update_strategy="$(kubectl get statefulset/"$worker_statefulset" -n "$NAMESPACE" -o jsonpath='{.spec.updateStrategy.type}')"
+    if [ "$worker_update_strategy" = "OnDelete" ]; then
+        local worker_replicas worker_current_revision worker_update_revision
+        worker_replicas="$(kubectl get statefulset/"$worker_statefulset" -n "$NAMESPACE" -o jsonpath='{.spec.replicas}')"
+        if ! kubectl wait --for=jsonpath='{.status.readyReplicas}'="$worker_replicas" statefulset/"$worker_statefulset" -n "$NAMESPACE" --timeout=300s; then
+            log_error "Functional spec MCP worker StatefulSet Ready 대기 실패"
+            exit 1
+        fi
+        worker_current_revision="$(kubectl get statefulset/"$worker_statefulset" -n "$NAMESPACE" -o jsonpath='{.status.currentRevision}')"
+        worker_update_revision="$(kubectl get statefulset/"$worker_statefulset" -n "$NAMESPACE" -o jsonpath='{.status.updateRevision}')"
+        if [ -z "$worker_current_revision" ] || [ "$worker_current_revision" != "$worker_update_revision" ]; then
+            log_error "Functional spec MCP worker StatefulSet revision is not converged for OnDelete strategy"
+            exit 1
+        fi
+    elif ! kubectl rollout status statefulset/"$worker_statefulset" -n "$NAMESPACE" --timeout=300s; then
         log_error "Functional spec MCP worker StatefulSet rollout 실패"
         exit 1
     fi
