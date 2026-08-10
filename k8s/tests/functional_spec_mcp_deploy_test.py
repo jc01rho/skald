@@ -14,20 +14,66 @@ def load_documents(path):
     return [document for document in yaml.safe_load_all(path.read_text()) if document]
 
 
-def test_functional_spec_mcp_uses_single_recreated_session_aware_pod():
+def test_functional_spec_mcp_uses_stateless_router_and_revision_workers():
     documents = load_documents(DEPLOYMENT_PATH)
-    deployment = next(document for document in documents if document["kind"] == "Deployment")
-    container = deployment["spec"]["template"]["spec"]["containers"][0]
+    router = next(
+        document
+        for document in documents
+        if document["kind"] == "Deployment"
+        and document["metadata"]["name"] == "functional-spec-mcp"
+    )
+    worker = next(document for document in documents if document["kind"] == "StatefulSet")
+    router_container = router["spec"]["template"]["spec"]["containers"][0]
+    worker_container = worker["spec"]["template"]["spec"]["containers"][0]
 
-    assert deployment["spec"]["replicas"] == 1
-    assert deployment["spec"]["strategy"] == {"type": "Recreate"}
-    assert deployment["spec"]["template"]["spec"]["imagePullSecrets"] == [
+    assert router["spec"]["replicas"] == 2
+    assert router["spec"]["strategy"] == {
+        "type": "RollingUpdate",
+        "rollingUpdate": {"maxUnavailable": 0, "maxSurge": 1},
+    }
+    assert worker["spec"]["replicas"] == 2
+    assert worker["spec"]["serviceName"] == "functional-spec-mcp-worker-7487abfe"
+    assert worker["spec"]["updateStrategy"] == {"type": "OnDelete"}
+    assert router["spec"]["template"]["spec"]["imagePullSecrets"] == [
         {"name": "ghcr-pull-secret"}
     ]
-    assert container["image"].startswith("ghcr.io/jc01rho/sparrow-function-spec-mcp@sha256:")
-    assert container["readinessProbe"]["httpGet"] == {"path": "/healthz", "port": "http"}
-    assert container["livenessProbe"]["httpGet"] == {"path": "/healthz", "port": "http"}
-    assert "env" not in container
+    assert worker_container["image"].startswith(
+        "ghcr.io/jc01rho/sparrow-function-spec-mcp@sha256:"
+    )
+    assert router_container["readinessProbe"]["httpGet"] == {
+        "path": "/readyz",
+        "port": "http",
+    }
+    assert worker_container["readinessProbe"]["httpGet"] == {
+        "path": "/readyz",
+        "port": "http",
+    }
+    assert worker_container["livenessProbe"]["httpGet"] == {
+        "path": "/healthz",
+        "port": "http",
+    }
+    assert worker_container["lifecycle"]["preStop"]["httpGet"] == {
+        "path": "/drain",
+        "port": "http",
+    }
+    assert worker_container["env"][0] == {
+        "name": "MCP_SESSION_POD_NAME",
+        "valueFrom": {"fieldRef": {"fieldPath": "metadata.name"}},
+    }
+    assert worker["spec"]["template"]["spec"]["terminationGracePeriodSeconds"] == 300
+
+
+def test_functional_spec_mcp_services_keep_initial_and_session_routing_separate():
+    services = load_documents(ROOT / "k8s" / "functional-spec-mcp-service.yaml")
+    router, worker, initial = services
+
+    assert router["metadata"]["name"] == "functional-spec-mcp"
+    assert router["spec"]["selector"]["component"] == "functional-spec-mcp-router"
+    assert worker["spec"]["clusterIP"] == "None"
+    assert worker["spec"]["publishNotReadyAddresses"] is True
+    assert worker["metadata"]["name"] == "functional-spec-mcp-worker-7487abfe"
+    assert initial["metadata"]["name"] == "functional-spec-mcp-worker-7487abfe-active"
+    assert initial["spec"]["selector"]["revision"] == "7487abfe"
 
 
 def test_functional_spec_mcp_uses_its_own_envoy_gateway_and_mcp_route():
@@ -50,8 +96,14 @@ def test_functional_spec_mcp_uses_its_own_envoy_gateway_and_mcp_route():
 def test_deploy_script_applies_and_waits_for_functional_spec_mcp():
     deploy_script = DEPLOY_SCRIPT.read_text()
 
+    assert "ensure_functional_spec_mcp_session_secret()" in deploy_script
+    assert "functional-spec-mcp-session-routing" in deploy_script
     assert "deploy_functional_spec_mcp()" in deploy_script
     assert 'kubectl rollout status deployment/functional-spec-mcp -n "$NAMESPACE"' in deploy_script
+    assert (
+        'kubectl rollout status statefulset/functional-spec-mcp-worker-7487abfe '
+        '-n "$NAMESPACE"'
+    ) in deploy_script
     main_body = deploy_script[
         deploy_script.index("main()"): deploy_script.index("show_help()")
     ]

@@ -1150,9 +1150,29 @@ deploy_discord_bot() {
     rm -f /tmp/discord-bot-deployment.yaml
 }
 
+# Session router와 worker가 같은 HMAC secret으로 session owner를 검증한다.
+# 이미 생성된 secret은 보존해 rollout 간 유효한 session ID를 유지한다.
+ensure_functional_spec_mcp_session_secret() {
+    if kubectl get secret functional-spec-mcp-session-routing -n "$NAMESPACE" >/dev/null 2>&1; then
+        return
+    fi
+
+    local signing_secret
+    signing_secret="$(openssl rand -hex 32)"
+    if kubectl create secret generic functional-spec-mcp-session-routing \
+        -n "$NAMESPACE" \
+        --from-literal=signing-secret="$signing_secret"; then
+        log_success "Functional spec MCP session routing secret 생성 완료"
+    else
+        log_error "Functional spec MCP session routing secret 생성 실패"
+        exit 1
+    fi
+}
+
 # Step 7.7: Sparrow 기능 명세 HTTP MCP 배포
 deploy_functional_spec_mcp() {
     log_info "Step 7.7: Sparrow 기능 명세 HTTP MCP 배포"
+    ensure_functional_spec_mcp_session_secret
 
     for manifest in \
         functional-spec-mcp-configmap.yaml \
@@ -1170,6 +1190,11 @@ deploy_functional_spec_mcp() {
 
     if ! kubectl rollout status deployment/functional-spec-mcp -n "$NAMESPACE" --timeout=300s; then
         log_error "Functional spec MCP Deployment rollout 실패"
+        exit 1
+    fi
+
+    if ! kubectl rollout status statefulset/functional-spec-mcp-worker-7487abfe -n "$NAMESPACE" --timeout=300s; then
+        log_error "Functional spec MCP worker StatefulSet rollout 실패"
         exit 1
     fi
 

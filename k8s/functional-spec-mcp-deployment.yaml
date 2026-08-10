@@ -9,6 +9,22 @@ metadata:
     environment: production
 automountServiceAccountToken: false
 ---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: functional-spec-mcp-router
+  namespace: skald
+  labels:
+    app: skald
+    component: functional-spec-mcp
+    environment: production
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app: skald
+      component: functional-spec-mcp-router
+---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -19,18 +35,23 @@ metadata:
     component: functional-spec-mcp
     environment: production
 spec:
-  replicas: 1
+  replicas: 2
   strategy:
-    type: Recreate
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 0
+      maxSurge: 1
   selector:
     matchLabels:
       app: skald
-      component: functional-spec-mcp
+      component: functional-spec-mcp-router
   template:
     metadata:
+      annotations:
+        skald.io/mcp-active-revision: "7487abfe"
       labels:
         app: skald
-        component: functional-spec-mcp
+        component: functional-spec-mcp-router
         environment: production
     spec:
       serviceAccountName: functional-spec-mcp
@@ -45,8 +66,8 @@ spec:
         seccompProfile:
           type: RuntimeDefault
       containers:
-        - name: functional-spec-mcp
-          image: ghcr.io/jc01rho/sparrow-function-spec-mcp@sha256:c15d3cdfa5817ac900ea5994d61574191e3ce630f1ae97f5ee02b48d8705ee7f
+        - name: functional-spec-mcp-router
+          image: ghcr.io/jc01rho/sparrow-function-spec-mcp@sha256:7487abfe9e80b732bdd5af6bf6d37415280698ca61e9f5b6617df4c3574e9510
           imagePullPolicy: IfNotPresent
           ports:
             - name: http
@@ -54,10 +75,113 @@ spec:
               protocol: TCP
           envFrom:
             - configMapRef:
-                name: functional-spec-mcp-config
+                name: functional-spec-mcp-router-config
+          env:
+            - name: MCP_SESSION_SIGNING_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: functional-spec-mcp-session-routing
+                  key: signing-secret
           readinessProbe:
             httpGet:
+              path: /readyz
+              port: http
+            initialDelaySeconds: 2
+            periodSeconds: 5
+            timeoutSeconds: 2
+            failureThreshold: 3
+          livenessProbe:
+            httpGet:
               path: /healthz
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            timeoutSeconds: 2
+            failureThreshold: 3
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop:
+                - ALL
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: functional-spec-mcp-worker-7487abfe
+  namespace: skald
+  labels:
+    app: skald
+    component: functional-spec-mcp-worker
+    environment: production
+    revision: 7487abfe
+spec:
+  serviceName: functional-spec-mcp-worker-7487abfe
+  replicas: 2
+  podManagementPolicy: Parallel
+  updateStrategy:
+    type: OnDelete
+  selector:
+    matchLabels:
+      app: skald
+      component: functional-spec-mcp-worker
+      revision: 7487abfe
+  template:
+    metadata:
+      labels:
+        app: skald
+        component: functional-spec-mcp-worker
+        environment: production
+        revision: 7487abfe
+    spec:
+      serviceAccountName: functional-spec-mcp
+      automountServiceAccountToken: false
+      imagePullSecrets:
+        - name: ghcr-pull-secret
+      terminationGracePeriodSeconds: 300
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        runAsGroup: 10001
+        fsGroup: 10001
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: functional-spec-mcp-worker
+          image: ghcr.io/jc01rho/sparrow-function-spec-mcp@sha256:7487abfe9e80b732bdd5af6bf6d37415280698ca61e9f5b6617df4c3574e9510
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http
+              containerPort: 8080
+              protocol: TCP
+          envFrom:
+            - configMapRef:
+                name: functional-spec-mcp-worker-config
+          env:
+            - name: MCP_SESSION_POD_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+            - name: MCP_SESSION_SIGNING_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: functional-spec-mcp-session-routing
+                  key: signing-secret
+          lifecycle:
+            preStop:
+              httpGet:
+                path: /drain
+                port: http
+          readinessProbe:
+            httpGet:
+              path: /readyz
               port: http
             initialDelaySeconds: 2
             periodSeconds: 5
