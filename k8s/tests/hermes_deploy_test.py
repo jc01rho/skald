@@ -596,30 +596,40 @@ def test_operator_identity_preflight_rejects_wildcard_and_command_path_rechecks_
     assert bypass.value.code == 77
 
 
-def test_deploy_script_separates_ordinary_and_explicit_identity_and_rbac_has_no_decorative_serviceaccount():
+def test_deploy_script_separates_ordinary_and_explicit_identity_and_rbac_scopes_snapshot_pruning():
     text = DEPLOY_SH.read_text()
     dispatch = text[text.index("deploy_discord_owner()") : text.index("deploy_discord_bot()")]
     assert 'state_command=(python3 "$SCRIPT_DIR/hermes/deploy_state.py" dispatch --mode "$HERMES_DEPLOY_MODE")' in dispatch
     assert 'NAMESPACE="$NAMESPACE" HERMES_DEPLOY_IDENTITY=' not in dispatch
     rbac = yaml.safe_load_all((ROOT / "k8s" / "hermes-deploy-operator-rbac.yaml").read_text())
     objects = list(rbac)
-    assert {obj["kind"] for obj in objects} == {"Role", "RoleBinding"}
-    binding = next(obj for obj in objects if obj["kind"] == "RoleBinding")
+    operator_role = next(obj for obj in objects if obj["kind"] == "Role" and obj["metadata"]["name"] == "hermes-deploy-operator")
+    binding = next(obj for obj in objects if obj["kind"] == "RoleBinding" and obj["metadata"]["name"] == "hermes-deploy-operator")
     assert binding["subjects"] == [{"kind": "Group", "name": "hermes-deploy-operators", "apiGroup": "rbac.authorization.k8s.io"}]
 
-    role = next(obj for obj in objects if obj["kind"] == "Role")
     grants = {
         (tuple(rule["apiGroups"]), tuple(rule["resources"]), tuple(rule.get("resourceNames", [])), tuple(rule["verbs"]))
-        for rule in role["rules"]
+        for rule in operator_role["rules"]
     }
     assert (("coordination.k8s.io",), ("leases",), ("skald-discord-deploy-operation",), ("get", "update")) in grants
-    lease_rule = next(rule for rule in role["rules"] if rule["resources"] == ["leases"])
+    lease_rule = next(rule for rule in operator_role["rules"] if rule["resources"] == ["leases"])
     assert "patch" not in lease_rule["verbs"]
     assert "create" not in lease_rule["verbs"]
     assert "delete" not in lease_rule["verbs"]
-    deployment_rules = [rule for rule in role["rules"] if rule["resources"] == ["deployments"]]
+    deployment_rules = [rule for rule in operator_role["rules"] if rule["resources"] == ["deployments"]]
     assert any("patch" in rule["verbs"] for rule in deployment_rules)
-    assert all("delete" not in rule["verbs"] and "deletecollection" not in rule["verbs"] for rule in role["rules"])
+    assert all("delete" not in rule["verbs"] and "deletecollection" not in rule["verbs"] for rule in operator_role["rules"])
+
+    pruner_role = next(obj for obj in objects if obj["kind"] == "Role" and obj["metadata"]["name"] == "hermes-snapshot-pruner")
+    pruner_binding = next(obj for obj in objects if obj["kind"] == "RoleBinding" and obj["metadata"]["name"] == "hermes-snapshot-pruner")
+    assert pruner_binding["subjects"] == [{"kind": "Group", "name": "hermes-snapshot-pruners", "apiGroup": "rbac.authorization.k8s.io"}]
+    pruner_rules = {
+        (tuple(rule["apiGroups"]), tuple(rule["resources"]), tuple(rule.get("resourceNames", [])), tuple(rule["verbs"]))
+        for rule in pruner_role["rules"]
+    }
+    assert (("coordination.k8s.io",), ("leases",), ("skald-discord-deploy-operation",), ("get", "update")) in pruner_rules
+    assert (("",), ("configmaps",), (), ("get", "list", "delete")) in pruner_rules
+    assert all("secrets" not in rule["resources"] and "deletecollection" not in rule["verbs"] for rule in pruner_role["rules"])
 
 
 def owner(active="legacy"):

@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 import importlib.util
 import json
+import stat
 import subprocess
 from datetime import datetime, timezone
 from pathlib import Path
@@ -142,6 +143,61 @@ def hermes_snapshot(state):
     data["record.json"] = state.canonical(record)
     name = f"skald-hermes-verified-{digest[:16]}"
     return f"configmap://skald/{name}", {"apiVersion":"v1","kind":"ConfigMap","metadata":{"name":name},"immutable":True,"data":data}
+
+
+def test_snapshot_prune_plan_keeps_owner_and_newest_retention_window():
+    state = load_state()
+    record = owner("hermes")
+    snapshots = (
+        ("skald-hermes-verified-0000000000000000", "2026-07-01T00:00:00Z"),
+        ("skald-hermes-verified-1111111111111111", "2026-07-02T00:00:00Z"),
+        (record["hermes_verified_snapshot_ref"].rsplit("/", 1)[1], "2026-07-03T00:00:00Z"),
+        ("skald-hermes-verified-2222222222222222", "2026-07-04T00:00:00Z"),
+        ("skald-hermes-verified-3333333333333333", "2026-07-05T00:00:00Z"),
+    )
+
+    assert state.snapshot_prune_plan(record, snapshots, retain=2) == (
+        "skald-hermes-verified-0000000000000000",
+        "skald-hermes-verified-1111111111111111",
+    )
+
+
+def test_snapshot_prune_plan_rejects_empty_retention_window():
+    state = load_state()
+
+    with pytest.raises(state.Exit) as caught:
+        state.snapshot_prune_plan(owner("hermes"), (), retain=0)
+
+    assert caught.value.code == 64
+
+
+def test_snapshot_prune_dry_run_writes_audit_without_deleting(monkeypatch, tmp_path):
+    state = load_state()
+    state.AUTHORIZATION_LANE = state.AuthorizationLane.SNAPSHOT_PRUNER
+    record = owner("hermes")
+    snapshots = (
+        ("skald-hermes-verified-0000000000000000", "2026-07-01T00:00:00Z"),
+        (record["hermes_verified_snapshot_ref"].rsplit("/", 1)[1], "2026-07-02T00:00:00Z"),
+        ("skald-hermes-verified-1111111111111111", "2026-07-03T00:00:00Z"),
+    )
+    events = []
+    audit_path = tmp_path / "snapshot-prune.json"
+    monkeypatch.setattr(state, "load_owner", lambda required=True: ({}, record))
+    monkeypatch.setattr(state, "list_hermes_snapshots", lambda: snapshots)
+    monkeypatch.setattr(state, "acquire", lambda: events.append("acquire"))
+    monkeypatch.setattr(state, "assert_lease", lambda: events.append("assert"))
+    monkeypatch.setattr(state, "delete_hermes_snapshot", lambda name: events.append(("delete", name)))
+    monkeypatch.setattr(state, "release", lambda: events.append("release"))
+
+    audit = state.prune_hermes_snapshots(
+        SimpleNamespace(retain=1, audit_file=str(audit_path), execute=False)
+    )
+
+    assert events == ["acquire", "assert", "release"]
+    assert audit["status"] == "dry-run"
+    assert audit["candidates"] == ["skald-hermes-verified-0000000000000000"]
+    assert json.loads(audit_path.read_text()) == audit
+    assert stat.S_IMODE(audit_path.stat().st_mode) == 0o600
 
 
 def recovery_evidence(record, **overrides):

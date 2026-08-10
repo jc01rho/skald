@@ -58,12 +58,15 @@ PREVERIFIED_KEYS = {"schema_version", "receipt", "receipt_sha256", "image", "hea
 
 ACTOR = os.environ.get("HERMES_OPERATION_ACTOR") or f"{os.uname().nodename}:{os.getpid()}:{uuid.uuid4()}"
 REQUIRED_IDENTITY = os.environ.get("HERMES_DEPLOY_IDENTITY", "")
+SNAPSHOT_PRUNER_IDENTITY = os.environ.get("HERMES_SNAPSHOT_PRUNER_IDENTITY", "")
+DEFAULT_HERMES_SNAPSHOT_RETAIN = 5
 IDENTITY_VERIFIED = False
 
 class AuthorizationLane(Enum):
     UNSET = "unset"
     ORDINARY = "ordinary"
     OPERATOR = "operator"
+    SNAPSHOT_PRUNER = "snapshot-pruner"
 
 
 AUTHORIZATION_LANE = AuthorizationLane.UNSET
@@ -91,6 +94,37 @@ OPERATOR_PERMISSIONS = (
     ("create", "services", None),
     ("patch", "services", "discord-bot-service"),
     ("get", "services/proxy", "http:discord-bot-service:3000"),
+)
+SNAPSHOT_PRUNER_PERMISSIONS = (
+    ("get", "leases.coordination.k8s.io", LEASE),
+    ("update", "leases.coordination.k8s.io", LEASE),
+    ("get", "configmaps", None),
+    ("list", "configmaps", None),
+    ("delete", "configmaps", None),
+)
+SNAPSHOT_PRUNER_PROHIBITED_PERMISSIONS = (
+    ("create", "leases.coordination.k8s.io", None),
+    ("delete", "leases.coordination.k8s.io", LEASE),
+    ("deletecollection", "configmaps", None),
+    ("get", "secrets", None),
+    ("create", "configmaps", None),
+    ("update", "configmaps", None),
+    ("patch", "configmaps", None),
+    ("create", "deployments.apps", None),
+    ("update", "deployments.apps", None),
+    ("patch", "deployments.apps", None),
+    ("delete", "deployments.apps", None),
+    ("deletecollection", "secrets", None),
+    ("deletecollection", "deployments.apps", None),
+    ("deletecollection", "pods", None),
+    ("bind", "roles.rbac.authorization.k8s.io", None),
+    ("bind", "clusterroles.rbac.authorization.k8s.io", None),
+    ("escalate", "roles.rbac.authorization.k8s.io", None),
+    ("escalate", "clusterroles.rbac.authorization.k8s.io", None),
+    ("impersonate", "users", None),
+    ("impersonate", "groups", None),
+    ("impersonate", "serviceaccounts", None),
+    ("*", "*", None),
 )
 # These grants are incompatible with an ordinary transition identity even when
 # it also has every required grant above. None is used by this orchestrator.
@@ -171,18 +205,41 @@ def require_operator_lane() -> None:
         raise Exit(77, "Restricted operator command is unavailable in the ordinary lane")
 
 
+def require_snapshot_pruner_lane() -> None:
+    if AUTHORIZATION_LANE is not AuthorizationLane.SNAPSHOT_PRUNER:
+        raise Exit(77, "Snapshot pruning is unavailable outside the snapshot-pruner lane")
+
+
+def require_restricted_lane() -> None:
+    if AUTHORIZATION_LANE not in (AuthorizationLane.OPERATOR, AuthorizationLane.SNAPSHOT_PRUNER):
+        raise Exit(77, "Restricted command is unavailable in the ordinary lane")
+
+
 def set_authorization_lane(command: str, mode: str = "") -> None:
     global AUTHORIZATION_LANE
-    AUTHORIZATION_LANE = AuthorizationLane.ORDINARY if command == "dispatch" and mode == "" else AuthorizationLane.OPERATOR
+    if command == "dispatch" and mode == "":
+        AUTHORIZATION_LANE = AuthorizationLane.ORDINARY
+    elif command == "prune-snapshots":
+        AUTHORIZATION_LANE = AuthorizationLane.SNAPSHOT_PRUNER
+    else:
+        AUTHORIZATION_LANE = AuthorizationLane.OPERATOR
+
+
+def identity_matches(required_identity: str, whoami: dict[str, Any]) -> bool:
+    user_info = whoami.get("status", {}).get("userInfo", {})
+    if required_identity.startswith("user:"):
+        return bool(required_identity[5:]) and user_info.get("username") == required_identity[5:]
+    if required_identity.startswith("group:"):
+        groups = user_info.get("groups", [])
+        return bool(required_identity[6:]) and isinstance(groups, list) and required_identity[6:] in groups
+    return False
 
 def operator_identity_matches(whoami: dict[str, Any]) -> bool:
-    user_info = whoami.get("status", {}).get("userInfo", {})
-    if REQUIRED_IDENTITY.startswith("user:"):
-        return bool(REQUIRED_IDENTITY[5:]) and user_info.get("username") == REQUIRED_IDENTITY[5:]
-    if REQUIRED_IDENTITY.startswith("group:"):
-        groups = user_info.get("groups", [])
-        return bool(REQUIRED_IDENTITY[6:]) and isinstance(groups, list) and REQUIRED_IDENTITY[6:] in groups
-    return False
+    return identity_matches(REQUIRED_IDENTITY, whoami)
+
+
+def snapshot_pruner_identity_matches(whoami: dict[str, Any]) -> bool:
+    return identity_matches(SNAPSHOT_PRUNER_IDENTITY, whoami)
 
 
 def read_current_identity(base: list[str]) -> dict[str, Any] | None:
@@ -261,10 +318,30 @@ def verify_operator_identity() -> None:
     log("operator_identity_verified", required_identity=REQUIRED_IDENTITY)
 
 
+def verify_snapshot_pruner_identity() -> None:
+    require_snapshot_pruner_lane()
+    global IDENTITY_VERIFIED
+    if not SNAPSHOT_PRUNER_IDENTITY:
+        raise Exit(64, "HERMES_SNAPSHOT_PRUNER_IDENTITY is required (user:<username> or group:<group>)")
+    base = [os.environ.get("KUBECTL", "kubectl"), "--request-timeout", f"{REQUEST_TIMEOUT}s"]
+    whoami = read_current_identity(base)
+    if not isinstance(whoami, dict) or not snapshot_pruner_identity_matches(whoami):
+        raise Exit(77, "Kubernetes identity does not match HERMES_SNAPSHOT_PRUNER_IDENTITY")
+    for verb, resource, name in SNAPSHOT_PRUNER_PROHIBITED_PERMISSIONS:
+        if permission_allowed(base, verb, resource, name):
+            raise Exit(77, f"Kubernetes identity has prohibited permission for {verb} {resource}/{name or '*'}")
+    for verb, resource, name in SNAPSHOT_PRUNER_PERMISSIONS:
+        if not permission_allowed(base, verb, resource, name):
+            raise Exit(77, f"Kubernetes permission denied for {verb} {resource}/{name or '*'}")
+    IDENTITY_VERIFIED = True
+    log("snapshot_pruner_identity_verified", required_identity=SNAPSHOT_PRUNER_IDENTITY)
+
+
 def assert_current_identity() -> None:
     base = [os.environ.get("KUBECTL", "kubectl"), "--request-timeout", f"{REQUEST_TIMEOUT}s"]
     whoami = read_current_identity(base)
-    if not isinstance(whoami, dict) or not operator_identity_matches(whoami):
+    matches = operator_identity_matches if AUTHORIZATION_LANE is AuthorizationLane.OPERATOR else snapshot_pruner_identity_matches
+    if not isinstance(whoami, dict) or not matches(whoami):
         raise Exit(77, "Kubernetes identity changed after operator preflight")
 
 
@@ -272,7 +349,7 @@ def assert_current_identity() -> None:
 
 def kubectl(args: list[str], *, stdin: bytes | None = None, mutation: bool = False, conclusive_codes: tuple[int, ...] = ()) -> subprocess.CompletedProcess[bytes]:
     global MUTATIONS_ALLOWED
-    if AUTHORIZATION_LANE is AuthorizationLane.OPERATOR:
+    if AUTHORIZATION_LANE in (AuthorizationLane.OPERATOR, AuthorizationLane.SNAPSHOT_PRUNER):
         if not IDENTITY_VERIFIED:
             raise Exit(77, "Kubernetes operator identity was not verified")
         assert_current_identity()
@@ -464,7 +541,9 @@ def artifact_contract(record: dict[str, Any], data: dict[str, str], key: str, ex
 
 
 def replace_exact(obj: dict[str, Any], *, expected_kind: str, expected_name: str) -> dict[str, Any]:
-    require_operator_lane()
+    require_restricted_lane()
+    if AUTHORIZATION_LANE is AuthorizationLane.SNAPSHOT_PRUNER and (expected_kind != "lease" or expected_name != LEASE):
+        raise Exit(77, "Snapshot pruner may only replace the operation Lease")
     rv = obj.get("metadata", {}).get("resourceVersion")
     if not isinstance(rv, str) or not rv:
         raise Exit(65, "Missing exact resourceVersion CAS token")
@@ -479,7 +558,7 @@ def replace_exact(obj: dict[str, Any], *, expected_kind: str, expected_name: str
 
 
 def acquire() -> dict[str, Any]:
-    require_operator_lane()
+    require_restricted_lane()
     deadline = time.monotonic() + WAIT_SECONDS
     while True:
         lease = get_json("lease", LEASE)
@@ -512,7 +591,7 @@ def assert_lease() -> dict[str, Any]:
 
 
 def release() -> None:
-    require_operator_lane()
+    require_restricted_lane()
     lease = assert_lease()
     desired = copy.deepcopy(lease)
     desired.setdefault("spec", {})["holderIdentity"] = ""
@@ -557,6 +636,131 @@ def valid_ref(ref: Any, prefix: str) -> bool:
 
 def ref_name(ref: str) -> str:
     return ref.rsplit("/", 1)[1]
+
+
+def snapshot_prune_plan(record: dict[str, Any], snapshots: tuple[tuple[str, str], ...], *, retain: int) -> tuple[str, ...]:
+    if type(retain) is not int or retain < 1:
+        raise Exit(64, "Snapshot retention must be a positive integer")
+    protected = {
+        ref_name(ref)
+        for ref in (record.get("legacy_snapshot_ref"), record.get("hermes_verified_snapshot_ref"))
+        if isinstance(ref, str)
+    }
+    parsed: list[tuple[str, datetime]] = []
+    names: set[str] = set()
+    for name, captured_at in snapshots:
+        ref = f"configmap://{NAMESPACE}/{name}"
+        if not valid_ref(ref, "skald-hermes-verified-") or name in names or not isinstance(captured_at, str):
+            raise Exit(65, "Hermes snapshot retention candidate is invalid")
+        try:
+            timestamp = datetime.fromisoformat(captured_at.replace("Z", "+00:00"))
+        except ValueError:
+            raise Exit(65, "Hermes snapshot retention timestamp is invalid")
+        if timestamp.tzinfo is None:
+            raise Exit(65, "Hermes snapshot retention timestamp must include a timezone")
+        names.add(name)
+        parsed.append((name, timestamp))
+    ordered = sorted(parsed, key=lambda entry: (entry[1], entry[0]))
+    retained = protected | {name for name, _ in ordered[-retain:]}
+    return tuple(name for name, _ in ordered if name not in retained)
+
+
+def list_hermes_snapshots() -> tuple[tuple[str, str], ...]:
+    require_snapshot_pruner_lane()
+    selector = "skald.io/discord-record=true,skald.io/record-kind=hermes"
+    result = kubectl(["get", "configmaps", "-n", NAMESPACE, "-l", selector, "-o", "json"])
+    try:
+        items = json.loads(result.stdout).get("items")
+    except (ValueError, UnicodeDecodeError, AttributeError):
+        raise Exit(65, "Hermes snapshot list is invalid")
+    if not isinstance(items, list):
+        raise Exit(65, "Hermes snapshot list is invalid")
+    snapshots = []
+    for item in items:
+        metadata = item.get("metadata") if isinstance(item, dict) else None
+        labels = metadata.get("labels") if isinstance(metadata, dict) else None
+        name = metadata.get("name") if isinstance(metadata, dict) else None
+        if (
+            not isinstance(labels, dict)
+            or labels.get("skald.io/discord-record") != "true"
+            or labels.get("skald.io/record-kind") != "hermes"
+            or not isinstance(name, str)
+            or not valid_ref(f"configmap://{NAMESPACE}/{name}", "skald-hermes-verified-")
+        ):
+            raise Exit(65, "Hermes snapshot list contains an invalid resource")
+        record, _ = validate_snapshot(f"configmap://{NAMESPACE}/{name}", "hermes")
+        captured_at = record.get("captured_at")
+        if not isinstance(captured_at, str):
+            raise Exit(65, "Hermes snapshot record timestamp is invalid")
+        snapshots.append((name, captured_at))
+    return tuple(snapshots)
+
+
+def write_snapshot_prune_audit(path: Path, audit: dict[str, Any], *, create: bool) -> None:
+    flags = os.O_WRONLY | os.O_NOFOLLOW | (os.O_CREAT | os.O_EXCL if create else os.O_TRUNC)
+    try:
+        fd = os.open(path, flags, 0o600)
+        with os.fdopen(fd, "w", encoding="utf-8") as handle:
+            handle.write(canonical(audit) + "\n")
+        os.chmod(path, 0o600)
+    except OSError as exc:
+        raise Exit(65, f"Snapshot prune audit file is not writable: {exc.strerror}") from exc
+
+
+def delete_hermes_snapshot(name: str) -> None:
+    require_snapshot_pruner_lane()
+    if not valid_ref(f"configmap://{NAMESPACE}/{name}", "skald-hermes-verified-"):
+        raise Exit(65, "Hermes snapshot deletion target is invalid")
+    assert_lease()
+    kubectl(["delete", "configmap", name, "-n", NAMESPACE, "--wait=true"], mutation=True)
+    if get_json("configmap", name, allow_missing=True) is not None:
+        recovery_required(f"Hermes snapshot deletion readback failed for {name}")
+
+
+def prune_hermes_snapshots(args: argparse.Namespace) -> dict[str, Any]:
+    require_snapshot_pruner_lane()
+    audit_path = Path(args.audit_file)
+    acquired = False
+    try:
+        acquire()
+        acquired = True
+        assert_lease()
+        _, record = load_owner(required=True)
+        snapshots = list_hermes_snapshots()
+        candidates = snapshot_prune_plan(record, snapshots, retain=args.retain)
+        protected = sorted(
+            ref_name(ref)
+            for ref in (record["legacy_snapshot_ref"], record.get("hermes_verified_snapshot_ref"))
+            if isinstance(ref, str)
+        )
+        audit = {
+            "schema_version": 1,
+            "action": "prune-hermes-snapshots",
+            "actor": ACTOR,
+            "retain": args.retain,
+            "status": "planned",
+            "protected": protected,
+            "candidates": list(candidates),
+            "deleted": [],
+        }
+        write_snapshot_prune_audit(audit_path, audit, create=True)
+        if args.execute:
+            for name in candidates:
+                delete_hermes_snapshot(name)
+                audit["deleted"].append(name)
+            audit["status"] = "completed"
+        else:
+            audit["status"] = "dry-run"
+        write_snapshot_prune_audit(audit_path, audit, create=False)
+        release()
+        acquired = False
+        log("snapshot_prune_completed", actor=ACTOR, execute=args.execute, retained=args.retain, deleted=len(audit["deleted"]))
+        return audit
+    except BaseException:
+        if acquired and MUTATIONS_ALLOWED:
+            release()
+        raise
+
 
 def validate_snapshot(ref: str, kind: str) -> tuple[dict[str, Any], dict[str, str]]:
     obj = get_json("configmap", ref_name(ref))
@@ -1389,6 +1593,10 @@ def main() -> int:
     deploy = sub.add_parser("dispatch"); deploy.add_argument("--mode", default=os.environ.get("HERMES_DEPLOY_MODE", "")); deploy.add_argument("--preverified-file", default=""); deploy.add_argument("--preverified-sha256", default="")
     sub.add_parser("verify-candidate")
     sub.add_parser("retained-undeploy")
+    prune = sub.add_parser("prune-snapshots")
+    prune.add_argument("--retain", type=int, default=DEFAULT_HERMES_SNAPSHOT_RETAIN)
+    prune.add_argument("--audit-file", required=True)
+    prune.add_argument("--execute", action="store_true")
     recovery = sub.add_parser("recover")
     recovery.add_argument("--evidence-file", required=True)
     recovery.add_argument("--audit-file", required=True)
@@ -1400,8 +1608,11 @@ def main() -> int:
     set_authorization_lane(args.command, args.mode if args.command == "dispatch" else "")
     if AUTHORIZATION_LANE is AuthorizationLane.OPERATOR:
         verify_operator_identity()
+    elif AUTHORIZATION_LANE is AuthorizationLane.SNAPSHOT_PRUNER:
+        verify_snapshot_pruner_identity()
     if args.command == "dispatch": print(dispatch(args.mode, getattr(args, "preverified_file", ""), getattr(args, "preverified_sha256", "")))
     elif args.command == "retained-undeploy": retained_undeploy()
+    elif args.command == "prune-snapshots": print(canonical(prune_hermes_snapshots(args)))
     else: recover(args)
     return 0
 
