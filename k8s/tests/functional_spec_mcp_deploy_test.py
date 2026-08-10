@@ -20,7 +20,7 @@ def test_functional_spec_mcp_uses_stateless_router_and_revision_workers():
         document
         for document in documents
         if document["kind"] == "Deployment"
-        and document["metadata"]["name"] == "functional-spec-mcp"
+        and document["metadata"]["name"] == "functional-spec-mcp-router"
     )
     worker = next(document for document in documents if document["kind"] == "StatefulSet")
     router_container = router["spec"]["template"]["spec"]["containers"][0]
@@ -99,7 +99,10 @@ def test_deploy_script_applies_and_waits_for_functional_spec_mcp():
     assert "ensure_functional_spec_mcp_session_secret()" in deploy_script
     assert "functional-spec-mcp-session-routing" in deploy_script
     assert "deploy_functional_spec_mcp()" in deploy_script
-    assert 'kubectl rollout status deployment/functional-spec-mcp -n "$NAMESPACE"' in deploy_script
+    assert (
+        'kubectl rollout status deployment/functional-spec-mcp-router -n "$NAMESPACE"'
+        in deploy_script
+    )
     assert (
         'kubectl rollout status statefulset/functional-spec-mcp-worker-7487abfe '
         '-n "$NAMESPACE"'

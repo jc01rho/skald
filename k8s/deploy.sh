@@ -1188,7 +1188,7 @@ deploy_functional_spec_mcp() {
         fi
     done
 
-    if ! kubectl rollout status deployment/functional-spec-mcp -n "$NAMESPACE" --timeout=300s; then
+    if ! kubectl rollout status deployment/functional-spec-mcp-router -n "$NAMESPACE" --timeout=300s; then
         log_error "Functional spec MCP Deployment rollout 실패"
         exit 1
     fi
