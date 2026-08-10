@@ -940,9 +940,14 @@ def render_hermes() -> str:
     image = os.environ.get("HERMES_IMAGE", "")
     if not DIGEST_RE.fullmatch(image):
         raise Exit(64, "HERMES_IMAGE must be a full immutable image digest independent of IMAGE_TAG")
+    config_sha256 = hashlib.sha256(hermes_configmap_yaml().encode()).hexdigest()
     source = (K8S / "hermes-gateway-deployment.yaml").read_text()
-    rendered = source.replace("${HERMES_IMAGE}", image).replace("image: HERMES_IMAGE", f"image: {image}")
-    if "${HERMES_IMAGE}" in rendered or "image: HERMES_IMAGE" in rendered:
+    rendered = (
+        source.replace("${HERMES_IMAGE}", image)
+        .replace("image: HERMES_IMAGE", f"image: {image}")
+        .replace("__HERMES_CONFIG_SHA256__", config_sha256)
+    )
+    if "${HERMES_IMAGE}" in rendered or "image: HERMES_IMAGE" in rendered or "__HERMES_CONFIG_SHA256__" in rendered:
         raise Exit(65, "Hermes image rendering failed")
     return rendered
 

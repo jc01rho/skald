@@ -17,6 +17,7 @@ spec:
         metadata:
             annotations:
                 skald.io/hermes-config-revision: 'functional-spec-http-v1'
+                skald.io/hermes-config-sha256: '__HERMES_CONFIG_SHA256__'
             labels:
                 app: skald
                 component: hermes-gateway

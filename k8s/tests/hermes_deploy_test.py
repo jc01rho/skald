@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import importlib.util
+import hashlib
 import json
 import os
 import subprocess
@@ -690,6 +691,25 @@ def test_hermes_image_is_full_separate_immutable_input():
     finally:
         os.environ.pop("HERMES_IMAGE")
 
+
+
+def test_rendered_hermes_template_hashes_configmap_content(monkeypatch, tmp_path):
+    state = load_state()
+    image = "registry.example/hermes@sha256:" + "a" * 64
+    config = tmp_path / "hermes-gateway-configmap.yaml"
+    config.write_text("apiVersion: v1\nkind: ConfigMap\ndata:\n  config.yaml: first\n")
+    monkeypatch.setenv("HERMES_IMAGE", image)
+    monkeypatch.setenv("HERMES_CONFIGMAP_FILE", str(config))
+
+    first = yaml.safe_load(state.render_hermes())
+    first_checksum = first["spec"]["template"]["metadata"]["annotations"]["skald.io/hermes-config-sha256"]
+    assert first_checksum == hashlib.sha256(config.read_bytes()).hexdigest()
+
+    config.write_text("apiVersion: v1\nkind: ConfigMap\ndata:\n  config.yaml: second\n")
+    second = yaml.safe_load(state.render_hermes())
+    second_checksum = second["spec"]["template"]["metadata"]["annotations"]["skald.io/hermes-config-sha256"]
+    assert second_checksum == hashlib.sha256(config.read_bytes()).hexdigest()
+    assert second_checksum != first_checksum
 
 
 def test_workflow_emits_exact_canonical_receipt_and_uploads_it_last():
