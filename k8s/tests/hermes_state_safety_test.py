@@ -332,6 +332,7 @@ def test_waiting_operator_reloads_owner_after_acquire_and_never_restores_stale_s
     monkeypatch.setattr(state, "hermes_configmap_yaml", lambda: "config")
     monkeypatch.setattr(state, "render_hermes", lambda: "deployment")
     monkeypatch.setattr(state, "hermes_preflight", lambda _: "config")
+    monkeypatch.setattr(state, "bind_hermes_config_checksum", lambda deployment, _: deployment)
     monkeypatch.setattr(
         state,
         "smoke",

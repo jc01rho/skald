@@ -804,6 +804,7 @@ def test_automatic_cutover_rollback_is_ordered(monkeypatch):
     record = owner("legacy")
     monkeypatch.setattr(state, "render_hermes", lambda: "deployment")
     monkeypatch.setattr(state, "hermes_preflight", lambda _: "config")
+    monkeypatch.setattr(state, "bind_hermes_config_checksum", lambda deployment, _: deployment)
     monkeypatch.setattr(state, "smoke_evidence", lambda value: events.append(f"smoke:{value}") or ({"profile": value, "correlation_id": "id", "completed_at": "now"} if value == "legacy" else (_ for _ in ()).throw(state.Exit(70, "candidate failed"))))
     monkeypatch.setattr(state, "mutate_scale", lambda name, replicas: events.append(f"scale:{name}:{replicas}"))
     monkeypatch.setattr(state, "apply_bytes", lambda _: events.append("apply:hermes"))
@@ -819,6 +820,7 @@ def test_unknown_post_stop_failure_does_not_attempt_rollback(monkeypatch):
     events = []
     monkeypatch.setattr(state, "render_hermes", lambda: "deployment")
     monkeypatch.setattr(state, "hermes_preflight", lambda _: "config")
+    monkeypatch.setattr(state, "bind_hermes_config_checksum", lambda deployment, _: deployment)
     monkeypatch.setattr(state, "smoke_evidence", lambda owner: events.append(f"smoke:{owner}") or {})
     monkeypatch.setattr(state, "mutate_scale", lambda *_: (_ for _ in ()).throw(state.Exit(75, "RECOVERY_REQUIRED")))
     monkeypatch.setattr(state, "restore_snapshot", lambda *_: events.append("restore"))
