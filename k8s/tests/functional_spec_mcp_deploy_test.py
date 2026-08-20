@@ -2,10 +2,10 @@ from pathlib import Path
 
 import yaml
 
-
 ROOT = Path(__file__).resolve().parents[2]
 DEPLOY_SCRIPT = ROOT / "k8s" / "deploy.sh"
 DEPLOYMENT_PATH = ROOT / "k8s" / "functional-spec-mcp-deployment.yaml"
+WORKER_PATH = ROOT / "k8s" / "functional-spec-mcp-worker.yaml"
 GATEWAY_PATH = ROOT / "k8s" / "functional-spec-mcp-gateway.yaml"
 ROUTE_PATH = ROOT / "k8s" / "functional-spec-mcp-httproute.yaml"
 
@@ -22,7 +22,7 @@ def test_functional_spec_mcp_uses_stateless_router_and_revision_workers():
         if document["kind"] == "Deployment"
         and document["metadata"]["name"] == "functional-spec-mcp-router"
     )
-    worker = next(document for document in documents if document["kind"] == "StatefulSet")
+    worker = load_documents(WORKER_PATH)[0]
     router_container = router["spec"]["template"]["spec"]["containers"][0]
     worker_container = worker["spec"]["template"]["spec"]["containers"][0]
 
@@ -32,7 +32,7 @@ def test_functional_spec_mcp_uses_stateless_router_and_revision_workers():
         "rollingUpdate": {"maxUnavailable": 0, "maxSurge": 1},
     }
     assert worker["spec"]["replicas"] == 2
-    assert worker["spec"]["serviceName"] == "functional-spec-mcp-worker-7487abfe"
+    assert worker["spec"]["serviceName"] == "functional-spec-mcp-worker-162bbadb"
     assert worker["spec"]["updateStrategy"] == {"type": "OnDelete"}
     assert router["spec"]["template"]["spec"]["imagePullSecrets"] == [
         {"name": "ghcr-pull-secret"}
@@ -71,9 +71,9 @@ def test_functional_spec_mcp_services_keep_initial_and_session_routing_separate(
     assert router["spec"]["selector"]["component"] == "functional-spec-mcp-router"
     assert worker["spec"]["clusterIP"] == "None"
     assert worker["spec"]["publishNotReadyAddresses"] is True
-    assert worker["metadata"]["name"] == "functional-spec-mcp-worker-7487abfe"
-    assert initial["metadata"]["name"] == "functional-spec-mcp-worker-7487abfe-active"
-    assert initial["spec"]["selector"]["revision"] == "7487abfe"
+    assert worker["metadata"]["name"] == "functional-spec-mcp-worker-162bbadb"
+    assert initial["metadata"]["name"] == "functional-spec-mcp-worker-162bbadb-active"
+    assert initial["spec"]["selector"]["revision"] == "162bbadb"
 
 
 def test_functional_spec_mcp_uses_its_own_envoy_gateway_and_mcp_route():
@@ -99,14 +99,11 @@ def test_deploy_script_applies_and_waits_for_functional_spec_mcp():
     assert "ensure_functional_spec_mcp_session_secret()" in deploy_script
     assert "functional-spec-mcp-session-routing" in deploy_script
     assert "deploy_functional_spec_mcp()" in deploy_script
-    assert (
-        'kubectl rollout status deployment/functional-spec-mcp-router -n "$NAMESPACE"'
-        in deploy_script
-    )
+    assert 'kubectl rollout status deployment/functional-spec-mcp-router -n "$NAMESPACE"' in deploy_script
     assert 'updateStrategy.type' in deploy_script
     assert 'StatefulSet revision is not converged for OnDelete strategy' in deploy_script
     assert (
-        'kubectl rollout status statefulset/functional-spec-mcp-worker-7487abfe '
+        'kubectl rollout status statefulset/functional-spec-mcp-worker-162bbadb '
         '-n "$NAMESPACE"'
     ) not in deploy_script
     main_body = deploy_script[
@@ -116,3 +113,19 @@ def test_deploy_script_applies_and_waits_for_functional_spec_mcp():
     assert main_body.index("deploy_functional_spec_mcp") < main_body.index(
         "verify_deployment"
     )
+
+
+def test_deploy_script_waits_for_new_workers_before_router_cutover():
+    deploy_script = DEPLOY_SCRIPT.read_text()
+
+    worker_apply = deploy_script.index(
+        'kubectl apply -f functional-spec-mcp-worker.yaml -n "$NAMESPACE"'
+    )
+    worker_ready = deploy_script.index(
+        'statefulset/"$worker_statefulset" -n "$NAMESPACE" --timeout=300s'
+    )
+    router_apply = deploy_script.index(
+        'kubectl apply -f functional-spec-mcp-deployment.yaml -n "$NAMESPACE"'
+    )
+
+    assert worker_apply < worker_ready < router_apply

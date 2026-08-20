@@ -1176,10 +1176,7 @@ deploy_functional_spec_mcp() {
 
     for manifest in \
         functional-spec-mcp-configmap.yaml \
-        functional-spec-mcp-service.yaml \
-        functional-spec-mcp-deployment.yaml \
-        functional-spec-mcp-gateway.yaml \
-        functional-spec-mcp-httproute.yaml; do
+        functional-spec-mcp-service.yaml; do
         if kubectl apply -f "$manifest" -n "$NAMESPACE"; then
             log_success "$manifest 적용 완료"
         else
@@ -1188,12 +1185,14 @@ deploy_functional_spec_mcp() {
         fi
     done
 
-    if ! kubectl rollout status deployment/functional-spec-mcp-router -n "$NAMESPACE" --timeout=300s; then
-        log_error "Functional spec MCP Deployment rollout 실패"
+    if kubectl apply -f functional-spec-mcp-worker.yaml -n "$NAMESPACE"; then
+        log_success "functional-spec-mcp-worker.yaml 적용 완료"
+    else
+        log_error "functional-spec-mcp-worker.yaml 적용 실패"
         exit 1
     fi
 
-    local worker_statefulset="functional-spec-mcp-worker-7487abfe"
+    local worker_statefulset="functional-spec-mcp-worker-162bbadb"
     local worker_update_strategy
     worker_update_strategy="$(kubectl get statefulset/"$worker_statefulset" -n "$NAMESPACE" -o jsonpath='{.spec.updateStrategy.type}')"
     if [ "$worker_update_strategy" = "OnDelete" ]; then
@@ -1211,6 +1210,29 @@ deploy_functional_spec_mcp() {
         fi
     elif ! kubectl rollout status statefulset/"$worker_statefulset" -n "$NAMESPACE" --timeout=300s; then
         log_error "Functional spec MCP worker StatefulSet rollout 실패"
+        exit 1
+    fi
+
+    if kubectl apply -f functional-spec-mcp-deployment.yaml -n "$NAMESPACE"; then
+        log_success "functional-spec-mcp-deployment.yaml 적용 완료"
+    else
+        log_error "functional-spec-mcp-deployment.yaml 적용 실패"
+        exit 1
+    fi
+
+    for manifest in \
+        functional-spec-mcp-gateway.yaml \
+        functional-spec-mcp-httproute.yaml; do
+        if kubectl apply -f "$manifest" -n "$NAMESPACE"; then
+            log_success "$manifest 적용 완료"
+        else
+            log_error "$manifest 적용 실패"
+            exit 1
+        fi
+    done
+
+    if ! kubectl rollout status deployment/functional-spec-mcp-router -n "$NAMESPACE" --timeout=300s; then
+        log_error "Functional spec MCP Deployment rollout 실패"
         exit 1
     fi
 
