@@ -40,6 +40,7 @@ def test_functional_spec_mcp_uses_stateless_router_and_revision_workers():
     assert worker_container["image"].startswith(
         "ghcr.io/jc01rho/sparrow-function-spec-mcp@sha256:"
     )
+    assert router_container["resources"]["limits"]["memory"] == "512Mi"
     assert router_container["readinessProbe"]["httpGet"] == {
         "path": "/readyz",
         "port": "http",
