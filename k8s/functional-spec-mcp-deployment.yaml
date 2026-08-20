@@ -48,7 +48,7 @@ spec:
   template:
     metadata:
       annotations:
-        skald.io/mcp-active-revision: "162bbadb"
+        skald.io/mcp-active-revision: "c7e78651"
       labels:
         app: skald
         component: functional-spec-mcp-router
@@ -67,7 +67,7 @@ spec:
           type: RuntimeDefault
       containers:
         - name: functional-spec-mcp-router
-          image: ghcr.io/jc01rho/sparrow-function-spec-mcp@sha256:162bbadbef150536a94c7968d15ef5ac88502ee765f1a79f87479a84cb48a981
+          image: ghcr.io/jc01rho/sparrow-function-spec-mcp@sha256:c7e786517190e34e3cf82271a64c59917c02edc82c35836feb41cf8cea078c3e
           imagePullPolicy: IfNotPresent
           ports:
             - name: http

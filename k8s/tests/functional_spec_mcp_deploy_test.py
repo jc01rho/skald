@@ -32,7 +32,7 @@ def test_functional_spec_mcp_uses_stateless_router_and_revision_workers():
         "rollingUpdate": {"maxUnavailable": 0, "maxSurge": 1},
     }
     assert worker["spec"]["replicas"] == 2
-    assert worker["spec"]["serviceName"] == "functional-spec-mcp-worker-162bbadb"
+    assert worker["spec"]["serviceName"] == "functional-spec-mcp-worker-c7e78651"
     assert worker["spec"]["updateStrategy"] == {"type": "OnDelete"}
     assert router["spec"]["template"]["spec"]["imagePullSecrets"] == [
         {"name": "ghcr-pull-secret"}
@@ -71,9 +71,9 @@ def test_functional_spec_mcp_services_keep_initial_and_session_routing_separate(
     assert router["spec"]["selector"]["component"] == "functional-spec-mcp-router"
     assert worker["spec"]["clusterIP"] == "None"
     assert worker["spec"]["publishNotReadyAddresses"] is True
-    assert worker["metadata"]["name"] == "functional-spec-mcp-worker-162bbadb"
-    assert initial["metadata"]["name"] == "functional-spec-mcp-worker-162bbadb-active"
-    assert initial["spec"]["selector"]["revision"] == "162bbadb"
+    assert worker["metadata"]["name"] == "functional-spec-mcp-worker-c7e78651"
+    assert initial["metadata"]["name"] == "functional-spec-mcp-worker-c7e78651-active"
+    assert initial["spec"]["selector"]["revision"] == "c7e78651"
 
 
 def test_functional_spec_mcp_uses_its_own_envoy_gateway_and_mcp_route():
@@ -103,7 +103,7 @@ def test_deploy_script_applies_and_waits_for_functional_spec_mcp():
     assert 'updateStrategy.type' in deploy_script
     assert 'StatefulSet revision is not converged for OnDelete strategy' in deploy_script
     assert (
-        'kubectl rollout status statefulset/functional-spec-mcp-worker-162bbadb '
+        'kubectl rollout status statefulset/functional-spec-mcp-worker-c7e78651 '
         '-n "$NAMESPACE"'
     ) not in deploy_script
     main_body = deploy_script[
