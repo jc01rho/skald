@@ -6,6 +6,24 @@ describe('queryNormalization', () => {
         expect(normalizeTechnicalAliases('sast 레거시에서 매트릭 을 켜는 옵션')).toContain('metric')
     })
 
+    it('normalizes checker alias to issue detection rule term', () => {
+        expect(normalizeTechnicalAliases('체커 옵션의 종류를 검색해줘')).toContain('이슈검출규칙 옵션의 종류를 검색해줘')
+    })
+
+    it('adds issue detection rule variants for checker option queries', () => {
+        const variants = expandTechnicalQueryVariants('체커 옵션의 종류를 검색해줘')
+
+        expect(variants).toEqual(
+            expect.arrayContaining([
+                '체커 옵션의 종류를 검색해줘',
+                '이슈검출규칙 옵션의 종류를 검색해줘',
+                '이슈 검출 규칙 옵션의 종류를 검색해줘',
+                '이슈 검출 규칙 옵션 종류',
+                '이슈 검출 규칙 옵션 목록',
+            ])
+        )
+    })
+
     it('expands metric/property variants for legacy SAST queries', () => {
         const variants = expandTechnicalQueryVariants('sast 레거시에서 매트릭 을 켜는 옵션을 알려줘')
 

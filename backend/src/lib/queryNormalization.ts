@@ -1,4 +1,8 @@
 const METRIC_ALIAS_PATTERN = /매트릭스?|메트릭스?/giu
+const CHECKER_ALIAS_PATTERN = /체커/giu
+const CHECKER_TERM = '이슈검출규칙'
+const CHECKER_TERM_SPACED_PATTERN = /이슈검출규칙/gu
+const CHECKER_TERM_SPACED = '이슈 검출 규칙'
 const LEGACY_PATTERN = /레거시/iu
 const ENTERPRISE_ALIAS_PATTERN = /(엔터프라이즈|엔터|enterprise)/iu
 const ERROR_CODE_ALIAS_PATTERN = /(에러코드|오류코드|error\s*codes?)/iu
@@ -73,7 +77,7 @@ function buildComparisonVariants(query: string): string[] {
 }
 
 export function normalizeTechnicalAliases(query: string): string {
-    return query.replace(METRIC_ALIAS_PATTERN, 'metric')
+    return query.replace(METRIC_ALIAS_PATTERN, 'metric').replace(CHECKER_ALIAS_PATTERN, CHECKER_TERM)
 }
 
 export function expandTechnicalQueryVariants(query: string): string[] {
@@ -95,6 +99,7 @@ export function expandTechnicalQueryVariants(query: string): string[] {
     const hasNumericErrorCodes = Array.from(normalized.matchAll(NUMERIC_ERROR_CODE_PATTERN), (match) => match[0])
     const mentionsOptionLike =
         lowerNormalized.includes('option') || lowerNormalized.includes('옵션') || lowerNormalized.includes('설정')
+    const mentionsChecker = normalized.includes(CHECKER_TERM)
 
     if (mentionsMetric && !mentionsSparrowProperties) {
         variants.push(`${normalized} sparrow.properties`)
@@ -164,6 +169,15 @@ export function expandTechnicalQueryVariants(query: string): string[] {
                 variants.push(`legacy sast error code ${code}`)
                 variants.push(`레거시 sast 오류코드 ${code}`)
             }
+        }
+    }
+
+    if (mentionsChecker) {
+        variants.push(normalized.replace(CHECKER_TERM_SPACED_PATTERN, CHECKER_TERM_SPACED))
+
+        if (mentionsOptionLike) {
+            variants.push(`${CHECKER_TERM_SPACED} 옵션 종류`)
+            variants.push(`${CHECKER_TERM_SPACED} 옵션 목록`)
         }
     }
 
