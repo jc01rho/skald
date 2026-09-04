@@ -6,6 +6,7 @@ export const SUPPORTED_LLM_MODELS = {
         // Available Models
         // Primary fallback chain priority first
         // ========================================
+        glm: { slug: 'glm', name: 'GLM' },
         'glm-5.2': { slug: 'glm-5.2', name: 'GLM 5.2' },
         parrot: { slug: 'parrot', name: 'Parrot' },
         'deepseek/deepseek-v4-pro': { slug: 'deepseek/deepseek-v4-pro', name: 'DeepSeek V4 Pro' },
