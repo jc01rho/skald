@@ -14,7 +14,9 @@ describe('llmModels', () => {
     })
 
     it('includes glm in supported cli-proxy-api models', () => {
-        expect(SUPPORTED_LLM_MODELS['cli-proxy-api'].glm).toEqual({ slug: 'glm', name: 'GLM' })
+        const models = SUPPORTED_LLM_MODELS['cli-proxy-api']
+        expect(models.glm).toEqual({ slug: 'glm', name: 'GLM' })
+        expect(Object.hasOwn(models, 'glm-5.2')).toBe(false)
     })
 
     it('resolves glm as the default chat and classification model', () => {

@@ -7,7 +7,6 @@ export const SUPPORTED_LLM_MODELS = {
         // Primary fallback chain priority first
         // ========================================
         glm: { slug: 'glm', name: 'GLM' },
-        'glm-5.2': { slug: 'glm-5.2', name: 'GLM 5.2' },
         parrot: { slug: 'parrot', name: 'Parrot' },
         'deepseek/deepseek-v4-pro': { slug: 'deepseek/deepseek-v4-pro', name: 'DeepSeek V4 Pro' },
         'xiaomi/mimo-v2.5-pro': { slug: 'xiaomi/mimo-v2.5-pro', name: 'Xiaomi MiMo v2.5 Pro' },
