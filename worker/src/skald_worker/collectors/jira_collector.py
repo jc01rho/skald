@@ -467,7 +467,7 @@ class JiraCollector:
             return list(
                 self.jira.search_issues(
                     jql,
-                    start_at=start_at,
+                    startAt=start_at,
                     maxResults=batch_size,
                     expand="changelog,comment",
                 )
