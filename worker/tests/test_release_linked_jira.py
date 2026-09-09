@@ -220,3 +220,43 @@ class TestReleaseLinkExtraction:
         assert result["failed"] == 1
         # Release memo itself was still upserted before the linked-Jira gate failed.
         assert mock_skald.upsert_memo.await_count == 1
+
+
+class TestEmptyBody500AsNoNotes:
+    @pytest.mark.asyncio
+    async def test_empty_body_500_treated_as_no_notes(self):
+        import httpx
+        collector = ReleaseCollector(base_url="https://spms.test")
+        request = httpx.Request("GET", "https://spms.test/api/releases/versions/12086/notes")
+        response = httpx.Response(500, request=request, content=b"")
+        error = httpx.HTTPStatusError("server error", request=request, response=response)
+
+        with patch.object(collector, "_request_with_retry", new=AsyncMock(side_effect=error)):
+            result = await collector.fetch_release_notes("12086")
+
+        assert result is None
+
+    @pytest.mark.asyncio
+    async def test_bodyful_500_still_raises(self):
+        import httpx
+        collector = ReleaseCollector(base_url="https://spms.test")
+        request = httpx.Request("GET", "https://spms.test/api/releases/versions/1/notes")
+        response = httpx.Response(500, request=request, content=b'{"error":"boom"}')
+        error = httpx.HTTPStatusError("server error", request=request, response=response)
+
+        with (
+            patch.object(collector, "_request_with_retry", new=AsyncMock(side_effect=error)),
+            pytest.raises(httpx.HTTPStatusError),
+        ):
+            await collector.fetch_release_notes("1")
+
+    @pytest.mark.asyncio
+    async def test_404_still_no_notes(self):
+        import httpx
+        collector = ReleaseCollector(base_url="https://spms.test")
+        request = httpx.Request("GET", "https://spms.test/api/releases/versions/2/notes")
+        response = httpx.Response(404, request=request)
+        error = httpx.HTTPStatusError("not found", request=request, response=response)
+
+        with patch.object(collector, "_request_with_retry", new=AsyncMock(side_effect=error)):
+            assert await collector.fetch_release_notes("2") is None

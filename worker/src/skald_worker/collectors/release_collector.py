@@ -277,8 +277,18 @@ class ReleaseCollector:
             response = await self._request_with_retry("GET", f"/api/releases/versions/{version_id}/notes")
             return response.json()
         except httpx.HTTPStatusError as exc:
-            if exc.response.status_code == 404:
+            status_code = exc.response.status_code
+            if status_code == 404:
                 logger.info("Release notes not found", version_id=version_id)
+                return None
+            # SPMS returns a bodyless 500 when a version has no registered notes.
+            # Treat only that exact shape as "no notes"; real server errors still raise.
+            body = exc.response.content or b""
+            if status_code == 500 and not body.strip():
+                logger.warning(
+                    "Release notes endpoint returned empty-body 500; treating as no notes",
+                    version_id=version_id,
+                )
                 return None
             logger.error("Failed to fetch release notes", version_id=version_id, error=str(exc))
             raise
