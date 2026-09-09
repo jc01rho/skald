@@ -29,6 +29,10 @@ data:
     DOCS_SYNC_DAYS: '7'
     DOCS_ENABLED: 'false'
     RELEASE_ENABLED: 'false'
+    RELEASE_LINKED_JIRA_ENABLED: 'false'
+    RELEASE_LINKED_JIRA_MAX_KEYS: '50'
+    JIRA_COMMENT_PAGE_SIZE: '100'
+    JIRA_COMMENT_MAX_COUNT: '500'
     USERDATA_ENABLED: 'false'
 
     # Notion stays disabled until its Secret-backed token and root page are configured.

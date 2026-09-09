@@ -1,5 +1,6 @@
 """Release status collector service for SPMS."""
 
+import re
 from datetime import UTC, datetime
 from typing import Any
 from urllib.parse import quote
@@ -8,6 +9,7 @@ import httpx
 import structlog
 
 from skald_worker.clients.skald import get_skald_client
+from skald_worker.collectors.jira_collector import get_jira_collector
 from skald_worker.config import settings
 from skald_worker.retry import with_retry
 
@@ -38,6 +40,54 @@ PRODUCT_INFO: dict[str, dict[str, Any]] = {
         "aliases": ["DAST"],
     },
 }
+
+
+JIRA_ISSUE_KEY_PATTERN = re.compile(r"([A-Z][A-Z0-9]+)-(\d+)")
+
+
+def _extract_linked_jira_issues(release_notes: dict[str, Any] | None) -> list[dict[str, str]]:
+    """Extract explicitly linked Jira keys from release note items' link fields only."""
+    if not release_notes:
+        return []
+    seen: set[str] = set()
+    linked: list[dict[str, str]] = []
+    for item in release_notes.get("all_desc", []) or []:
+        if not isinstance(item, dict):
+            continue
+        link = str(item.get("link") or "")
+        if not link:
+            continue
+        match = JIRA_ISSUE_KEY_PATTERN.search(link)
+        if not match:
+            continue
+        key = f"{match.group(1)}-{match.group(2)}".upper()
+        if key in seen:
+            continue
+        seen.add(key)
+        linked.append(
+            {
+                "issue_key": key,
+                "reference_id": key,
+                "url": f"https://jira.sparrowfasoo.com/browse/{key}",
+                "category": str(item.get("category", "")),
+                "headline": str(item.get("headline", "")),
+            }
+        )
+    return linked
+
+
+def _format_linked_jira_issues(linked: list[dict[str, str]]) -> list[str]:
+    """Render the canonical linked-Jira section so link changes alter the content hash."""
+    if not linked:
+        return ["- 없음"]
+    lines = []
+    for entry in linked:
+        category = f"[{entry['category']}]" if entry.get("category") else ""
+        headline = entry.get("headline", "")
+        prefix = f"- {entry['issue_key']} {category}".strip()
+        lines.append(f"{prefix} {headline}".rstrip())
+        lines.append(f"  - 출처: {entry['url']}")
+    return lines
 
 
 def _format_epoch_millis(value: Any) -> str:
@@ -275,6 +325,7 @@ class ReleaseCollector:
         requirement_issues: list[dict[str, Any]],
         incident_issues: list[dict[str, Any]],
         checker_issues: list[dict[str, Any]],
+        linked_jira_issues: list[dict[str, str]] | None = None,
     ) -> tuple[str, str, dict[str, Any], list[str]]:
         project_key = str(detail.get("projectKey") or version_summary.get("project") or "")
         product_info = PRODUCT_INFO.get(project_key, {"name": project_key or "Unknown", "aliases": []})
@@ -300,6 +351,7 @@ class ReleaseCollector:
             "user_release_date": str(detail.get("userReleaseDate", "")),
             "release_note_status": str((release_notes or {}).get("status", "")),
             "release_note_updated": str((release_notes or {}).get("date_updated", "")),
+            "release_linked_jira_keys": [entry["issue_key"] for entry in (linked_jira_issues or [])],
             "roadmap_issue_count": len(roadmap_issues),
             "requirement_issue_count": len(requirement_issues),
             "incident_issue_count": len(incident_issues),
@@ -342,6 +394,10 @@ class ReleaseCollector:
                 "",
                 *_format_release_notes_items((release_notes or {}).get("all_desc")),
                 "",
+                "## 연결된 Jira 이슈",
+                "",
+                *_format_linked_jira_issues(linked_jira_issues or []),
+                "",
                 "## 로드맵 이슈",
                 "",
                 *_format_issue_lines(roadmap_issues),
@@ -369,6 +425,7 @@ class ReleaseCollector:
             raise ValueError(f"Release detail missing for version {version_id}")
 
         release_notes = await self.fetch_release_notes(version_id)
+        linked_jira_issues = _extract_linked_jira_issues(release_notes)[: settings.release_linked_jira_max_keys]
         roadmap_issues = await self.fetch_version_issues(version_id, "제품 요구사항", ROADMAP_REQUIREMENTS_QUERY)
         requirement_issues = await self.fetch_version_issues(
             version_id, "제품 요구사항", NON_ROADMAP_REQUIREMENTS_QUERY
@@ -384,10 +441,11 @@ class ReleaseCollector:
             requirement_issues=requirement_issues,
             incident_issues=incident_issues,
             checker_issues=checker_issues,
+            linked_jira_issues=linked_jira_issues,
         )
 
         skald = get_skald_client()
-        return await skald.upsert_memo(
+        memo = await skald.upsert_memo(
             title=title,
             content=content,
             reference_id=self.build_reference_id(version_id),
@@ -395,6 +453,53 @@ class ReleaseCollector:
             metadata=metadata,
             tags=tags,
         )
+
+        if settings.release_linked_jira_enabled and linked_jira_issues:
+            if not (settings.jira_server and settings.jira_user and settings.jira_password):
+                logger.error(
+                    "Linked Jira collection is enabled but Jira credentials are not configured; skipping issue sync",
+                    version_id=version_id,
+                    linked_keys=[entry["issue_key"] for entry in linked_jira_issues],
+                )
+                raise ValueError("release_linked_jira_enabled requires JIRA_SERVER/JIRA_USER/JIRA_PASSWORD")
+            jira_collector = get_jira_collector()
+            for entry in linked_jira_issues:
+                key = entry["issue_key"]
+                try:
+                    await jira_collector.sync_issue_by_key(key)
+                except Exception as exc:
+                    logger.error(
+                        "Failed to sync linked Jira issue",
+                        version_id=version_id,
+                        issue_key=key,
+                        error=str(exc),
+                    )
+                    raise
+        return memo
+
+    async def _sync_previously_linked_jira(self, version_id: str) -> None:
+        """Re-sync Jira issues linked in the stored release memo so comments stay fresh even when the note fetch failed."""
+        if not settings.release_linked_jira_enabled or not version_id:
+            return
+        if not (settings.jira_server and settings.jira_user and settings.jira_password):
+            return
+        try:
+            skald = get_skald_client()
+            existing = await skald.get_memo(self.build_reference_id(version_id))
+        except Exception as exc:
+            logger.warning("Could not read stored release memo for linked Jira refresh", version_id=version_id, error=str(exc))
+            return
+        if not existing:
+            return
+        keys = (existing.get("metadata") or {}).get("release_linked_jira_keys") or []
+        if not keys:
+            return
+        jira_collector = get_jira_collector()
+        for key in keys[: settings.release_linked_jira_max_keys]:
+            try:
+                await jira_collector.sync_issue_by_key(key)
+            except Exception as exc:
+                logger.error("Failed to refresh previously linked Jira issue", version_id=version_id, issue_key=key, error=str(exc))
 
     async def sync_all(self, max_versions: int = 5000) -> dict[str, int]:
         logger.info("Starting release sync", max_versions=max_versions)
@@ -414,6 +519,7 @@ class ReleaseCollector:
                     error=str(exc),
                 )
                 failed += 1
+                await self._sync_previously_linked_jira(str(version_summary.get("id", "")))
 
         logger.info("Release sync completed", processed=processed, failed=failed)
         return {

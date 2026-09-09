@@ -128,6 +128,25 @@ class Settings(BaseSettings):
         default=True,
         description="Enable release status collection",
     )
+    release_linked_jira_enabled: bool = Field(
+        default=True,
+        description="Collect Jira issues explicitly linked from SPMS release notes",
+    )
+    release_linked_jira_max_keys: int = Field(
+        default=50,
+        gt=0,
+        description="Maximum linked Jira keys collected per release per cycle",
+    )
+    jira_comment_page_size: int = Field(
+        default=100,
+        gt=0,
+        description="Page size used when paginating Jira issue comments",
+    )
+    jira_comment_max_count: int = Field(
+        default=500,
+        gt=0,
+        description="Upper bound of comments stored per issue; larger discussions are truncated with a marker",
+    )
     userdata_enabled: bool = Field(
         default=True,
         description="Enable customer userdata collection",

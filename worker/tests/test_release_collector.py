@@ -128,7 +128,10 @@ class TestReleaseCollector:
                 new=AsyncMock(side_effect=[[sample_release_issue]] * 4),
             ),
             patch("skald_worker.collectors.release_collector.get_skald_client", return_value=mock_skald),
+            patch("skald_worker.collectors.release_collector.settings") as mock_settings,
         ):
+            mock_settings.release_linked_jira_enabled = False
+            mock_settings.release_linked_jira_max_keys = 50
             await collector.sync_release(sample_release_summary)
 
         call_kwargs = mock_skald.upsert_memo.call_args.kwargs

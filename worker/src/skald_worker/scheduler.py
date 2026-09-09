@@ -29,6 +29,8 @@ SPMS_CANONICAL_LEGACY_SOURCES = ("functions", "information")
 
 def _result_counts(result: dict[str, Any]) -> tuple[int, int]:
     total = result.get("total", result)
+    if not isinstance(total, dict):
+        total = result
     return int(total.get("processed", 0)), int(total.get("failed", 0))
 
 

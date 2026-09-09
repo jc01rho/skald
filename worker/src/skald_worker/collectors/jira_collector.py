@@ -40,6 +40,7 @@ CUSTOM_FIELD_NAMES = [
     "재현 절차",
     "결함 심각도",
     "영향",
+    "영향도",
     "원인",
     "사이트",
     "구성 요소",
@@ -48,7 +49,13 @@ CUSTOM_FIELD_NAMES = [
     "상세",
     "설명",
     "대상 도구",
+    "설계 상세",
+    "설계 링크",
+    "테스트 방법",
+    "설치정보",
 ]
+
+SECTION_HEADING_FIELDS = ("설계 상세", "테스트 방법", "설치정보")
 
 
 def _process_user_mentions(text: str, user_id_name_dict: dict[str, str]) -> str:
@@ -85,30 +92,12 @@ def _extract_first_assignee(issue: Any) -> str | None:
 
 
 def _clean_content(content: str) -> str:
-    """Clean content by removing unnecessary patterns for better RAG."""
+    """Normalize whitespace only; semantic tokens like caret version ranges, code, links and images stay intact."""
     if not content:
         return content
 
-    result = content.replace("\r\n", "\n").replace("^", "").replace("\u00a0", " ").replace("\xa0", " ").replace("~", "")
-
-    # Remove image patterns
-    result = re.sub(r"!\w+-\d{4}-\d{2}-\d{2}-\d{2}-\d{2}-\d{2}-\d{3}\.\w+\|width=\d+,height=\d+!", "", result)
-    result = re.sub(r"!\w+-\d+\.\w+\|thumbnail!", "", result)
-    result = re.sub(r"!\w+-\d{4}-\d{2}-\d{2}-\d{2}-\d{2}-\d{2}-\d{3}\.\w+!", "", result)
-
-    # Remove URL patterns
-    result = re.sub(r"\[https?://[^\]]+\]", "", result)
-    result = re.sub(r"\[링크\|https?://[^\]]+\]", "", result)
-
-    # Remove code blocks
-    result = re.sub(r"\{code:java\}.*?\{code\}", "", result, flags=re.DOTALL)
-
-    # Remove stack traces
-    result = re.sub(r"(at\s+[\w.$_/]+\(.*?\)\n)+", "", result)
-
-    # Normalize multiple newlines
+    result = content.replace("\r\n", "\n").replace("\u00a0", " ").replace("\xa0", " ")
     result = re.sub(r"\n{3,}", "\n\n", result)
-
     return result
 
 
@@ -149,7 +138,7 @@ def jira_issue_to_markdown(
     if first_assignee is None:
         first_assignee = assignee
 
-    # Process comments - filter out auto-generated ones
+    # Process comments - keep every non-bot comment with id and timestamps for provenance.
     comments = []
     if hasattr(fields, "comment") and fields.comment and fields.comment.comments:
         for comment in fields.comment.comments:
@@ -166,7 +155,12 @@ def jira_issue_to_markdown(
 
             # Process user mentions
             processed_body = _process_user_mentions(body, user_id_name_dict)
-            comments.append(f"From. {author}: {processed_body}")
+            created = getattr(comment, "created", "") or ""
+            updated = getattr(comment, "updated", "") or ""
+            created_part = created[:10] if created else ""
+            updated_part = updated[:10] if updated and updated != created else ""
+            provenance = f" ({created_part}" + (f" 수정: {updated_part}" if updated_part else "") + ")" if created_part else ""
+            comments.append(f"From. {author}{provenance}: {processed_body}")
 
     # Extract custom fields
     custom_fields: dict[str, Any] = {}
@@ -191,6 +185,8 @@ def jira_issue_to_markdown(
     # Extract other custom field values as strings
     site = str(custom_fields.get("사이트", "없음"))
     component = str(custom_fields.get("구성 요소", "없음"))
+    if component == "없음" and hasattr(fields, "components") and fields.components:
+        component = ", ".join(c.name for c in fields.components if getattr(c, "name", ""))
     severity = str(custom_fields.get("결함 심각도", "없음"))
 
     # Parse dates
@@ -281,15 +277,33 @@ def jira_issue_to_markdown(
             lines.append(str(field_value).strip())
             lines.append("")
 
-    # Comments (last 5)
+    # Design/test/installation details captured from allowed custom fields
+    for field_name in SECTION_HEADING_FIELDS:
+        field_value = custom_fields.get(field_name, "")
+        if field_value and field_value != "없음" and str(field_value).strip():
+            lines.append(f"## {field_name}")
+            lines.append(str(field_value).strip())
+            lines.append("")
+
+    # 영향도 applicability statement
+    impact_note = str(custom_fields.get("영향도", ""))
+    if impact_note and impact_note != "없음" and impact_note.strip():
+        lines.append("## 영향도")
+        lines.append(impact_note.strip())
+        lines.append("")
+
+    # Comments - all retained, bounded by settings.jira_comment_max_count with explicit marker
     if comments:
         lines.append("## 논의 내용")
-        recent_comments = comments[-5:]
-        for comment in recent_comments:
-            clean_comment = comment.strip()
-            if len(clean_comment) > 500:
-                clean_comment = clean_comment[:500] + "..."
-            lines.append(clean_comment)
+        retained = comments
+        truncated_marker = ""
+        if len(comments) > settings.jira_comment_max_count:
+            retained = comments[-settings.jira_comment_max_count :]
+            omitted = len(comments) - len(retained)
+            truncated_marker = f"(가장 최근 {len(retained)}개 댓글만 저장했습니다. 앞 {omitted}개 댓글이 생략되었습니다.)"
+            lines.append(truncated_marker)
+        for comment in retained:
+            lines.append(comment.strip())
             lines.append("")
 
     # Classification info
@@ -570,7 +584,6 @@ class JiraCollector:
         issues = await self.fetch_issues(jql, max_results)
 
         created = 0
-        updated = 0
         failed = 0
 
         for issue in issues:
@@ -652,6 +665,51 @@ class JiraCollector:
             "issue_key": issue_key,
             "similar_issues": similar,
         }
+
+
+    def _fetch_all_comments_sync(self, issue_key: str) -> list[Any]:
+        """Fetch every comment page for an issue via the dedicated comment endpoint."""
+        comments: list[Any] = []
+        start_at = 0
+        while True:
+            page = self.jira.comments(
+                issue_key,
+                startAt=start_at,
+                maxResults=settings.jira_comment_page_size,
+            )
+            if not page:
+                break
+            comments.extend(page)
+            if len(page) < settings.jira_comment_page_size:
+                break
+            start_at += len(page)
+        return comments
+
+    async def sync_issue_by_key(self, issue_key: str) -> dict[str, Any]:
+        """Fetch one issue plus its complete comment list and upsert it with the shared renderer.
+
+        Args:
+            issue_key: Jira issue key such as 'SPARROW-9990'.
+
+        Returns:
+            Skald memo data.
+        """
+        loop = asyncio.get_event_loop()
+        issue = await loop.run_in_executor(self._executor, self._fetch_single_issue_sync, issue_key)
+        self._load_field_mappings()
+        try:
+            extra = await loop.run_in_executor(self._executor, self._fetch_all_comments_sync, issue_key)
+        except Exception as exc:
+            logger.error(
+                "Failed to fetch complete comment page for linked Jira issue; keeping embedded comments only",
+                issue_key=issue_key,
+                error=str(exc),
+            )
+            extra = []
+        merged = {c.id: c for c in (list(getattr(issue.fields, "comment", None) and issue.fields.comment.comments or []) + list(extra))}
+        if getattr(issue.fields, "comment", None) is not None and merged:
+            issue.fields.comment.comments = list(merged.values())
+        return await self.sync_issue(issue)
 
 
 # Singleton instance
