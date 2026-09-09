@@ -467,7 +467,7 @@ class JiraCollector:
             return list(
                 self.jira.search_issues(
                     jql,
-                    startAt=start_at,
+                    start_at=start_at,
                     maxResults=batch_size,
                     expand="changelog,comment",
                 )
@@ -674,7 +674,7 @@ class JiraCollector:
         while True:
             page = self.jira.comments(
                 issue_key,
-                startAt=start_at,
+                start_at=start_at,
                 maxResults=settings.jira_comment_page_size,
             )
             if not page:
