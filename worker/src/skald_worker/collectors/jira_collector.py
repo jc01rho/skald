@@ -675,7 +675,7 @@ class JiraCollector:
             page = self.jira.comments(
                 issue_key,
                 start_at=start_at,
-                maxResults=settings.jira_comment_page_size,
+                max_results=settings.jira_comment_page_size,
             )
             if not page:
                 break
