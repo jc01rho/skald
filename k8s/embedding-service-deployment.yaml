@@ -29,6 +29,15 @@ spec:
                 component: embedding-service
                 environment: production
         spec:
+            affinity:
+                nodeAffinity:
+                    requiredDuringSchedulingIgnoredDuringExecution:
+                        nodeSelectorTerms:
+                            - matchExpressions:
+                                  - key: kubernetes.io/hostname
+                                    operator: NotIn
+                                    values:
+                                        - devsecops.sparrow.local
             securityContext:
                 runAsNonRoot: true
                 runAsUser: 1000

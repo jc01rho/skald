@@ -16,6 +16,16 @@ spec:
         app: traefik
     spec:
       serviceAccountName: traefik-ingress-controller
+      affinity:
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+              - matchExpressions:
+                  - key: kubernetes.io/hostname
+                    operator: NotIn
+                    values:
+                      - ml.node.k8s.sparrow.local
+                      - devsecops.sparrow.local
       containers:
         - name: traefik
           image: traefik:v2.11

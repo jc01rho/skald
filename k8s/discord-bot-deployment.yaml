@@ -17,6 +17,16 @@ spec:
                 app: skald
                 component: discord-bot
         spec:
+            affinity:
+                nodeAffinity:
+                    requiredDuringSchedulingIgnoredDuringExecution:
+                        nodeSelectorTerms:
+                            - matchExpressions:
+                                  - key: kubernetes.io/hostname
+                                    operator: NotIn
+                                    values:
+                                        - ml.node.k8s.sparrow.local
+                                        - devsecops.sparrow.local
             containers:
                 - name: discord-bot
                   image: ghcr.io/jc01rho/discord-bot:${IMAGE_TAG:-latest}
