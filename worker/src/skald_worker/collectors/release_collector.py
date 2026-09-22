@@ -1,5 +1,6 @@
 """Release status collector service for SPMS."""
 
+import asyncio
 import re
 from datetime import UTC, datetime
 from typing import Any
@@ -8,6 +9,7 @@ from urllib.parse import quote
 import httpx
 import structlog
 
+from skald_worker.circuit_breaker import CircuitBreakerError
 from skald_worker.clients.skald import get_skald_client
 from skald_worker.collectors.jira_collector import get_jira_collector
 from skald_worker.config import settings
@@ -511,6 +513,50 @@ class ReleaseCollector:
             except Exception as exc:
                 logger.error("Failed to refresh previously linked Jira issue", version_id=version_id, issue_key=key, error=str(exc))
 
+    async def _sync_release_with_backoff(
+        self,
+        version_summary: dict[str, Any],
+        max_circuit_waits: int,
+    ) -> bool:
+        """Sync one version, waiting out an open Skald circuit instead of burning the version.
+
+        A single backend 429 opens the shared circuit for its recovery window. Without
+        waiting, every remaining version fails instantly and is skipped until the next
+        scheduled run.
+        """
+        version_id = str(version_summary.get("id", ""))
+
+        for attempt in range(max_circuit_waits + 1):
+            try:
+                await self.sync_release(version_summary)
+                return True
+            except CircuitBreakerError as exc:
+                if attempt >= max_circuit_waits:
+                    logger.error(
+                        "Skald circuit still open after waiting; counting release as failed",
+                        version_id=version_id,
+                        waits=max_circuit_waits,
+                        error=str(exc),
+                    )
+                    break
+                logger.warning(
+                    "Skald circuit open; waiting before retrying release",
+                    version_id=version_id,
+                    wait_seconds=exc.recovery_time,
+                    attempt=attempt + 1,
+                )
+                await asyncio.sleep(exc.recovery_time)
+            except Exception as exc:
+                logger.error(
+                    "Failed to sync release",
+                    version_id=version_summary.get("id"),
+                    error=str(exc),
+                )
+                break
+
+        await self._sync_previously_linked_jira(version_id)
+        return False
+
     async def sync_all(self, max_versions: int = 5000) -> dict[str, int]:
         logger.info("Starting release sync", max_versions=max_versions)
         versions = await self.fetch_versions()
@@ -518,18 +564,18 @@ class ReleaseCollector:
         processed = 0
         failed = 0
 
-        for version_summary in versions[:max_versions]:
-            try:
-                await self.sync_release(version_summary)
+        delay = settings.release_sync_delay_seconds
+        max_circuit_waits = settings.release_sync_circuit_max_waits
+
+        for index, version_summary in enumerate(versions[:max_versions]):
+            # Pace requests so a long run stays under the backend rate limit.
+            if index and delay:
+                await asyncio.sleep(delay)
+
+            if await self._sync_release_with_backoff(version_summary, max_circuit_waits):
                 processed += 1
-            except Exception as exc:
-                logger.error(
-                    "Failed to sync release",
-                    version_id=version_summary.get("id"),
-                    error=str(exc),
-                )
+            else:
                 failed += 1
-                await self._sync_previously_linked_jira(str(version_summary.get("id", "")))
 
         logger.info("Release sync completed", processed=processed, failed=failed)
         return {

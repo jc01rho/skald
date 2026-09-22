@@ -137,6 +137,16 @@ class Settings(BaseSettings):
         gt=0,
         description="Maximum linked Jira keys collected per release per cycle",
     )
+    release_sync_delay_seconds: float = Field(
+        default=0.2,
+        ge=0,
+        description="Delay between release version syncs to stay under the backend rate limit (0 disables pacing)",
+    )
+    release_sync_circuit_max_waits: int = Field(
+        default=5,
+        gt=0,
+        description="How many times a single release version waits out an open Skald circuit before being counted as failed",
+    )
     jira_comment_page_size: int = Field(
         default=100,
         gt=0,
