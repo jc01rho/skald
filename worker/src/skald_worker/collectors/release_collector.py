@@ -281,15 +281,6 @@ class ReleaseCollector:
             if status_code == 404:
                 logger.info("Release notes not found", version_id=version_id)
                 return None
-            # SPMS returns a bodyless 500 when a version has no registered notes.
-            # Treat only that exact shape as "no notes"; real server errors still raise.
-            body = exc.response.content or b""
-            if status_code == 500 and not body.strip():
-                logger.warning(
-                    "Release notes endpoint returned empty-body 500; treating as no notes",
-                    version_id=version_id,
-                )
-                return None
             logger.error("Failed to fetch release notes", version_id=version_id, error=str(exc))
             raise
         except httpx.HTTPError as exc:
@@ -434,7 +425,17 @@ class ReleaseCollector:
         if not detail:
             raise ValueError(f"Release detail missing for version {version_id}")
 
-        release_notes = await self.fetch_release_notes(version_id)
+        try:
+            release_notes = await self.fetch_release_notes(version_id)
+        except httpx.HTTPStatusError as exc:
+            body = exc.response.content or b""
+            if exc.response.status_code != 500 or body.strip():
+                raise
+            logger.warning(
+                "Verified release version has no notes; treating empty-body 500 as no notes",
+                version_id=version_id,
+            )
+            release_notes = None
         linked_jira_issues = _extract_linked_jira_issues(release_notes)[: settings.release_linked_jira_max_keys]
         roadmap_issues = await self.fetch_version_issues(version_id, "제품 요구사항", ROADMAP_REQUIREMENTS_QUERY)
         requirement_issues = await self.fetch_version_issues(

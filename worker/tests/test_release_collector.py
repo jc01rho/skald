@@ -141,6 +141,36 @@ class TestReleaseCollector:
         assert call_kwargs["metadata"]["version"] == "2602.1"
 
     @pytest.mark.asyncio
+    async def test_sync_release_treats_empty_notes_500_as_missing_after_detail_exists(
+        self,
+        collector,
+        sample_release_summary,
+        sample_release_detail,
+        sample_memo,
+    ):
+        import httpx
+
+        request = httpx.Request("GET", "https://spms.test/api/releases/versions/12065/notes")
+        response = httpx.Response(500, request=request, content=b"")
+        error = httpx.HTTPStatusError("server error", request=request, response=response)
+        mock_skald = AsyncMock()
+        mock_skald.upsert_memo.return_value = sample_memo
+
+        with (
+            patch.object(collector, "fetch_version_detail", new=AsyncMock(return_value=sample_release_detail)),
+            patch.object(collector, "fetch_release_notes", new=AsyncMock(side_effect=error)),
+            patch.object(collector, "fetch_version_issues", new=AsyncMock(side_effect=[[], [], [], []])),
+            patch("skald_worker.collectors.release_collector.get_skald_client", return_value=mock_skald),
+            patch("skald_worker.collectors.release_collector.settings") as mock_settings,
+        ):
+            mock_settings.release_linked_jira_enabled = False
+            mock_settings.release_linked_jira_max_keys = 50
+            result = await collector.sync_release(sample_release_summary)
+
+        assert result == sample_memo
+        assert mock_skald.upsert_memo.call_args.kwargs["metadata"]["release_note_status"] == ""
+
+    @pytest.mark.asyncio
     async def test_sync_all(self, collector, sample_release_summary, sample_memo):
         mock_skald = AsyncMock()
         mock_skald.upsert_memo.return_value = sample_memo
