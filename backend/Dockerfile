@@ -3,7 +3,7 @@
 FROM node:24-slim AS builder
 
 # Install pnpm
-RUN npm install -g pnpm
+RUN npm install -g pnpm@11.25.0
 
 # Set working directory
 WORKDIR /app
@@ -25,7 +25,7 @@ RUN pnpm build
 FROM node:24-slim
 
 # Install pnpm
-RUN npm install -g pnpm
+RUN npm install -g pnpm@11.25.0
 
 # Set working directory
 WORKDIR /app
