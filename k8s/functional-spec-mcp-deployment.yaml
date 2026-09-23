@@ -56,6 +56,16 @@ spec:
     spec:
       serviceAccountName: functional-spec-mcp
       automountServiceAccountToken: false
+      affinity:
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+              - matchExpressions:
+                  - key: kubernetes.io/hostname
+                    operator: NotIn
+                    values:
+                      - ml.node.k8s.sparrow.local
+                      - devsecops.sparrow.local
       imagePullSecrets:
         - name: ghcr-pull-secret
       securityContext:

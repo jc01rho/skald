@@ -121,6 +121,7 @@ spec:
                                     operator: NotIn
                                     values:
                                         - ml.node.k8s.sparrow.local
+                                        - devsecops.sparrow.local
     # 볼륨 클레임 템플릿 - 동적 PVC 생성을 위한 템플릿
     volumeClaimTemplates:
         - metadata:

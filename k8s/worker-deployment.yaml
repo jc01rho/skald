@@ -120,4 +120,5 @@ spec:
                                     operator: NotIn
                                     values:
                                         - ml.node.k8s.sparrow.local
+                                        - devsecops.sparrow.local
             restartPolicy: Always

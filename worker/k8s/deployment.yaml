@@ -20,6 +20,16 @@ spec:
                 prometheus.io/path: '/metrics'
         spec:
             serviceAccountName: skald-worker
+            affinity:
+                nodeAffinity:
+                    requiredDuringSchedulingIgnoredDuringExecution:
+                        nodeSelectorTerms:
+                            - matchExpressions:
+                                  - key: kubernetes.io/hostname
+                                    operator: NotIn
+                                    values:
+                                        - ml.node.k8s.sparrow.local
+                                        - devsecops.sparrow.local
             securityContext:
                 runAsNonRoot: true
                 runAsUser: 1000
