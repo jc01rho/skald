@@ -296,10 +296,10 @@ export class SpecLifecycleService {
             em.persist(state)
 
             for (const evidence of input.lifecycle_evidence) {
-                const rows = await em.getConnection().execute<Array<{ uuid: string; metadata: Record<string, unknown> }>>(
+                const rows = await em.getConnection().execute<Array<{ uuid: string; client_reference_id: string; metadata: Record<string, unknown> }>>(
                     // Function specs project onto memos keyed by function code, so resolve the canonical
                     // spec id through skald_spec_source as well as the memo reference id.
-                    `SELECT uuid, metadata FROM skald_memo
+                    `SELECT uuid, client_reference_id, metadata FROM skald_memo
                       WHERE project_id = ?
                         AND (client_reference_id = ?
                              OR uuid IN (SELECT memo_id FROM skald_spec_source WHERE project_id = ? AND spec_id = ?))
@@ -309,6 +309,9 @@ export class SpecLifecycleService {
                 if (rows.length !== 1) {
                     throw new SpecLifecycleError('MEMO_NOT_FOUND', `Memo ${evidence.memo_reference_id} was not found`, 404)
                 }
+                // Events reference skald_memo by (uuid, client_reference_id), so record the memo's own key
+                // rather than the canonical spec id the worker reported.
+                const memoReferenceId = rows[0].client_reference_id
                 if (evidence.exact_refetch) {
                     validateExactRefetchCertificate(
                         evidence.exact_refetch,
@@ -340,7 +343,7 @@ export class SpecLifecycleService {
                         [
                             project.uuid,
                             input.scope_key,
-                            evidence.memo_reference_id,
+                            memoReferenceId,
                             input.run_id,
                             new Date(observedAt.getTime() - MIN_ABSENCE_INTERVAL_MS),
                         ], 'all', em.getTransactionContext()
@@ -367,7 +370,7 @@ export class SpecLifecycleService {
                         eventId,
                         project.uuid,
                         input.scope_key,
-                        evidence.memo_reference_id,
+                        memoReferenceId,
                         rows[0].uuid,
                         input.run_id,
                         input.manifest_hash,
