@@ -118,7 +118,8 @@ export class SpecRevisionError extends Error {
     constructor(
         public readonly code: string,
         message: string,
-        public readonly status: number
+        public readonly status: number,
+        public readonly details?: Record<string, unknown>
     ) {
         super(message)
     }
@@ -780,7 +781,17 @@ export class SpecRevisionService {
         const best = Number(rows[0].precedence)
         const candidates = rows.filter((row) => Number(row.precedence) === best)
         if (candidates.length !== 1) {
-            throw new SpecRevisionError('AMBIGUOUS_EXACT_MATCH', 'Exact locator is ambiguous', 409)
+            // Titles repeat across products, so return the tied candidates with the identifiers
+            // (spec id / function code) that resolve each one uniquely.
+            throw new SpecRevisionError('AMBIGUOUS_EXACT_MATCH', 'Exact locator is ambiguous', 409, {
+                candidates: candidates.map((row) => ({
+                    spec_id: row.spec_id,
+                    code: row.metadata?._source?.code ?? null,
+                    title: row.title,
+                    product_id: row.metadata?.product?.product_id ?? null,
+                    product_name: row.metadata?.product?.product_name ?? null,
+                })),
+            })
         }
         return { ...candidates[0], match_precedence: best }
     }

@@ -156,7 +156,7 @@ function requireQualityReady(surface: 'related' | 'conflict_candidates') {
 
 function sendError(res: Response, error: unknown) {
     if (error instanceof SpecRevisionError) {
-        return res.status(error.status).json({ error: { code: error.code, message: error.message } })
+        return res.status(error.status).json({ error: { code: error.code, message: error.message, ...error.details } })
     }
     if (error && typeof error === 'object' && 'status' in error && 'code' in error && 'message' in error) {
         const scoped = error as { status: number; code: string; message: string }
