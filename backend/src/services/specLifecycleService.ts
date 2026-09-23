@@ -297,8 +297,14 @@ export class SpecLifecycleService {
 
             for (const evidence of input.lifecycle_evidence) {
                 const rows = await em.getConnection().execute<Array<{ uuid: string; metadata: Record<string, unknown> }>>(
-                    `SELECT uuid, metadata FROM skald_memo WHERE project_id = ? AND client_reference_id = ? FOR UPDATE`,
-                    [project.uuid, evidence.memo_reference_id]
+                    // Function specs project onto memos keyed by function code, so resolve the canonical
+                    // spec id through skald_spec_source as well as the memo reference id.
+                    `SELECT uuid, metadata FROM skald_memo
+                      WHERE project_id = ?
+                        AND (client_reference_id = ?
+                             OR uuid IN (SELECT memo_id FROM skald_spec_source WHERE project_id = ? AND spec_id = ?))
+                      FOR UPDATE`,
+                    [project.uuid, evidence.memo_reference_id, project.uuid, evidence.memo_reference_id]
                 )
                 if (rows.length !== 1) {
                     throw new SpecLifecycleError('MEMO_NOT_FOUND', `Memo ${evidence.memo_reference_id} was not found`, 404)
