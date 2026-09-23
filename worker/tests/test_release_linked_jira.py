@@ -224,17 +224,18 @@ class TestReleaseLinkExtraction:
 
 class TestEmptyBody500AsNoNotes:
     @pytest.mark.asyncio
-    async def test_empty_body_500_treated_as_no_notes(self):
+    async def test_empty_body_500_without_verified_version_still_raises(self):
         import httpx
         collector = ReleaseCollector(base_url="https://spms.test")
         request = httpx.Request("GET", "https://spms.test/api/releases/versions/12086/notes")
         response = httpx.Response(500, request=request, content=b"")
         error = httpx.HTTPStatusError("server error", request=request, response=response)
 
-        with patch.object(collector, "_request_with_retry", new=AsyncMock(side_effect=error)):
-            result = await collector.fetch_release_notes("12086")
-
-        assert result is None
+        with (
+            patch.object(collector, "_request_with_retry", new=AsyncMock(side_effect=error)),
+            pytest.raises(httpx.HTTPStatusError),
+        ):
+            await collector.fetch_release_notes("12086")
 
     @pytest.mark.asyncio
     async def test_bodyful_500_still_raises(self):
