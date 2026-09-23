@@ -866,7 +866,9 @@ class DocsCollector:
         page_size: int,
     ) -> list[dict[str, Any]]:
         """Fetch a page without converting transport failures into terminal empty pages."""
-        params: dict[str, Any] = {"page": page, "size": page_size}
+        # SPMS default ordering is not stable across pages; page by immutable ID so an
+        # authoritative run never sees the same item twice or skips one.
+        params: dict[str, Any] = {"page": page, "size": page_size, "sort": "id"}
         if endpoint_type in {"functions", "information"}:
             params["status"] = "completed"
         response = await self._request_with_retry("GET", f"/api/{endpoint_type}", params=params)

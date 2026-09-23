@@ -307,3 +307,25 @@ async def test_manifest_submission_failure_marks_operational_run_failed_without_
     state = manager.state.get_source("spms-reconciliation")
     assert state.last_error == "Manifest submission failed: backend unavailable"
     assert "promotion_state" not in state.metadata
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("endpoint_type", "expected_params"),
+    [
+        ("functions", {"page": 2, "size": 50, "sort": "id", "status": "completed"}),
+        ("information", {"page": 2, "size": 50, "sort": "id", "status": "completed"}),
+        ("techs", {"page": 2, "size": 50, "sort": "id"}),
+        ("troubleshoots", {"page": 2, "size": 50, "sort": "id"}),
+    ],
+)
+async def test_authoritative_pages_request_stable_id_order(endpoint_type, expected_params):
+    """SPMS default ordering shifts items between pages; authoritative runs must page by immutable ID."""
+    collector = DocsCollector(base_url="https://spms.example.com")
+    response = MagicMock()
+    response.json.return_value = []
+
+    with patch.object(collector, "_request_with_retry", new=AsyncMock(return_value=response)) as request:
+        await collector._fetch_authoritative_page(endpoint_type, 2, 50)
+
+    request.assert_awaited_once_with("GET", f"/api/{endpoint_type}", params=expected_params)
