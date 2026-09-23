@@ -65,6 +65,7 @@ function serviceFor(state: SpecPromotionState, registeredManifest: string | null
     ))
     const em = {
         getConnection: () => ({ execute }),
+        getTransactionContext: () => undefined,
         getRepository: (entity: unknown) => ({
             findOne: jest.fn().mockResolvedValue(entity === SpecReconciliationRun ? reconciliationRun : state),
         }),

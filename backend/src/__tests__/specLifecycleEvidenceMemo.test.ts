@@ -4,6 +4,7 @@ import { SpecLifecycleService } from '@/services/specLifecycleService'
 import type { Project } from '@/entities/Project'
 
 const project = { uuid: '11111111-1111-4111-8111-111111111111' } as Project
+const TRANSACTION = { transaction: 'manifest-tx' }
 
 // Function specs project onto memos keyed by their function code (e.g. ENTERPRISE-MCP-ANALYZE-FILE),
 // while the worker reports lifecycle evidence by canonical spec id (spms:function:<id>).
@@ -28,6 +29,7 @@ function serviceWithMemoLookup() {
     })
     const em = {
         getConnection: () => ({ execute }),
+        getTransactionContext: () => TRANSACTION,
         getRepository: (entity: unknown) => ({
             findOne: jest.fn().mockResolvedValue(entity === SpecReconciliationRun ? null : state),
             create: (data: object) => Object.assign(entity === SpecReconciliationRun ? new SpecReconciliationRun() : new SpecPromotionState(), data),
@@ -82,6 +84,19 @@ describe('reconciliation lifecycle evidence memo resolution', () => {
 
         const insert = execute.mock.calls.find(([sql]) => String(sql).includes('INSERT INTO skald_spec_lifecycle_event'))
         expect(insert?.[1]).toEqual(expect.arrayContaining(['spms:information:1247', 'memo-information-1247']))
+    })
+
+    it('runs every raw statement on the manifest transaction', async () => {
+        // Raw execute() without a transaction context runs on a separate pooled connection, so the
+        // lifecycle event insert cannot see the uncommitted run row and violates its foreign key.
+        const { service, execute } = serviceWithMemoLookup()
+
+        await service.submitManifest(project, manifest('spms:function:1247'))
+
+        expect(execute.mock.calls.length).toBeGreaterThan(0)
+        for (const call of execute.mock.calls) {
+            expect(call[3]).toBe(TRANSACTION)
+        }
     })
 
     it('keeps rejecting evidence for specs with no projected memo', async () => {

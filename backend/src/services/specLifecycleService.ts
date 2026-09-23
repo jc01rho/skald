@@ -220,7 +220,7 @@ export class SpecLifecycleService {
             await em.getConnection().execute('SELECT pg_advisory_xact_lock(hashtext(?), hashtext(?))', [
                 project.uuid,
                 input.scope_key,
-            ])
+            ], 'all', em.getTransactionContext())
             const runs = em.getRepository(SpecReconciliationRun)
             const existing = await runs.findOne({ project, scope_key: input.scope_key, run_id: input.run_id })
             if (existing) {
@@ -304,7 +304,7 @@ export class SpecLifecycleService {
                         AND (client_reference_id = ?
                              OR uuid IN (SELECT memo_id FROM skald_spec_source WHERE project_id = ? AND spec_id = ?))
                       FOR UPDATE`,
-                    [project.uuid, evidence.memo_reference_id, project.uuid, evidence.memo_reference_id]
+                    [project.uuid, evidence.memo_reference_id, project.uuid, evidence.memo_reference_id], 'all', em.getTransactionContext()
                 )
                 if (rows.length !== 1) {
                     throw new SpecLifecycleError('MEMO_NOT_FOUND', `Memo ${evidence.memo_reference_id} was not found`, 404)
@@ -343,7 +343,7 @@ export class SpecLifecycleService {
                             evidence.memo_reference_id,
                             input.run_id,
                             new Date(observedAt.getTime() - MIN_ABSENCE_INTERVAL_MS),
-                        ]
+                        ], 'all', em.getTransactionContext()
                     )
                     firstAbsence = prior[0]
                     if (
@@ -381,7 +381,7 @@ export class SpecLifecycleService {
                         firstAbsence?.run_id || null,
                         firstAbsence?.observed_at || null,
                         recordedAt,
-                    ]
+                    ], 'all', em.getTransactionContext()
                 )
 
                 const metadata = rows[0].metadata || {}
@@ -414,7 +414,7 @@ export class SpecLifecycleService {
                         recordedAt,
                         project.uuid,
                         rows[0].uuid,
-                    ]
+                    ], 'all', em.getTransactionContext()
                 )
             }
 
@@ -438,7 +438,7 @@ export class SpecLifecycleService {
             const existing = await em.getConnection().execute<Array<{ query_manifest_sha256: string }>>(
                 `SELECT query_manifest_sha256 FROM skald_spec_quality_query_manifest
                   WHERE project_id = ? AND scope_key = ? AND reconciliation_run_id = ? AND dataset = ? AND dataset_version = ?`,
-                [project.uuid, input.scope_key, input.reconciliation_run_id, input.dataset, input.version]
+                [project.uuid, input.scope_key, input.reconciliation_run_id, input.dataset, input.version], 'all', em.getTransactionContext()
             )
             if (existing.length && existing[0].query_manifest_sha256 !== digest) {
                 throw new SpecLifecycleError('QUERY_MANIFEST_CONFLICT', 'A different query manifest is already registered for this evaluation binding', 409)
@@ -450,7 +450,7 @@ export class SpecLifecycleService {
                          query_manifest_sha256, content, registered_by, created_at)
                      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
                     [randomUUID(), project.uuid, input.scope_key, input.reconciliation_run_id, input.dataset,
-                        input.version, digest, input.content, actorId, new Date()]
+                        input.version, digest, input.content, actorId, new Date()], 'all', em.getTransactionContext()
                 )
             }
             return { project_id: project.uuid, scope_key: input.scope_key, reconciliation_run_id: input.reconciliation_run_id,
@@ -463,7 +463,7 @@ export class SpecLifecycleService {
             await em.getConnection().execute('SELECT pg_advisory_xact_lock(hashtext(?), hashtext(?))', [
                 project.uuid,
                 input.scope_key,
-            ])
+            ], 'all', em.getTransactionContext())
             const state = await em.getRepository(SpecPromotionState).findOne({ project, scope_key: input.scope_key })
             if (!state) throw new SpecLifecycleError('SPEC_SCOPE_NOT_RECONCILED', 'Spec scope has no reconciliation state', 409)
             const reconciliationRun = await em.getRepository(SpecReconciliationRun).findOne({
@@ -508,7 +508,7 @@ export class SpecLifecycleService {
             const manifests = await em.getConnection().execute<Array<{ query_manifest_sha256: string }>>(
                 `SELECT query_manifest_sha256 FROM skald_spec_quality_query_manifest
                   WHERE project_id = ? AND scope_key = ? AND reconciliation_run_id = ? AND dataset = ? AND dataset_version = ?`,
-                [project.uuid, input.scope_key, input.reconciliation_run_id, input.dataset, input.version]
+                [project.uuid, input.scope_key, input.reconciliation_run_id, input.dataset, input.version], 'all', em.getTransactionContext()
             )
             if (manifests.length !== 1 || manifests[0].query_manifest_sha256 !== input.query_manifest_sha256) {
                 throw new SpecLifecycleError('UNREGISTERED_QUERY_MANIFEST', 'Quality report query manifest is not registered for this evaluation binding', 409)
@@ -609,7 +609,7 @@ export class SpecLifecycleService {
                          WHERE lifecycle.project_id = sb.project_id AND lifecycle.memo_id = sb.memo_id
                          ORDER BY lifecycle.observed_at DESC, lifecycle.created_at DESC LIMIT 1
                     ), 'present') = 'present'`,
-                [input.right_claim_id, project.uuid, input.left_claim_id]
+                [input.right_claim_id, project.uuid, input.left_claim_id], 'all', em.getTransactionContext()
             )
             const candidate = candidates[0]
             if (
