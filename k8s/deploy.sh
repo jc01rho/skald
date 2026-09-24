@@ -1169,10 +1169,187 @@ ensure_functional_spec_mcp_session_secret() {
     fi
 }
 
+functional_spec_mcp_revision_list_contains() {
+    local revisions=$1
+    local candidate=$2
+    local revision
+    local -a values
+
+    IFS=',' read -r -a values <<< "$revisions"
+    for revision in "${values[@]}"; do
+        if [ "$revision" = "$candidate" ]; then
+            return 0
+        fi
+    done
+
+    return 1
+}
+
+merge_functional_spec_mcp_revisions() {
+    local merged=""
+    local revisions revision
+    local -a values
+
+    for revisions in "$@"; do
+        IFS=',' read -r -a values <<< "$revisions"
+        for revision in "${values[@]}"; do
+            if [ -z "$revision" ]; then
+                continue
+            fi
+
+            if [[ ! "$revision" =~ ^[a-z0-9][a-z0-9-]*$ ]]; then
+                log_error "Invalid functional spec MCP revision: $revision"
+                return 1
+            fi
+
+            if ! functional_spec_mcp_revision_list_contains "$merged" "$revision"; then
+                merged="${merged:+$merged,}$revision"
+            fi
+        done
+    done
+
+    printf '%s' "$merged"
+}
+
+drain_functional_spec_mcp_revision() {
+    local revision=$1
+    local pod
+    local -a pods
+
+    mapfile -t pods < <(
+        kubectl get pods -n "$NAMESPACE" \
+            -l "app=skald,component=functional-spec-mcp-worker,revision=$revision" \
+            -o jsonpath='{range .items[*]}{.metadata.name}{"\n"}{end}'
+    )
+    for pod in "${pods[@]}"; do
+        if ! kubectl exec "$pod" -n "$NAMESPACE" -- bun -e '
+            const response = await fetch("http://127.0.0.1:8080/drain")
+            if (!response.ok) {
+              process.exit(1)
+            }
+        '; then
+            log_error "Functional spec MCP worker drain failed: $pod"
+            return 1
+        fi
+    done
+}
+
+functional_spec_mcp_revision_has_sessions() {
+    local revision=$1
+    local pod session_count
+    local -a pods
+
+    mapfile -t pods < <(
+        kubectl get pods -n "$NAMESPACE" \
+            -l "app=skald,component=functional-spec-mcp-worker,revision=$revision" \
+            -o jsonpath='{range .items[*]}{.metadata.name}{"\n"}{end}'
+    )
+    for pod in "${pods[@]}"; do
+        if ! session_count="$(
+            kubectl exec "$pod" -n "$NAMESPACE" -- bun -e '
+                const response = await fetch("http://127.0.0.1:8080/drain-status")
+                if (!response.ok) {
+                  process.exit(1)
+                }
+                const { sessions } = await response.json()
+                console.log(sessions)
+            '
+        )"; then
+            log_error "Functional spec MCP worker drain status failed: $pod"
+            return 1
+        fi
+
+        if [[ ! "$session_count" =~ ^[0-9]+$ ]]; then
+            log_error "Functional spec MCP worker returned invalid session count: $pod"
+            return 1
+        fi
+
+        if [ "$session_count" -gt 0 ]; then
+            return 0
+        fi
+    done
+
+    return 1
+}
+
+retire_drained_functional_spec_mcp_revisions() {
+    local effective_draining_revisions=$1
+    local desired_draining_revisions=$2
+    local active_revision=$3
+    local revision deadline
+    local -a draining_revisions retire_revisions
+
+    IFS=',' read -r -a draining_revisions <<< "$effective_draining_revisions"
+    for revision in "${draining_revisions[@]}"; do
+        if [ -z "$revision" ] || [ "$revision" = "$active_revision" ] || functional_spec_mcp_revision_list_contains "$desired_draining_revisions" "$revision"; then
+            continue
+        fi
+
+        retire_revisions+=("$revision")
+    done
+
+    if [ "${#retire_revisions[@]}" -eq 0 ]; then
+        return
+    fi
+
+    for revision in "${retire_revisions[@]}"; do
+        if ! drain_functional_spec_mcp_revision "$revision"; then
+            exit 1
+        fi
+    done
+
+    deadline=$((SECONDS + 300))
+    while true; do
+        for revision in "${retire_revisions[@]}"; do
+            if functional_spec_mcp_revision_has_sessions "$revision"; then
+                if [ "$SECONDS" -ge "$deadline" ]; then
+                    log_error "Functional spec MCP worker drain timed out: $revision"
+                    exit 1
+                fi
+
+                sleep 5
+                continue 2
+            fi
+        done
+        break
+    done
+
+    if ! kubectl patch configmap functional-spec-mcp-router-config -n "$NAMESPACE" \
+        --type=merge \
+        -p "{\"data\":{\"MCP_ROUTER_DRAINING_REVISIONS\":\"$desired_draining_revisions\"}}"; then
+        log_error "Functional spec MCP router draining revisions reset failed"
+        exit 1
+    fi
+
+    if ! kubectl rollout restart deployment/functional-spec-mcp-router -n "$NAMESPACE"; then
+        log_error "Functional spec MCP router restart after worker retirement failed"
+        exit 1
+    fi
+
+    if ! kubectl rollout status deployment/functional-spec-mcp-router -n "$NAMESPACE" --timeout=300s; then
+        log_error "Functional spec MCP router restart rollout failed"
+        exit 1
+    fi
+
+    for revision in "${retire_revisions[@]}"; do
+        if kubectl delete statefulset "functional-spec-mcp-worker-$revision" -n "$NAMESPACE" --ignore-not-found=true \
+            && kubectl delete service "functional-spec-mcp-worker-$revision" -n "$NAMESPACE" --ignore-not-found=true \
+            && kubectl delete service "functional-spec-mcp-worker-$revision-active" -n "$NAMESPACE" --ignore-not-found=true \
+            && kubectl delete configmap "functional-spec-mcp-worker-config-$revision" -n "$NAMESPACE" --ignore-not-found=true; then
+            log_success "Functional spec MCP drained revision retired: $revision"
+        else
+            log_warning "Functional spec MCP drained revision retirement incomplete: $revision"
+        fi
+    done
+}
+
 # Step 7.7: Sparrow 기능 명세 HTTP MCP 배포
 deploy_functional_spec_mcp() {
     log_info "Step 7.7: Sparrow 기능 명세 HTTP MCP 배포"
     ensure_functional_spec_mcp_session_secret
+    local previous_active_revision previous_draining_revisions
+    previous_active_revision="$(kubectl get configmap functional-spec-mcp-router-config -n "$NAMESPACE" -o jsonpath='{.data.MCP_ROUTER_ACTIVE_REVISION}' 2>/dev/null || true)"
+    previous_draining_revisions="$(kubectl get configmap functional-spec-mcp-router-config -n "$NAMESPACE" -o jsonpath='{.data.MCP_ROUTER_DRAINING_REVISIONS}' 2>/dev/null || true)"
 
     for manifest in \
         functional-spec-mcp-configmap.yaml \
@@ -1192,7 +1369,7 @@ deploy_functional_spec_mcp() {
         exit 1
     fi
 
-    local worker_statefulset="functional-spec-mcp-worker-c7e78651"
+    local worker_statefulset="functional-spec-mcp-worker-fde0ef9e"
     local worker_update_strategy
     worker_update_strategy="$(kubectl get statefulset/"$worker_statefulset" -n "$NAMESPACE" -o jsonpath='{.spec.updateStrategy.type}')"
     if [ "$worker_update_strategy" = "OnDelete" ]; then
@@ -1213,10 +1390,36 @@ deploy_functional_spec_mcp() {
         exit 1
     fi
 
+    local active_revision desired_draining_revisions effective_draining_revisions
+    active_revision="$(kubectl get configmap functional-spec-mcp-router-config -n "$NAMESPACE" -o jsonpath='{.data.MCP_ROUTER_ACTIVE_REVISION}')"
+    desired_draining_revisions="$(kubectl get configmap functional-spec-mcp-router-config -n "$NAMESPACE" -o jsonpath='{.data.MCP_ROUTER_DRAINING_REVISIONS}')"
+    if ! effective_draining_revisions="$(
+        merge_functional_spec_mcp_revisions \
+            "$desired_draining_revisions" \
+            "$previous_draining_revisions" \
+            "$([ "$previous_active_revision" = "$active_revision" ] && printf '' || printf '%s' "$previous_active_revision")"
+    )"; then
+        exit 1
+    fi
+
+    if [ "$effective_draining_revisions" != "$desired_draining_revisions" ]; then
+        if ! kubectl patch configmap functional-spec-mcp-router-config -n "$NAMESPACE" \
+            --type=merge \
+            -p "{\"data\":{\"MCP_ROUTER_DRAINING_REVISIONS\":\"$effective_draining_revisions\"}}"; then
+            log_error "Functional spec MCP router draining revisions update failed"
+            exit 1
+        fi
+    fi
+
     if kubectl apply -f functional-spec-mcp-deployment.yaml -n "$NAMESPACE"; then
         log_success "functional-spec-mcp-deployment.yaml 적용 완료"
     else
         log_error "functional-spec-mcp-deployment.yaml 적용 실패"
+        exit 1
+    fi
+
+    if ! kubectl rollout restart deployment/functional-spec-mcp-router -n "$NAMESPACE"; then
+        log_error "Functional spec MCP router restart failed"
         exit 1
     fi
 
@@ -1235,6 +1438,11 @@ deploy_functional_spec_mcp() {
         log_error "Functional spec MCP Deployment rollout 실패"
         exit 1
     fi
+
+    retire_drained_functional_spec_mcp_revisions \
+        "$effective_draining_revisions" \
+        "$desired_draining_revisions" \
+        "$active_revision"
 
     if ! kubectl wait --for=condition=Ready certificate/functional-spec-mcp-tls -n "$NAMESPACE" --timeout=300s; then
         log_error "Functional spec MCP TLS Certificate 준비 실패"

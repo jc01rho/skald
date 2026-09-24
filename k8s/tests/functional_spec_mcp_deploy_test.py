@@ -6,6 +6,7 @@ ROOT = Path(__file__).resolve().parents[2]
 DEPLOY_SCRIPT = ROOT / "k8s" / "deploy.sh"
 DEPLOYMENT_PATH = ROOT / "k8s" / "functional-spec-mcp-deployment.yaml"
 WORKER_PATH = ROOT / "k8s" / "functional-spec-mcp-worker.yaml"
+CONFIGMAP_PATH = ROOT / "k8s" / "functional-spec-mcp-configmap.yaml"
 GATEWAY_PATH = ROOT / "k8s" / "functional-spec-mcp-gateway.yaml"
 ROUTE_PATH = ROOT / "k8s" / "functional-spec-mcp-httproute.yaml"
 
@@ -32,7 +33,7 @@ def test_functional_spec_mcp_uses_stateless_router_and_revision_workers():
         "rollingUpdate": {"maxUnavailable": 0, "maxSurge": 1},
     }
     assert worker["spec"]["replicas"] == 2
-    assert worker["spec"]["serviceName"] == "functional-spec-mcp-worker-c7e78651"
+    assert worker["spec"]["serviceName"] == "functional-spec-mcp-worker-fde0ef9e"
     assert worker["spec"]["updateStrategy"] == {"type": "OnDelete"}
     assert router["spec"]["template"]["spec"]["imagePullSecrets"] == [
         {"name": "ghcr-pull-secret"}
@@ -72,9 +73,17 @@ def test_functional_spec_mcp_services_keep_initial_and_session_routing_separate(
     assert router["spec"]["selector"]["component"] == "functional-spec-mcp-router"
     assert worker["spec"]["clusterIP"] == "None"
     assert worker["spec"]["publishNotReadyAddresses"] is True
-    assert worker["metadata"]["name"] == "functional-spec-mcp-worker-c7e78651"
-    assert initial["metadata"]["name"] == "functional-spec-mcp-worker-c7e78651-active"
-    assert initial["spec"]["selector"]["revision"] == "c7e78651"
+    assert worker["metadata"]["name"] == "functional-spec-mcp-worker-fde0ef9e"
+    assert initial["metadata"]["name"] == "functional-spec-mcp-worker-fde0ef9e-active"
+    assert initial["spec"]["selector"]["revision"] == "fde0ef9e"
+
+
+def test_functional_spec_mcp_config_has_no_stale_draining_revision():
+    worker_config, router_config = load_documents(CONFIGMAP_PATH)
+
+    assert worker_config["metadata"]["name"] == "functional-spec-mcp-worker-config-fde0ef9e"
+    assert router_config["data"]["MCP_ROUTER_ACTIVE_REVISION"] == "fde0ef9e"
+    assert router_config["data"]["MCP_ROUTER_DRAINING_REVISIONS"] == ""
 
 
 def test_functional_spec_mcp_uses_its_own_envoy_gateway_and_mcp_route():
@@ -104,7 +113,7 @@ def test_deploy_script_applies_and_waits_for_functional_spec_mcp():
     assert 'updateStrategy.type' in deploy_script
     assert 'StatefulSet revision is not converged for OnDelete strategy' in deploy_script
     assert (
-        'kubectl rollout status statefulset/functional-spec-mcp-worker-c7e78651 '
+        'kubectl rollout status statefulset/functional-spec-mcp-worker-fde0ef9e '
         '-n "$NAMESPACE"'
     ) not in deploy_script
     main_body = deploy_script[
@@ -130,3 +139,30 @@ def test_deploy_script_waits_for_new_workers_before_router_cutover():
     )
 
     assert worker_apply < worker_ready < router_apply
+
+
+def test_deploy_script_retires_drained_functional_spec_mcp_revisions():
+    deploy_script = DEPLOY_SCRIPT.read_text()
+
+    previous_draining_revisions = deploy_script.index(
+        'previous_draining_revisions="$(kubectl get configmap '
+        'functional-spec-mcp-router-config'
+    )
+    configmap_apply = deploy_script.index("functional-spec-mcp-configmap.yaml \\")
+    router_rollout = deploy_script.index(
+        'kubectl rollout status deployment/functional-spec-mcp-router '
+        '-n "$NAMESPACE" --timeout=300s',
+        configmap_apply,
+    )
+    retire = deploy_script.index("retire_drained_functional_spec_mcp_revisions", router_rollout)
+    certificate_wait = deploy_script.index(
+        'kubectl wait --for=condition=Ready certificate/functional-spec-mcp-tls'
+    )
+
+    assert previous_draining_revisions < configmap_apply < router_rollout < retire < certificate_wait
+    assert 'http://127.0.0.1:8080/drain"' in deploy_script
+    assert 'http://127.0.0.1:8080/drain-status"' in deploy_script
+    assert '[ "$session_count" -gt 0 ]' in deploy_script
+    assert 'kubectl delete statefulset "functional-spec-mcp-worker-$revision"' in deploy_script
+    assert 'kubectl delete configmap "functional-spec-mcp-worker-config-$revision"' in deploy_script
+    assert '--ignore-not-found=true' in deploy_script
