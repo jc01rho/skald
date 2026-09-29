@@ -1,0 +1,12 @@
+diff --git a/gateway/run_turn.py b/gateway/run_turn.py
+--- a/gateway/run_turn.py
++++ b/gateway/run_turn.py
+@@ -1417,7 +1417,7 @@
+         if not await self.async_session_store.has_any_sessions():
+             _intro_note = (
+                 "[System note: This is the user's very first message ever. "
+-                "Briefly introduce yourself and mention that /help shows available commands. "
++                "Briefly introduce yourself without advertising slash commands. "
+                 "Keep the introduction concise -- one or two sentences max.]"
+             )
+             # onboarding.profile_build == "ask" (default) and not yet offered: swap the plain intro for

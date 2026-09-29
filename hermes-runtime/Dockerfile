@@ -2,12 +2,11 @@
 ARG PYTHON_BASE=python:3.12.13-slim-trixie@sha256:57cd7c3a7a273101a6485ba99423ee568157882804b1124b4dd04266317710de
 FROM ${PYTHON_BASE}
 
-ARG HERMES_REVISION=3c27eb6234bf91b8ceee9e9071591b31e9b148cb
+ARG HERMES_REVISION=f97608f178d1ffeca59860195ab7da295f7c8e5f
 ARG BUN_VERSION=1.3.14
 ARG BUN_LINUX_X64_SHA256=951ee2aee855f08595aeec6225226a298d3fea83a3dcd6465c09cbccdf7e848f
-ARG HERMES_DOWNSTREAM_PATCH=patches/3c27eb62-runtime-security.patch
-ARG HERMES_DOWNSTREAM_PATCH_SHA256=059f57ae5683c1861283f7eeaeb125a045a4b90e3a5ab63152c325228d53b388
-ARG HERMES_CRYPTOGRAPHY_VERSION=50.0.0
+ARG HERMES_DOWNSTREAM_PATCH=patches/f97608f1-discord-intro.patch
+ARG HERMES_DOWNSTREAM_PATCH_SHA256=e1532474992f53d67d0611ca929369da4ee53b4077df192f9087de5fe7e7f099
 ENV HERMES_HOME=/var/lib/hermes \
     PATH=/opt/bun/bin:/usr/local/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin \
     PYTHONDONTWRITEBYTECODE=1 \
@@ -36,9 +35,9 @@ RUN git clone https://github.com/NousResearch/hermes-agent.git "${HERMES_HOME}/h
     && git -C "${HERMES_HOME}/hermes-agent" apply /tmp/hermes-downstream.patch \
     && cd "${HERMES_HOME}/hermes-agent" \
     && python -m pip install --no-cache-dir uv \
-    && UV_PYTHON=/usr/local/bin/python uv sync --frozen --no-dev --extra mcp \
-    && UV_PYTHON=/usr/local/bin/python uv pip install --python .venv/bin/python --only-binary=:all: --exclude-newer-package "cryptography=2026-08-01T00:00:00Z" "cryptography==${HERMES_CRYPTOGRAPHY_VERSION}" \
+    && UV_PYTHON=/usr/local/bin/python uv sync --frozen --no-dev --extra mcp --extra messaging \
     && UV_PYTHON=/usr/local/bin/python uv pip check --python .venv/bin/python \
+    && .venv/bin/python -c 'from plugins.platforms.discord.adapter import DISCORD_AVAILABLE; assert DISCORD_AVAILABLE' \
     && rm -rf /root/.cache/uv \
     && rm /tmp/hermes-downstream.patch \
     && ln -s "${HERMES_HOME}/hermes-agent/.venv/bin/hermes" /usr/local/bin/hermes

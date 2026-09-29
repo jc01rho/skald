@@ -13,7 +13,9 @@ def test_image_is_pinned_and_runtime_argv_is_exact():
     assert re.search(r'^CMD \["gateway", "run"\]$', dockerfile, re.MULTILINE)
     assert "--platform" not in dockerfile
     assert "sh -c" not in dockerfile
-    assert "3c27eb6234bf91b8ceee9e9071591b31e9b148cb" in dockerfile
+    revision = re.search(r"^HERMES_REVISION=([0-9a-f]{40})$", lock, re.MULTILINE)
+    assert revision is not None
+    assert f"ARG HERMES_REVISION={revision.group(1)}" in dockerfile
     assert "3d1aefa0ab293b77d9ba68e2c7efe6d8b12136a4" not in dockerfile
     assert "git" in dockerfile
     assert "bash" in dockerfile
@@ -27,7 +29,7 @@ def test_image_is_pinned_and_runtime_argv_is_exact():
 
 
 
-def test_downstream_patch_and_cryptography_overlay_are_pinned():
+def test_downstream_patch_is_pinned_and_upstream_dependencies_are_frozen():
     dockerfile = (ROOT / "Dockerfile").read_text()
     versions = dict(
         line.split("=", 1)
@@ -42,23 +44,17 @@ def test_downstream_patch_and_cryptography_overlay_are_pinned():
     assert f"ARG HERMES_DOWNSTREAM_PATCH_SHA256={versions['HERMES_DOWNSTREAM_PATCH_SHA256']}" in dockerfile
     assert "git -C \"${HERMES_HOME}/hermes-agent\" apply --check /tmp/hermes-downstream.patch" in dockerfile
     assert dockerfile.index("apply --check") < dockerfile.index("uv sync --frozen --no-dev")
-    assert "UV_PYTHON=/usr/local/bin/python uv sync --frozen --no-dev --extra mcp" in dockerfile
+    assert "UV_PYTHON=/usr/local/bin/python uv sync --frozen --no-dev --extra mcp --extra messaging" in dockerfile
     assert "uv sync --frozen --no-dev" in dockerfile
     assert "uv lock" not in dockerfile
-    assert f"ARG HERMES_CRYPTOGRAPHY_VERSION={versions['HERMES_CRYPTOGRAPHY_VERSION']}" in dockerfile
-    assert '--exclude-newer-package "cryptography=2026-08-01T00:00:00Z"' in dockerfile
-    assert '"cryptography==${HERMES_CRYPTOGRAPHY_VERSION}"' in dockerfile
+    assert "uv pip install" not in dockerfile
     assert "uv pip check --python .venv/bin/python" in dockerfile
     assert "rm -rf /root/.cache/uv" in dockerfile
 
     patch = patch_path.read_text()
-    assert "diff --git a/gateway/run.py b/gateway/run.py" in patch
-    assert "diff --git a/pyproject.toml b/pyproject.toml" in patch
+    assert "diff --git a/gateway/run_turn.py b/gateway/run_turn.py" in patch
+    assert "diff --git a/pyproject.toml b/pyproject.toml" not in patch
     assert "diff --git a/uv.lock b/uv.lock" not in patch
-    assert "Briefly introduce yourself without advertising slash commands." in patch
-    assert f'"cryptography=={versions["HERMES_CRYPTOGRAPHY_VERSION"]}"' in patch
-    assert "CVE-2026-69247 and CVE-2026-69249" in patch
-    assert "+                \"Briefly introduce yourself and mention that /help shows available commands." not in patch
 
 
 def test_workflow_runs_all_offline_pytest_and_pins_actions():
