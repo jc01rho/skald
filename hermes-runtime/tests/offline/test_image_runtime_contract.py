@@ -47,7 +47,13 @@ def test_downstream_patch_is_pinned_and_upstream_dependencies_are_frozen():
     assert "UV_PYTHON=/usr/local/bin/python uv sync --frozen --no-dev --extra mcp --extra messaging" in dockerfile
     assert "uv sync --frozen --no-dev" in dockerfile
     assert "uv lock" not in dockerfile
-    assert "uv pip install" not in dockerfile
+    overlay = versions["HERMES_SECURITY_OVERLAY"].split()
+    assert overlay and all(re.fullmatch(r"[a-z0-9-]+==[0-9]+(\.[0-9]+)+", pin) for pin in overlay)
+    assert f'ARG HERMES_SECURITY_OVERLAY="{versions["HERMES_SECURITY_OVERLAY"]}"' in dockerfile
+    install = "uv pip install --python .venv/bin/python --only-binary=:all: ${HERMES_SECURITY_OVERLAY}"
+    assert dockerfile.count("uv pip install") == 1 and install in dockerfile
+    assert dockerfile.index("uv sync --frozen") < dockerfile.index(install) < dockerfile.index("uv pip check")
+    assert "apt-get upgrade --yes --no-install-recommends" in dockerfile
     assert "uv pip check --python .venv/bin/python" in dockerfile
     assert "rm -rf /root/.cache/uv" in dockerfile
 

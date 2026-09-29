@@ -7,12 +7,16 @@ ARG BUN_VERSION=1.3.14
 ARG BUN_LINUX_X64_SHA256=951ee2aee855f08595aeec6225226a298d3fea83a3dcd6465c09cbccdf7e848f
 ARG HERMES_DOWNSTREAM_PATCH=patches/f97608f1-discord-intro.patch
 ARG HERMES_DOWNSTREAM_PATCH_SHA256=e1532474992f53d67d0611ca929369da4ee53b4077df192f9087de5fe7e7f099
+# Fixed versions for CVE-2026-63374 (anyio) and CVE-2026-84381/84382 (httpx2,
+# httpcore2); upstream v0.21.5 still locks the vulnerable releases.
+ARG HERMES_SECURITY_OVERLAY="anyio==4.14.2 httpx2==2.12.0 httpcore2==2.12.0"
 ENV HERMES_HOME=/var/lib/hermes \
     PATH=/opt/bun/bin:/usr/local/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin \
     PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1
 
 RUN apt-get update \
+    && apt-get upgrade --yes --no-install-recommends \
     && apt-get install --yes --no-install-recommends bash ca-certificates curl git unzip \
     && rm -rf /var/lib/apt/lists/*
 
@@ -36,6 +40,7 @@ RUN git clone https://github.com/NousResearch/hermes-agent.git "${HERMES_HOME}/h
     && cd "${HERMES_HOME}/hermes-agent" \
     && python -m pip install --no-cache-dir uv \
     && UV_PYTHON=/usr/local/bin/python uv sync --frozen --no-dev --extra mcp --extra messaging \
+    && UV_PYTHON=/usr/local/bin/python uv pip install --python .venv/bin/python --only-binary=:all: ${HERMES_SECURITY_OVERLAY} \
     && UV_PYTHON=/usr/local/bin/python uv pip check --python .venv/bin/python \
     && .venv/bin/python -c 'from plugins.platforms.discord.adapter import DISCORD_AVAILABLE; assert DISCORD_AVAILABLE' \
     && rm -rf /root/.cache/uv \
