@@ -57,8 +57,14 @@ def test_downstream_patch_is_pinned_and_upstream_dependencies_are_frozen():
     assert "uv pip check --python .venv/bin/python" in dockerfile
     assert "rm -rf /root/.cache/uv" in dockerfile
 
+    role_check = "PYTHONPATH=. .venv/bin/python /tmp/check_discord_role_mention.py"
+    assert (ROOT / "tools" / "check_discord_role_mention.py").is_file()
+    assert "COPY tools/check_discord_role_mention.py /tmp/check_discord_role_mention.py" in dockerfile
+    assert dockerfile.index("uv pip check") < dockerfile.index(role_check) < dockerfile.index("rm -rf /root/.cache/uv")
+
     patch = patch_path.read_text()
     assert "diff --git a/gateway/run_turn.py b/gateway/run_turn.py" in patch
+    assert "diff --git a/plugins/platforms/discord/adapter.py b/plugins/platforms/discord/adapter.py" in patch
     assert "diff --git a/pyproject.toml b/pyproject.toml" not in patch
     assert "diff --git a/uv.lock b/uv.lock" not in patch
 

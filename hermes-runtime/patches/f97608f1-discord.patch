@@ -1,0 +1,69 @@
+diff --git a/gateway/run_turn.py b/gateway/run_turn.py
+index 1484ea2..0ae2334 100644
+--- a/gateway/run_turn.py
++++ b/gateway/run_turn.py
+@@ -1417,7 +1417,7 @@ class GatewayTurnMixin:
+         if not await self.async_session_store.has_any_sessions():
+             _intro_note = (
+                 "[System note: This is the user's very first message ever. "
+-                "Briefly introduce yourself and mention that /help shows available commands. "
++                "Briefly introduce yourself without advertising slash commands. "
+                 "Keep the introduction concise -- one or two sentences max.]"
+             )
+             # onboarding.profile_build == "ask" (default) and not yet offered: swap the plain intro for
+diff --git a/plugins/platforms/discord/adapter.py b/plugins/platforms/discord/adapter.py
+index 12a7aab..23ebdee 100644
+--- a/plugins/platforms/discord/adapter.py
++++ b/plugins/platforms/discord/adapter.py
+@@ -4967,13 +4967,39 @@ class DiscordAdapter(DiscordMediaMixin, BasePlatformAdapter):
+         content = getattr(message, "content", "") or ""
+         return {match.group(1) for match in re.finditer(r"<@!?(\d+)>", content)}
+ 
++    def _self_role_id(self, message: Any) -> Optional[str]:
++        """ID of this bot's own managed integration role when the message mentions it, else None.
++        Users often pick the bot's role instead of the bot account from Discord's @ autocomplete."""
++        if not self._client or not self._client.user:
++            return None
++        guild = getattr(message, "guild", None)
++        if guild is None:
++            return None
++        bot_id = self._client.user.id
++        content = getattr(message, "content", "") or ""
++        raw_role_ids = {match.group(1) for match in re.finditer(r"<@&(\d+)>", content)}
++        self_role = getattr(guild, "self_role", None)
++        if self_role is not None and (self_role in getattr(message, "role_mentions", []) or str(self_role.id) in raw_role_ids):
++            return str(self_role.id)
++        candidates = list(getattr(message, "role_mentions", []))
++        get_role = getattr(guild, "get_role", None)
++        if get_role is not None:
++            candidates.extend(role for role in (get_role(int(role_id)) for role_id in raw_role_ids) if role is not None)
++        for role in candidates:
++            if getattr(getattr(role, "tags", None), "bot_id", None) == bot_id:
++                return str(role.id)
++        return None
++
+     def _self_is_explicitly_mentioned(self, message: Any) -> bool:
+-        """True when the bot is in ``message.mentions`` or raw-mentioned in the content."""
++        """True when the bot is in ``message.mentions``, raw-mentioned in the content, or its own
++        managed role is mentioned."""
+         if not self._client or not self._client.user:
+             return False
+         if self._client.user in getattr(message, "mentions", []):
+             return True
+-        return str(self._client.user.id) in self._raw_mentioned_user_ids(message)
++        if str(self._client.user.id) in self._raw_mentioned_user_ids(message):
++            return True
++        return self._self_role_id(message) is not None
+ 
+     def _self_is_raw_mentioned(self, message: Any) -> bool:
+         """True only for a literal ``<@bot>`` token: reply-pings add us to ``message.mentions``
+@@ -5956,6 +5982,9 @@ class DiscordAdapter(DiscordMediaMixin, BasePlatformAdapter):
+             if self._client.user:
+                 normalized_content = normalized_content.replace(f"<@{self._client.user.id}>", "").strip()
+                 normalized_content = normalized_content.replace(f"<@!{self._client.user.id}>", "").strip()
++            self_role_id = self._self_role_id(message)
++            if self_role_id:
++                normalized_content = normalized_content.replace(f"<@&{self_role_id}>", "").strip()
+             message.content = normalized_content
+         if not isinstance(message.channel, discord.DMChannel):
+             channel_ids = {str(message.channel.id)}
