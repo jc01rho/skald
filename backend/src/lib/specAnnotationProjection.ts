@@ -22,6 +22,33 @@ export interface SpecContext {
 
 type ProjectionAnnotation = Pick<SpecAnnotation, 'kind' | 'status' | 'body' | 'condition' | 'effect' | 'applies_to' | 'created_at'>
 
+export const MEMO_ANNOTATIONS_NOTICE =
+    'SPMS 원문이 아니라 Skald 사용자가 입력한 보충 참고사항입니다. 원문과 충돌하면 원문을 우선합니다. ' +
+    'status가 NEEDS_REVIEW인 항목은 원문이 바뀐 뒤 아직 재검토되지 않았으므로 참고만 하세요.'
+
+export function buildMemoAnnotations(
+    annotations: Array<ProjectionAnnotation & Pick<SpecAnnotation, 'uuid' | 'updated_at' | 'updated_by'>>
+) {
+    const visible = annotations
+        .filter((annotation) => annotation.status !== 'ARCHIVED')
+        .sort((left, right) => left.created_at.getTime() - right.created_at.getTime())
+    return {
+        notice: MEMO_ANNOTATIONS_NOTICE,
+        items: visible.map((annotation) => ({
+            uuid: annotation.uuid,
+            kind: annotation.kind,
+            kind_label: KIND_LABELS[annotation.kind],
+            status: annotation.status,
+            applies_to: annotation.applies_to ?? null,
+            condition: annotation.condition ?? null,
+            effect: annotation.effect ?? null,
+            body: annotation.body,
+            updated_at: annotation.updated_at,
+            updated_by: annotation.updated_by ?? null,
+        })),
+    }
+}
+
 export function annotationProjectionReferenceId(specMemoReferenceId: string): string {
     return `${SPEC_ANNOTATION_REFERENCE_PREFIX}${specMemoReferenceId}`
 }

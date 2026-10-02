@@ -1,4 +1,8 @@
-import { annotationProjectionReferenceId, buildAnnotationProjection } from '@/lib/specAnnotationProjection'
+import {
+    annotationProjectionReferenceId,
+    buildAnnotationProjection,
+    buildMemoAnnotations,
+} from '@/lib/specAnnotationProjection'
 
 const spec = { spec_id: 'spms:function:812', title: '컴포넌트 반입 요청 목록 조회', code: 'SVR-COMPONENT-REQUEST-LIST-R' }
 
@@ -14,6 +18,24 @@ function annotation(overrides: Record<string, unknown>) {
         ...overrides,
     }
 }
+
+describe('memo detail spec annotations', () => {
+    it('exposes active and review-pending notes in creation order and hides archived ones', () => {
+        const extra = (uuid: string) => ({ uuid, updated_at: new Date('2026-10-02T00:00:00.000Z'), updated_by: 'a@b.c' })
+        const payload = buildMemoAnnotations([
+            { ...annotation({ body: 'LATER', created_at: new Date('2026-10-03T00:00:00.000Z') }), ...extra('u2') },
+            { ...annotation({ body: 'ARCHIVED', status: 'ARCHIVED' }), ...extra('u3') },
+            { ...annotation({ kind: 'AUTOMATION_HINT', status: 'NEEDS_REVIEW', condition: 'COND' }), ...extra('u1') },
+        ])
+
+        expect(payload.items.map((item) => [item.uuid, item.kind, item.status])).toEqual([
+            ['u1', 'AUTOMATION_HINT', 'NEEDS_REVIEW'],
+            ['u2', 'ADDITIONAL_NOTE', 'ACTIVE'],
+        ])
+        expect(payload.items[0].condition).toBe('COND')
+        expect(payload.notice.length).toBeGreaterThan(0)
+    })
+})
 
 describe('spec annotation projection', () => {
     it('keys the projection memo off the spec memo reference id so exact lookup can join it', () => {

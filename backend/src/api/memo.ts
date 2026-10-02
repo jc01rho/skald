@@ -34,6 +34,8 @@ import { Organization } from '@/entities/Organization'
 import { UsageTrackingService } from '@/services/usageTrackingService'
 import { calculateMemoWritesUsage } from '@/lib/usageTrackingUtils'
 import { CachedQueries } from '@/queries/cachedQueries'
+import { SpecAnnotation } from '@/entities/SpecAnnotation'
+import { buildMemoAnnotations } from '@/lib/specAnnotationProjection'
 
 const ALLOWED_EXTENSIONS = ['.pdf', '.doc', '.docx', '.pptx', '.xls', '.xlsx']
 
@@ -97,6 +99,7 @@ const canonicalMutationError = (res: Response) =>
     })
 
 interface CanonicalMemoProjection {
+    source_id: string
     active_revision_id: string | null
     memo_projection_revision_id: string
     memo_projection_canonical_hash: string
@@ -105,7 +108,8 @@ interface CanonicalMemoProjection {
 
 const canonicalMemoProjection = async (projectId: string, memoId: string): Promise<CanonicalMemoProjection | null> => {
     const rows = await DI.em.getConnection().execute<CanonicalMemoProjection[]>(
-        `select s.active_revision_id,
+        `select s.uuid as source_id,
+                s.active_revision_id,
                 s.memo_projection_revision_id,
                 s.memo_projection_canonical_hash,
                 r.content_hash as revision_content_hash
@@ -320,6 +324,17 @@ export const getMemo = async (req: Request, res: Response) => {
             chunk_content: chunk.chunk_content,
             chunk_index: chunk.chunk_index,
         })),
+        ...(specProjection
+            ? {
+                  spec_annotations: buildMemoAnnotations(
+                      await DI.em.find(SpecAnnotation, {
+                          project,
+                          source: { project, uuid: specProjection.source_id },
+                          status: { $ne: 'ARCHIVED' },
+                      })
+                  ),
+              }
+            : {}),
     }
 
     return res.status(200).json(detailedMemo)
