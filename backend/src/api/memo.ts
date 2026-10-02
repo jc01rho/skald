@@ -1,7 +1,7 @@
 import express, { Request, Response } from 'express'
 import { z } from 'zod'
 import multer from 'multer'
-import { FilterQuery, RequestContext } from '@mikro-orm/postgresql'
+import { FilterQuery, QueryOrder, QueryOrderMap, RequestContext, raw } from '@mikro-orm/postgresql'
 import { DI } from '@/di'
 import { NextFunction } from 'express'
 import {
@@ -471,8 +471,24 @@ export const listMemos = async (req: Request, res: Response) => {
         whereClause.$or = [{ title: { $ilike: pattern } }, { client_reference_id: { $ilike: pattern } }]
     }
 
+    const searchRank = raw(
+        (alias: string) =>
+            `CASE
+                WHEN lower(${alias}.title) = lower(?)
+                  OR lower(${alias}.client_reference_id) = lower(?)
+                  OR right(lower(${alias}.client_reference_id), length(?) + 1) = ':' || lower(?) THEN 0
+                WHEN left(lower(${alias}.title), length(?)) = lower(?)
+                  OR left(lower(${alias}.client_reference_id), length(?)) = lower(?) THEN 1
+                ELSE 2
+            END`,
+        Array(8).fill(query)
+    )
+    const orderBy: QueryOrderMap<Memo>[] = query
+        ? [{ [searchRank]: QueryOrder.ASC }, { created_at: QueryOrder.DESC }]
+        : [{ created_at: QueryOrder.DESC }]
+
     const [memos, totalCount] = await DI.memos.findAndCount(whereClause, {
-        orderBy: { created_at: 'DESC' },
+        orderBy,
         limit: pageSize,
         offset: offset,
     })
