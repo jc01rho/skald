@@ -22,6 +22,7 @@ import { HNSWOptimizationService } from '@/lib/hnswOptimization'
 import { extractExplicitKeys, ExtractedKey } from '@/lib/keyExtractor'
 import { expandTechnicalQueryVariants } from '@/lib/queryNormalization'
 import { buildMemoSourceUrl } from '@/lib/memoSourceUrl'
+import { annotationProjectionReferenceId } from '@/lib/specAnnotationProjection'
 import { RawSourceDocument } from '@/entities/RawSourceDocument'
 import { WikiPage } from '@/entities/WikiPage'
 import { WikiPageSourceLink } from '@/entities/WikiPageSourceLink'
@@ -569,11 +570,23 @@ async function exactLookupNode(state: typeof RAGState.State) {
                 const row = rows[0]
                 if (!row.archived) {
                     // Normal hit
+                    const annotationRows = await DI.em.getConnection().execute<Array<{ content: string | null }>>(
+                        `SELECT skald_memocontent.content
+                         FROM skald_memo
+                         JOIN skald_memocontent ON skald_memo.uuid = skald_memocontent.memo_id
+                         WHERE skald_memo.project_id = ?
+                           AND skald_memo.client_reference_id = ?
+                           AND COALESCE(skald_memo.archived, false) = false
+                         LIMIT 1`,
+                        [project.uuid, annotationProjectionReferenceId(extractedKey.value)]
+                    )
+                    const annotationContent = annotationRows[0]?.content
+                    const baseContent = row.content || row.title
                     results.push({
                         memo_uuid: row.uuid,
                         key: extractedKey.value,
                         title: row.title,
-                        content: row.content || row.title,
+                        content: annotationContent ? `${baseContent}\n\n${annotationContent}` : baseContent,
                         source_url: buildMemoSourceUrl({
                             projectUuid: project.uuid,
                             memoUuid: row.uuid,
@@ -586,7 +599,7 @@ async function exactLookupNode(state: typeof RAGState.State) {
                     })
                     anyHit = true
                     logger.info(
-                        { key: extractedKey.value, type: extractedKey.type, memoUuid: row.uuid },
+                        { key: extractedKey.value, type: extractedKey.type, memoUuid: row.uuid, withAnnotations: Boolean(annotationContent) },
                         'exactLookup: HIT on client_reference_id (active)'
                     )
                 } else {

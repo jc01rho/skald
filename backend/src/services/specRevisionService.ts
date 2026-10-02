@@ -9,6 +9,8 @@ import { SpecClaim } from '@/entities/SpecClaim'
 import { SpecRevision } from '@/entities/SpecRevision'
 import { SpecSource } from '@/entities/SpecSource'
 import { SpecTraversalSnapshot } from '@/entities/SpecTraversalSnapshot'
+import { logger } from '@/lib/logger'
+import { SpecAnnotationService } from '@/services/specAnnotationService'
 
 export interface SpecTargetInput {
     source_system: string
@@ -353,6 +355,7 @@ export class SpecRevisionService {
         const normalized = this.validate(input)
         const projectId = input.project_id
         const em = this.rootEm.fork({ clear: true, useContext: false, disableContextResolution: true, keepTransactionContext: false })
+        let annotationSourceToResync: string | null = null
         const receipt = await (async () => {
             await em.begin()
             try {
@@ -609,6 +612,11 @@ export class SpecRevisionService {
                     memo_id: memo.uuid,
                     active_revision_id: revision.uuid,
                 })
+            const flaggedAnnotations = await transaction('skald_spec_annotation')
+                .where({ project_id: projectId, source_id: source.uuid, status: 'ACTIVE' })
+                .whereRaw('anchor_content_hash IS DISTINCT FROM ?', [input.revision.content_hash])
+                .update({ status: 'NEEDS_REVIEW', updated_at: now })
+            if (flaggedAnnotations > 0) annotationSourceToResync = source.uuid
             if (!('__canonicalNative' in source)) await em.flush()
             await transaction.raw('SET CONSTRAINTS ALL IMMEDIATE')
             return {
@@ -641,6 +649,16 @@ export class SpecRevisionService {
         )
         if (persisted.length !== 1) {
             throw new SpecRevisionError('PUBLICATION_NOT_PERSISTED', 'Canonical revision was not persisted', 503)
+        }
+        if (annotationSourceToResync) {
+            try {
+                await new SpecAnnotationService(this.rootEm.fork()).syncProjectionForSource(project, annotationSourceToResync)
+            } catch (error) {
+                logger.error(
+                    { err: error, sourceId: annotationSourceToResync },
+                    'Failed to drop review-pending spec annotations from their search projection'
+                )
+            }
         }
         return receipt
     }

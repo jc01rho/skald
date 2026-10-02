@@ -18,6 +18,7 @@ import {
 import { formatDate } from '@/components/utils/dateUtils'
 import { addMonths, isBefore } from 'date-fns'
 import ReactMarkdown from 'react-markdown'
+import { SpecAnnotationsPanel } from './SpecAnnotationsPanel'
 
 interface DetailedMemoViewProps {
     memo: DetailedMemo
@@ -213,6 +214,8 @@ export const DetailedMemoView = ({ memo }: DetailedMemoViewProps) => {
                     </CardContent>
                 </Card>
             )}
+
+            <SpecAnnotationsPanel memoUuid={memo.uuid} />
 
             {memo.summary && (
                 <Card>

@@ -27,6 +27,7 @@ import { publicWikiRouter } from '@/api/publicWiki'
 import { wikiRouter } from '@/api/wiki'
 import { specRevisionRouter } from '@/api/specRevision'
 import { specLifecycleRouter } from '@/api/specLifecycle'
+import { specAnnotationRouter } from '@/api/specAnnotation'
 import { logger } from '@/lib/logger'
 import { posthog } from '@/lib/posthogUtils'
 import { authRateLimiter, generalRateLimiter } from '@/middleware/rateLimitMiddleware'
@@ -123,6 +124,7 @@ export const startExpressServer = async (
     privateRoutesRouter.use('/v1/wiki', wikiRouter)
     privateRoutesRouter.use('/v1', [requireProjectAccess()], specRevisionRouter)
     privateRoutesRouter.use('/v1', [requireProjectAccess()], specLifecycleRouter)
+    privateRoutesRouter.use('/v1/spec-annotations', [requireProjectAccess()], specAnnotationRouter)
 
     // register extra private routes (e.g., enterprise features)
     for (const [route, middleware, router] of extraPrivateRoutes) {
