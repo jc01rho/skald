@@ -1373,15 +1373,17 @@ deploy_functional_spec_mcp() {
     local worker_update_strategy
     worker_update_strategy="$(kubectl get statefulset/"$worker_statefulset" -n "$NAMESPACE" -o jsonpath='{.spec.updateStrategy.type}')"
     if [ "$worker_update_strategy" = "OnDelete" ]; then
-        local worker_replicas worker_current_revision worker_update_revision
+        local worker_replicas worker_updated_replicas worker_update_revision
         worker_replicas="$(kubectl get statefulset/"$worker_statefulset" -n "$NAMESPACE" -o jsonpath='{.spec.replicas}')"
         if ! kubectl wait --for=jsonpath='{.status.readyReplicas}'="$worker_replicas" statefulset/"$worker_statefulset" -n "$NAMESPACE" --timeout=300s; then
             log_error "Functional spec MCP worker StatefulSet Ready 대기 실패"
             exit 1
         fi
-        worker_current_revision="$(kubectl get statefulset/"$worker_statefulset" -n "$NAMESPACE" -o jsonpath='{.status.currentRevision}')"
+        # OnDelete never advances status.currentRevision, even after every Pod is replaced;
+        # updatedReplicas counts the Pods already running updateRevision.
+        worker_updated_replicas="$(kubectl get statefulset/"$worker_statefulset" -n "$NAMESPACE" -o jsonpath='{.status.updatedReplicas}')"
         worker_update_revision="$(kubectl get statefulset/"$worker_statefulset" -n "$NAMESPACE" -o jsonpath='{.status.updateRevision}')"
-        if [ -z "$worker_current_revision" ] || [ "$worker_current_revision" != "$worker_update_revision" ]; then
+        if [ -z "$worker_update_revision" ] || [ "$worker_updated_replicas" != "$worker_replicas" ]; then
             log_error "Functional spec MCP worker StatefulSet revision is not converged for OnDelete strategy"
             exit 1
         fi

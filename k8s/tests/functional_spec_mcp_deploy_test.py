@@ -112,6 +112,8 @@ def test_deploy_script_applies_and_waits_for_functional_spec_mcp():
     assert 'kubectl rollout status deployment/functional-spec-mcp-router -n "$NAMESPACE"' in deploy_script
     assert 'updateStrategy.type' in deploy_script
     assert 'StatefulSet revision is not converged for OnDelete strategy' in deploy_script
+    assert "jsonpath='{.status.updatedReplicas}'" in deploy_script
+    assert "jsonpath='{.status.currentRevision}'" not in deploy_script
     assert (
         'kubectl rollout status statefulset/functional-spec-mcp-worker-fde0ef9e '
         '-n "$NAMESPACE"'
