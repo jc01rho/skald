@@ -85,6 +85,13 @@ export const RABBITMQ_USER = process.env.RABBITMQ_USER || 'guest'
 export const RABBITMQ_PASSWORD = process.env.RABBITMQ_PASSWORD || 'guest'
 export const RABBITMQ_VHOST = process.env.RABBITMQ_VHOST || '/'
 export const RABBITMQ_QUEUE_NAME = process.env.RABBITMQ_QUEUE_NAME || 'process_memo'
+export const MEMO_STUCK_SWEEP_ENABLED = process.env.MEMO_STUCK_SWEEP_ENABLED !== 'false'
+export const MEMO_STUCK_SWEEP_INTERVAL_MINUTES = parseInt(process.env.MEMO_STUCK_SWEEP_INTERVAL_MINUTES || '5')
+export const MEMO_STUCK_RECEIVED_STALE_MINUTES = parseInt(process.env.MEMO_STUCK_RECEIVED_STALE_MINUTES || '10')
+export const MEMO_STUCK_PROCESSING_STALE_MINUTES = parseInt(process.env.MEMO_STUCK_PROCESSING_STALE_MINUTES || '120')
+export const MEMO_STUCK_RETRY_INTERVAL_MINUTES = parseInt(process.env.MEMO_STUCK_RETRY_INTERVAL_MINUTES || '30')
+export const MEMO_STUCK_RETRY_WINDOW_HOURS = parseInt(process.env.MEMO_STUCK_RETRY_WINDOW_HOURS || '72')
+export const MEMO_STUCK_SWEEP_BATCH_SIZE = parseInt(process.env.MEMO_STUCK_SWEEP_BATCH_SIZE || '200')
 
 export const AWS_REGION = process.env.AWS_REGION || 'us-east-2'
 export const AWS_ACCESS_KEY_ID = process.env.AWS_ACCESS_KEY_ID

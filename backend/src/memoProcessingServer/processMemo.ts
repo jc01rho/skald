@@ -16,6 +16,7 @@ import { Project } from '@/entities/Project'
 import { Organization } from '@/entities/Organization'
 import { LLM_PROVIDER, WIKI_ASYNC_MODE } from '@/settings'
 import { WikiCompilerService } from '@/services/wiki/wikiCompilerService'
+import { STUCK_RETRY_METADATA_RESET } from '@/memoProcessingServer/stuckMemoSweeper'
 
 const runMemoProcessingAgents = async (em: EntityManager, memoUuid: string) => {
     const sql = `
@@ -121,6 +122,7 @@ export const processMemo = async (em: EntityManager, memoUuid: string) => {
             processing_error: null,
             metadata_updates: {
                 contextual_retrieval_applied: CONTEXTUAL_RETRIEVAL_ENABLED,
+                ...STUCK_RETRY_METADATA_RESET,
             },
         })
 
@@ -139,6 +141,7 @@ export const processMemo = async (em: EntityManager, memoUuid: string) => {
                 processing_status: 'error',
                 processing_completed_at: new Date(),
                 processing_error: errorMessage,
+                metadata_updates: STUCK_RETRY_METADATA_RESET,
             })
         } catch (statusUpdateError) {
             logger.error({ err: statusUpdateError, memoUuid }, 'Failed to update memo status after error')

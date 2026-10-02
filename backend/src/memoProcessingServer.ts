@@ -6,12 +6,25 @@ import {
     LLM_PROVIDER,
     EMBEDDING_PROVIDER,
     SQS_QUEUE_URL,
+    MEMO_STUCK_SWEEP_ENABLED,
+    MEMO_STUCK_SWEEP_INTERVAL_MINUTES,
+    MEMO_STUCK_RECEIVED_STALE_MINUTES,
+    MEMO_STUCK_PROCESSING_STALE_MINUTES,
+    MEMO_STUCK_RETRY_INTERVAL_MINUTES,
+    MEMO_STUCK_RETRY_WINDOW_HOURS,
+    MEMO_STUCK_SWEEP_BATCH_SIZE,
 } from '@/settings'
 import '@/sentry'
 import { createClient } from 'redis'
 import { processMemo } from '@/memoProcessingServer/processMemo'
 import { runSQSConsumer } from '@/memoProcessingServer/sqsConsumer'
-import { runRabbitMQConsumer, closeRabbitMQ } from '@/memoProcessingServer/rabbitMqConsumer'
+import {
+    runRabbitMQConsumer,
+    closeRabbitMQ,
+    getMemoQueueReadyMessageCount,
+    publishMemoToQueue,
+} from '@/memoProcessingServer/rabbitMqConsumer'
+import { startStuckMemoSweeper } from '@/memoProcessingServer/stuckMemoSweeper'
 import { MikroORM } from '@mikro-orm/core'
 import config from '@/mikro-orm.config'
 import { logger } from '@/lib/logger'
@@ -62,6 +75,20 @@ export const startMemoProcessingServer = async () => {
         case 'rabbitmq':
             logger.info('Running with RabbitMQ')
             await runRabbitMQConsumer(orm)
+            if (MEMO_STUCK_SWEEP_ENABLED) {
+                startStuckMemoSweeper(
+                    orm,
+                    {
+                        receivedStaleMinutes: MEMO_STUCK_RECEIVED_STALE_MINUTES,
+                        processingStaleMinutes: MEMO_STUCK_PROCESSING_STALE_MINUTES,
+                        retryIntervalMinutes: MEMO_STUCK_RETRY_INTERVAL_MINUTES,
+                        retryWindowHours: MEMO_STUCK_RETRY_WINDOW_HOURS,
+                        batchSize: MEMO_STUCK_SWEEP_BATCH_SIZE,
+                    },
+                    MEMO_STUCK_SWEEP_INTERVAL_MINUTES,
+                    { getReadyMessageCount: getMemoQueueReadyMessageCount, publish: publishMemoToQueue }
+                )
+            }
             break
 
         default:

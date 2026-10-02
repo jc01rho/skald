@@ -125,6 +125,22 @@ export async function runRabbitMQConsumer(orm: MikroORM): Promise<void> {
     }
 }
 
+export async function getMemoQueueReadyMessageCount(): Promise<number> {
+    if (!channel) {
+        throw new Error('Channel not initialized')
+    }
+    const { messageCount } = await channel.checkQueue(RABBITMQ_QUEUE_NAME)
+    return messageCount
+}
+
+export async function publishMemoToQueue(memoUuid: string): Promise<void> {
+    if (!channel) {
+        throw new Error('Channel not initialized')
+    }
+    const message: MemoMessage = { memo_uuid: memoUuid }
+    channel.sendToQueue(RABBITMQ_QUEUE_NAME, Buffer.from(JSON.stringify(message)), { persistent: true })
+}
+
 /**
  * Gracefully close RabbitMQ connection
  */
