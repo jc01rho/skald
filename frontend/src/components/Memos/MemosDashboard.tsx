@@ -4,7 +4,19 @@ import { useProjectStore } from '@/stores/projectStore'
 import { useMemoStore } from '@/stores/memoStore'
 import type { Memo, DetailedMemo } from '@/lib/types'
 import { Button } from '@/components/ui/button'
-import { RefreshCw, Plus, FileSearch, Scissors, Database, Sparkles, Tags, ChevronDown, ChevronUp } from 'lucide-react'
+import {
+    RefreshCw,
+    Plus,
+    FileSearch,
+    Scissors,
+    Database,
+    Sparkles,
+    Tags,
+    ChevronDown,
+    ChevronUp,
+    Search,
+} from 'lucide-react'
+import { Input } from '@/components/ui/input'
 import { MemosTable } from './MemosTable'
 import { MemosPagination } from './MemosPagination'
 import { DeleteMemoDialog } from './DeleteMemoDialog'
@@ -54,6 +66,9 @@ export const MemosDashboard = () => {
     const currentPage = useMemoStore((state) => state.currentPage)
     const pageSize = useMemoStore((state) => state.pageSize)
     const fetchMemos = useMemoStore((state) => state.fetchMemos)
+    const listQuery = useMemoStore((state) => state.listQuery)
+    const setListQuery = useMemoStore((state) => state.setListQuery)
+    const [searchInput, setSearchInput] = useState(listQuery)
     const deleteMemo = useMemoStore((state) => state.deleteMemo)
     const getMemoDetails = useMemoStore((state) => state.getMemoDetails)
     const startPollingProcessingMemos = useMemoStore((state) => state.startPollingProcessingMemos)
@@ -134,6 +149,16 @@ export const MemosDashboard = () => {
     const handleRefresh = () => {
         fetchMemos()
     }
+
+    useEffect(() => {
+        if (searchInput.trim() === listQuery) {
+            return
+        }
+        const timer = setTimeout(() => {
+            setListQuery(searchInput)
+        }, 300)
+        return () => clearTimeout(timer)
+    }, [searchInput, listQuery, setListQuery])
 
     useEffect(() => {
         if (currentProject) {
@@ -250,11 +275,23 @@ export const MemosDashboard = () => {
                 )}
             </div>
 
+            <div className="relative max-w-md">
+                <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                <Input
+                    type="search"
+                    value={searchInput}
+                    onChange={(event) => setSearchInput(event.target.value)}
+                    placeholder="Search by title or reference ID"
+                    aria-label="Search memos by title or reference ID"
+                    className="pl-9"
+                />
+            </div>
+
             <MemosTable
                 memos={memos}
                 loading={loading}
-                searchQuery=""
-                searchMethod="chunk_vector_search"
+                searchQuery={listQuery}
+                searchMethod="title_contains"
                 onViewMemo={handleViewMemo}
                 onDeleteMemo={setMemoToDelete}
                 onCreateMemo={() => setCreateModalOpen(true)}

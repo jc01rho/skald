@@ -47,6 +47,7 @@ interface MemoState {
     searchQuery: string
     searchMethod: SearchMethod
     isSearchMode: boolean
+    listQuery: string
     totalCount: number
     currentPage: number
     pageSize: number
@@ -63,6 +64,7 @@ interface MemoState {
     stopPollingMemo: (memoUuid: string) => void
     stopAllPolling: () => void
     setSearchQuery: (query: string) => void
+    setListQuery: (query: string) => Promise<void>
     clearSearch: () => void
 }
 
@@ -73,6 +75,7 @@ export const useMemoStore = create<MemoState>((set, get) => ({
     searchQuery: '',
     searchMethod: 'chunk_vector_search',
     isSearchMode: false,
+    listQuery: '',
     totalCount: 0,
     currentPage: 1,
     pageSize: 20,
@@ -85,9 +88,16 @@ export const useMemoStore = create<MemoState>((set, get) => ({
             throw new Error('No project selected')
         }
         try {
-            const response = await api.get<PaginatedResponse<Memo>>(
-                `/v1/memo/?page=${page}&page_size=${pageSize}&project_id=${currentProject.uuid}`
-            )
+            const params = new URLSearchParams({
+                page: String(page),
+                page_size: String(pageSize),
+                project_id: currentProject.uuid,
+            })
+            const listQuery = get().listQuery
+            if (listQuery) {
+                params.set('q', listQuery)
+            }
+            const response = await api.get<PaginatedResponse<Memo>>(`/v1/memo/?${params.toString()}`)
 
             if (response.error || !response.data) {
                 const errorMsg = response.error || 'Failed to fetch memos'
@@ -313,6 +323,11 @@ export const useMemoStore = create<MemoState>((set, get) => ({
 
     setSearchQuery: (query: string) => {
         set({ searchQuery: query })
+    },
+
+    setListQuery: async (query: string) => {
+        set({ listQuery: query.trim() })
+        await get().fetchMemos(1, get().pageSize)
     },
 
     clearSearch: () => {

@@ -1,7 +1,7 @@
 import express, { Request, Response } from 'express'
 import { z } from 'zod'
 import multer from 'multer'
-import { RequestContext } from '@mikro-orm/postgresql'
+import { FilterQuery, RequestContext } from '@mikro-orm/postgresql'
 import { DI } from '@/di'
 import { NextFunction } from 'express'
 import {
@@ -449,6 +449,8 @@ export const listMemos = async (req: Request, res: Response) => {
     const pageSize = parseInt(req.query.page_size as string) || 20
     const maxPageSize = 100
     const source = typeof req.query.source === 'string' ? req.query.source.trim() : ''
+    const query = typeof req.query.q === 'string' ? req.query.q.trim() : ''
+    const maxQueryLength = 200
 
     if (pageSize > maxPageSize) {
         return res.status(400).json({ error: `page_size must be less than or equal to ${maxPageSize}` })
@@ -458,8 +460,16 @@ export const listMemos = async (req: Request, res: Response) => {
         return res.status(400).json({ error: 'page must be greater than or equal to 1' })
     }
 
+    if (query.length > maxQueryLength) {
+        return res.status(400).json({ error: `q must be at most ${maxQueryLength} characters` })
+    }
+
     const offset = (page - 1) * pageSize
-    const whereClause = source ? { project, source } : { project }
+    const whereClause: FilterQuery<Memo> = source ? { project, source } : { project }
+    if (query) {
+        const pattern = `%${query.replace(/[\\%_]/g, (char) => `\\${char}`)}%`
+        whereClause.$or = [{ title: { $ilike: pattern } }, { client_reference_id: { $ilike: pattern } }]
+    }
 
     const [memos, totalCount] = await DI.memos.findAndCount(whereClause, {
         orderBy: { created_at: 'DESC' },
