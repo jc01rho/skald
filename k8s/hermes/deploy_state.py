@@ -1333,6 +1333,13 @@ def normalized_deployment(obj: dict[str, Any]) -> tuple[dict[str, Any], str, int
     template_metadata = deployment_spec.get("template", {}).get("metadata", {})
     if template_metadata.get("creationTimestamp") is None:
         template_metadata.pop("creationTimestamp", None)
+    template_annotations = template_metadata.get("annotations")
+    if isinstance(template_annotations, dict):
+        template_annotations.pop("kubectl.kubernetes.io/restartedAt", None)
+        if not template_annotations:
+            template_metadata.pop("annotations", None)
+            if not template_metadata:
+                deployment_spec.get("template", {}).pop("metadata", None)
     spec = deployment_spec.get("template", {}).get("spec", {})
     for key, default in (("dnsPolicy", "ClusterFirst"), ("schedulerName", "default-scheduler"), ("serviceAccount", "default"), ("serviceAccountName", "default")):
         if spec.get(key) == default:

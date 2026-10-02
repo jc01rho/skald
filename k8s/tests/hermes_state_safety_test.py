@@ -688,6 +688,27 @@ def test_normalization_rejects_missing_duplicate_or_mixed_named_images():
             state.normalized_deployment(variant)
 
 
+def test_normalization_ignores_rollout_restart_marker_but_not_config_annotations():
+    state = load_state()
+    image = "ghcr.io/jc01rho/hermes-gateway@sha256:" + "a" * 64
+    snapshot = {"spec":{"template":{
+        "metadata":{"annotations":{"skald.io/hermes-config-sha256":"1" * 64}},
+        "spec":{"containers":[{"name":"hermes-gateway","image":image}]},
+    }}}
+    restarted = json.loads(json.dumps(snapshot))
+    restarted["spec"]["template"]["metadata"]["annotations"]["kubectl.kubernetes.io/restartedAt"] = "2026-09-11T11:46:17+09:00"
+    assert state.normalized_deployment(restarted)[0] == state.normalized_deployment(snapshot)[0]
+
+    bare = {"spec":{"template":{"spec":{"containers":[{"name":"hermes-gateway","image":image}]}}}}
+    restarted_bare = json.loads(json.dumps(bare))
+    restarted_bare["spec"]["template"]["metadata"] = {"annotations":{"kubectl.kubernetes.io/restartedAt":"2026-09-11T11:46:17+09:00"}}
+    assert state.normalized_deployment(restarted_bare)[0] == state.normalized_deployment(bare)[0]
+
+    drifted = json.loads(json.dumps(restarted))
+    drifted["spec"]["template"]["metadata"]["annotations"]["skald.io/hermes-config-sha256"] = "2" * 64
+    assert state.normalized_deployment(drifted)[0] != state.normalized_deployment(snapshot)[0]
+
+
 def test_receipt_is_exact_canonical_and_duplicate_keys_fail():
     state = load_state()
     digest = "sha256:" + "a" * 64
