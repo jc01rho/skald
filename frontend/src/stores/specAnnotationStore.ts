@@ -54,7 +54,7 @@ interface SpecAnnotationState {
     load: (memoUuid: string) => Promise<void>
     create: (input: SpecAnnotationInput) => Promise<boolean>
     update: (annotation: SpecAnnotation, input: SpecAnnotationInput) => Promise<boolean>
-    archive: (annotation: SpecAnnotation) => Promise<boolean>
+    remove: (annotation: SpecAnnotation) => Promise<boolean>
     confirm: (annotation: SpecAnnotation) => Promise<boolean>
 }
 
@@ -141,15 +141,23 @@ export const useSpecAnnotationStore = create<SpecAnnotationState>((set, get) => 
                 '참고사항을 수정했습니다'
             ),
 
-        archive: async (annotation) =>
-            mutate(
-                () =>
-                    api.post<SpecAnnotation>(`/v1/spec-annotations/${annotation.uuid}/archive?${projectQuery()}`, {
-                        version: annotation.version,
-                    }),
-                replace,
-                '참고사항을 보관했습니다'
-            ),
+        remove: async (annotation) => {
+            set({ saving: true })
+            try {
+                const response = await api.delete(
+                    `/v1/spec-annotations/${annotation.uuid}?version=${annotation.version}&${projectQuery()}`
+                )
+                if (response.error) {
+                    toast.error(`참고사항 삭제 실패: ${response.error}`)
+                    return false
+                }
+                set({ annotations: get().annotations.filter((item) => item.uuid !== annotation.uuid) })
+                toast.success('참고사항을 삭제했습니다')
+                return true
+            } finally {
+                set({ saving: false })
+            }
+        },
 
         confirm: async (annotation) =>
             mutate(

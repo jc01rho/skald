@@ -21,6 +21,7 @@ const Fields = z.object({
 const ListQuery = z.object({ memo_uuid: z.string().uuid() })
 const CreateRequest = Fields.extend({ memo_uuid: z.string().uuid() })
 const VersionedRequest = z.object({ version: z.number().int().min(1) })
+const DeleteQuery = z.object({ version: z.coerce.number().int().min(1) })
 const UpdateRequest = Fields.partial().extend({ version: z.number().int().min(1) })
 const IdParam = z.object({ id: z.string().uuid() })
 
@@ -82,16 +83,27 @@ specAnnotationRouter.patch('/:id', async (req, res) => {
     }
 })
 
-for (const action of ['archive', 'confirm'] as const) {
-    specAnnotationRouter.post(`/:id/${action}`, async (req, res) => {
-        const params = IdParam.safeParse(req.params)
-        if (!params.success) return validationError(res, params.error)
-        const parsed = VersionedRequest.safeParse(req.body)
-        if (!parsed.success) return validationError(res, parsed.error)
-        try {
-            return res.json(await service()[action](projectOf(req), params.data.id, parsed.data.version, actorOf(req)))
-        } catch (error) {
-            return sendError(res, error)
-        }
-    })
-}
+specAnnotationRouter.post('/:id/confirm', async (req, res) => {
+    const params = IdParam.safeParse(req.params)
+    if (!params.success) return validationError(res, params.error)
+    const parsed = VersionedRequest.safeParse(req.body)
+    if (!parsed.success) return validationError(res, parsed.error)
+    try {
+        return res.json(await service().confirm(projectOf(req), params.data.id, parsed.data.version, actorOf(req)))
+    } catch (error) {
+        return sendError(res, error)
+    }
+})
+
+specAnnotationRouter.delete('/:id', async (req, res) => {
+    const params = IdParam.safeParse(req.params)
+    if (!params.success) return validationError(res, params.error)
+    const parsed = DeleteQuery.safeParse(req.query)
+    if (!parsed.success) return validationError(res, parsed.error)
+    try {
+        await service().delete(projectOf(req), params.data.id, parsed.data.version)
+        return res.status(204).send()
+    } catch (error) {
+        return sendError(res, error)
+    }
+})

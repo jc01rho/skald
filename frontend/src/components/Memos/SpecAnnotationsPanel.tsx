@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { AlertTriangle, Archive, CheckCircle, NotebookPen, Pencil } from 'lucide-react'
+import { AlertTriangle, CheckCircle, NotebookPen, Pencil, Trash2 } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -35,7 +35,7 @@ interface SpecAnnotationsPanelProps {
 }
 
 export const SpecAnnotationsPanel = ({ memoUuid }: SpecAnnotationsPanelProps) => {
-    const { spec, annotations, loading, saving, load, create, update, archive, confirm } = useSpecAnnotationStore()
+    const { spec, annotations, loading, saving, load, create, update, remove, confirm } = useSpecAnnotationStore()
     const [form, setForm] = useState<SpecAnnotationInput>(EMPTY_FORM)
     const [editing, setEditing] = useState<SpecAnnotation | null>(null)
 
@@ -64,10 +64,10 @@ export const SpecAnnotationsPanel = ({ memoUuid }: SpecAnnotationsPanelProps) =>
         setForm(toForm(annotation))
     }
 
-    const handleArchive = async (annotation: SpecAnnotation) => {
-        if (!window.confirm('이 참고사항을 보관할까요? 보관하면 검색과 답변에서 제외됩니다.')) return
-        const archived = await archive(annotation)
-        if (archived && editing?.uuid === annotation.uuid) resetForm()
+    const handleDelete = async (annotation: SpecAnnotation) => {
+        if (!window.confirm('이 참고사항을 삭제할까요? 삭제하면 되돌릴 수 없고 검색·답변·MCP에서도 사라집니다.')) return
+        const deleted = await remove(annotation)
+        if (deleted && editing?.uuid === annotation.uuid) resetForm()
     }
 
     return (
@@ -122,10 +122,11 @@ export const SpecAnnotationsPanel = ({ memoUuid }: SpecAnnotationsPanelProps) =>
                                 size="sm"
                                 variant="ghost"
                                 disabled={saving}
-                                onClick={() => handleArchive(annotation)}
+                                className="text-destructive hover:text-destructive"
+                                onClick={() => handleDelete(annotation)}
                             >
-                                <Archive className="h-3 w-3" />
-                                보관
+                                <Trash2 className="h-3 w-3" />
+                                삭제
                             </Button>
                         </div>
                     </div>

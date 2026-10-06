@@ -135,10 +135,14 @@ export class SpecAnnotationService {
         })
     }
 
-    async archive(project: Project, uuid: string, version: number, actor: string | null) {
-        return this.mutate(project, uuid, version, actor, (annotation) => {
-            annotation.status = 'ARCHIVED'
-        })
+    async delete(project: Project, uuid: string, version: number) {
+        const annotation = await this.em.findOne(SpecAnnotation, { project, uuid })
+        if (!annotation) throw new SpecAnnotationError('ANNOTATION_NOT_FOUND', 'Annotation not found', 404)
+        const deleted = await this.em.nativeDelete(SpecAnnotation, { project, uuid, version })
+        if (deleted !== 1) {
+            throw new SpecAnnotationError('VERSION_CONFLICT', 'Annotation was modified by someone else; reload and retry', 409)
+        }
+        await this.syncProjectionForSource(project, annotation.source_id)
     }
 
     async confirm(project: Project, uuid: string, version: number, actor: string | null) {
