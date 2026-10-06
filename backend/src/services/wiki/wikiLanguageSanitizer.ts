@@ -120,19 +120,30 @@ export function sanitizeGeneratedWikiKoreanText(value: string): string {
     return replaceKnownWikiLanguageContamination(value)
 }
 
+const isText = (value: unknown): value is string => typeof value === 'string' && value.trim().length > 0
+
+/**
+ * Sanitizes LLM compile output. Entries missing a required string field (the model sometimes
+ * omits title/bodyMarkdown or a claim's text) are dropped instead of crashing the whole compile.
+ */
 export function sanitizeWikiCompileOutput<TOutput extends WikiCompileOutputLike>(output: TOutput): TOutput {
-    const pages = output.pages.map((page) => {
+    const validPages = output.pages.filter((page) => isText(page?.title) && isText(page.bodyMarkdown))
+    const pages = validPages.map((page) => {
         const canonicalNameMap = new Map<string, string>()
-        const nodes = (page.nodes || []).map((node) => {
-            const sanitizedCanonicalName = replaceKnownWikiLanguageContamination(node.canonicalName)
-            canonicalNameMap.set(node.canonicalName.trim().toLowerCase(), sanitizedCanonicalName)
-            return {
-                ...node,
-                canonicalName: sanitizedCanonicalName,
-                displayName: sanitizeGeneratedWikiKoreanText(node.displayName),
-                description: node.description ? sanitizeGeneratedWikiKoreanText(node.description) : node.description,
-            }
-        })
+        const nodes = (page.nodes || [])
+            .filter((node) => isText(node?.canonicalName) && isText(node.displayName))
+            .map((node) => {
+                const sanitizedCanonicalName = replaceKnownWikiLanguageContamination(node.canonicalName)
+                canonicalNameMap.set(node.canonicalName.trim().toLowerCase(), sanitizedCanonicalName)
+                return {
+                    ...node,
+                    canonicalName: sanitizedCanonicalName,
+                    displayName: sanitizeGeneratedWikiKoreanText(node.displayName),
+                    description: node.description
+                        ? sanitizeGeneratedWikiKoreanText(node.description)
+                        : node.description,
+                }
+            })
 
         return {
             ...page,
@@ -140,30 +151,34 @@ export function sanitizeWikiCompileOutput<TOutput extends WikiCompileOutputLike>
             summary: page.summary ? sanitizeGeneratedWikiKoreanText(page.summary) : page.summary,
             bodyMarkdown: sanitizeGeneratedWikiKoreanText(page.bodyMarkdown),
             canonical: page.canonical ? replaceKnownWikiLanguageContamination(page.canonical) : page.canonical,
-            claims: (page.claims || []).map((claim) => ({
-                ...claim,
-                claimText: sanitizeGeneratedWikiKoreanText(claim.claimText),
-                nodeCanonicalName: claim.nodeCanonicalName
-                    ? canonicalNameMap.get(claim.nodeCanonicalName.trim().toLowerCase()) ||
-                      replaceKnownWikiLanguageContamination(claim.nodeCanonicalName)
-                    : claim.nodeCanonicalName,
-            })),
+            claims: (page.claims || [])
+                .filter((claim) => isText(claim?.claimText))
+                .map((claim) => ({
+                    ...claim,
+                    claimText: sanitizeGeneratedWikiKoreanText(claim.claimText),
+                    nodeCanonicalName: claim.nodeCanonicalName
+                        ? canonicalNameMap.get(claim.nodeCanonicalName.trim().toLowerCase()) ||
+                          replaceKnownWikiLanguageContamination(claim.nodeCanonicalName)
+                        : claim.nodeCanonicalName,
+                })),
             nodes,
-            edges: (page.edges || []).map((edge) => ({
-                ...edge,
-                fromCanonicalName:
-                    canonicalNameMap.get(edge.fromCanonicalName.trim().toLowerCase()) ||
-                    replaceKnownWikiLanguageContamination(edge.fromCanonicalName),
-                toCanonicalName:
-                    canonicalNameMap.get(edge.toCanonicalName.trim().toLowerCase()) ||
-                    replaceKnownWikiLanguageContamination(edge.toCanonicalName),
-            })),
+            edges: (page.edges || [])
+                .filter((edge) => isText(edge?.fromCanonicalName) && isText(edge.toCanonicalName))
+                .map((edge) => ({
+                    ...edge,
+                    fromCanonicalName:
+                        canonicalNameMap.get(edge.fromCanonicalName.trim().toLowerCase()) ||
+                        replaceKnownWikiLanguageContamination(edge.fromCanonicalName),
+                    toCanonicalName:
+                        canonicalNameMap.get(edge.toCanonicalName.trim().toLowerCase()) ||
+                        replaceKnownWikiLanguageContamination(edge.toCanonicalName),
+                })),
         }
     })
 
     return {
         ...output,
         pages,
-        notes: output.notes?.map(sanitizeGeneratedWikiKoreanText),
+        notes: output.notes?.filter(isText).map(sanitizeGeneratedWikiKoreanText),
     }
 }

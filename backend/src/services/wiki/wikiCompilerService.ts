@@ -534,7 +534,18 @@ export class WikiCompilerService {
                 temperature: 0,
             })
 
-            const parsed = sanitizeWikiCompileOutput(asCompileOutput(response.content?.toString() || '{}'))
+            const compileOutput = asCompileOutput(response.content?.toString() || '{}')
+            const parsed = sanitizeWikiCompileOutput(compileOutput)
+            if (parsed.pages.length < compileOutput.pages.length) {
+                logger.warn(
+                    {
+                        requestUuid: request.uuid,
+                        droppedPages: compileOutput.pages.length - parsed.pages.length,
+                        totalPages: compileOutput.pages.length,
+                    },
+                    'Dropped wiki compile pages missing title or bodyMarkdown'
+                )
+            }
 
             for (const pageDelta of parsed.pages.slice(0, 3)) {
                 const slug = normalizeSlug(pageDelta.slug || pageDelta.title)

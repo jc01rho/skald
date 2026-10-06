@@ -76,4 +76,32 @@ describe('wikiLanguageSanitizer', () => {
         expect(page.edges?.[0]?.fromCanonicalName).toBe('제품안내')
         expect(hasKnownWikiLanguageContamination(joined)).toBe(false)
     })
+
+    it('drops compile entries missing required text instead of throwing', () => {
+        const output = sanitizeWikiCompileOutput({
+            pages: [
+                { title: '제목 없는 본문', bodyMarkdown: undefined as unknown as string },
+                {
+                    title: '정상 페이지',
+                    bodyMarkdown: '# 본문',
+                    claims: [{ claimText: undefined as unknown as string }, { claimText: '유효한 주장' }],
+                    nodes: [
+                        { canonicalName: undefined as unknown as string, displayName: '노드' },
+                        { canonicalName: 'node-a', displayName: '노드 A' },
+                    ],
+                    edges: [
+                        { fromCanonicalName: 'node-a', toCanonicalName: undefined as unknown as string },
+                        { fromCanonicalName: 'node-a', toCanonicalName: 'node-a' },
+                    ],
+                },
+            ],
+            notes: [undefined as unknown as string, '메모'],
+        })
+
+        expect(output.pages.map((page) => page.title)).toEqual(['정상 페이지'])
+        expect(output.pages[0].claims?.map((claim) => claim.claimText)).toEqual(['유효한 주장'])
+        expect(output.pages[0].nodes?.map((node) => node.canonicalName)).toEqual(['node-a'])
+        expect(output.pages[0].edges).toHaveLength(1)
+        expect(output.notes).toEqual(['메모'])
+    })
 })
