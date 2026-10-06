@@ -1,6 +1,5 @@
 import { DeferMode, Entity, Index, ManyToOne, PrimaryKey, Property } from '@mikro-orm/core'
 import { Project } from '@/entities/Project'
-import { SpecSource } from '@/entities/SpecSource'
 
 export const SPEC_ANNOTATION_KINDS = ['ADDITIONAL_NOTE', 'AUTOMATION_HINT'] as const
 export type SpecAnnotationKind = (typeof SPEC_ANNOTATION_KINDS)[number]
@@ -14,7 +13,7 @@ export type SpecAnnotationStatus = (typeof SPEC_ANNOTATION_STATUSES)[number]
  * source content it was written against so a changed source can flag it for review.
  */
 @Entity({ tableName: 'skald_spec_annotation' })
-@Index({ name: 'skald_spec_annotation_project_source_status_idx', properties: ['project', 'source', 'status'] })
+@Index({ name: 'skald_spec_annotation_project_source_status_idx', properties: ['project', 'source_id', 'status'] })
 export class SpecAnnotation {
     @PrimaryKey({ type: 'uuid' })
     uuid!: string
@@ -58,15 +57,10 @@ export class SpecAnnotation {
     @Property({ default: 1 })
     version: number = 1
 
-    @ManyToOne({
-        entity: () => SpecSource,
-        joinColumns: ['project_id', 'source_id'],
-        referencedColumnNames: ['project_id', 'uuid'],
-        ownColumns: ['source_id'],
-        deferMode: DeferMode.INITIALLY_DEFERRED,
-        foreignKeyName: 'skald_spec_annotation_project_source_foreign',
-    })
-    source!: SpecSource
+    // Plain column: a composite (project_id, source_id) ManyToOne makes MikroORM write
+    // source_id into project_id on insert. The DB-level composite FK still enforces it.
+    @Property({ type: 'uuid' })
+    source_id!: string
 
     @ManyToOne({
         entity: () => Project,

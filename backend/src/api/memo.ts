@@ -329,7 +329,7 @@ export const getMemo = async (req: Request, res: Response) => {
                   spec_annotations: buildMemoAnnotations(
                       await DI.em.find(SpecAnnotation, {
                           project,
-                          source: { project, uuid: specProjection.source_id },
+                          source_id: specProjection.source_id,
                           status: { $ne: 'ARCHIVED' },
                       })
                   ),

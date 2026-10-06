@@ -10,7 +10,6 @@ import { MemoSummary } from '@/entities/MemoSummary'
 import { MemoTag } from '@/entities/MemoTag'
 import { Project } from '@/entities/Project'
 import { SpecAnnotation, SpecAnnotationKind, SpecAnnotationStatus } from '@/entities/SpecAnnotation'
-import { SpecSource } from '@/entities/SpecSource'
 import {
     annotationProjectionReferenceId,
     buildAnnotationProjection,
@@ -95,7 +94,7 @@ export class SpecAnnotationService {
         if (!spec) return { spec: null, annotations: [] }
         const annotations = await this.em.find(
             SpecAnnotation,
-            { project, source: { project, uuid: spec.source_id }, status: { $ne: 'ARCHIVED' } },
+            { project, source_id: spec.source_id, status: { $ne: 'ARCHIVED' } },
             { orderBy: { created_at: 'asc' } }
         )
         return { spec, annotations: annotations.map(toView) }
@@ -116,7 +115,7 @@ export class SpecAnnotationService {
             created_by: actor,
             updated_by: actor,
             version: 1,
-            source: this.em.getReference(SpecSource, spec.source_id),
+            source_id: spec.source_id,
             project,
         })
         await this.em.persistAndFlush(annotation)
@@ -160,12 +159,12 @@ export class SpecAnnotationService {
         actor: string | null,
         apply: (annotation: SpecAnnotation, spec: SpecContext) => void
     ) {
-        const annotation = await this.em.findOne(SpecAnnotation, { project, uuid }, { populate: ['source'] })
+        const annotation = await this.em.findOne(SpecAnnotation, { project, uuid })
         if (!annotation) throw new SpecAnnotationError('ANNOTATION_NOT_FOUND', 'Annotation not found', 404)
         if (annotation.version !== version) {
             throw new SpecAnnotationError('VERSION_CONFLICT', 'Annotation was modified by someone else; reload and retry', 409)
         }
-        const spec = await this.specContext(project, 'source', annotation.source.uuid)
+        const spec = await this.specContext(project, 'source', annotation.source_id)
         if (!spec) throw new SpecAnnotationError('SPEC_NOT_FOUND', 'Annotated spec no longer exists', 404)
         apply(annotation, spec)
         const now = new Date()
@@ -202,7 +201,7 @@ export class SpecAnnotationService {
     private async syncProjection(project: Project, spec: SpecContext) {
         const annotations = await this.em.find(SpecAnnotation, {
             project,
-            source: { project, uuid: spec.source_id },
+            source_id: spec.source_id,
             status: 'ACTIVE',
         })
         const referenceId = annotationProjectionReferenceId(spec.memo_reference_id)
