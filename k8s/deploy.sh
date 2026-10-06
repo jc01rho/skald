@@ -1042,7 +1042,15 @@ deploy_discord_owner() {
             return 1
         fi
     else
-        if ! result=$("${state_command[@]}"); then
+        local dispatch_status=0
+        result=$("${state_command[@]}") || dispatch_status=$?
+        if [ "$dispatch_status" -eq 65 ] && [ -z "$HERMES_IMAGE" ]; then
+            # Without a candidate image the ordinary dispatch is a read-only check that never
+            # mutates Hermes, so out-of-band drift must not block the remaining deploy steps.
+            log_warning "Hermes live state drifted from its verified snapshot; Hermes left untouched. Re-snapshot via the hermes-deployer upgrade path."
+            return 0
+        fi
+        if [ "$dispatch_status" -ne 0 ]; then
             log_error "Discord owner orchestration failed; see sanitized hermes_deploy diagnostics"
             return 1
         fi

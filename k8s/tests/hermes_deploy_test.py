@@ -676,6 +676,35 @@ def test_ordinary_deploy_never_starts_legacy_and_accepts_only_terminal_contract(
     assert "        deploy_discord_bot\n" not in main
 
 
+def _run_owner_dispatch(tmp_path, exit_code: int, hermes_image: str) -> subprocess.CompletedProcess:
+    text = DEPLOY_SH.read_text()
+    function = text[text.index("deploy_discord_owner()") : text.index("deploy_discord_bot()")]
+    script = tmp_path / "owner.sh"
+    script.write_text(
+        "set -u\n"
+        "log_info() { echo \"INFO $*\"; }\nlog_success() { echo \"OK $*\"; }\n"
+        "log_warning() { echo \"WARN $*\"; }\nlog_error() { echo \"ERR $*\"; }\n"
+        f"python3() {{ return {exit_code}; }}\n"
+        'SCRIPT_DIR=. HERMES_DEPLOY_MODE="" HERMES_PREVERIFIED_FILE="" HERMES_PREVERIFIED_SHA256=""\n'
+        f'HERMES_IMAGE="{hermes_image}"\n'
+        + function
+        + "\ndeploy_discord_owner\n"
+    )
+    return subprocess.run(["bash", str(script)], capture_output=True, text=True)
+
+
+def test_ordinary_deploy_without_candidate_tolerates_hermes_drift(tmp_path):
+    drifted = _run_owner_dispatch(tmp_path, 65, "")
+    assert drifted.returncode == 0
+    assert "WARN" in drifted.stdout
+
+    with_candidate = _run_owner_dispatch(tmp_path, 65, "ghcr.io/jc01rho/hermes-gateway@sha256:" + "a" * 64)
+    assert with_candidate.returncode == 1
+
+    other_failure = _run_owner_dispatch(tmp_path, 77, "")
+    assert other_failure.returncode == 1
+
+
 def test_hermes_image_is_full_separate_immutable_input():
     text = DEPLOY_SH.read_text()
     assert 'HERMES_IMAGE="${HERMES_IMAGE:-}"' in text
