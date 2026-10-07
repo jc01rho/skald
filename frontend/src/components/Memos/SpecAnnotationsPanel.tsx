@@ -95,7 +95,7 @@ export const SpecAnnotationsPanel = ({ memoUuid }: SpecAnnotationsPanelProps) =>
                             ) : (
                                 <Badge variant="default" className="flex items-center gap-1">
                                     <CheckCircle className="h-3 w-3" />
-                                    반영 중
+                                    반영됨
                                 </Badge>
                             )}
                             <span className="text-xs text-muted-foreground">
