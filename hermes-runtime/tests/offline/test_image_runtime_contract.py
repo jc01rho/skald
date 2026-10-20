@@ -47,6 +47,7 @@ def test_downstream_patch_is_pinned_and_upstream_dependencies_are_frozen():
     assert "UV_PYTHON=/usr/local/bin/python uv sync --frozen --no-dev --extra mcp --extra messaging" in dockerfile
     assert "uv sync --frozen --no-dev" in dockerfile
     assert "uv lock" not in dockerfile
+    assert "HERMES_DISABLE_LAZY_INSTALLS=1" in dockerfile
     assert "HERMES_SECURITY_OVERLAY" not in versions
     assert "HERMES_SECURITY_OVERLAY" not in dockerfile
     assert "uv pip install" not in dockerfile

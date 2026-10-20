@@ -7,7 +7,10 @@ ARG BUN_VERSION=1.3.14
 ARG BUN_LINUX_X64_SHA256=951ee2aee855f08595aeec6225226a298d3fea83a3dcd6465c09cbccdf7e848f
 ARG HERMES_DOWNSTREAM_PATCH=patches/d923a5eb-discord.patch
 ARG HERMES_DOWNSTREAM_PATCH_SHA256=d51c07a8c0139ea69cdfa400e74bc497a9ed3476d0d3756594f1b1b9ae384d56
+# The frozen uv environment is the runtime; never let Hermes 0.22+ re-sync
+# dependencies or fetch node/npm/ripgrep from the network at start-up.
 ENV HERMES_HOME=/var/lib/hermes \
+    HERMES_DISABLE_LAZY_INSTALLS=1 \
     PATH=/opt/bun/bin:/usr/local/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin \
     PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1
