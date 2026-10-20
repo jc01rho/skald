@@ -1,0 +1,4 @@
+# hermes-agent DNS rebinding, fixed in 0.16.0. Upstream v0.22.2 leaves the
+# package metadata version at the 0.0.0 placeholder, so Trivy compares 0.0.0
+# against the fix. The image pins v0.22.2 (hermes-runtime/versions.lock).
+CVE-2026-53869
