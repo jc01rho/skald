@@ -1,16 +1,21 @@
 # syntax=docker/dockerfile:1.7
-ARG PYTHON_BASE=python:3.12.13-slim-trixie@sha256:57cd7c3a7a273101a6485ba99423ee568157882804b1124b4dd04266317710de
+ARG PYTHON_BASE=python:3.14.8-slim-trixie@sha256:a2b82f3c48559aa0a8446d9af49826b6e2b2016f4cd2afabfe6013ec53729170
 FROM ${PYTHON_BASE}
 
-ARG HERMES_REVISION=f97608f178d1ffeca59860195ab7da295f7c8e5f
+ARG HERMES_REVISION=d923a5eb487a17c0a68801bba9ef0f56c81040a8
 ARG BUN_VERSION=1.3.14
 ARG BUN_LINUX_X64_SHA256=951ee2aee855f08595aeec6225226a298d3fea83a3dcd6465c09cbccdf7e848f
-ARG HERMES_DOWNSTREAM_PATCH=patches/f97608f1-discord.patch
-ARG HERMES_DOWNSTREAM_PATCH_SHA256=a338c49113ec1dcd2468447dc825e9f8fbf27e8675d5c6be0c6588694c773be4
-# Fixed versions for CVE-2026-63374 (anyio) and CVE-2026-84381/84382 (httpx2,
-# httpcore2); upstream v0.21.5 still locks the vulnerable releases.
-ARG HERMES_SECURITY_OVERLAY="anyio==4.14.2 httpx2==2.12.0 httpcore2==2.12.0"
+ARG HERMES_DOWNSTREAM_PATCH=patches/d923a5eb-downstream.patch
+ARG HERMES_DOWNSTREAM_PATCH_SHA256=80c64f4e24848b200a74a3e93bd45ab09e8eae87bc037d33132eb892283bd240
+# Fixed releases for the HIGH/CRITICAL advisories (pyjwt CVE-2026-102266..102273,
+# backported from upstream main together with the PyJWT pin in the downstream patch;
+# aiohttp CVE-2026-111064, tornado GHSA-c2m8-h5v5-343r, urllib3 CVE-2026-97687/97689)
+# that upstream v0.22.2 still locks at vulnerable versions.
+ARG HERMES_SECURITY_OVERLAY="aiohttp==3.14.4 pyjwt==2.15.1 tornado==6.5.9 urllib3==2.8.0"
+# The frozen uv environment is the runtime; never let Hermes 0.22+ re-sync
+# dependencies or fetch node/npm/ripgrep from the network at start-up.
 ENV HERMES_HOME=/var/lib/hermes \
+    HERMES_DISABLE_LAZY_INSTALLS=1 \
     PATH=/opt/bun/bin:/usr/local/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin \
     PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1
@@ -46,6 +51,7 @@ RUN git clone https://github.com/NousResearch/hermes-agent.git "${HERMES_HOME}/h
     && .venv/bin/python -c 'from plugins.platforms.discord.adapter import DISCORD_AVAILABLE; assert DISCORD_AVAILABLE' \
     && PYTHONPATH=. .venv/bin/python /tmp/check_discord_role_mention.py \
     && rm -rf /root/.cache/uv \
+    && python -m pip uninstall --yes --no-cache-dir pip \
     && rm /tmp/hermes-downstream.patch /tmp/check_discord_role_mention.py \
     && ln -s "${HERMES_HOME}/hermes-agent/.venv/bin/hermes" /usr/local/bin/hermes
 
