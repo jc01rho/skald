@@ -1,15 +1,12 @@
 # syntax=docker/dockerfile:1.7
-ARG PYTHON_BASE=python:3.12.13-slim-trixie@sha256:57cd7c3a7a273101a6485ba99423ee568157882804b1124b4dd04266317710de
+ARG PYTHON_BASE=python:3.14.8-slim-trixie@sha256:a2b82f3c48559aa0a8446d9af49826b6e2b2016f4cd2afabfe6013ec53729170
 FROM ${PYTHON_BASE}
 
-ARG HERMES_REVISION=f97608f178d1ffeca59860195ab7da295f7c8e5f
+ARG HERMES_REVISION=d923a5eb487a17c0a68801bba9ef0f56c81040a8
 ARG BUN_VERSION=1.3.14
 ARG BUN_LINUX_X64_SHA256=951ee2aee855f08595aeec6225226a298d3fea83a3dcd6465c09cbccdf7e848f
-ARG HERMES_DOWNSTREAM_PATCH=patches/f97608f1-discord.patch
-ARG HERMES_DOWNSTREAM_PATCH_SHA256=a338c49113ec1dcd2468447dc825e9f8fbf27e8675d5c6be0c6588694c773be4
-# Fixed versions for CVE-2026-63374 (anyio) and CVE-2026-84381/84382 (httpx2,
-# httpcore2); upstream v0.21.5 still locks the vulnerable releases.
-ARG HERMES_SECURITY_OVERLAY="anyio==4.14.2 httpx2==2.12.0 httpcore2==2.12.0"
+ARG HERMES_DOWNSTREAM_PATCH=patches/d923a5eb-discord.patch
+ARG HERMES_DOWNSTREAM_PATCH_SHA256=d51c07a8c0139ea69cdfa400e74bc497a9ed3476d0d3756594f1b1b9ae384d56
 ENV HERMES_HOME=/var/lib/hermes \
     PATH=/opt/bun/bin:/usr/local/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin \
     PYTHONDONTWRITEBYTECODE=1 \
@@ -41,7 +38,6 @@ RUN git clone https://github.com/NousResearch/hermes-agent.git "${HERMES_HOME}/h
     && cd "${HERMES_HOME}/hermes-agent" \
     && python -m pip install --no-cache-dir uv \
     && UV_PYTHON=/usr/local/bin/python uv sync --frozen --no-dev --extra mcp --extra messaging \
-    && UV_PYTHON=/usr/local/bin/python uv pip install --python .venv/bin/python --only-binary=:all: ${HERMES_SECURITY_OVERLAY} \
     && UV_PYTHON=/usr/local/bin/python uv pip check --python .venv/bin/python \
     && .venv/bin/python -c 'from plugins.platforms.discord.adapter import DISCORD_AVAILABLE; assert DISCORD_AVAILABLE' \
     && PYTHONPATH=. .venv/bin/python /tmp/check_discord_role_mention.py \

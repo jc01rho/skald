@@ -1,21 +1,23 @@
-diff --git a/gateway/run_turn.py b/gateway/run_turn.py
-index 1484ea2..0ae2334 100644
---- a/gateway/run_turn.py
-+++ b/gateway/run_turn.py
-@@ -1417,7 +1417,7 @@ class GatewayTurnMixin:
-         if not await self.async_session_store.has_any_sessions():
-             _intro_note = (
-                 "[System note: This is the user's very first message ever. "
--                "Briefly introduce yourself and mention that /help shows available commands. "
-+                "Briefly introduce yourself without advertising slash commands. "
-                 "Keep the introduction concise -- one or two sentences max.]"
-             )
-             # onboarding.profile_build == "ask" (default) and not yet offered: swap the plain intro for
+diff --git a/agent/onboarding.py b/agent/onboarding.py
+index a2a02219ca..6fc7269a2a 100644
+--- a/agent/onboarding.py
++++ b/agent/onboarding.py
+@@ -137,8 +137,8 @@ TASK_FIRST_CLAUSE = (
+ PLAIN_INTRO_NOTE = (
+     "[System note: This is the user's very first message ever. "
+     + TASK_FIRST_CLAUSE
+-    + "What this note asks: briefly introduce yourself and mention that /help shows "
+-    "available commands, in one or two sentences.]"
++    + "What this note asks: briefly introduce yourself without advertising slash "
++    "commands, in one or two sentences.]"
+ )
+ 
+ 
 diff --git a/plugins/platforms/discord/adapter.py b/plugins/platforms/discord/adapter.py
-index 12a7aab..23ebdee 100644
+index 8610268cb3..66b858e05f 100644
 --- a/plugins/platforms/discord/adapter.py
 +++ b/plugins/platforms/discord/adapter.py
-@@ -4967,13 +4967,39 @@ class DiscordAdapter(DiscordMediaMixin, BasePlatformAdapter):
+@@ -5178,13 +5178,39 @@ class DiscordAdapter(DiscordMediaMixin, DiscordThreadTitlesMixin, DiscordVoiceIn
          content = getattr(message, "content", "") or ""
          return {match.group(1) for match in re.finditer(r"<@!?(\d+)>", content)}
  
@@ -57,7 +59,7 @@ index 12a7aab..23ebdee 100644
  
      def _self_is_raw_mentioned(self, message: Any) -> bool:
          """True only for a literal ``<@bot>`` token: reply-pings add us to ``message.mentions``
-@@ -5956,6 +5982,9 @@ class DiscordAdapter(DiscordMediaMixin, BasePlatformAdapter):
+@@ -6175,6 +6201,9 @@ class DiscordAdapter(DiscordMediaMixin, DiscordThreadTitlesMixin, DiscordVoiceIn
              if self._client.user:
                  normalized_content = normalized_content.replace(f"<@{self._client.user.id}>", "").strip()
                  normalized_content = normalized_content.replace(f"<@!{self._client.user.id}>", "").strip()
