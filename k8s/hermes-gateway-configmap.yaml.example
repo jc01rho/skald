@@ -48,6 +48,9 @@ data:
         onboarding:
           profile_build: off
 
+        security:
+          allow_lazy_installs: false
+
         platforms:
           discord:
             extra:
