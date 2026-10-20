@@ -9,7 +9,7 @@ metadata:
 data:
     SKALD_BASE_URL: 'https://your-skald-instance.example/'
     OPENAI_BASE_URL: 'https://your-openai-compatible-provider.example/v1'
-    OPENAI_MODEL: 'your-openai-compatible-model'
+    OPENAI_MODEL: 'parrot'
     DISCORD_ALLOW_ALL_USERS: 'true'
     DISCORD_ALLOWED_CHANNELS: '*'
     DISCORD_HOME_CHANNEL: '1433492151982887044'
@@ -32,13 +32,13 @@ data:
     config.yaml: |
         model:
           provider: skald-proxy
-          default: your-openai-compatible-model
+          default: parrot
           base_url: https://your-openai-compatible-provider.example/v1
         providers:
           skald-proxy:
             base_url: https://your-openai-compatible-provider.example/v1
             key_env: OPENAI_API_KEY
-            model: your-openai-compatible-model
+            model: parrot
             api_mode: chat_completions
         platform_toolsets:
           discord: []
