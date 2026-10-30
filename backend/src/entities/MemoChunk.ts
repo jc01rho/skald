@@ -17,6 +17,10 @@ export class MemoChunk {
     @Property({ columnType: 'vector(2048)', ignoreSchemaChanges: ['type'] })
     embedding!: unknown
 
+    // v2 embedding (512-dim). NULL until dual-write or backfillEmbeddingV2 fills it.
+    @Property({ columnType: 'vector(512)', nullable: true, ignoreSchemaChanges: ['type'] })
+    embedding_v2?: unknown
+
     @Property({ type: 'uuid' })
     memo_uuid!: string
 

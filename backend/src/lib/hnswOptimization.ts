@@ -1,5 +1,6 @@
 import { EntityManager } from '@mikro-orm/core'
 import { logger } from './logger'
+import { EMBEDDING_READ_VERSION, EmbeddingVersion } from '@/settings'
 
 export interface HNSWConfig {
     m: number
@@ -18,11 +19,28 @@ export class HNSWOptimizationService {
      * Create optimized HNSW index for vector search
      * Drops existing index if present and creates new optimized one
      */
-    static async createOptimizedIndex(em: EntityManager, config: Partial<HNSWConfig> = {}): Promise<void> {
+    static async createOptimizedIndex(
+        em: EntityManager,
+        config: Partial<HNSWConfig> = {},
+        version: EmbeddingVersion = EMBEDDING_READ_VERSION
+    ): Promise<void> {
         const finalConfig = { ...DEFAULT_HNSW_CONFIG, ...config }
 
         try {
-            logger.info({ config: finalConfig }, 'Creating optimized HNSW index')
+            logger.info({ config: finalConfig, version }, 'Creating optimized HNSW index')
+
+            if (version === 'v2') {
+                // v2 column is a native vector(512); only touch the v2 index so v1 stays searchable.
+                await em.getConnection().execute(`DROP INDEX IF EXISTS idx_memochunk_embedding_v2_hnsw;`)
+                await em.getConnection().execute(`
+                    CREATE INDEX idx_memochunk_embedding_v2_hnsw
+                    ON skald_memochunk
+                    USING hnsw (embedding_v2 vector_cosine_ops)
+                    WITH (m = ${finalConfig.m}, ef_construction = ${finalConfig.efConstruction})
+                `)
+                logger.info({ config: finalConfig, version }, 'Optimized HNSW index created successfully')
+                return
+            }
 
             await em.getConnection().execute(`
                 DROP INDEX IF EXISTS idx_memochunk_embedding_hnsw_optimized;

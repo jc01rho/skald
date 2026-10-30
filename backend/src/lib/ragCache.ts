@@ -1,6 +1,6 @@
 import { logger } from './logger'
 import { redisGet, redisSet, redisDel } from './redisClient'
-import { REDIS_URL } from '@/settings'
+import { EmbeddingVersion, REDIS_URL } from '@/settings'
 import crypto from 'crypto'
 
 // In-memory fallback caches (used when Redis is unavailable)
@@ -38,17 +38,33 @@ function useRedis(): boolean {
 }
 
 /**
+ * Embedding cache keys are version-scoped so v1 (2048d) and v2 (512d) vectors never mix.
+ * v1 keeps the legacy key format (`emb:<md5("emb:"+text)>`) for backward compatibility.
+ */
+export function getEmbeddingCacheKeys(
+    text: string,
+    version: EmbeddingVersion = 'v1'
+): { memoryKey: string; redisKey: string } {
+    if (version === 'v1') {
+        const key = hashKey(`emb:${text}`)
+        return { memoryKey: key, redisKey: `${CACHE_PREFIX}emb:${key}` }
+    }
+    const key = hashKey(`emb:${version}:${text}`)
+    return { memoryKey: `${version}:${key}`, redisKey: `${CACHE_PREFIX}emb:${version}:${key}` }
+}
+
+/**
  * Cache embedding vector for text
  */
 export async function cacheEmbedding(
     text: string,
     embedding: number[],
-    ttlMs: number = EMBEDDING_TTL_MS
+    ttlMs: number = EMBEDDING_TTL_MS,
+    version: EmbeddingVersion = 'v1'
 ): Promise<void> {
-    const key = hashKey(`emb:${text}`)
+    const { memoryKey: key, redisKey } = getEmbeddingCacheKeys(text, version)
 
     if (useRedis()) {
-        const redisKey = `${CACHE_PREFIX}emb:${key}`
         const ttlSec = Math.ceil(ttlMs / 1000)
         await redisSet(redisKey, JSON.stringify(embedding), ttlSec)
         logger.debug({ text: text.slice(0, 50), backend: 'redis' }, 'Cached embedding')
@@ -65,11 +81,10 @@ export async function cacheEmbedding(
 /**
  * Get cached embedding for text
  */
-export async function getCachedEmbedding(text: string): Promise<number[] | null> {
-    const key = hashKey(`emb:${text}`)
+export async function getCachedEmbedding(text: string, version: EmbeddingVersion = 'v1'): Promise<number[] | null> {
+    const { memoryKey: key, redisKey } = getEmbeddingCacheKeys(text, version)
 
     if (useRedis()) {
-        const redisKey = `${CACHE_PREFIX}emb:${key}`
         const cached = await redisGet(redisKey)
         if (cached) {
             logger.debug({ text: text.slice(0, 50), backend: 'redis' }, 'Embedding cache hit')

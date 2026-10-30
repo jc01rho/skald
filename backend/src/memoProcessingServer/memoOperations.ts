@@ -10,6 +10,7 @@ import { MemoTag } from '@/entities/MemoTag'
 import { MemoSummary } from '@/entities/MemoSummary'
 import { logger } from '@/lib/logger'
 import { processChunksWithContext } from '@/lib/chunkProcessor'
+import { EMBEDDING_V2_URL } from '@/settings'
 
 const MAX_TOKENS_FOR_LLM = 4096
 // Rough estimate: 1 token is approximately 4 characters (conservative)
@@ -82,7 +83,24 @@ const initChildSplitter = (): RecursiveCharacterTextSplitter => {
  * The contextual content is used for generating embeddings, while the
  * original chunk content is stored for display in search results.
  */
-const buildContextualContent = (chunkContent: string, title: string | null): string => {
+/**
+ * Dual-write helper for the v2 embedding column. Returns the serialized vector, or null when v2 is
+ * disabled or fails: a v2 failure must never fail memo processing (backfillEmbeddingV2 fills NULLs later).
+ */
+export const generateEmbeddingV2OrNull = async (
+    content: string,
+    context: Record<string, unknown>
+): Promise<string | null> => {
+    if (!EMBEDDING_V2_URL) return null
+    try {
+        return JSON.stringify(await EmbeddingService.generateEmbeddingV2(content))
+    } catch (error) {
+        logger.warn({ err: error, ...context }, 'Embedding v2 generation failed; leaving embedding_v2 NULL for backfill')
+        return null
+    }
+}
+
+export const buildContextualContent = (chunkContent: string, title: string | null): string => {
     if (!title || title.trim() === '') {
         return chunkContent
     }
@@ -107,7 +125,10 @@ const _createChildChunk = async (
 ): Promise<MemoChunk> => {
     // Use provided embedding content (contextual) or fall back to title-prefix approach
     const contentForEmbedding = embeddingContent || buildContextualContent(chunkContent, title)
-    const vectorEmbedding = await EmbeddingService.generateEmbedding(contentForEmbedding, 'storage')
+    const [vectorEmbedding, embeddingV2] = await Promise.all([
+        EmbeddingService.generateEmbedding(contentForEmbedding, 'storage'),
+        generateEmbeddingV2OrNull(contentForEmbedding, { memoUuid, chunkIndex }),
+    ])
     return em.create(MemoChunk, {
         uuid: randomUUID(),
         memo: memoUuid,
@@ -118,6 +139,7 @@ const _createChildChunk = async (
         chunk_content: chunkContent,
         chunk_index: chunkIndex,
         embedding: JSON.stringify(vectorEmbedding) as any,
+        embedding_v2: embeddingV2 as any,
         // Link to parent chunk
         parent_chunk: parentChunk,
         parent_chunk_uuid: parentChunk.uuid,
@@ -170,7 +192,10 @@ export const createMemoChunks = async (
         logger.debug({ memoUuid, contentLength: content.length }, 'Short document: using single-chunk strategy')
         const singleParent = _createParentChunk(em, memoUuid, projectId, content, 0)
         const contextualContent = buildContextualContent(content, title)
-        const vectorEmbedding = await EmbeddingService.generateEmbedding(contextualContent, 'storage')
+        const [vectorEmbedding, embeddingV2] = await Promise.all([
+            EmbeddingService.generateEmbedding(contextualContent, 'storage'),
+            generateEmbeddingV2OrNull(contextualContent, { memoUuid, chunkIndex: 0 }),
+        ])
         const singleChild = em.create(MemoChunk, {
             uuid: randomUUID(),
             memo: memoUuid,
@@ -180,6 +205,7 @@ export const createMemoChunks = async (
             chunk_content: content,
             chunk_index: 0,
             embedding: JSON.stringify(vectorEmbedding) as any,
+            embedding_v2: embeddingV2 as any,
             parent_chunk: singleParent,
             parent_chunk_uuid: singleParent.uuid,
         })
@@ -256,13 +282,17 @@ export const extractTagsFromMemo = async (em: EntityManager, memoUuid: string, c
 export const generateMemoSummary = async (em: EntityManager, memoUuid: string, content: string, projectId: string) => {
     const truncatedContent = truncateContentForLLM(content)
     const summary = await memoSummaryAgent.summarize(truncatedContent)
-    const embedding = await EmbeddingService.generateEmbedding(summary.summary, 'storage')
+    const [embedding, embeddingV2] = await Promise.all([
+        EmbeddingService.generateEmbedding(summary.summary, 'storage'),
+        generateEmbeddingV2OrNull(summary.summary, { memoUuid, kind: 'summary' }),
+    ])
     const memoSummary = em.create(MemoSummary, {
         uuid: randomUUID(),
         memo: memoUuid,
         project: projectId,
         summary: summary.summary,
         embedding: JSON.stringify(embedding) as any,
+        embedding_v2: embeddingV2 as any,
     })
     await em.persistAndFlush(memoSummary)
 }
