@@ -1,7 +1,7 @@
 import { Project } from '@/entities/Project'
 import { buildFilterConditions, MemoFilter } from '@/lib/filterUtils'
 import { DI } from '@/di'
-import { EMBEDDING_READ_VERSION, EmbeddingVersion, VECTOR_SEARCH_TOP_K } from '@/settings'
+import { EMBEDDING_READ_VERSION, EMBEDDING_V2_DIMENSION, EmbeddingVersion, VECTOR_SEARCH_TOP_K } from '@/settings'
 import { Operator } from '@/lib/filterUtils'
 import { applyEnhancedRanking, RankedResult } from '@/lib/searchRanking'
 import { Memo } from '@/entities/Memo'
@@ -72,7 +72,7 @@ export const filterByOperator: Record<Operator, FieldFilterDefinition> = {
  */
 export const chunkVectorDistanceSql = (version: EmbeddingVersion = EMBEDDING_READ_VERSION): string =>
     version === 'v2'
-        ? '(skald_memochunk.embedding_v2 <=> ?::vector(512))'
+        ? `(skald_memochunk.embedding_v2 <=> ?::vector(${EMBEDDING_V2_DIMENSION}))`
         : '(skald_memochunk.embedding::halfvec(2048) <=> ?::halfvec(2048))'
 
 /**

@@ -22,6 +22,7 @@ import { memoChunkVectorSearch } from '@/embeddings/vectorSearch'
 import { HybridSearchService } from '@/embeddings/hybridSearch'
 import { createMemoChunks, generateEmbeddingV2OrNull } from '@/memoProcessingServer/memoOperations'
 import { logger } from '@/lib/logger'
+import { HNSWOptimizationService } from '@/lib/hnswOptimization'
 
 const mutableSettings = jest.requireMock('@/settings') as {
     EMBEDDING_V2_URL: string
@@ -86,6 +87,14 @@ describe('Embedding v2 migration', () => {
             })
             expect(result).toEqual([a, b])
             expect(JSON.parse(fetchMock.mock.calls[0][1].body).input).toHaveLength(2)
+        })
+
+        it('treats a wrong-dimension cached v2 vector as a cache miss', async () => {
+            const text = unique('stale')
+            await cacheEmbedding(text, [1, 2, 3], undefined, 'v2')
+            fetchMock.mockResolvedValueOnce(embeddingsResponse([vector(512)]))
+            await expect(EmbeddingService.generateEmbeddingV2(text)).resolves.toHaveLength(512)
+            expect(fetchMock).toHaveBeenCalledTimes(1)
         })
 
         it('throws when v2 is not configured', async () => {
@@ -223,6 +232,30 @@ describe('Embedding v2 migration', () => {
             const storageVec = await EmbeddingService.generateEmbedding(unique('doc'), 'storage')
             expect(storageVec).toHaveLength(2048)
             expect(fetchMock.mock.calls[0][0]).not.toContain('embedding-v2.test')
+        })
+    })
+
+    describe('v2 HNSW index', () => {
+        const emWith = (execute: jest.Mock) => ({ getConnection: () => ({ execute }) }) as any
+
+        it('builds the index CONCURRENTLY when missing', async () => {
+            const execute = jest.fn().mockResolvedValueOnce([]).mockResolvedValue([])
+            await HNSWOptimizationService.ensureEmbeddingV2Index(emWith(execute))
+            const sqls = execute.mock.calls.map((c) => c[0] as string)
+            expect(sqls[1]).toMatch(/CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_memochunk_embedding_v2_hnsw/)
+            expect(sqls[1]).toContain('embedding_v2 vector_cosine_ops')
+        })
+
+        it('is a no-op when a valid index exists and rebuilds an INVALID one', async () => {
+            const valid = jest.fn().mockResolvedValueOnce([{ valid: true }])
+            await HNSWOptimizationService.ensureEmbeddingV2Index(emWith(valid))
+            expect(valid).toHaveBeenCalledTimes(1)
+
+            const invalid = jest.fn().mockResolvedValueOnce([{ valid: false }]).mockResolvedValue([])
+            await HNSWOptimizationService.ensureEmbeddingV2Index(emWith(invalid))
+            const sqls = invalid.mock.calls.map((c) => c[0] as string)
+            expect(sqls[1]).toMatch(/DROP INDEX CONCURRENTLY IF EXISTS idx_memochunk_embedding_v2_hnsw/)
+            expect(sqls[2]).toMatch(/CREATE INDEX CONCURRENTLY/)
         })
     })
 })

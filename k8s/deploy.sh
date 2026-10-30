@@ -115,6 +115,7 @@ allowed_keys = {
     "DOCUMENT_EXTRACTION_PROVIDER",
     "EMBEDDING_SERVICE_URL",
     "EMBEDDING_V2_URL",
+    "EMBEDDING_V2_MODEL",
     "EMBEDDING_READ_VERSION",
     "LOCAL_EMBEDDING_MODEL",
     "LOCAL_RERANK_MODEL",
@@ -342,6 +343,7 @@ data:
   EMBEDDING_SERVICE_URL: "${EMBEDDING_SERVICE_URL:-http://embedding-service:8000}"
   # Embedding v2 (512d) dual-write endpoint; empty disables v2. Read column/model: v1 | v2
   EMBEDDING_V2_URL: "${EMBEDDING_V2_URL-http://192.168.150.37:8890}"
+  EMBEDDING_V2_MODEL: "${EMBEDDING_V2_MODEL:-text-embedding-model}"
   EMBEDDING_READ_VERSION: "${EMBEDDING_READ_VERSION:-v1}"
   DOCLING_SERVICE_URL: "http://docling-service:5001"
   

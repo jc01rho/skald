@@ -217,7 +217,11 @@ export const EMBEDDING_V2_URL = process.env.EMBEDDING_V2_URL || ''
 export const EMBEDDING_V2_MODEL = process.env.EMBEDDING_V2_MODEL || 'text-embedding-model'
 export const EMBEDDING_V2_DIMENSION = 512
 
-const requestedEmbeddingReadVersion: EmbeddingVersion = process.env.EMBEDDING_READ_VERSION === 'v2' ? 'v2' : 'v1'
+const rawEmbeddingReadVersion = (process.env.EMBEDDING_READ_VERSION || 'v1').trim()
+if (rawEmbeddingReadVersion !== 'v1' && rawEmbeddingReadVersion !== 'v2') {
+    throw new Error(`Invalid EMBEDDING_READ_VERSION: ${rawEmbeddingReadVersion}. Supported: v1, v2`)
+}
+const requestedEmbeddingReadVersion: EmbeddingVersion = rawEmbeddingReadVersion
 if (requestedEmbeddingReadVersion === 'v2' && !EMBEDDING_V2_URL) {
     logger.warn('EMBEDDING_READ_VERSION=v2 requested but EMBEDDING_V2_URL is empty; falling back to v1 reads')
 }

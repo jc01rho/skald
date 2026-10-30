@@ -5,6 +5,8 @@
  * - Keyset pagination by uuid, so a single pass always terminates.
  * - Chunks are embedded with the same title-prefixed text the write path uses (buildContextualContent).
  * - A batch is retried MAX_ATTEMPTS times with exponential backoff; persistent failure exits non-zero.
+ * - After a successful pass, builds idx_memochunk_embedding_v2_hnsw with CREATE INDEX CONCURRENTLY
+ *   (idempotent; required before EMBEDDING_READ_VERSION=v2). SKIP_INDEX=true skips this step.
  *
  * Env: EMBEDDING_V2_URL (required), BATCH_SIZE (default 16), MAX_ATTEMPTS (default 5),
  *      RETRY_BASE_DELAY_MS (default 2000), BACKFILL_TARGETS (default "chunks,summaries").
@@ -16,6 +18,7 @@ import { logger } from '@/lib/logger'
 import { buildContextualContent } from '@/memoProcessingServer/memoOperations'
 import { EmbeddingService } from '@/services/embeddingService'
 import { EMBEDDING_V2_URL } from '@/settings'
+import { HNSWOptimizationService } from '@/lib/hnswOptimization'
 
 const parsePositiveInt = (value: string | undefined, fallback: number): number => {
     const parsed = parseInt(value ?? '', 10)
@@ -151,6 +154,9 @@ async function backfillEmbeddingV2(): Promise<void> {
         const em = DI.em.fork()
         for (const target of targets) {
             await backfillTarget(em, target)
+        }
+        if (process.env.SKIP_INDEX !== 'true') {
+            await HNSWOptimizationService.ensureEmbeddingV2Index(em)
         }
     } finally {
         await DI.orm.close()

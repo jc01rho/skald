@@ -12,8 +12,10 @@ import { getCachedEmbedding, cacheEmbedding } from '../lib/ragCache'
 const EMBEDDING_URL =
     process.env.EMBEDDING_SERVICE_URL || process.env.INTERNAL_EMBEDDING_URL || 'http://embedding-service:8889'
 
-const toEmbeddingsEndpoint = (baseUrl: string): string =>
-    baseUrl.endsWith('/v1/embeddings') ? baseUrl : `${baseUrl.replace(/\/+$/, '')}/v1/embeddings`
+const toEmbeddingsEndpoint = (baseUrl: string): string => {
+    const trimmed = baseUrl.replace(/\/+$/, '')
+    return trimmed.endsWith('/v1/embeddings') ? trimmed : `${trimmed}/v1/embeddings`
+}
 
 const INTERNAL_EMBEDDING_URL = toEmbeddingsEndpoint(EMBEDDING_URL)
 
@@ -50,6 +52,15 @@ class EmbeddingService {
     /**
      * v2 vectors are stored in vector(512) as-is: the dimension must match exactly (no padding/truncation).
      */
+    private static async getCachedEmbeddingV2(content: string): Promise<number[] | null> {
+        const cached = await getCachedEmbedding(content, 'v2')
+        if (cached && cached.length !== EMBEDDING_V2_DIMENSION) {
+            logger.warn({ dimension: cached.length }, 'Ignoring cached v2 embedding with wrong dimension')
+            return null
+        }
+        return cached
+    }
+
     static validateEmbeddingV2(embedding: number[]): number[] {
         if (!Array.isArray(embedding) || embedding.length !== EMBEDDING_V2_DIMENSION) {
             throw new Error(
@@ -253,7 +264,7 @@ class EmbeddingService {
      */
     static async generateEmbeddingV2(content: string): Promise<number[]> {
         const endpoint = getV2Endpoint()
-        const cached = await getCachedEmbedding(content, 'v2')
+        const cached = await this.getCachedEmbeddingV2(content)
         if (cached) return cached
         const embedding = this.validateEmbeddingV2(await this.generateInternalEmbedding(content, endpoint))
         await cacheEmbedding(content, embedding, undefined, 'v2')
@@ -277,7 +288,7 @@ class EmbeddingService {
         const uncachedContents: string[] = []
 
         for (let i = 0; i < contents.length; i++) {
-            const cached = useCache ? await getCachedEmbedding(contents[i], 'v2') : null
+            const cached = useCache ? await this.getCachedEmbeddingV2(contents[i]) : null
             if (cached) {
                 results[i] = cached
             } else {
