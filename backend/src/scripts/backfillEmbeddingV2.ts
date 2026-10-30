@@ -9,7 +9,7 @@
  *   every row of a multi-row batch fails, the endpoint is treated as down and the script aborts. Any aborted or
  *   skipped work makes the script exit non-zero (rerun to retry the skipped rows).
  * - After a successful pass, builds idx_memochunk_embedding_v2_hnsw with CREATE INDEX CONCURRENTLY
- *   (idempotent; required before EMBEDDING_READ_VERSION=v2). SKIP_INDEX=true skips this step.
+ *   (idempotent; vector search depends on it). SKIP_INDEX=true skips this step.
  *
  * Env: EMBEDDING_V2_URL (required), BATCH_SIZE (default 16), MAX_ATTEMPTS (default 5),
  *      RETRY_BASE_DELAY_MS (default 2000), BACKFILL_TARGETS (default "chunks,summaries").
@@ -80,7 +80,7 @@ async function embedWithRetry(texts: string[], context: Record<string, unknown>)
     let lastError: unknown
     for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
         try {
-            return await EmbeddingService.generateEmbeddingsBatchV2(texts, { useCache: false })
+            return await EmbeddingService.generateEmbeddingsBatch(texts, 'storage', { useCache: false })
         } catch (error) {
             lastError = error
             logger.warn({ err: error, attempt, maxAttempts: MAX_ATTEMPTS, ...context }, 'Embedding v2 batch failed')
@@ -100,7 +100,7 @@ async function embedRowsIndividually(
     const results: (number[] | null)[] = []
     for (let i = 0; i < rows.length; i++) {
         try {
-            const [embedding] = await EmbeddingService.generateEmbeddingsBatchV2([texts[i]], { useCache: false })
+            const [embedding] = await EmbeddingService.generateEmbeddingsBatch([texts[i]], 'storage', { useCache: false })
             results.push(embedding)
         } catch (error) {
             logger.warn({ err: error, target: target.name, uuid: rows[i].uuid }, 'Embedding v2 backfill: skipping row')

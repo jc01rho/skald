@@ -10,10 +10,7 @@ export class MemoSummary {
     @Property({ type: 'text' })
     summary!: string
 
-    @Property({ columnType: 'vector(2048)', ignoreSchemaChanges: ['type'] })
-    embedding!: unknown
-
-    // v2 embedding (512-dim). NULL until dual-write or backfillEmbeddingV2 fills it.
+    // 512-dim embedding (the only embedding). The legacy `embedding` vector(2048) column is no longer mapped.
     @Property({ columnType: 'vector(512)', nullable: true, ignoreSchemaChanges: ['type'] })
     embedding_v2?: unknown
 

@@ -66,9 +66,9 @@ LLM_DEFAULT_CLASSIFICATION_MODEL=<default_classification_model>
 LLM_FALLBACK_CHAIN=<model-a,model-b,model-c>
 
 
-# -------- local embedding bridge --------
-# backend/src/settings.ts defaults this to http://localhost:8001
-EMBEDDING_SERVICE_URL=http://localhost:8001
+# -------- embeddings --------
+# OpenAI-compatible endpoint returning 512-dim vectors (backend appends /v1/embeddings)
+EMBEDDING_V2_URL=http://localhost:8890
 ```
 
 > **Note 1:** The backend currently supports `LLM_PROVIDER=cli-proxy-api`. `CLI_PROXY_API_BASE_URL` and `GEMINI_API_BASE_URL` should point to the same base URL.

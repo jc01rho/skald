@@ -1328,6 +1328,8 @@ async function rerankNode(state: typeof RAGState.State) {
         await mapWithConcurrency(truncatedDataBatches, 3, async (batch, idx) =>
             RerankService.rerank(searchQuery, batch, truncatedMetadataBatches[idx], {
                 originalQuery: query,
+                batchOffset: idx * batchSize,
+                totalCount: truncatedRerankData.length,
             })
         )
     ).flat()

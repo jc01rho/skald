@@ -1,6 +1,6 @@
 import { logger } from './logger'
 import { redisGet, redisSet, redisDel } from './redisClient'
-import { EMBEDDING_V2_MODEL, EmbeddingVersion, REDIS_URL } from '@/settings'
+import { EMBEDDING_V2_MODEL, REDIS_URL } from '@/settings'
 import crypto from 'crypto'
 
 // In-memory fallback caches (used when Redis is unavailable)
@@ -38,20 +38,12 @@ function useRedis(): boolean {
 }
 
 /**
- * Embedding cache keys are version-scoped so v1 (2048d) and v2 (512d) vectors never mix.
- * v1 keeps the legacy key format (`emb:<md5("emb:"+text)>`) for backward compatibility.
- * v2 hashes include EMBEDDING_V2_MODEL so a model change never serves vectors from the previous model.
+ * Embedding cache keys (`emb:v2:` namespace) hash EMBEDDING_V2_MODEL so a model change never serves
+ * vectors from the previous model. Legacy v1 keys (`emb:<md5>`) are no longer read and expire via TTL.
  */
-export function getEmbeddingCacheKeys(
-    text: string,
-    version: EmbeddingVersion = 'v1'
-): { memoryKey: string; redisKey: string } {
-    if (version === 'v1') {
-        const key = hashKey(`emb:${text}`)
-        return { memoryKey: key, redisKey: `${CACHE_PREFIX}emb:${key}` }
-    }
-    const key = hashKey(`emb:${version}:${EMBEDDING_V2_MODEL}:${text}`)
-    return { memoryKey: `${version}:${key}`, redisKey: `${CACHE_PREFIX}emb:${version}:${key}` }
+export function getEmbeddingCacheKeys(text: string): { memoryKey: string; redisKey: string } {
+    const key = hashKey(`emb:v2:${EMBEDDING_V2_MODEL}:${text}`)
+    return { memoryKey: `v2:${key}`, redisKey: `${CACHE_PREFIX}emb:v2:${key}` }
 }
 
 /**
@@ -60,10 +52,9 @@ export function getEmbeddingCacheKeys(
 export async function cacheEmbedding(
     text: string,
     embedding: number[],
-    ttlMs: number = EMBEDDING_TTL_MS,
-    version: EmbeddingVersion = 'v1'
+    ttlMs: number = EMBEDDING_TTL_MS
 ): Promise<void> {
-    const { memoryKey: key, redisKey } = getEmbeddingCacheKeys(text, version)
+    const { memoryKey: key, redisKey } = getEmbeddingCacheKeys(text)
 
     if (useRedis()) {
         const ttlSec = Math.ceil(ttlMs / 1000)
@@ -82,8 +73,8 @@ export async function cacheEmbedding(
 /**
  * Get cached embedding for text
  */
-export async function getCachedEmbedding(text: string, version: EmbeddingVersion = 'v1'): Promise<number[] | null> {
-    const { memoryKey: key, redisKey } = getEmbeddingCacheKeys(text, version)
+export async function getCachedEmbedding(text: string): Promise<number[] | null> {
+    const { memoryKey: key, redisKey } = getEmbeddingCacheKeys(text)
 
     if (useRedis()) {
         const cached = await redisGet(redisKey)

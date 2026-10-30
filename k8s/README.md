@@ -469,7 +469,7 @@ data:
     RABBITMQ_VHOST: '/'
 
     # 마이크로서비스 URL
-    EMBEDDING_SERVICE_URL: 'http://embedding-service:8000'
+    EMBEDDING_V2_URL: 'http://your-embedding-v2-server:8890'
     DOCLING_SERVICE_URL: 'http://docling-service:5001'
 ```
 

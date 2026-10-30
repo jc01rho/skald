@@ -92,13 +92,6 @@ spec:
                             configMapKeyRef:
                                 name: skald-config
                                 key: RERANK_PROVIDER
-                      # 외부 임베딩 서비스 URL (vLLM, TGI 등)
-                      - name: EXTERNAL_EMBEDDING_URL
-                        valueFrom:
-                            configMapKeyRef:
-                                name: skald-config
-                                key: EXTERNAL_EMBEDDING_URL
-                                optional: true
                       # Gemini embedding-001 supports: 768, 1536, 3072 (default is 768 for efficiency)
                       - name: TARGET_DIMENSION
                         value: '2048'
