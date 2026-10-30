@@ -1,7 +1,7 @@
 import { Project } from '@/entities/Project'
 import { buildFilterConditions, MemoFilter } from '@/lib/filterUtils'
 import { DI } from '@/di'
-import { VECTOR_SEARCH_TOP_K } from '@/settings'
+import { EMBEDDING_READ_VERSION, EMBEDDING_V2_DIMENSION, EmbeddingVersion, VECTOR_SEARCH_TOP_K } from '@/settings'
 import { Operator } from '@/lib/filterUtils'
 import { applyEnhancedRanking, RankedResult } from '@/lib/searchRanking'
 import { Memo } from '@/entities/Memo'
@@ -66,6 +66,22 @@ export const filterByOperator: Record<Operator, FieldFilterDefinition> = {
 }
 
 /**
+ * SQL for the cosine distance between a memo chunk and a query vector (one `?` placeholder).
+ * v1: legacy vector(2048) column via the halfvec(2048) HNSW expression index.
+ * v2: vector(512) `embedding_v2` column via its HNSW vector_cosine_ops index.
+ */
+export const chunkVectorDistanceSql = (version: EmbeddingVersion = EMBEDDING_READ_VERSION): string =>
+    version === 'v2'
+        ? `(skald_memochunk.embedding_v2 <=> ?::vector(${EMBEDDING_V2_DIMENSION}))`
+        : '(skald_memochunk.embedding::halfvec(2048) <=> ?::halfvec(2048))'
+
+/**
+ * Extra WHERE predicate for the read version: v2 excludes rows not yet dual-written/backfilled.
+ */
+export const chunkVectorPresenceSql = (version: EmbeddingVersion = EMBEDDING_READ_VERSION): string =>
+    version === 'v2' ? 'AND skald_memochunk.embedding_v2 IS NOT NULL' : ''
+
+/**
  * Search for the most similar memo chunks using cosine distance with optional filtering
  * Now includes enhanced ranking with metadata and temporal factors
  */
@@ -77,8 +93,11 @@ export const memoChunkVectorSearch = async (
     filters?: MemoFilter[],
     useEnhancedRanking: boolean = true
 ): Promise<MemoChunkWithDistanceAndScore[]> => {
+    const embeddingVersion = EMBEDDING_READ_VERSION
+    const distanceSql = chunkVectorDistanceSql(embeddingVersion)
     const cacheScope = {
         projectUuid: project.uuid,
+        embeddingVersion,
         topK,
         similarityThreshold,
         filters: filters ?? null,
@@ -101,8 +120,9 @@ export const memoChunkVectorSearch = async (
     ]
 
     let whereClause = `
-        WHERE (skald_memochunk.embedding::halfvec(2048) <=> ?::halfvec(2048)) <= ?
+        WHERE ${distanceSql} <= ?
         AND skald_memochunk.project_id = ?
+        ${chunkVectorPresenceSql(embeddingVersion)}
     `
 
     if (whereConditions.length > 0) {
@@ -112,7 +132,7 @@ export const memoChunkVectorSearch = async (
     const sql = `
         SELECT
             skald_memochunk.*,
-            (skald_memochunk.embedding::halfvec(2048) <=> ?::halfvec(2048)) as distance,
+            ${distanceSql} as distance,
             skald_memo.created_at,
             skald_memo.updated_at,
             skald_memo.title,
@@ -134,7 +154,7 @@ export const memoChunkVectorSearch = async (
                     uuid: row.uuid,
                     chunk_content: row.chunk_content,
                     chunk_index: row.chunk_index,
-                    embedding: row.embedding,
+                    embedding: embeddingVersion === 'v2' ? row.embedding_v2 : row.embedding,
                     memo_uuid: row.memo_id,
                     project_uuid: row.project_id,
                 } as any,

@@ -17,6 +17,10 @@ metadata:
         environment: production
 data:
     INTERNAL_EMBEDDING_URL: 'http://your-embedding-server:8889/v1/embeddings'
+    # Embedding v2 (512d) dual-write endpoint; empty disables v2. Read switch: v1 | v2
+    EMBEDDING_V2_URL: 'http://your-embedding-v2-server:8890'
+    EMBEDDING_V2_MODEL: 'text-embedding-model'
+    EMBEDDING_READ_VERSION: 'v1'
     INTERNAL_RERANK_URL: 'http://your-rerank-server:8889/v1/rerank'
     CLI_PROXY_API_BASE_URL: 'http://your-cli-proxy-server:8317/v1'
     # Optional wiki overrides for shared backend runtimes.

@@ -4,6 +4,8 @@ import { DI } from '@/di'
 import { logger } from '@/lib/logger'
 import { detectLanguage, Language } from '@/lib/languageDetector'
 import { cacheSearchResults, getCachedSearchResults } from '@/lib/ragCache'
+import { chunkVectorDistanceSql, chunkVectorPresenceSql } from '@/embeddings/vectorSearch'
+import { EMBEDDING_READ_VERSION } from '@/settings'
 
 // RRF (Reciprocal Rank Fusion) constant - standard value from OneRAG
 const RRF_K = 60
@@ -122,6 +124,7 @@ export class HybridSearchService {
 
         const cacheScope = {
             projectUuid: project.uuid,
+            embeddingVersion: EMBEDDING_READ_VERSION,
             topK,
             similarityThreshold: adjustedSimilarityThreshold,
             vectorWeight,
@@ -199,9 +202,12 @@ export class HybridSearchService {
             topK,
         ]
 
+        const embeddingVersion = EMBEDDING_READ_VERSION
+        const distanceSql = chunkVectorDistanceSql(embeddingVersion)
         let whereClause = `
-            WHERE (skald_memochunk.embedding::halfvec(2048) <=> ?::halfvec(2048)) <= ?
+            WHERE ${distanceSql} <= ?
             AND skald_memochunk.project_id = ?
+            ${chunkVectorPresenceSql(embeddingVersion)}
         `
 
         if (whereConditions.length > 0) {
@@ -215,7 +221,7 @@ export class HybridSearchService {
                 skald_memochunk.memo_uuid,
                 skald_memo.title AS memo_title,
                 skald_memo.metadata->>'doc_type' AS doc_type,
-                (1 - (skald_memochunk.embedding::halfvec(2048) <=> ?::halfvec(2048))) as vector_score
+                (1 - ${distanceSql}) as vector_score
             FROM skald_memochunk
             JOIN skald_memo ON skald_memochunk.memo_id = skald_memo.uuid
             ${whereClause}

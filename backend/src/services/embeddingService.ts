@@ -1,14 +1,39 @@
-import { EMBEDDING_VECTOR_DIMENSION } from '../settings'
+import {
+    EMBEDDING_READ_VERSION,
+    EMBEDDING_V2_DIMENSION,
+    EMBEDDING_V2_MODEL,
+    EMBEDDING_V2_URL,
+    EMBEDDING_VECTOR_DIMENSION,
+    EmbeddingVersion,
+} from '../settings'
 import { logger } from '../lib/logger'
 import { getCachedEmbedding, cacheEmbedding } from '../lib/ragCache'
 
 const EMBEDDING_URL =
     process.env.EMBEDDING_SERVICE_URL || process.env.INTERNAL_EMBEDDING_URL || 'http://embedding-service:8889'
-const INTERNAL_EMBEDDING_URL = EMBEDDING_URL.endsWith('/v1/embeddings')
-    ? EMBEDDING_URL
-    : `${EMBEDDING_URL}/v1/embeddings`
+
+const toEmbeddingsEndpoint = (baseUrl: string): string => {
+    const trimmed = baseUrl.replace(/\/+$/, '')
+    return trimmed.endsWith('/v1/embeddings') ? trimmed : `${trimmed}/v1/embeddings`
+}
+
+const INTERNAL_EMBEDDING_URL = toEmbeddingsEndpoint(EMBEDDING_URL)
 
 const TARGET_DIMENSION = EMBEDDING_VECTOR_DIMENSION
+
+interface EmbeddingEndpoint {
+    url: string
+    model: string
+}
+
+const V1_ENDPOINT: EmbeddingEndpoint = { url: INTERNAL_EMBEDDING_URL, model: 'text-embedding-model' }
+
+const getV2Endpoint = (): EmbeddingEndpoint => {
+    if (!EMBEDDING_V2_URL) {
+        throw new Error('EMBEDDING_V2_URL is not configured; embedding v2 is disabled')
+    }
+    return { url: toEmbeddingsEndpoint(EMBEDDING_V2_URL), model: EMBEDDING_V2_MODEL }
+}
 
 class EmbeddingService {
     private static normalizeEmbedding(embedding: number[]): number[] {
@@ -25,22 +50,45 @@ class EmbeddingService {
     }
 
     /**
-     * Generate embedding using internal endpoint
-     * OpenAI-compatible API format
+     * v2 vectors are stored in vector(512) as-is: the dimension must match exactly (no padding/truncation).
      */
-    private static async generateInternalEmbedding(content: string): Promise<number[]> {
+    private static async getCachedEmbeddingV2(content: string): Promise<number[] | null> {
+        const cached = await getCachedEmbedding(content, 'v2')
+        if (cached && cached.length !== EMBEDDING_V2_DIMENSION) {
+            logger.warn({ dimension: cached.length }, 'Ignoring cached v2 embedding with wrong dimension')
+            return null
+        }
+        return cached
+    }
+
+    static validateEmbeddingV2(embedding: number[]): number[] {
+        if (!Array.isArray(embedding) || embedding.length !== EMBEDDING_V2_DIMENSION) {
+            throw new Error(
+                `Embedding v2 dimension mismatch: expected ${EMBEDDING_V2_DIMENSION}, got ${Array.isArray(embedding) ? embedding.length : typeof embedding}`
+            )
+        }
+        return embedding
+    }
+
+    /**
+     * Generate embedding using an OpenAI-compatible endpoint
+     */
+    private static async generateInternalEmbedding(
+        content: string,
+        endpoint: EmbeddingEndpoint = V1_ENDPOINT
+    ): Promise<number[]> {
         const controller = new AbortController()
         const timeoutId = setTimeout(() => controller.abort(), 30000)
 
         try {
-            const response = await fetch(INTERNAL_EMBEDDING_URL, {
+            const response = await fetch(endpoint.url, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
                 },
                 body: JSON.stringify({
                     input: content,
-                    model: 'text-embedding-model',
+                    model: endpoint.model,
                 }),
                 signal: controller.signal,
             })
@@ -66,10 +114,10 @@ class EmbeddingService {
         } catch (error) {
             clearTimeout(timeoutId)
             if (error instanceof Error && error.name === 'AbortError') {
-                logger.error({ url: INTERNAL_EMBEDDING_URL }, 'Embedding request timed out after 30s')
+                logger.error({ url: endpoint.url }, 'Embedding request timed out after 30s')
                 throw new Error('Embedding service request timed out')
             }
-            logger.error({ err: error, url: INTERNAL_EMBEDDING_URL }, 'Embedding service request failed')
+            logger.error({ err: error, url: endpoint.url }, 'Embedding service request failed')
             throw error
         }
     }
@@ -79,10 +127,13 @@ class EmbeddingService {
      * OpenAI-compatible API accepts `input` as a string array.
      * Falls back to sequential single calls if batch request fails.
      */
-    private static async generateInternalEmbeddingsBatch(contents: string[]): Promise<number[][]> {
+    private static async generateInternalEmbeddingsBatch(
+        contents: string[],
+        endpoint: EmbeddingEndpoint = V1_ENDPOINT
+    ): Promise<number[][]> {
         if (contents.length === 0) return []
         if (contents.length === 1) {
-            const single = await this.generateInternalEmbedding(contents[0])
+            const single = await this.generateInternalEmbedding(contents[0], endpoint)
             return [single]
         }
 
@@ -90,14 +141,14 @@ class EmbeddingService {
         const timeoutId = setTimeout(() => controller.abort(), 60000) // longer timeout for batch
 
         try {
-            const response = await fetch(INTERNAL_EMBEDDING_URL, {
+            const response = await fetch(endpoint.url, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
                 },
                 body: JSON.stringify({
                     input: contents,
-                    model: 'text-embedding-model',
+                    model: endpoint.model,
                 }),
                 signal: controller.signal,
             })
@@ -125,26 +176,34 @@ class EmbeddingService {
         } catch (error) {
             clearTimeout(timeoutId)
             if (error instanceof Error && error.name === 'AbortError') {
-                logger.error({ url: INTERNAL_EMBEDDING_URL, batchSize: contents.length }, 'Batch embedding request timed out after 60s')
+                logger.error(
+                    { url: endpoint.url, batchSize: contents.length },
+                    'Batch embedding request timed out after 60s'
+                )
                 throw new Error('Batch embedding service request timed out')
             }
             // Fall back to sequential single calls
             logger.warn(
-                { err: error, batchSize: contents.length },
+                { err: error, batchSize: contents.length, url: endpoint.url },
                 'Batch embedding failed, falling back to sequential calls'
             )
             const results: number[][] = []
             for (const content of contents) {
-                results.push(await this.generateInternalEmbedding(content))
+                results.push(await this.generateInternalEmbedding(content, endpoint))
             }
             return results
         }
     }
 
     /**
-     * Generate embedding - uses INTERNAL_EMBEDDING_URL environment variable
+     * Generate embedding.
+     * - usage 'storage' always produces v1 (the `embedding` column); v2 storage goes through generateEmbeddingV2.
+     * - usage 'search' follows EMBEDDING_READ_VERSION so query vectors match the column vector search reads.
      */
     static async generateEmbedding(content: string, usage: 'storage' | 'search'): Promise<number[]> {
+        if (usage === 'search' && EMBEDDING_READ_VERSION === 'v2') {
+            return this.generateEmbeddingV2(content)
+        }
         const cached = await getCachedEmbedding(content)
         if (cached) return cached
         const embedding = await this.generateInternalEmbedding(content)
@@ -160,6 +219,9 @@ class EmbeddingService {
      * Returns embeddings in the same order as input.
      */
     static async generateEmbeddingsBatch(contents: string[], usage: 'storage' | 'search'): Promise<number[][]> {
+        if (usage === 'search' && EMBEDDING_READ_VERSION === 'v2') {
+            return this.generateEmbeddingsBatchV2(contents)
+        }
         if (contents.length === 0) return []
         if (contents.length === 1) return [await this.generateEmbedding(contents[0], usage)]
 
@@ -195,6 +257,60 @@ class EmbeddingService {
 
         return results as number[][]
     }
+
+    /**
+     * Generate a v2 (512-dim, L2-normalized) embedding from EMBEDDING_V2_URL.
+     * Throws when v2 is not configured or the dimension is not exactly EMBEDDING_V2_DIMENSION.
+     */
+    static async generateEmbeddingV2(content: string): Promise<number[]> {
+        const endpoint = getV2Endpoint()
+        const cached = await this.getCachedEmbeddingV2(content)
+        if (cached) return cached
+        const embedding = this.validateEmbeddingV2(await this.generateInternalEmbedding(content, endpoint))
+        await cacheEmbedding(content, embedding, undefined, 'v2')
+        return embedding
+    }
+
+    /**
+     * Batch variant of generateEmbeddingV2. `useCache: false` skips the Redis cache entirely
+     * (used by the backfill so a full-corpus pass does not flood Redis).
+     */
+    static async generateEmbeddingsBatchV2(
+        contents: string[],
+        options: { useCache?: boolean } = {}
+    ): Promise<number[][]> {
+        const endpoint = getV2Endpoint()
+        const useCache = options.useCache ?? true
+        if (contents.length === 0) return []
+
+        const results: (number[] | null)[] = new Array(contents.length).fill(null)
+        const uncachedIndices: number[] = []
+        const uncachedContents: string[] = []
+
+        for (let i = 0; i < contents.length; i++) {
+            const cached = useCache ? await this.getCachedEmbeddingV2(contents[i]) : null
+            if (cached) {
+                results[i] = cached
+            } else {
+                uncachedIndices.push(i)
+                uncachedContents.push(contents[i])
+            }
+        }
+
+        if (uncachedContents.length > 0) {
+            const rawEmbeddings = await this.generateInternalEmbeddingsBatch(uncachedContents, endpoint)
+            for (let j = 0; j < uncachedIndices.length; j++) {
+                const embedding = this.validateEmbeddingV2(rawEmbeddings[j])
+                results[uncachedIndices[j]] = embedding
+                if (useCache) {
+                    await cacheEmbedding(uncachedContents[j], embedding, undefined, 'v2')
+                }
+            }
+        }
+
+        return results as number[][]
+    }
 }
 
+export type { EmbeddingVersion }
 export { EmbeddingService }

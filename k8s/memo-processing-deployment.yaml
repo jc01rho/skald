@@ -252,6 +252,24 @@ spec:
                             configMapKeyRef:
                                 name: skald-config
                                 key: EMBEDDING_SERVICE_URL
+                      - name: EMBEDDING_V2_URL
+                        valueFrom:
+                            configMapKeyRef:
+                                name: skald-config
+                                key: EMBEDDING_V2_URL
+                                optional: true
+                      - name: EMBEDDING_V2_MODEL
+                        valueFrom:
+                            configMapKeyRef:
+                                name: skald-config
+                                key: EMBEDDING_V2_MODEL
+                                optional: true
+                      - name: EMBEDDING_READ_VERSION
+                        valueFrom:
+                            configMapKeyRef:
+                                name: skald-config
+                                key: EMBEDDING_READ_VERSION
+                                optional: true
                       - name: DOCLING_SERVICE_URL
                         valueFrom:
                             configMapKeyRef:
