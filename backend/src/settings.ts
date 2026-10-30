@@ -202,32 +202,16 @@ export const RERANKING_PROVIDER = process.env.RERANKING_PROVIDER || 'internal'
 // OpenAI (kept for backward compatibility, no longer used for embedding)
 export const OPENAI_EMBEDDING_MODEL = process.env.OPENAI_EMBEDDING_MODEL || ''
 
-// Local (kept for backward compatibility, no longer used)
-export const EMBEDDING_SERVICE_URL = process.env.EMBEDDING_SERVICE_URL || 'http://localhost:8001'
-
-// Constants
-export const EMBEDDING_VECTOR_DIMENSION = 2048
-
-// ---- Embedding v2 (dual-write migration) ----
-// v1 = `embedding` vector(2048) column served by EMBEDDING_SERVICE_URL/INTERNAL_EMBEDDING_URL.
-// v2 = `embedding_v2` vector(512) column served by a separate OpenAI-compatible endpoint.
-// EMBEDDING_V2_URL empty => v2 disabled (no dual-write, reads stay on v1).
-export type EmbeddingVersion = 'v1' | 'v2'
+// ---- Embedding ----
+// The only embedding: `embedding_v2` vector(512) column, served by an OpenAI-compatible endpoint.
+// The legacy v1 `embedding` vector(2048) column is no longer written or read.
+// EMBEDDING_V2_URL empty => embedding generation throws (memo processing fails and retries).
 export const EMBEDDING_V2_URL = process.env.EMBEDDING_V2_URL || ''
 export const EMBEDDING_V2_MODEL = process.env.EMBEDDING_V2_MODEL || 'text-embedding-model'
 export const EMBEDDING_V2_DIMENSION = 512
-
-const rawEmbeddingReadVersion = (process.env.EMBEDDING_READ_VERSION || 'v1').trim()
-if (rawEmbeddingReadVersion !== 'v1' && rawEmbeddingReadVersion !== 'v2') {
-    throw new Error(`Invalid EMBEDDING_READ_VERSION: ${rawEmbeddingReadVersion}. Supported: v1, v2`)
+if (!EMBEDDING_V2_URL) {
+    logger.warn('EMBEDDING_V2_URL is not set; embedding generation and vector search will fail')
 }
-const requestedEmbeddingReadVersion: EmbeddingVersion = rawEmbeddingReadVersion
-if (requestedEmbeddingReadVersion === 'v2' && !EMBEDDING_V2_URL) {
-    logger.warn('EMBEDDING_READ_VERSION=v2 requested but EMBEDDING_V2_URL is empty; falling back to v1 reads')
-}
-// Which column/model vector search reads from. Query embeddings and the searched column always use the same version.
-export const EMBEDDING_READ_VERSION: EmbeddingVersion =
-    requestedEmbeddingReadVersion === 'v2' && EMBEDDING_V2_URL ? 'v2' : 'v1'
 export const VECTOR_SEARCH_TOP_K = parseInt(process.env.VECTOR_SEARCH_TOP_K || '100')
 export const POST_RERANK_TOP_K = parseInt(process.env.POST_RERANK_TOP_K || '50')
 

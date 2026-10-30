@@ -1,6 +1,5 @@
 import { EntityManager } from '@mikro-orm/core'
 import { logger } from './logger'
-import { EmbeddingVersion } from '@/settings'
 
 export interface HNSWConfig {
     m: number
@@ -50,41 +49,20 @@ export class HNSWOptimizationService {
     }
 
     /**
-     * Create optimized HNSW index for vector search
-     * Drops existing index if present and creates new optimized one
+     * Create optimized HNSW index for vector search (embedding_v2, vector(512)).
+     * Drops the existing index if present and creates a new optimized one (blocking build).
      */
-    static async createOptimizedIndex(
-        em: EntityManager,
-        config: Partial<HNSWConfig> = {},
-        version: EmbeddingVersion = 'v1'
-    ): Promise<void> {
+    static async createOptimizedIndex(em: EntityManager, config: Partial<HNSWConfig> = {}): Promise<void> {
         const finalConfig = { ...DEFAULT_HNSW_CONFIG, ...config }
 
         try {
-            logger.info({ config: finalConfig, version }, 'Creating optimized HNSW index')
+            logger.info({ config: finalConfig }, 'Creating optimized HNSW index')
 
-            if (version === 'v2') {
-                // v2 column is a native vector(512); only touch the v2 index so v1 stays searchable.
-                await em.getConnection().execute(`DROP INDEX IF EXISTS ${EMBEDDING_V2_INDEX_NAME};`)
-                await em.getConnection().execute(`
-                    CREATE INDEX ${EMBEDDING_V2_INDEX_NAME}
-                    ON skald_memochunk
-                    USING hnsw (embedding_v2 vector_cosine_ops)
-                    WITH (m = ${finalConfig.m}, ef_construction = ${finalConfig.efConstruction})
-                `)
-                logger.info({ config: finalConfig, version }, 'Optimized HNSW index created successfully')
-                return
-            }
-
+            await em.getConnection().execute(`DROP INDEX IF EXISTS ${EMBEDDING_V2_INDEX_NAME};`)
             await em.getConnection().execute(`
-                DROP INDEX IF EXISTS idx_memochunk_embedding_hnsw_optimized;
-                DROP INDEX IF EXISTS idx_memochunk_embedding_halfvec_hnsw;
-            `)
-
-            await em.getConnection().execute(`
-                CREATE INDEX idx_memochunk_embedding_halfvec_hnsw 
-                ON skald_memochunk 
-                USING hnsw ((embedding::halfvec(2048)) halfvec_cosine_ops)
+                CREATE INDEX ${EMBEDDING_V2_INDEX_NAME}
+                ON skald_memochunk
+                USING hnsw (embedding_v2 vector_cosine_ops)
                 WITH (m = ${finalConfig.m}, ef_construction = ${finalConfig.efConstruction})
             `)
 

@@ -4,8 +4,7 @@ import { DI } from '@/di'
 import { logger } from '@/lib/logger'
 import { detectLanguage, Language } from '@/lib/languageDetector'
 import { cacheSearchResults, getCachedSearchResults } from '@/lib/ragCache'
-import { chunkVectorDistanceSql, chunkVectorPresenceSql } from '@/embeddings/vectorSearch'
-import { EMBEDDING_READ_VERSION } from '@/settings'
+import { CHUNK_VECTOR_DISTANCE_SQL, CHUNK_VECTOR_PRESENCE_SQL } from '@/embeddings/vectorSearch'
 
 // RRF (Reciprocal Rank Fusion) constant - standard value from OneRAG
 const RRF_K = 60
@@ -124,7 +123,7 @@ export class HybridSearchService {
 
         const cacheScope = {
             projectUuid: project.uuid,
-            embeddingVersion: EMBEDDING_READ_VERSION,
+            embeddingVersion: 'v2',
             topK,
             similarityThreshold: adjustedSimilarityThreshold,
             vectorWeight,
@@ -202,12 +201,11 @@ export class HybridSearchService {
             topK,
         ]
 
-        const embeddingVersion = EMBEDDING_READ_VERSION
-        const distanceSql = chunkVectorDistanceSql(embeddingVersion)
+        const distanceSql = CHUNK_VECTOR_DISTANCE_SQL
         let whereClause = `
             WHERE ${distanceSql} <= ?
             AND skald_memochunk.project_id = ?
-            ${chunkVectorPresenceSql(embeddingVersion)}
+            ${CHUNK_VECTOR_PRESENCE_SQL}
         `
 
         if (whereConditions.length > 0) {

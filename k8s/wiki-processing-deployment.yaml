@@ -247,11 +247,6 @@ spec:
                                 name: skald-config
                                 key: CLI_PROXY_API_BASE_URL
                       # 마이크로서비스 URL 설정
-                      - name: EMBEDDING_SERVICE_URL
-                        valueFrom:
-                            configMapKeyRef:
-                                name: skald-config
-                                key: EMBEDDING_SERVICE_URL
                       - name: DOCLING_SERVICE_URL
                         valueFrom:
                             configMapKeyRef:
