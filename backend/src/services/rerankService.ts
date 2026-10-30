@@ -21,6 +21,12 @@ interface RerankMetadata {
 
 interface RerankOptions {
     originalQuery?: string
+    /**
+     * Position of this batch in the caller's full candidate list, and that list's size. Only used by the
+     * failure fallback so batched callers that merge and sort by score keep the global retrieval order.
+     */
+    batchOffset?: number
+    totalCount?: number
 }
 
 function buildRerankQuery(query: string, options?: RerankOptions): string {
@@ -51,14 +57,23 @@ function applyTopK(results: RerankResult[]): RerankResult[] {
 /**
  * Fallback when the rerank endpoint is unavailable: keep the retrieval order, scoring by original rank.
  */
-function originalOrderResults(results: any[], metadata?: RerankMetadata[]): RerankResult[] {
-    const n = results.length
+function originalOrderResults(results: any[], metadata?: RerankMetadata[], options?: RerankOptions): RerankResult[] {
+    const offset = options?.batchOffset ?? 0
+    const total = Math.max(options?.totalCount ?? results.length, offset + results.length)
     return applyTopK(
         results.map((document, index) =>
-            withMetadata({ index, document, relevance_score: 1 - index / n }, metadata)
+            withMetadata({ index, document, relevance_score: 1 - (offset + index) / total }, metadata)
         )
     )
 }
+
+const isValidRerankEntry = (entry: any, resultCount: number): boolean =>
+    !!entry &&
+    Number.isInteger(entry.index) &&
+    entry.index >= 0 &&
+    entry.index < resultCount &&
+    typeof entry.relevance_score === 'number' &&
+    Number.isFinite(entry.relevance_score)
 
 export class RerankService {
     static async rerank(
@@ -87,7 +102,7 @@ export class RerankService {
                 { err: error, url: INTERNAL_RERANK_URL, resultCount: results.length },
                 'Rerank failed; falling back to original retrieval order'
             )
-            return originalOrderResults(results, metadata)
+            return originalOrderResults(results, metadata, options)
         }
     }
 
@@ -126,8 +141,8 @@ export class RerankService {
             }>
         }
 
-        if (!Array.isArray(data?.results)) {
-            throw new Error('Internal rerank service returned no results array')
+        if (!Array.isArray(data?.results) || !data.results.every((entry) => isValidRerankEntry(entry, results.length))) {
+            throw new Error('Internal rerank service returned malformed results')
         }
 
         const parsedResults = data.results.map((result) =>

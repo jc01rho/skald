@@ -70,6 +70,14 @@ describe('RerankService', () => {
                 async () => Promise.reject(new DOMException('The operation was aborted due to timeout', 'TimeoutError')),
             ],
             ['malformed body', async () => ({ ok: true, json: async () => ({}) })],
+            [
+                'out-of-range index',
+                async () => ({ ok: true, json: async () => ({ results: [{ index: 9, relevance_score: 0.9 }] }) }),
+            ],
+            [
+                'missing score',
+                async () => ({ ok: true, json: async () => ({ results: [{ index: 0 }] }) }),
+            ],
         ]
 
         it.each(failures)('%s: warns and returns input order capped at POST_RERANK_TOP_K', async (_label, impl) => {
@@ -78,6 +86,26 @@ describe('RerankService', () => {
 
             await expect(RerankService.rerank('query', docs, metadata)).resolves.toEqual(expected)
             expect(warn).toHaveBeenCalledWith(expect.objectContaining({ resultCount: 4 }), expect.stringMatching(/Rerank failed/))
+        })
+
+        it('keeps the global retrieval order when a caller merges fallback batches by score', async () => {
+            global.fetch = jest.fn().mockRejectedValue(new TypeError('fetch failed')) as unknown as typeof fetch
+            jest.spyOn(logger, 'warn').mockImplementation(() => undefined as never)
+
+            const batches = [
+                ['g0', 'g1'],
+                ['g2', 'g3'],
+            ]
+            const merged = (
+                await Promise.all(
+                    batches.map((batch, i) =>
+                        RerankService.rerank('query', batch, undefined, { batchOffset: i * 2, totalCount: 4 })
+                    )
+                )
+            ).flat()
+            merged.sort((a, b) => b.relevance_score - a.relevance_score)
+
+            expect(merged.map((r) => r.document)).toEqual(['g0', 'g1', 'g2', 'g3'])
         })
 
         it('works without metadata', async () => {

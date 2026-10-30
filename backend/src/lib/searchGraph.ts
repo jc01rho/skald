@@ -94,7 +94,10 @@ async function rerankNode(state: typeof SearchGraphState.State) {
     }
 
     const batchResults = await mapWithConcurrency(rerankDataBatches, 3, async (batch, batchIdx) =>
-        RerankService.rerank(query, batch, rerankMetadataBatches[batchIdx])
+        RerankService.rerank(query, batch, rerankMetadataBatches[batchIdx], {
+            batchOffset: batchIdx * 25,
+            totalCount: truncatedData.length,
+        })
     )
 
     // Adjust indices to be global (batch-relative indices need to be offset by batch start)
