@@ -4,7 +4,10 @@
  * - Idempotent/resumable: only rows WHERE embedding_v2 IS NULL are selected and updated; rerun at any time.
  * - Keyset pagination by uuid, so a single pass always terminates.
  * - Chunks are embedded with the same title-prefixed text the write path uses (buildContextualContent).
- * - A batch is retried MAX_ATTEMPTS times with exponential backoff; persistent failure exits non-zero.
+ * - A batch is retried MAX_ATTEMPTS times with exponential backoff. If it still fails, rows are embedded one by
+ *   one: rows that fail alone are logged and skipped (left NULL) so one bad input cannot block the corpus; if
+ *   every row of a multi-row batch fails, the endpoint is treated as down and the script aborts. Any aborted or
+ *   skipped work makes the script exit non-zero (rerun to retry the skipped rows).
  * - After a successful pass, builds idx_memochunk_embedding_v2_hnsw with CREATE INDEX CONCURRENTLY
  *   (idempotent; required before EMBEDDING_READ_VERSION=v2). SKIP_INDEX=true skips this step.
  *
@@ -89,7 +92,28 @@ async function embedWithRetry(texts: string[], context: Record<string, unknown>)
     throw lastError instanceof Error ? lastError : new Error(String(lastError))
 }
 
-async function backfillTarget(em: EntityManager, target: BackfillTarget): Promise<number> {
+async function embedRowsIndividually(
+    rows: BackfillRow[],
+    texts: string[],
+    target: BackfillTarget
+): Promise<(number[] | null)[]> {
+    const results: (number[] | null)[] = []
+    for (let i = 0; i < rows.length; i++) {
+        try {
+            const [embedding] = await EmbeddingService.generateEmbeddingsBatchV2([texts[i]], { useCache: false })
+            results.push(embedding)
+        } catch (error) {
+            logger.warn({ err: error, target: target.name, uuid: rows[i].uuid }, 'Embedding v2 backfill: skipping row')
+            results.push(null)
+        }
+    }
+    return results
+}
+
+async function backfillTarget(
+    em: EntityManager,
+    target: BackfillTarget
+): Promise<{ updated: number; skipped: number }> {
     const connection = em.getConnection()
     const [{ count }] = await connection.execute<{ count: string }[]>(
         `SELECT count(*)::text AS count FROM ${target.table} WHERE embedding_v2 IS NULL`
@@ -99,6 +123,7 @@ async function backfillTarget(em: EntityManager, target: BackfillTarget): Promis
 
     let lastUuid = MIN_UUID
     let updated = 0
+    let skipped = 0
     const startedAt = Date.now()
 
     for (;;) {
@@ -106,16 +131,26 @@ async function backfillTarget(em: EntityManager, target: BackfillTarget): Promis
         if (rows.length === 0) break
         lastUuid = rows[rows.length - 1].uuid
 
-        const embeddings = await embedWithRetry(rows.map(target.toEmbeddingText), {
-            target: target.name,
-            firstUuid: rows[0].uuid,
-            lastUuid,
-        })
+        const texts = rows.map(target.toEmbeddingText)
+        let embeddings: (number[] | null)[]
+        try {
+            embeddings = await embedWithRetry(texts, { target: target.name, firstUuid: rows[0].uuid, lastUuid })
+        } catch (batchError) {
+            embeddings = await embedRowsIndividually(rows, texts, target)
+            if (rows.length > 1 && embeddings.every((e) => e === null)) {
+                throw batchError
+            }
+        }
 
         for (let i = 0; i < rows.length; i++) {
+            const embedding = embeddings[i]
+            if (!embedding) {
+                skipped++
+                continue
+            }
             const result = await connection.execute(
                 `UPDATE ${target.table} SET embedding_v2 = ?::vector(512) WHERE uuid = ? AND embedding_v2 IS NULL`,
-                [JSON.stringify(embeddings[i]), rows[i].uuid],
+                [JSON.stringify(embedding), rows[i].uuid],
                 'run'
             )
             updated += (result as { affectedRows?: number }).affectedRows ?? 0
@@ -126,6 +161,7 @@ async function backfillTarget(em: EntityManager, target: BackfillTarget): Promis
             {
                 target: target.name,
                 updated,
+                skipped,
                 pending,
                 progress: pending > 0 ? `${Math.min(100, (updated / pending) * 100).toFixed(1)}%` : '100%',
                 rowsPerSec: (updated / elapsedSec).toFixed(1),
@@ -135,8 +171,8 @@ async function backfillTarget(em: EntityManager, target: BackfillTarget): Promis
         )
     }
 
-    logger.info({ target: target.name, updated }, 'Embedding v2 backfill: target complete')
-    return updated
+    logger.info({ target: target.name, updated, skipped }, 'Embedding v2 backfill: target complete')
+    return { updated, skipped }
 }
 
 async function backfillEmbeddingV2(): Promise<void> {
@@ -152,11 +188,15 @@ async function backfillEmbeddingV2(): Promise<void> {
     await initDI()
     try {
         const em = DI.em.fork()
+        let skipped = 0
         for (const target of targets) {
-            await backfillTarget(em, target)
+            skipped += (await backfillTarget(em, target)).skipped
         }
         if (process.env.SKIP_INDEX !== 'true') {
             await HNSWOptimizationService.ensureEmbeddingV2Index(em)
+        }
+        if (skipped > 0) {
+            throw new Error(`${skipped} rows failed to embed and were left NULL; rerun to retry them`)
         }
     } finally {
         await DI.orm.close()

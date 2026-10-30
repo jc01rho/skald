@@ -1,6 +1,6 @@
 import { EntityManager } from '@mikro-orm/core'
 import { logger } from './logger'
-import { EMBEDDING_READ_VERSION, EmbeddingVersion } from '@/settings'
+import { EmbeddingVersion } from '@/settings'
 
 export interface HNSWConfig {
     m: number
@@ -56,7 +56,7 @@ export class HNSWOptimizationService {
     static async createOptimizedIndex(
         em: EntityManager,
         config: Partial<HNSWConfig> = {},
-        version: EmbeddingVersion = EMBEDDING_READ_VERSION
+        version: EmbeddingVersion = 'v1'
     ): Promise<void> {
         const finalConfig = { ...DEFAULT_HNSW_CONFIG, ...config }
 

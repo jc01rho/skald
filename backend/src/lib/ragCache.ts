@@ -1,6 +1,6 @@
 import { logger } from './logger'
 import { redisGet, redisSet, redisDel } from './redisClient'
-import { EmbeddingVersion, REDIS_URL } from '@/settings'
+import { EMBEDDING_V2_MODEL, EmbeddingVersion, REDIS_URL } from '@/settings'
 import crypto from 'crypto'
 
 // In-memory fallback caches (used when Redis is unavailable)
@@ -40,6 +40,7 @@ function useRedis(): boolean {
 /**
  * Embedding cache keys are version-scoped so v1 (2048d) and v2 (512d) vectors never mix.
  * v1 keeps the legacy key format (`emb:<md5("emb:"+text)>`) for backward compatibility.
+ * v2 hashes include EMBEDDING_V2_MODEL so a model change never serves vectors from the previous model.
  */
 export function getEmbeddingCacheKeys(
     text: string,
@@ -49,7 +50,7 @@ export function getEmbeddingCacheKeys(
         const key = hashKey(`emb:${text}`)
         return { memoryKey: key, redisKey: `${CACHE_PREFIX}emb:${key}` }
     }
-    const key = hashKey(`emb:${version}:${text}`)
+    const key = hashKey(`emb:${version}:${EMBEDDING_V2_MODEL}:${text}`)
     return { memoryKey: `${version}:${key}`, redisKey: `${CACHE_PREFIX}emb:${version}:${key}` }
 }
 

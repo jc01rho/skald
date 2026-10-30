@@ -18,6 +18,7 @@ export class Migration20261030120000 extends Migration {
     }
 
     override async down(): Promise<void> {
+        this.addSql(`set local lock_timeout = '10s';`)
         this.addSql(`alter table "skald_memosummary" drop column if exists "embedding_v2";`)
         this.addSql(`alter table "skald_memochunk" drop column if exists "embedding_v2";`)
     }
