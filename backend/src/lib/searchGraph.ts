@@ -70,7 +70,7 @@ function chunkContentKey(memoUuid: string, chunkContent: string): string {
  * Drop duplicate rows (same memo + same chunk text) and cap how many chunks one memo can contribute.
  * Candidates are expected to be ordered best-first.
  */
-function dedupeAndCapChunks(
+export function dedupeAndCapChunks(
     chunks: MemoChunkWithDistance[],
     maxPerMemo = MAX_CHUNKS_PER_MEMO,
     limit?: number
@@ -96,7 +96,7 @@ function dedupeAndCapChunks(
     return result
 }
 
-function dedupeAndCapResults(
+export function dedupeAndCapResults(
     results: SearchResult[],
     maxPerMemo = MAX_CHUNKS_PER_MEMO,
     limit?: number

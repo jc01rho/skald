@@ -35,3 +35,36 @@ describe('keyExtractor error code support', () => {
         })
     })
 })
+
+describe('keyExtractor multi-segment issue keys', () => {
+    it('keeps every numeric segment instead of truncating SFR-006-02 to SFR-006', () => {
+        expect(extractExplicitKeys('SFR-006-02 스펙 내용 알려줘')).toEqual([
+            {
+                type: 'jira_key',
+                value: 'SFR-006-02',
+                original: 'SFR-006-02',
+                confidence: 1.0,
+            },
+        ])
+    })
+
+    it('still extracts single-segment keys such as SPARROW-1234', () => {
+        expect(extractExplicitKeys('SPARROW-1234 이슈 내용 알려줘')).toEqual([
+            {
+                type: 'jira_key',
+                value: 'SPARROW-1234',
+                original: 'SPARROW-1234',
+                confidence: 1.0,
+            },
+        ])
+    })
+
+    it('extracts the full multi-segment key from a Jira browse URL', () => {
+        expect(getPrimaryKey('https://jira.example.com/browse/SFR-006-02 내용 알려줘')).toEqual({
+            type: 'jira_key',
+            value: 'SFR-006-02',
+            original: 'SFR-006-02',
+            confidence: 1.0,
+        })
+    })
+})

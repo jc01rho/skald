@@ -23,6 +23,7 @@ import { extractExplicitKeys, ExtractedKey } from '@/lib/keyExtractor'
 import { expandTechnicalQueryVariants } from '@/lib/queryNormalization'
 import { buildMemoSourceUrl } from '@/lib/memoSourceUrl'
 import { buildRerankDocument } from '@/lib/rerankPayload'
+import { boundExactLookupContent, buildContextResultHeader } from '@/lib/contextFormatting'
 import { annotationProjectionReferenceId } from '@/lib/specAnnotationProjection'
 import { RawSourceDocument } from '@/entities/RawSourceDocument'
 import { WikiPage } from '@/entities/WikiPage'
@@ -1879,7 +1880,7 @@ function buildLLMInputsNode(state: typeof RAGState.State) {
         if (hitResults.length > 0) {
             contextStr += 'Primary exact-match evidence:\n'
             for (const result of hitResults) {
-                contextStr += `Document: ${result.title}\n${result.content}\n`
+                contextStr += `Document: ${result.title}\n${boundExactLookupContent(result.content)}\n`
                 if (result.source_url) contextStr += `Source: ${result.source_url}\n`
                 contextStr += '\n'
             }
@@ -1946,7 +1947,7 @@ function buildLLMInputsNode(state: typeof RAGState.State) {
             }
         }
 
-        contextStr += `Result ${i + 1}: ${documentContent}\n\n`
+        contextStr += `${buildContextResultHeader(result, chunkResults?.[result.index]?.chunk.memo_uuid, memoPropertiesMap, i + 1)}\n${documentContent}\n\n`
     }
 
     let systemPrompt = ragConfig.references.enabled ? CHAT_AGENT_INSTRUCTIONS_WITH_SOURCES : CHAT_AGENT_INSTRUCTIONS
