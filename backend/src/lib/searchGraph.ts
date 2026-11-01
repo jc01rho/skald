@@ -9,6 +9,10 @@ import { RerankService } from '@/services/rerankService'
 import { mapWithConcurrency } from '@/lib/asyncUtils'
 import { HNSWOptimizationService } from '@/lib/hnswOptimization'
 import { DI } from '@/di'
+import { SEARCH_QUERY_REWRITE_ENABLED } from '@/settings'
+import { rewrite } from '@/agents/chatAgent/queryRewrite'
+import { hasExplicitKeys } from '@/lib/keyExtractor'
+import { buildRerankDocument, buildRerankQuery } from '@/lib/rerankPayload'
 
 export interface SearchResult {
     chunk_uuid: string
@@ -31,6 +35,7 @@ interface RerankResult {
 const SearchGraphState = Annotation.Root({
     project: Annotation<Project>,
     query: Annotation<string>,
+    rewrittenQuery: Annotation<string | null>,
     limit: Annotation<number>,
     filters: Annotation<MemoFilter[]>,
     chunkResults: Annotation<MemoChunkWithDistance[] | null>,
@@ -39,15 +44,129 @@ const SearchGraphState = Annotation.Root({
     results: Annotation<SearchResult[]>,
 })
 
+/**
+ * At most this many chunks from one memo may occupy the result window. A single memo can otherwise
+ * fill all ten slots with near-identical chunks.
+ */
+const MAX_CHUNKS_PER_MEMO = 3
+
+function uniqueQueries(queries: string[]): string[] {
+    const seen = new Set<string>()
+    const result: string[] = []
+    for (const value of queries) {
+        const query = value.trim()
+        if (!query || seen.has(query)) continue
+        seen.add(query)
+        result.push(query)
+    }
+    return result
+}
+
+function chunkContentKey(memoUuid: string, chunkContent: string): string {
+    return `${memoUuid}\u0000${chunkContent.trim()}`
+}
+
+/**
+ * Drop duplicate rows (same memo + same chunk text) and cap how many chunks one memo can contribute.
+ * Candidates are expected to be ordered best-first.
+ */
+function dedupeAndCapChunks(
+    chunks: MemoChunkWithDistance[],
+    maxPerMemo = MAX_CHUNKS_PER_MEMO,
+    limit?: number
+): MemoChunkWithDistance[] {
+    const seen = new Set<string>()
+    const perMemo = new Map<string, number>()
+    const result: MemoChunkWithDistance[] = []
+
+    for (const chunk of chunks) {
+        const key = chunkContentKey(chunk.chunk.memo_uuid, chunk.chunk.chunk_content)
+        if (seen.has(key)) continue
+
+        const used = perMemo.get(chunk.chunk.memo_uuid) ?? 0
+        if (used >= maxPerMemo) continue
+
+        seen.add(key)
+        perMemo.set(chunk.chunk.memo_uuid, used + 1)
+        result.push(chunk)
+
+        if (limit !== undefined && result.length >= limit) break
+    }
+
+    return result
+}
+
+function dedupeAndCapResults(
+    results: SearchResult[],
+    maxPerMemo = MAX_CHUNKS_PER_MEMO,
+    limit?: number
+): SearchResult[] {
+    const seen = new Set<string>()
+    const perMemo = new Map<string, number>()
+    const deduped: SearchResult[] = []
+
+    for (const result of results) {
+        const key = chunkContentKey(result.memo_uuid, result.chunk_content)
+        if (seen.has(key)) continue
+
+        const used = perMemo.get(result.memo_uuid) ?? 0
+        if (used >= maxPerMemo) continue
+
+        seen.add(key)
+        perMemo.set(result.memo_uuid, used + 1)
+        deduped.push(result)
+
+        if (limit !== undefined && deduped.length >= limit) break
+    }
+
+    return deduped
+}
+
+/**
+ * Rewrite the search query for the reranker arm while keeping the original query as its own
+ * vector arm. Explicit identifier queries (Jira keys, doc refs) are searched verbatim: rewriting
+ * them risks losing the exact token and costs an LLM round-trip for no retrieval gain.
+ */
+async function buildSearchRewrite(query: string): Promise<string | null> {
+    if (!SEARCH_QUERY_REWRITE_ENABLED || hasExplicitKeys(query)) {
+        return null
+    }
+
+    const rewritten = (await rewrite(query, [])).trim()
+    return rewritten && rewritten !== query.trim() ? rewritten : null
+}
+
 async function vectorSearchNode(state: typeof SearchGraphState.State) {
     const { query, project, filters, limit } = state
 
     await HNSWOptimizationService.applyRuntimeSearchTuning(DI.em)
 
-    const embeddingVector = await EmbeddingService.generateEmbedding(query, 'search')
-    const chunkResults = await memoChunkVectorSearch(project, embeddingVector, limit, 0.75, filters)
+    const rewrittenQuery = await buildSearchRewrite(query)
+    const searchQueries = uniqueQueries([query, ...(rewrittenQuery ? [rewrittenQuery] : [])])
+    const embeddings = await EmbeddingService.generateEmbeddingsBatch(searchQueries, 'search')
 
-    return { chunkResults }
+    const allResults = await mapWithConcurrency(
+        searchQueries.map((searchQuery, index) => ({ searchQuery, embedding: embeddings[index] })),
+        4,
+        async ({ embedding }) => memoChunkVectorSearch(project, embedding, limit, 0.75, filters)
+    )
+
+    // Merge the original-query and rewritten-query arms, keeping the best distance per chunk.
+    const bestByKey = new Map<string, MemoChunkWithDistance>()
+    for (const results of allResults) {
+        for (const result of results) {
+            const key = chunkContentKey(result.chunk.memo_uuid, result.chunk.chunk_content)
+            const existing = bestByKey.get(key)
+            if (!existing || result.distance < existing.distance) {
+                bestByKey.set(key, result)
+            }
+        }
+    }
+
+    const merged = Array.from(bestByKey.values()).sort((a, b) => a.distance - b.distance)
+    const chunkResults = dedupeAndCapChunks(merged)
+
+    return { chunkResults, rewrittenQuery }
 }
 
 async function getMemoPropertiesNode(state: typeof SearchGraphState.State) {
@@ -63,21 +182,23 @@ async function getMemoPropertiesNode(state: typeof SearchGraphState.State) {
 }
 
 async function rerankNode(state: typeof SearchGraphState.State) {
-    const { chunkResults, memoPropertiesMap, query, limit } = state
+    const { chunkResults, memoPropertiesMap, query, limit, rewrittenQuery } = state
     if (!chunkResults) {
         return { rerankedResults: [] }
     }
 
+    const rerankQuery = buildRerankQuery(rewrittenQuery || query)
     const rerankData: string[] = []
     const rerankMetadata: Array<{ memo_uuid: string; memo_title: string }> = []
 
     for (const chunkResult of chunkResults) {
         const chunk = chunkResult.chunk
+        const memo = memoPropertiesMap?.get(chunk.memo_uuid)
 
-        rerankData.push(chunk.chunk_content)
+        rerankData.push(buildRerankDocument(chunk.chunk_content, memo))
         rerankMetadata.push({
             memo_uuid: chunk.memo_uuid,
-            memo_title: memoPropertiesMap?.get(chunk.memo_uuid)?.title || '',
+            memo_title: memo?.title || '',
         })
     }
 
@@ -94,7 +215,7 @@ async function rerankNode(state: typeof SearchGraphState.State) {
     }
 
     const batchResults = await mapWithConcurrency(rerankDataBatches, 3, async (batch, batchIdx) =>
-        RerankService.rerank(query, batch, rerankMetadataBatches[batchIdx], {
+        RerankService.rerank(rerankQuery, batch, rerankMetadataBatches[batchIdx], {
             batchOffset: batchIdx * 25,
             totalCount: truncatedData.length,
         })
@@ -112,13 +233,13 @@ async function rerankNode(state: typeof SearchGraphState.State) {
         }
     }
 
-    // sort by relevance score
+    // sort by relevance score; per-memo capping happens when building the final window
     results.sort((a, b) => b.relevance_score - a.relevance_score)
-    return { rerankedResults: results.slice(0, limit) }
+    return { rerankedResults: results }
 }
 
 function buildResultsNode(state: typeof SearchGraphState.State) {
-    const { chunkResults, memoPropertiesMap, rerankedResults } = state
+    const { chunkResults, memoPropertiesMap, rerankedResults, limit } = state
     if (!chunkResults) {
         return { results: [] }
     }
@@ -150,7 +271,7 @@ function buildResultsNode(state: typeof SearchGraphState.State) {
         }
     })
 
-    return { results }
+    return { results: dedupeAndCapResults(results, MAX_CHUNKS_PER_MEMO, limit) }
 }
 
 const searchGraphDefinition = new StateGraph(SearchGraphState)

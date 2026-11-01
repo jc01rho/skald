@@ -22,6 +22,7 @@ import { HNSWOptimizationService } from '@/lib/hnswOptimization'
 import { extractExplicitKeys, ExtractedKey } from '@/lib/keyExtractor'
 import { expandTechnicalQueryVariants } from '@/lib/queryNormalization'
 import { buildMemoSourceUrl } from '@/lib/memoSourceUrl'
+import { buildRerankDocument } from '@/lib/rerankPayload'
 import { annotationProjectionReferenceId } from '@/lib/specAnnotationProjection'
 import { RawSourceDocument } from '@/entities/RawSourceDocument'
 import { WikiPage } from '@/entities/WikiPage'
@@ -1290,8 +1291,7 @@ async function rerankNode(state: typeof RAGState.State) {
 
         let rerankSnippet = chunk.chunk_content
         if (memoPropertiesMap) {
-            const memo = memoPropertiesMap.get(chunk.memo_uuid)
-            rerankSnippet = `Title: ${memo?.title}\n\nFull content summary: ${memo?.summary}\n\nChunk content: ${chunk.chunk_content}\n\n`
+            rerankSnippet = buildRerankDocument(chunk.chunk_content, memoPropertiesMap.get(chunk.memo_uuid))
         }
 
         rerankData.push(rerankSnippet)
@@ -1327,7 +1327,6 @@ async function rerankNode(state: typeof RAGState.State) {
     const results = (
         await mapWithConcurrency(truncatedDataBatches, 3, async (batch, idx) =>
             RerankService.rerank(searchQuery, batch, truncatedMetadataBatches[idx], {
-                originalQuery: query,
                 batchOffset: idx * batchSize,
                 totalCount: truncatedRerankData.length,
             })

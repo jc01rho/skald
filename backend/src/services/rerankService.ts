@@ -1,6 +1,7 @@
 import { z } from 'zod'
 import { POST_RERANK_TOP_K } from '@/settings'
 import { logger } from '@/lib/logger'
+import { buildRerankQuery } from '@/lib/rerankPayload'
 
 const INTERNAL_RERANK_URL = process.env.INTERNAL_RERANK_URL || 'http://rerank-service:8889/v1/rerank'
 
@@ -20,24 +21,12 @@ interface RerankMetadata {
 }
 
 interface RerankOptions {
-    originalQuery?: string
     /**
      * Position of this batch in the caller's full candidate list, and that list's size. Only used by the
      * failure fallback so batched callers that merge and sort by score keep the global retrieval order.
      */
     batchOffset?: number
     totalCount?: number
-}
-
-function buildRerankQuery(query: string, options?: RerankOptions): string {
-    const normalizedQuery = query.trim()
-    const normalizedOriginal = options?.originalQuery?.trim()
-
-    if (!normalizedOriginal || normalizedOriginal === normalizedQuery) {
-        return normalizedQuery
-    }
-
-    return `${normalizedOriginal}\n\nRewritten retrieval query: ${normalizedQuery}`
 }
 
 function withMetadata(result: RerankResult, metadata?: RerankMetadata[]): RerankResult {
@@ -112,7 +101,7 @@ export class RerankService {
         metadata?: RerankMetadata[],
         options?: RerankOptions
     ): Promise<RerankResult[]> {
-        const rerankQuery = buildRerankQuery(query, options)
+        const rerankQuery = buildRerankQuery(query)
 
         const response = await fetch(INTERNAL_RERANK_URL, {
             method: 'POST',
