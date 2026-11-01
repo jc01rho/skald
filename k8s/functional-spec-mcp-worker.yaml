@@ -1,15 +1,15 @@
 apiVersion: apps/v1
 kind: StatefulSet
 metadata:
-  name: functional-spec-mcp-worker-f0ce6ffc
+  name: functional-spec-mcp-worker-7b244a55
   namespace: skald
   labels:
     app: skald
     component: functional-spec-mcp-worker
     environment: production
-    revision: f0ce6ffc
+    revision: 7b244a55
 spec:
-  serviceName: functional-spec-mcp-worker-f0ce6ffc
+  serviceName: functional-spec-mcp-worker-7b244a55
   replicas: 2
   podManagementPolicy: Parallel
   updateStrategy:
@@ -18,14 +18,14 @@ spec:
     matchLabels:
       app: skald
       component: functional-spec-mcp-worker
-      revision: f0ce6ffc
+      revision: 7b244a55
   template:
     metadata:
       labels:
         app: skald
         component: functional-spec-mcp-worker
         environment: production
-        revision: f0ce6ffc
+        revision: 7b244a55
     spec:
       serviceAccountName: functional-spec-mcp
       automountServiceAccountToken: false
@@ -51,7 +51,7 @@ spec:
           type: RuntimeDefault
       containers:
         - name: functional-spec-mcp-worker
-          image: ghcr.io/jc01rho/sparrow-function-spec-mcp@sha256:f0ce6ffc46d076b935d2a644965a8a89329f47c9da3ba8bcdb0e2b80bd3b1193
+          image: ghcr.io/jc01rho/sparrow-function-spec-mcp@sha256:7b244a556d5a291e76141901d1568b0bfe0545e35ec6b1af2ec38d9987a57982
           imagePullPolicy: IfNotPresent
           ports:
             - name: http
@@ -59,7 +59,7 @@ spec:
               protocol: TCP
           envFrom:
             - configMapRef:
-                name: functional-spec-mcp-worker-config-f0ce6ffc
+                name: functional-spec-mcp-worker-config-7b244a55
           env:
             - name: MCP_SESSION_POD_NAME
               valueFrom:
