@@ -30,14 +30,8 @@ and negative queries whose top-1 distance is at or below `--confident-distance` 
 `baseline-2026-11-01.json` was recorded against the production API **before** the answer-quality
 changes were deployed. Use it as the comparison point for `after-*.json`.
 
-## Search indexes
+## Offline measurements
 
-The Korean keyword arm uses `to_tsvector('simple', ...)` on chunk content, memo title, and
-`metadata->>'search_text'`. Build the supporting GIN indexes after deploy with:
-
-```bash
-node dist/scripts/createSearchIndexes.js
-```
-
-The script uses `CREATE INDEX CONCURRENTLY IF NOT EXISTS`, so it is safe to run on a live database
-and is idempotent.
+`offline-2026-11-01.md` records the arm-by-arm comparison (keyword arm, rerank document and query
+construction, dedupe/cap) run directly against production candidates and the production reranker.
+That is where the `to_tsvector('simple')` keyword arm was rejected and no new index was needed.

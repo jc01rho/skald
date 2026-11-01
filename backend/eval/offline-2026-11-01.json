@@ -1,0 +1,890 @@
+{
+  "generated_at": "2026-11-01T11:58:09.475Z",
+  "pipelines": {
+    "vector_only_top10": {
+      "recall@10": 0.5076,
+      "mrr@10": 0.4591,
+      "mean_distinct_memos": 6.5909,
+      "positive_queries": 22,
+      "negative_confident_hits": null
+    },
+    "hybrid_old_trgm": {
+      "recall@10": 0.5076,
+      "mrr@10": 0.4602,
+      "mean_distinct_memos": 7.3182,
+      "positive_queries": 22,
+      "negative_confident_hits": null
+    },
+    "hybrid_new_simple_fts": {
+      "recall@10": 0.4848,
+      "mrr@10": 0.4182,
+      "mean_distinct_memos": 6.4545,
+      "positive_queries": 22,
+      "negative_confident_hits": null
+    },
+    "rerank_chunk_only_cap3": {
+      "recall@10": 0.4318,
+      "mrr@10": 0.3709,
+      "mean_distinct_memos": 8.0455,
+      "positive_queries": 22,
+      "negative_confident_hits": 1
+    },
+    "rerank_full_doc_cap3": {
+      "recall@10": 0.4924,
+      "mrr@10": 0.3525,
+      "mean_distinct_memos": 7.3182,
+      "positive_queries": 22,
+      "negative_confident_hits": 1
+    }
+  },
+  "per_query": {
+    "vector_only": {
+      "issue-rule-option-types": {
+        "id": "issue-rule-option-types",
+        "r10": 1,
+        "rr": 1,
+        "distinct": 9
+      },
+      "license-types-and-limits": {
+        "id": "license-types-and-limits",
+        "r10": 0.5,
+        "rr": 0.1,
+        "distinct": 6
+      },
+      "sparrow-properties-metric": {
+        "id": "sparrow-properties-metric",
+        "r10": 0,
+        "rr": 0,
+        "distinct": 2
+      },
+      "checker-rule-file": {
+        "id": "checker-rule-file",
+        "r10": 1,
+        "rr": 0.16666666666666666,
+        "distinct": 8
+      },
+      "enterprise-backend-error-codes": {
+        "id": "enterprise-backend-error-codes",
+        "r10": 0,
+        "rr": 0,
+        "distinct": 3
+      },
+      "report-export": {
+        "id": "report-export",
+        "r10": 0.5,
+        "rr": 1,
+        "distinct": 8
+      },
+      "defect-severity": {
+        "id": "defect-severity",
+        "r10": 1,
+        "rr": 1,
+        "distinct": 8
+      },
+      "project-create": {
+        "id": "project-create",
+        "r10": 0.5,
+        "rr": 0.3333333333333333,
+        "distinct": 8
+      },
+      "user-permission": {
+        "id": "user-permission",
+        "r10": 0.6666666666666666,
+        "rr": 0.5,
+        "distinct": 9
+      },
+      "api-auth": {
+        "id": "api-auth",
+        "r10": 0,
+        "rr": 0,
+        "distinct": 7
+      },
+      "incremental-analysis": {
+        "id": "incremental-analysis",
+        "r10": 1,
+        "rr": 1,
+        "distinct": 6
+      },
+      "ruleset-customization": {
+        "id": "ruleset-customization",
+        "r10": 0,
+        "rr": 0,
+        "distinct": 9
+      },
+      "id-sparrow-12109": {
+        "id": "id-sparrow-12109",
+        "r10": 0,
+        "rr": 0,
+        "distinct": 6
+      },
+      "id-sparrow-12113": {
+        "id": "id-sparrow-12113",
+        "r10": 0,
+        "rr": 0,
+        "distinct": 5
+      },
+      "id-sparrow-1519": {
+        "id": "id-sparrow-1519",
+        "r10": 0,
+        "rr": 0,
+        "distinct": 6
+      },
+      "id-sparrow-6323": {
+        "id": "id-sparrow-6323",
+        "r10": 0,
+        "rr": 0,
+        "distinct": 6
+      },
+      "id-sparrow-12144": {
+        "id": "id-sparrow-12144",
+        "r10": 0,
+        "rr": 0,
+        "distinct": 5
+      },
+      "title-issue-rule-option-type": {
+        "id": "title-issue-rule-option-type",
+        "r10": 1,
+        "rr": 1,
+        "distinct": 10
+      },
+      "title-incremental-analysis": {
+        "id": "title-incremental-analysis",
+        "r10": 1,
+        "rr": 1,
+        "distinct": 3
+      },
+      "title-error-code-system": {
+        "id": "title-error-code-system",
+        "r10": 1,
+        "rr": 1,
+        "distinct": 7
+      },
+      "title-component-vuln-severity": {
+        "id": "title-component-vuln-severity",
+        "r10": 1,
+        "rr": 1,
+        "distinct": 8
+      },
+      "title-metric-display": {
+        "id": "title-metric-display",
+        "r10": 1,
+        "rr": 1,
+        "distinct": 6
+      }
+    },
+    "hybrid_old_trgm": {
+      "issue-rule-option-types": {
+        "id": "issue-rule-option-types",
+        "r10": 1,
+        "rr": 1,
+        "distinct": 9
+      },
+      "license-types-and-limits": {
+        "id": "license-types-and-limits",
+        "r10": 0.5,
+        "rr": 0.125,
+        "distinct": 8
+      },
+      "sparrow-properties-metric": {
+        "id": "sparrow-properties-metric",
+        "r10": 0,
+        "rr": 0,
+        "distinct": 5
+      },
+      "checker-rule-file": {
+        "id": "checker-rule-file",
+        "r10": 1,
+        "rr": 0.16666666666666666,
+        "distinct": 8
+      },
+      "enterprise-backend-error-codes": {
+        "id": "enterprise-backend-error-codes",
+        "r10": 0,
+        "rr": 0,
+        "distinct": 7
+      },
+      "report-export": {
+        "id": "report-export",
+        "r10": 0.5,
+        "rr": 1,
+        "distinct": 8
+      },
+      "defect-severity": {
+        "id": "defect-severity",
+        "r10": 1,
+        "rr": 1,
+        "distinct": 8
+      },
+      "project-create": {
+        "id": "project-create",
+        "r10": 0.5,
+        "rr": 0.3333333333333333,
+        "distinct": 8
+      },
+      "user-permission": {
+        "id": "user-permission",
+        "r10": 0.6666666666666666,
+        "rr": 0.5,
+        "distinct": 9
+      },
+      "api-auth": {
+        "id": "api-auth",
+        "r10": 0,
+        "rr": 0,
+        "distinct": 9
+      },
+      "incremental-analysis": {
+        "id": "incremental-analysis",
+        "r10": 1,
+        "rr": 1,
+        "distinct": 7
+      },
+      "ruleset-customization": {
+        "id": "ruleset-customization",
+        "r10": 0,
+        "rr": 0,
+        "distinct": 9
+      },
+      "id-sparrow-12109": {
+        "id": "id-sparrow-12109",
+        "r10": 0,
+        "rr": 0,
+        "distinct": 6
+      },
+      "id-sparrow-12113": {
+        "id": "id-sparrow-12113",
+        "r10": 0,
+        "rr": 0,
+        "distinct": 5
+      },
+      "id-sparrow-1519": {
+        "id": "id-sparrow-1519",
+        "r10": 0,
+        "rr": 0,
+        "distinct": 6
+      },
+      "id-sparrow-6323": {
+        "id": "id-sparrow-6323",
+        "r10": 0,
+        "rr": 0,
+        "distinct": 6
+      },
+      "id-sparrow-12144": {
+        "id": "id-sparrow-12144",
+        "r10": 0,
+        "rr": 0,
+        "distinct": 6
+      },
+      "title-issue-rule-option-type": {
+        "id": "title-issue-rule-option-type",
+        "r10": 1,
+        "rr": 1,
+        "distinct": 10
+      },
+      "title-incremental-analysis": {
+        "id": "title-incremental-analysis",
+        "r10": 1,
+        "rr": 1,
+        "distinct": 6
+      },
+      "title-error-code-system": {
+        "id": "title-error-code-system",
+        "r10": 1,
+        "rr": 1,
+        "distinct": 7
+      },
+      "title-component-vuln-severity": {
+        "id": "title-component-vuln-severity",
+        "r10": 1,
+        "rr": 1,
+        "distinct": 8
+      },
+      "title-metric-display": {
+        "id": "title-metric-display",
+        "r10": 1,
+        "rr": 1,
+        "distinct": 6
+      }
+    },
+    "hybrid_new_simple_fts": {
+      "issue-rule-option-types": {
+        "id": "issue-rule-option-types",
+        "r10": 1,
+        "rr": 0.3333333333333333,
+        "distinct": 7
+      },
+      "license-types-and-limits": {
+        "id": "license-types-and-limits",
+        "r10": 0,
+        "rr": 0,
+        "distinct": 6
+      },
+      "sparrow-properties-metric": {
+        "id": "sparrow-properties-metric",
+        "r10": 0,
+        "rr": 0,
+        "distinct": 2
+      },
+      "checker-rule-file": {
+        "id": "checker-rule-file",
+        "r10": 1,
+        "rr": 1,
+        "distinct": 8
+      },
+      "enterprise-backend-error-codes": {
+        "id": "enterprise-backend-error-codes",
+        "r10": 0,
+        "rr": 0,
+        "distinct": 5
+      },
+      "report-export": {
+        "id": "report-export",
+        "r10": 0.5,
+        "rr": 1,
+        "distinct": 7
+      },
+      "defect-severity": {
+        "id": "defect-severity",
+        "r10": 1,
+        "rr": 1,
+        "distinct": 7
+      },
+      "project-create": {
+        "id": "project-create",
+        "r10": 0.5,
+        "rr": 0.2,
+        "distinct": 7
+      },
+      "user-permission": {
+        "id": "user-permission",
+        "r10": 0.6666666666666666,
+        "rr": 0.3333333333333333,
+        "distinct": 7
+      },
+      "api-auth": {
+        "id": "api-auth",
+        "r10": 0,
+        "rr": 0,
+        "distinct": 6
+      },
+      "incremental-analysis": {
+        "id": "incremental-analysis",
+        "r10": 1,
+        "rr": 1,
+        "distinct": 6
+      },
+      "ruleset-customization": {
+        "id": "ruleset-customization",
+        "r10": 0,
+        "rr": 0,
+        "distinct": 9
+      },
+      "id-sparrow-12109": {
+        "id": "id-sparrow-12109",
+        "r10": 0,
+        "rr": 0,
+        "distinct": 6
+      },
+      "id-sparrow-12113": {
+        "id": "id-sparrow-12113",
+        "r10": 0,
+        "rr": 0,
+        "distinct": 5
+      },
+      "id-sparrow-1519": {
+        "id": "id-sparrow-1519",
+        "r10": 0,
+        "rr": 0,
+        "distinct": 6
+      },
+      "id-sparrow-6323": {
+        "id": "id-sparrow-6323",
+        "r10": 0,
+        "rr": 0,
+        "distinct": 6
+      },
+      "id-sparrow-12144": {
+        "id": "id-sparrow-12144",
+        "r10": 0,
+        "rr": 0,
+        "distinct": 6
+      },
+      "title-issue-rule-option-type": {
+        "id": "title-issue-rule-option-type",
+        "r10": 1,
+        "rr": 1,
+        "distinct": 8
+      },
+      "title-incremental-analysis": {
+        "id": "title-incremental-analysis",
+        "r10": 1,
+        "rr": 1,
+        "distinct": 4
+      },
+      "title-error-code-system": {
+        "id": "title-error-code-system",
+        "r10": 1,
+        "rr": 0.3333333333333333,
+        "distinct": 10
+      },
+      "title-component-vuln-severity": {
+        "id": "title-component-vuln-severity",
+        "r10": 1,
+        "rr": 1,
+        "distinct": 8
+      },
+      "title-metric-display": {
+        "id": "title-metric-display",
+        "r10": 1,
+        "rr": 1,
+        "distinct": 6
+      }
+    },
+    "rerank_chunk_only": {
+      "issue-rule-option-types": {
+        "id": "issue-rule-option-types",
+        "r10": 1,
+        "rr": 1,
+        "distinct": 10,
+        "top1_relevance": 0.999276340007782
+      },
+      "license-types-and-limits": {
+        "id": "license-types-and-limits",
+        "r10": 0,
+        "rr": 0,
+        "distinct": 10,
+        "top1_relevance": 0.10393037647008896
+      },
+      "sparrow-properties-metric": {
+        "id": "sparrow-properties-metric",
+        "r10": 0,
+        "rr": 0,
+        "distinct": 5,
+        "top1_relevance": 0.04054073989391327
+      },
+      "checker-rule-file": {
+        "id": "checker-rule-file",
+        "r10": 0,
+        "rr": 0,
+        "distinct": 7,
+        "top1_relevance": 0.34554681181907654
+      },
+      "enterprise-backend-error-codes": {
+        "id": "enterprise-backend-error-codes",
+        "r10": 0.5,
+        "rr": 0.3333333333333333,
+        "distinct": 8,
+        "top1_relevance": 0.9662197828292847
+      },
+      "report-export": {
+        "id": "report-export",
+        "r10": 0.5,
+        "rr": 0.14285714285714285,
+        "distinct": 10,
+        "top1_relevance": 0.7858021259307861
+      },
+      "defect-severity": {
+        "id": "defect-severity",
+        "r10": 0.6666666666666666,
+        "rr": 1,
+        "distinct": 8,
+        "top1_relevance": 0.018797073513269424
+      },
+      "project-create": {
+        "id": "project-create",
+        "r10": 0.5,
+        "rr": 0.1,
+        "distinct": 9,
+        "top1_relevance": 0.07751765847206116
+      },
+      "user-permission": {
+        "id": "user-permission",
+        "r10": 0.3333333333333333,
+        "rr": 1,
+        "distinct": 9,
+        "top1_relevance": 0.16913124918937683
+      },
+      "api-auth": {
+        "id": "api-auth",
+        "r10": 0,
+        "rr": 0,
+        "distinct": 8,
+        "top1_relevance": 0.04193052276968956
+      },
+      "incremental-analysis": {
+        "id": "incremental-analysis",
+        "r10": 1,
+        "rr": 0.3333333333333333,
+        "distinct": 8,
+        "top1_relevance": 0.20149880647659302
+      },
+      "ruleset-customization": {
+        "id": "ruleset-customization",
+        "r10": 0,
+        "rr": 0,
+        "distinct": 9,
+        "top1_relevance": 0.001192549243569374
+      },
+      "id-sparrow-12109": {
+        "id": "id-sparrow-12109",
+        "r10": 0,
+        "rr": 0,
+        "distinct": 6,
+        "top1_relevance": 0.008677716366946697
+      },
+      "id-sparrow-12113": {
+        "id": "id-sparrow-12113",
+        "r10": 0,
+        "rr": 0,
+        "distinct": 7,
+        "top1_relevance": 0.001560889184474945
+      },
+      "id-sparrow-1519": {
+        "id": "id-sparrow-1519",
+        "r10": 0,
+        "rr": 0,
+        "distinct": 8,
+        "top1_relevance": 0.0028783478774130344
+      },
+      "id-sparrow-6323": {
+        "id": "id-sparrow-6323",
+        "r10": 0,
+        "rr": 0,
+        "distinct": 10,
+        "top1_relevance": 0.39501747488975525
+      },
+      "id-sparrow-12144": {
+        "id": "id-sparrow-12144",
+        "r10": 0,
+        "rr": 0,
+        "distinct": 8,
+        "top1_relevance": 0.002034817123785615
+      },
+      "title-issue-rule-option-type": {
+        "id": "title-issue-rule-option-type",
+        "r10": 1,
+        "rr": 1,
+        "distinct": 10,
+        "top1_relevance": 0.9995434880256653
+      },
+      "title-incremental-analysis": {
+        "id": "title-incremental-analysis",
+        "r10": 1,
+        "rr": 0.25,
+        "distinct": 6,
+        "top1_relevance": 0.727685272693634
+      },
+      "title-error-code-system": {
+        "id": "title-error-code-system",
+        "r10": 1,
+        "rr": 1,
+        "distinct": 7,
+        "top1_relevance": 0.9926542043685913
+      },
+      "title-component-vuln-severity": {
+        "id": "title-component-vuln-severity",
+        "r10": 1,
+        "rr": 1,
+        "distinct": 9,
+        "top1_relevance": 0.9999452829360962
+      },
+      "title-metric-display": {
+        "id": "title-metric-display",
+        "r10": 1,
+        "rr": 1,
+        "distinct": 5,
+        "top1_relevance": 0.8745065331459045
+      }
+    },
+    "rerank_full_doc": {
+      "issue-rule-option-types": {
+        "id": "issue-rule-option-types",
+        "r10": 1,
+        "rr": 1,
+        "distinct": 9,
+        "top1_relevance": 0.999854564666748
+      },
+      "license-types-and-limits": {
+        "id": "license-types-and-limits",
+        "r10": 0,
+        "rr": 0,
+        "distinct": 8,
+        "top1_relevance": 0.3647775650024414
+      },
+      "sparrow-properties-metric": {
+        "id": "sparrow-properties-metric",
+        "r10": 0,
+        "rr": 0,
+        "distinct": 5,
+        "top1_relevance": 0.903464674949646
+      },
+      "checker-rule-file": {
+        "id": "checker-rule-file",
+        "r10": 1,
+        "rr": 0.1111111111111111,
+        "distinct": 7,
+        "top1_relevance": 0.2575782835483551
+      },
+      "enterprise-backend-error-codes": {
+        "id": "enterprise-backend-error-codes",
+        "r10": 0.5,
+        "rr": 0.2,
+        "distinct": 7,
+        "top1_relevance": 0.8006919622421265
+      },
+      "report-export": {
+        "id": "report-export",
+        "r10": 0.5,
+        "rr": 0.16666666666666666,
+        "distinct": 9,
+        "top1_relevance": 0.35644665360450745
+      },
+      "defect-severity": {
+        "id": "defect-severity",
+        "r10": 0.6666666666666666,
+        "rr": 0.3333333333333333,
+        "distinct": 7,
+        "top1_relevance": 0.08913693577051163
+      },
+      "project-create": {
+        "id": "project-create",
+        "r10": 0.5,
+        "rr": 0.1,
+        "distinct": 6,
+        "top1_relevance": 0.06198946014046669
+      },
+      "user-permission": {
+        "id": "user-permission",
+        "r10": 0.3333333333333333,
+        "rr": 0.5,
+        "distinct": 9,
+        "top1_relevance": 0.11951085925102234
+      },
+      "api-auth": {
+        "id": "api-auth",
+        "r10": 0.3333333333333333,
+        "rr": 0.14285714285714285,
+        "distinct": 8,
+        "top1_relevance": 0.025858774781227112
+      },
+      "incremental-analysis": {
+        "id": "incremental-analysis",
+        "r10": 1,
+        "rr": 0.2,
+        "distinct": 8,
+        "top1_relevance": 0.10951516032218933
+      },
+      "ruleset-customization": {
+        "id": "ruleset-customization",
+        "r10": 0,
+        "rr": 0,
+        "distinct": 7,
+        "top1_relevance": 0.008950711227953434
+      },
+      "id-sparrow-12109": {
+        "id": "id-sparrow-12109",
+        "r10": 0,
+        "rr": 0,
+        "distinct": 6,
+        "top1_relevance": 0.014899643138051033
+      },
+      "id-sparrow-12113": {
+        "id": "id-sparrow-12113",
+        "r10": 0,
+        "rr": 0,
+        "distinct": 8,
+        "top1_relevance": 0.0037217086646705866
+      },
+      "id-sparrow-1519": {
+        "id": "id-sparrow-1519",
+        "r10": 0,
+        "rr": 0,
+        "distinct": 7,
+        "top1_relevance": 0.0028118586633354425
+      },
+      "id-sparrow-6323": {
+        "id": "id-sparrow-6323",
+        "r10": 0,
+        "rr": 0,
+        "distinct": 9,
+        "top1_relevance": 0.659514844417572
+      },
+      "id-sparrow-12144": {
+        "id": "id-sparrow-12144",
+        "r10": 0,
+        "rr": 0,
+        "distinct": 8,
+        "top1_relevance": 0.004101929254829884
+      },
+      "title-issue-rule-option-type": {
+        "id": "title-issue-rule-option-type",
+        "r10": 1,
+        "rr": 1,
+        "distinct": 9,
+        "top1_relevance": 0.9999239444732666
+      },
+      "title-incremental-analysis": {
+        "id": "title-incremental-analysis",
+        "r10": 1,
+        "rr": 1,
+        "distinct": 6,
+        "top1_relevance": 0.6154346466064453
+      },
+      "title-error-code-system": {
+        "id": "title-error-code-system",
+        "r10": 1,
+        "rr": 1,
+        "distinct": 6,
+        "top1_relevance": 0.9973785877227783
+      },
+      "title-component-vuln-severity": {
+        "id": "title-component-vuln-severity",
+        "r10": 1,
+        "rr": 1,
+        "distinct": 7,
+        "top1_relevance": 0.9999452829360962
+      },
+      "title-metric-display": {
+        "id": "title-metric-display",
+        "r10": 1,
+        "rr": 1,
+        "distinct": 5,
+        "top1_relevance": 0.9902161359786987
+      }
+    }
+  },
+  "wrapper_experiment": [
+    {
+      "id": "sast-dast-difference",
+      "expanded": "SAST와 DAST 차이 SAST DAST 차이 비교 SAST DAST 기능 설명 SAST DAST 개요 차이점 SAST DAST information 비교",
+      "alone_top1": 0.9181873202323914,
+      "wrapped_top1": 0.9531006813049316,
+      "alone_expected_rank": null,
+      "wrapped_expected_rank": null,
+      "alone_expected_score": null,
+      "wrapped_expected_score": null
+    },
+    {
+      "id": "sparrow-properties-metric",
+      "expanded": "sparrow.properties 메트릭 설정 방법 sparrow.properties metric 설정 방법 sparrow.properties metric 설정 방법 property sparrow.properties",
+      "alone_top1": 0.7221353054046631,
+      "wrapped_top1": 0.6512439250946045,
+      "alone_expected_rank": null,
+      "wrapped_expected_rank": null,
+      "alone_expected_score": null,
+      "wrapped_expected_score": null
+    },
+    {
+      "id": "checker-rule-file",
+      "expanded": "체커 규칙 파일 작성 방법 이슈검출규칙 규칙 파일 작성 방법 이슈 검출 규칙 규칙 파일 작성 방법",
+      "alone_top1": 0.925094723701477,
+      "wrapped_top1": 0.8142006397247314,
+      "alone_expected_rank": 2,
+      "wrapped_expected_rank": 5,
+      "alone_expected_score": 0.8305941224098206,
+      "wrapped_expected_score": 0.41786524653434753
+    },
+    {
+      "id": "enterprise-backend-error-codes",
+      "expanded": "엔터프라이즈 백엔드 에러코드 목록 enterprise error codes sparrow enterprise error codes sparrow enterprise backend error codes backend error codes sparrow-enterprise-backend-error-codes 엔터프라이즈 백엔드 에러코드 목록 enterprise error codes 엔터프라이즈 백엔드 에러코드 목록 sparrow enterprise error codes 엔터프라이즈 백엔드 에러코드 목록 sparrow enterprise backend error codes 엔터프라이즈 백엔드 에러코드 목록 backend error codes 엔터프라이즈 백엔드 에러코드 목록 sparrow-enterprise-backend-error-codes",
+      "alone_top1": 0.999140739440918,
+      "wrapped_top1": 0.9980044960975647,
+      "alone_expected_rank": null,
+      "wrapped_expected_rank": null,
+      "alone_expected_score": null,
+      "wrapped_expected_score": null
+    },
+    {
+      "id": "title-metric-display",
+      "expanded": "메트릭 표시 설정 metric 표시 설정 metric 표시 설정 sparrow.properties metric 표시 설정 property sparrow.properties",
+      "alone_top1": 0.9969485402107239,
+      "wrapped_top1": 0.2925952970981598,
+      "alone_expected_rank": 1,
+      "wrapped_expected_rank": 1,
+      "alone_expected_score": 0.9969485402107239,
+      "wrapped_expected_score": 0.2925952970981598
+    }
+  ],
+  "negatives_chunk_only": [
+    {
+      "id": "sast-dast-difference",
+      "top1_relevance": 0.9963215589523315
+    },
+    {
+      "id": "sca-language-support",
+      "top1_relevance": 0.023065226152539253
+    },
+    {
+      "id": "iast-support",
+      "top1_relevance": 0.17752550542354584
+    },
+    {
+      "id": "release-5.0-changes",
+      "top1_relevance": 0.022542964667081833
+    },
+    {
+      "id": "negative-sparrow-1234",
+      "top1_relevance": 0.00360761652700603
+    },
+    {
+      "id": "negative-sfr-006-02",
+      "top1_relevance": 0.0011116681853309274
+    },
+    {
+      "id": "error-code-20210",
+      "top1_relevance": 0.0030634168069809675
+    },
+    {
+      "id": "error-code-401",
+      "top1_relevance": 0.0972188413143158
+    }
+  ],
+  "negatives_full_doc": [
+    {
+      "id": "sast-dast-difference",
+      "top1_relevance": 0.9915215969085693
+    },
+    {
+      "id": "sca-language-support",
+      "top1_relevance": 0.07043161988258362
+    },
+    {
+      "id": "iast-support",
+      "top1_relevance": 0.08913693577051163
+    },
+    {
+      "id": "release-5.0-changes",
+      "top1_relevance": 0.04620574414730072
+    },
+    {
+      "id": "negative-sparrow-1234",
+      "top1_relevance": 0.01621503196656704
+    },
+    {
+      "id": "negative-sfr-006-02",
+      "top1_relevance": 0.0022694687359035015
+    },
+    {
+      "id": "error-code-20210",
+      "top1_relevance": 0.003135835751891136
+    },
+    {
+      "id": "error-code-401",
+      "top1_relevance": 0.06916356086730957
+    }
+  ],
+  "baseline": {
+    "recall@1": 0.2121,
+    "recall@3": 0.3182,
+    "recall@10": 0.4167,
+    "mrr@10": 0.3727,
+    "mean_distinct_memos": 6.5333,
+    "mean_top_distance": 0.7285,
+    "p95_latency_ms": 237.6,
+    "mean_latency_ms": 120.8,
+    "negative_queries": 8,
+    "negative_confident_hits": 1,
+    "errors": 0,
+    "positive_queries": 22
+  }
+}
