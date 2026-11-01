@@ -31,6 +31,8 @@ export interface HybridSearchConfig {
 export interface HybridSearchTuningProfile {
     isCJK: boolean
     isShortDefinitionQuery: boolean
+    /** CJK query with no Latin/digit token: pg_trgm produces no usable trigrams for it. */
+    isPureCjkQuery: boolean
     vectorWeight: number
     bm25Weight: number
     similarityThreshold: number
@@ -86,11 +88,21 @@ export function resolveHybridSearchTuningProfile(
     const isShortDefinitionQuery = isShortCJKFeatureDefinitionQuery(queryText, isCJK)
     const isComparisonOrDefinition = isComparisonOrDefinitionQuery(queryText)
 
+    // pg_trgm cannot produce trigrams for Korean-only text, so the lexical arm returns arbitrary
+    // rows for pure-CJK queries. Measured against the golden set (backend/eval/offline-2026-11-01.json),
+    // zeroing that arm beat both the trgm arm and a to_tsvector('simple') replacement.
+    const hasLatinOrDigitToken = /[A-Za-z0-9]/.test(queryText)
+    const isPureCjkQuery = isCJK && !hasLatinOrDigitToken
+    const cjkLexicalWeight = isShortDefinitionQuery ? 0.65 : 0.5
+    const defaultBm25Weight = isCJK ? (isPureCjkQuery ? 0 : cjkLexicalWeight) : 0.3
+    const defaultVectorWeight = isCJK ? 1 - defaultBm25Weight : 0.7
+
     return {
         isCJK,
         isShortDefinitionQuery,
-        vectorWeight: config.vectorWeight ?? (isShortDefinitionQuery ? 0.35 : isCJK ? 0.5 : 0.7),
-        bm25Weight: config.bm25Weight ?? (isShortDefinitionQuery ? 0.65 : isCJK ? 0.5 : 0.3),
+        isPureCjkQuery,
+        vectorWeight: config.vectorWeight ?? defaultVectorWeight,
+        bm25Weight: config.bm25Weight ?? defaultBm25Weight,
         similarityThreshold: isShortDefinitionQuery
             ? Math.max(0.35, similarityThreshold - 0.1)
             : isComparisonOrDefinition
@@ -159,7 +171,9 @@ export class HybridSearchService {
                 adjustedSimilarityThreshold,
                 filters ? [filters] : undefined
             ),
-            this.bm25Search(project, queryText, searchBudget, filters ? [filters] : undefined),
+            bm25Weight > 0
+                ? this.bm25Search(project, queryText, searchBudget, filters ? [filters] : undefined)
+                : Promise.resolve([]),
         ])
         // Vector and BM25 results are already sorted by their respective scores
         const combined = this.combineScoresRRF(vectorResults, bm25Results, vectorWeight, bm25Weight)

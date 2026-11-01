@@ -14,7 +14,7 @@ describe('RerankService', () => {
         jest.restoreAllMocks()
     })
 
-    it('includes original query signal when reranking rewritten queries', async () => {
+    it('sends the rewritten query alone instead of wrapping it with the original query', async () => {
         const fetchMock = jest.fn().mockResolvedValue({
             ok: true,
             json: async () => ({
@@ -24,16 +24,15 @@ describe('RerankService', () => {
 
         global.fetch = fetchMock as unknown as typeof fetch
 
-        await RerankService.rerank('이행 진단 기능 정의 개요 목적 동작 방식', ['doc-1'], undefined, {
-            originalQuery: '이행 진단이라는 기능이 뭐야?',
-        })
+        await RerankService.rerank('이행 진단 기능 정의 개요 목적 동작 방식', ['doc-1'])
 
         expect(fetchMock).toHaveBeenCalledTimes(1)
         const [, init] = fetchMock.mock.calls[0]
         const body = JSON.parse(String(init?.body))
 
-        expect(body.query).toContain('이행 진단이라는 기능이 뭐야?')
-        expect(body.query).toContain('Rewritten retrieval query: 이행 진단 기능 정의 개요 목적 동작 방식')
+        expect(body.query).toBe('이행 진단 기능 정의 개요 목적 동작 방식')
+        expect(body.query).not.toContain('이행 진단이라는 기능이 뭐야?')
+        expect(body.query).not.toContain('Rewritten retrieval query')
     })
 
     describe('fallback when the rerank endpoint fails', () => {

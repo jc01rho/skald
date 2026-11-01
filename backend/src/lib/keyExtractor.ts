@@ -21,11 +21,11 @@ const PURE_NUMERIC_ERROR_CODE_PATTERN = /\b(\d{4,})\b/g
 
 /**
  * Pattern 1: Jira Issue Key
- * Format: PROJ-123, BUG-456
- * Regex: ^[A-Z][A-Z0-9_]+-\d+$
+ * Format: PROJ-123, BUG-456, and multi-segment codes such as SFR-006-02.
+ * Regex: ^[A-Z][A-Z0-9_]*(?:-\d+)+$
  */
 function extractJiraKeys(query: string): ExtractedKey[] {
-    const pattern = /\b([A-Z][A-Z0-9_]+-\d+)\b/g
+    const pattern = /\b([A-Z][A-Z0-9_]*(?:-\d+){1,})(?![\w-])/g
     const matches = Array.from(query.matchAll(pattern))
 
     return matches.map((match) => ({
@@ -61,11 +61,12 @@ function extractDocReferences(query: string): ExtractedKey[] {
 
 /**
  * Pattern 4: Jira Browse URL
- * Format: https://jira.example.com/browse/PROJ-123
+ * Format: https://jira.example.com/browse/PROJ-123 (also PROJ-123-45 multi-segment keys)
  * Extract issue key from URL
  */
 function extractJiraUrls(query: string): ExtractedKey[] {
-    const pattern = /https?:\/\/[a-zA-Z0-9.-]+\/browse\/([A-Z][A-Z0-9_]+-\d+)(?:[?#][^\s]*)?/g
+    const pattern =
+        /https?:\/\/[a-zA-Z0-9.-]+\/browse\/([A-Z][A-Z0-9_]*(?:-\d+){1,})(?![\w-])(?:[?#][^\s]*)?/g
     const matches = Array.from(query.matchAll(pattern))
 
     return matches.map((match) => ({

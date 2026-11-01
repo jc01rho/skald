@@ -29,6 +29,7 @@
         "backfill-wiki-scheduled": "ts-node src/scripts/backfillWikiForMemos.ts --scheduled --created-within-hours 24 --batch-size 20 --delay-ms 3000",
         "backfill-wiki-full-sweep": "ts-node src/scripts/backfillWikiForMemos.ts --full-corpus-sweep --batch-size 20 --delay-ms 3000 --limit 100",
         "cleanup-duplicate-chunks": "ts-node src/scripts/cleanupDuplicateChunks.ts",
+        "eval:golden": "ts-node src/scripts/evalGolden.ts",
         "cleanup-duplicate-chunks:execute": "ts-node src/scripts/cleanupDuplicateChunks.ts --execute",
         "spec:migration:verify": "tsx src/scripts/specMigrationVerify.ts",
         "spec:backfill": "tsx src/scripts/specOperations.ts backfill --scope-key spms:all --mode full_backfill",

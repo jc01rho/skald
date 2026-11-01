@@ -119,6 +119,10 @@ export const LLM_FALLBACK_CHAIN = (process.env.LLM_FALLBACK_CHAIN || '')
     .map((s) => s.trim())
     .filter(Boolean)
 
+// /api/v1/search: rewrite the query for the rerank arm (the original query always stays as a vector arm).
+// Disable with SEARCH_QUERY_REWRITE_ENABLED=false.
+export const SEARCH_QUERY_REWRITE_ENABLED = process.env.SEARCH_QUERY_REWRITE_ENABLED !== 'false'
+
 /**
  * Hot-reloadable LLM configuration
  * Re-reads environment variables at runtime

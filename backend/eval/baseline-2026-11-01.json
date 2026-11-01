@@ -1,0 +1,2130 @@
+{
+  "schema_version": 1,
+  "generated_at": "2026-11-01T11:57:30.570Z",
+  "base_url": "https://ui.skald.sparrow.local/api/v1",
+  "endpoint": "https://ui.skald.sparrow.local/api/v1/search",
+  "limit": 10,
+  "config": {
+    "concurrency": 1,
+    "confident_distance_threshold": 0.5
+  },
+  "golden": {
+    "version": 1,
+    "dataset": "skald production read-only snapshot 2026-11-01",
+    "created_at": "2026-11-01",
+    "project_id": "66c94d7d-e530-4b59-837e-efa496c6b265",
+    "query_count": 30
+  },
+  "metrics": {
+    "recall@1": 0.2121,
+    "recall@3": 0.3182,
+    "recall@10": 0.4167,
+    "mrr@10": 0.3727,
+    "mean_distinct_memos": 6.5333,
+    "mean_top_distance": 0.7285,
+    "p95_latency_ms": 237.6,
+    "mean_latency_ms": 120.8,
+    "negative_queries": 8,
+    "negative_confident_hits": 1,
+    "errors": 0,
+    "positive_queries": 22
+  },
+  "per_query": [
+    {
+      "id": "issue-rule-option-types",
+      "query": "이슈 검출 규칙 옵션 종류",
+      "negative": false,
+      "expected": [
+        "479d934f-4aad-452a-99e2-51620cc579f5",
+        "b9296484-4e6e-4999-bc6b-bc968e136e4f"
+      ],
+      "latency_ms": 112.2,
+      "result_count": 10,
+      "distinct_memos": 7,
+      "top_distance": 0.0007,
+      "first_relevant_rank": 1,
+      "recall_at_1": 0.5,
+      "recall_at_3": 1,
+      "recall_at_10": 1,
+      "reciprocal_rank": 1,
+      "confident_hit": null,
+      "returned": [
+        {
+          "memo_uuid": "479d934f-4aad-452a-99e2-51620cc579f5",
+          "memo_title": "이슈 검출 규칙 옵션 유형",
+          "distance": 0.0007
+        },
+        {
+          "memo_uuid": "b9296484-4e6e-4999-bc6b-bc968e136e4f",
+          "memo_title": "이슈 검출 규칙 옵션",
+          "distance": 0.0538
+        },
+        {
+          "memo_uuid": "8f9ede45-eb8b-4010-a202-2ad2f036e86a",
+          "memo_title": "이슈 검출 규칙 옵션 선택지",
+          "distance": 0.0687
+        },
+        {
+          "memo_uuid": "4dac86f9-4275-40fb-901d-c2a9f2dbc267",
+          "memo_title": "[온디맨드] 이슈 검출 규칙 파일",
+          "distance": 0.1192
+        },
+        {
+          "memo_uuid": "a6604df0-84f7-4dc4-b710-5d56e3550e2d",
+          "memo_title": "이슈 검출 규칙 옵션 설명",
+          "distance": 0.2518
+        },
+        {
+          "memo_uuid": "4dac86f9-4275-40fb-901d-c2a9f2dbc267",
+          "memo_title": "[온디맨드] 이슈 검출 규칙 파일",
+          "distance": 0.4519
+        },
+        {
+          "memo_uuid": "2bda0351-f747-409d-987c-07b3396b24a6",
+          "memo_title": "이슈 검출 규칙별 이슈 수 조회",
+          "distance": 0.7053
+        },
+        {
+          "memo_uuid": "d787da77-9a86-4886-acf0-efeccd4a0695",
+          "memo_title": "이슈 검출 규칙 옵션 값",
+          "distance": 0.7437
+        },
+        {
+          "memo_uuid": "4dac86f9-4275-40fb-901d-c2a9f2dbc267",
+          "memo_title": "[온디맨드] 이슈 검출 규칙 파일",
+          "distance": 0.8924
+        },
+        {
+          "memo_uuid": "4dac86f9-4275-40fb-901d-c2a9f2dbc267",
+          "memo_title": "[온디맨드] 이슈 검출 규칙 파일",
+          "distance": 0.9226
+        }
+      ]
+    },
+    {
+      "id": "sast-dast-difference",
+      "query": "SAST와 DAST 차이",
+      "negative": true,
+      "expected": [],
+      "latency_ms": 71.3,
+      "result_count": 10,
+      "distinct_memos": 4,
+      "top_distance": 0.0037,
+      "first_relevant_rank": null,
+      "recall_at_1": null,
+      "recall_at_3": null,
+      "recall_at_10": null,
+      "reciprocal_rank": null,
+      "confident_hit": true,
+      "returned": [
+        {
+          "memo_uuid": "76fe55d1-2016-4a7d-88d6-826b4fdda158",
+          "memo_title": "DAST to the Future_Synopsys",
+          "distance": 0.0037
+        },
+        {
+          "memo_uuid": "ccb007d8-6047-49f2-8caa-ef720a365f32",
+          "memo_title": "2022년도 제품 리뷰 (컨설팅)",
+          "distance": 0.0506
+        },
+        {
+          "memo_uuid": "76fe55d1-2016-4a7d-88d6-826b4fdda158",
+          "memo_title": "DAST to the Future_Synopsys",
+          "distance": 0.1366
+        },
+        {
+          "memo_uuid": "76fe55d1-2016-4a7d-88d6-826b4fdda158",
+          "memo_title": "DAST to the Future_Synopsys",
+          "distance": 0.2229
+        },
+        {
+          "memo_uuid": "76fe55d1-2016-4a7d-88d6-826b4fdda158",
+          "memo_title": "DAST to the Future_Synopsys",
+          "distance": 0.693
+        },
+        {
+          "memo_uuid": "6a7c781b-229d-48dd-9e8e-95b28eafabb1",
+          "memo_title": "클라우드와 설치형 제품 기능 비교",
+          "distance": 0.9834
+        },
+        {
+          "memo_uuid": "ccb007d8-6047-49f2-8caa-ef720a365f32",
+          "memo_title": "2022년도 제품 리뷰 (컨설팅)",
+          "distance": 0.9845
+        },
+        {
+          "memo_uuid": "3dca5f4d-45a0-4801-9b51-ffb2120d50e5",
+          "memo_title": "2023 2Q 경쟁사 동향 조사 보고서",
+          "distance": 0.9849
+        },
+        {
+          "memo_uuid": "76fe55d1-2016-4a7d-88d6-826b4fdda158",
+          "memo_title": "DAST to the Future_Synopsys",
+          "distance": 0.9898
+        },
+        {
+          "memo_uuid": "76fe55d1-2016-4a7d-88d6-826b4fdda158",
+          "memo_title": "DAST to the Future_Synopsys",
+          "distance": 0.9994
+        }
+      ]
+    },
+    {
+      "id": "sca-language-support",
+      "query": "SCA 지원 언어",
+      "negative": true,
+      "expected": [],
+      "latency_ms": 86.2,
+      "result_count": 10,
+      "distinct_memos": 8,
+      "top_distance": 0.98,
+      "first_relevant_rank": null,
+      "recall_at_1": null,
+      "recall_at_3": null,
+      "recall_at_10": null,
+      "reciprocal_rank": null,
+      "confident_hit": false,
+      "returned": [
+        {
+          "memo_uuid": "07f7ef72-4ad7-411f-b811-d14607968523",
+          "memo_title": "SPARROW-3107 런타임 분석 지원 언어 확장: Javascript",
+          "distance": 0.98
+        },
+        {
+          "memo_uuid": "39363324-0317-42ef-9178-d443915ee51a",
+          "memo_title": "SPSAST-2192 인크리멘탈 분석 기능을 모든 언어에서 지원하도록 확장",
+          "distance": 0.9899
+        },
+        {
+          "memo_uuid": "ea81649e-b4f8-429b-aec3-49e08ec22b90",
+          "memo_title": "[유통 플랫폼] 언어",
+          "distance": 0.9908
+        },
+        {
+          "memo_uuid": "e335c7ba-2252-4ffd-8670-0a67c9e97a2e",
+          "memo_title": "SPARROW-780 IDE 플러그인 지원: VS Code",
+          "distance": 0.9941
+        },
+        {
+          "memo_uuid": "39363324-0317-42ef-9178-d443915ee51a",
+          "memo_title": "SPSAST-2192 인크리멘탈 분석 기능을 모든 언어에서 지원하도록 확장",
+          "distance": 0.9974
+        },
+        {
+          "memo_uuid": "4a394f9b-5a8b-42b3-99bd-203de2537dba",
+          "memo_title": "SPARROW-782 Go 언어 분석 지원",
+          "distance": 0.9991
+        },
+        {
+          "memo_uuid": "7091b7f4-3ad3-43bf-9282-0e3504972348",
+          "memo_title": "SPARROW-9062 일문 리소스 지원",
+          "distance": 0.9993
+        },
+        {
+          "memo_uuid": "e160339f-f2f5-4b6b-83b2-38ea927b75b2",
+          "memo_title": "[클라우드] 클라이언트 언어",
+          "distance": 0.9996
+        },
+        {
+          "memo_uuid": "7091b7f4-3ad3-43bf-9282-0e3504972348",
+          "memo_title": "SPARROW-9062 일문 리소스 지원",
+          "distance": 0.9996
+        },
+        {
+          "memo_uuid": "cf5fc9b6-25ee-444e-b21d-85982b263f7d",
+          "memo_title": "지원 중인 분석 언어",
+          "distance": 0.9998
+        }
+      ]
+    },
+    {
+      "id": "iast-support",
+      "query": "IAST 지원 여부",
+      "negative": true,
+      "expected": [],
+      "latency_ms": 79.1,
+      "result_count": 10,
+      "distinct_memos": 9,
+      "top_distance": 0.8225,
+      "first_relevant_rank": null,
+      "recall_at_1": null,
+      "recall_at_3": null,
+      "recall_at_10": null,
+      "reciprocal_rank": null,
+      "confident_hit": false,
+      "returned": [
+        {
+          "memo_uuid": "df8ae9c8-5871-43e2-85ed-b4548006914f",
+          "memo_title": "SPARROW-10646 [DAST] Log4Shell(CVE-2021-44228) 기반 JNDI Injection 검출 로직 구현",
+          "distance": 0.8225
+        },
+        {
+          "memo_uuid": "932fe3fa-8870-49dd-a957-4b3f3a10fa68",
+          "memo_title": "SPARROW-6392 IaC 분석 지원",
+          "distance": 0.9719
+        },
+        {
+          "memo_uuid": "df8ae9c8-5871-43e2-85ed-b4548006914f",
+          "memo_title": "SPARROW-10646 [DAST] Log4Shell(CVE-2021-44228) 기반 JNDI Injection 검출 로직 구현",
+          "distance": 0.9927
+        },
+        {
+          "memo_uuid": "dd84554a-473b-49a0-ba69-c42a7db0a596",
+          "memo_title": "SPARROW-5965 클라이언트 자동 업데이트",
+          "distance": 0.9981
+        },
+        {
+          "memo_uuid": "6e374d2d-8148-439d-b516-86329bfe1182",
+          "memo_title": "SPARROW-7568 IntelliJ 2025.x 버전 플러그인 지원",
+          "distance": 0.9991
+        },
+        {
+          "memo_uuid": "2da4ee97-cb0b-49c9-bfb0-f898717477f1",
+          "memo_title": "SPARROW-6206 결재 요청 관련 웹훅 이벤트 추가",
+          "distance": 0.9993
+        },
+        {
+          "memo_uuid": "6e00ece0-cd12-4c5b-914e-146bd40254d8",
+          "memo_title": "SPSAST-3617 iStudio 플러그인 분석 후 형상관리 요청 멈춤 현상",
+          "distance": 0.9995
+        },
+        {
+          "memo_uuid": "34a2cb22-5336-4ea8-8258-a7a764a5af72",
+          "memo_title": "SPARROW-10649 [신세계I&C] DAST PDF 보고서 개선 요청 사항",
+          "distance": 0.9995
+        },
+        {
+          "memo_uuid": "b4c64e77-4c69-46ea-8e1b-5aef1be90431",
+          "memo_title": "SPARROW-6393 OWASP API Top10 지원",
+          "distance": 0.9999
+        },
+        {
+          "memo_uuid": "f802fa98-0244-41c3-9df8-96e644073d01",
+          "memo_title": "SPARROW-3499 분석 결과 비교하기 지원",
+          "distance": 0.9999
+        }
+      ]
+    },
+    {
+      "id": "license-types-and-limits",
+      "query": "라이선스 종류와 제약",
+      "negative": false,
+      "expected": [
+        "3e9233a5-30ca-426e-93e4-f5b0d8f2ce51",
+        "f2ff1254-49d7-4330-aa22-976700f10400"
+      ],
+      "latency_ms": 85.6,
+      "result_count": 10,
+      "distinct_memos": 8,
+      "top_distance": 0.9701,
+      "first_relevant_rank": null,
+      "recall_at_1": 0,
+      "recall_at_3": 0,
+      "recall_at_10": 0,
+      "reciprocal_rank": 0,
+      "confident_hit": null,
+      "returned": [
+        {
+          "memo_uuid": "fe1f1c59-ac66-4944-9ee2-804ec62a0add",
+          "memo_title": "오픈소스 라이선스 제약 사항",
+          "distance": 0.9701
+        },
+        {
+          "memo_uuid": "a712a92a-a34e-4b32-a7c2-7505ea703006",
+          "memo_title": "라이선스 제한 대상 기능 목록",
+          "distance": 0.9706
+        },
+        {
+          "memo_uuid": "a2448b05-38c8-4613-bf45-1ac8d188efbb",
+          "memo_title": "라이선스 제한 대상 기능",
+          "distance": 0.9901
+        },
+        {
+          "memo_uuid": "396c3966-3dd0-42c6-958d-152b672b3ff8",
+          "memo_title": "[유통 플랫폼] 제품 라이선스 정보 조회",
+          "distance": 0.9924
+        },
+        {
+          "memo_uuid": "7f903e82-fc49-4196-9c5c-4607d16ca292",
+          "memo_title": "제품 라이선스 정보 조회",
+          "distance": 0.9945
+        },
+        {
+          "memo_uuid": "b78c052a-3be6-4627-8011-9e9c5f15b086",
+          "memo_title": "라이선스 제한 대상 기능 이름",
+          "distance": 0.9975
+        },
+        {
+          "memo_uuid": "fe1f1c59-ac66-4944-9ee2-804ec62a0add",
+          "memo_title": "오픈소스 라이선스 제약 사항",
+          "distance": 0.9986
+        },
+        {
+          "memo_uuid": "2eea56f4-21e9-49d5-9260-069e84ceb6ed",
+          "memo_title": "[유통 플랫폼] 전체 라이선스 정보 조회",
+          "distance": 0.999
+        },
+        {
+          "memo_uuid": "fe1f1c59-ac66-4944-9ee2-804ec62a0add",
+          "memo_title": "오픈소스 라이선스 제약 사항",
+          "distance": 0.9994
+        },
+        {
+          "memo_uuid": "98d1315d-a09a-4e72-aad6-e5f93769b8f9",
+          "memo_title": "위반 사항 목록 조회",
+          "distance": 0.9994
+        }
+      ]
+    },
+    {
+      "id": "release-5.0-changes",
+      "query": "릴리스 버전 5.0 주요 변경사항",
+      "negative": true,
+      "expected": [],
+      "latency_ms": 79.5,
+      "result_count": 10,
+      "distinct_memos": 7,
+      "top_distance": 0.9775,
+      "first_relevant_rank": null,
+      "recall_at_1": null,
+      "recall_at_3": null,
+      "recall_at_10": null,
+      "reciprocal_rank": null,
+      "confident_hit": false,
+      "returned": [
+        {
+          "memo_uuid": "e432ddbe-319e-4d67-ba90-02d0268810da",
+          "memo_title": "Sparrow SAST 5.29.0 릴리즈 현황",
+          "distance": 0.9775
+        },
+        {
+          "memo_uuid": "a1c330cd-1a9c-4706-a16b-193accdc3559",
+          "memo_title": "Sparrow SAST 5.31.3 릴리즈 현황",
+          "distance": 0.9953
+        },
+        {
+          "memo_uuid": "a1c330cd-1a9c-4706-a16b-193accdc3559",
+          "memo_title": "Sparrow SAST 5.31.3 릴리즈 현황",
+          "distance": 0.9999
+        },
+        {
+          "memo_uuid": "2eaea0c9-2b05-4e9b-a20d-90a93999a58a",
+          "memo_title": "Sparrow SAST 5.30.0 릴리즈 현황",
+          "distance": 0.9999
+        },
+        {
+          "memo_uuid": "d3d437fa-7397-4609-ad54-cc7ee0579963",
+          "memo_title": "Sparrow SAST 5.30.1 릴리즈 현황",
+          "distance": 0.9999
+        },
+        {
+          "memo_uuid": "81d86c6f-754b-418a-9834-479f42494223",
+          "memo_title": "Sparrow SAST 5.31.0 릴리즈 현황",
+          "distance": 0.9999
+        },
+        {
+          "memo_uuid": "5cba5f99-c8ca-4db6-8a0a-1d125d403058",
+          "memo_title": "Sparrow SAST 5.31.2 릴리즈 현황",
+          "distance": 0.9999
+        },
+        {
+          "memo_uuid": "5cba5f99-c8ca-4db6-8a0a-1d125d403058",
+          "memo_title": "Sparrow SAST 5.31.2 릴리즈 현황",
+          "distance": 0.9999
+        },
+        {
+          "memo_uuid": "52ea2152-d5db-4e67-a13b-086a09cf4acd",
+          "memo_title": "Sparrow Enterprise 2505.1 릴리즈 현황",
+          "distance": 0.9999
+        },
+        {
+          "memo_uuid": "2eaea0c9-2b05-4e9b-a20d-90a93999a58a",
+          "memo_title": "Sparrow SAST 5.30.0 릴리즈 현황",
+          "distance": 0.9999
+        }
+      ]
+    },
+    {
+      "id": "negative-sparrow-1234",
+      "query": "SPARROW-1234 이슈 내용",
+      "negative": true,
+      "expected": [],
+      "latency_ms": 108.8,
+      "result_count": 10,
+      "distinct_memos": 5,
+      "top_distance": 0.9982,
+      "first_relevant_rank": null,
+      "recall_at_1": null,
+      "recall_at_3": null,
+      "recall_at_10": null,
+      "reciprocal_rank": null,
+      "confident_hit": false,
+      "returned": [
+        {
+          "memo_uuid": "6e741487-0f9b-4aac-9a30-9c5e967409de",
+          "memo_title": "Sparrow Enterprise 2312.2 릴리즈 현황",
+          "distance": 0.9982
+        },
+        {
+          "memo_uuid": "cdf7ba7b-bfd7-4252-9532-da3ea7c5081c",
+          "memo_title": "Sparrow Enterprise 2404.1 릴리즈 현황",
+          "distance": 0.9991
+        },
+        {
+          "memo_uuid": "6e741487-0f9b-4aac-9a30-9c5e967409de",
+          "memo_title": "Sparrow Enterprise 2312.2 릴리즈 현황",
+          "distance": 0.9995
+        },
+        {
+          "memo_uuid": "323642aa-d93c-4c42-b2db-ff6866325ab8",
+          "memo_title": "Sparrow Enterprise 2504.1 릴리즈 현황",
+          "distance": 0.9995
+        },
+        {
+          "memo_uuid": "0f316599-6690-492c-b222-03ea5ce7b55b",
+          "memo_title": "Sparrow Enterprise 2504.2 릴리즈 현황",
+          "distance": 0.9995
+        },
+        {
+          "memo_uuid": "0f316599-6690-492c-b222-03ea5ce7b55b",
+          "memo_title": "Sparrow Enterprise 2504.2 릴리즈 현황",
+          "distance": 0.9996
+        },
+        {
+          "memo_uuid": "0f316599-6690-492c-b222-03ea5ce7b55b",
+          "memo_title": "Sparrow Enterprise 2504.2 릴리즈 현황",
+          "distance": 0.9997
+        },
+        {
+          "memo_uuid": "323642aa-d93c-4c42-b2db-ff6866325ab8",
+          "memo_title": "Sparrow Enterprise 2504.1 릴리즈 현황",
+          "distance": 0.9998
+        },
+        {
+          "memo_uuid": "0f316599-6690-492c-b222-03ea5ce7b55b",
+          "memo_title": "Sparrow Enterprise 2504.2 릴리즈 현황",
+          "distance": 0.9999
+        },
+        {
+          "memo_uuid": "1a044f11-c308-46f0-b6d4-e792961cf27f",
+          "memo_title": "Sparrow Enterprise 2604.1 릴리즈 현황",
+          "distance": 0.9999
+        }
+      ]
+    },
+    {
+      "id": "negative-sfr-006-02",
+      "query": "SFR-006-02 기능 요구사항",
+      "negative": true,
+      "expected": [],
+      "latency_ms": 97.8,
+      "result_count": 10,
+      "distinct_memos": 8,
+      "top_distance": 0.9998,
+      "first_relevant_rank": null,
+      "recall_at_1": null,
+      "recall_at_3": null,
+      "recall_at_10": null,
+      "reciprocal_rank": null,
+      "confident_hit": false,
+      "returned": [
+        {
+          "memo_uuid": "8c06b4ae-ede7-4c1b-b53d-c62b4c8efd17",
+          "memo_title": "SPARROW-11071 컴포넌트 기준 보고서 출력 기능 필요",
+          "distance": 0.9998
+        },
+        {
+          "memo_uuid": "2589462b-04be-48c3-b20e-8423531065cc",
+          "memo_title": "SPARROW-6005 [서울대학교](SFR-002-01)사용자 문의 게시판 제공",
+          "distance": 0.9999
+        },
+        {
+          "memo_uuid": "380e8c06-5a8d-4b47-9de9-b2e442cec01a",
+          "memo_title": "SPARROW-9667 주요정보통신기반시설 취약점 분석·평가 기준 2026 지원",
+          "distance": 0.9999
+        },
+        {
+          "memo_uuid": "b24aebd6-401a-4d2d-8736-f34b904cd7b7",
+          "memo_title": "SPARROW-6869 보고서 개선 요청",
+          "distance": 0.9999
+        },
+        {
+          "memo_uuid": "8c06b4ae-ede7-4c1b-b53d-c62b4c8efd17",
+          "memo_title": "SPARROW-11071 컴포넌트 기준 보고서 출력 기능 필요",
+          "distance": 0.9999
+        },
+        {
+          "memo_uuid": "5f7b4f31-e7ae-411a-920e-62767a556894",
+          "memo_title": "SPARROW-4938 결재선 결재 단계에 조건 추가",
+          "distance": 0.9999
+        },
+        {
+          "memo_uuid": "5f7b4f31-e7ae-411a-920e-62767a556894",
+          "memo_title": "SPARROW-4938 결재선 결재 단계에 조건 추가",
+          "distance": 0.9999
+        },
+        {
+          "memo_uuid": "18e6ac4d-2d1a-4f68-a067-0d34d369edf6",
+          "memo_title": "SPARROW-3560 NIS SBOM표준 (v0.8) (.pdf) 내보낸 후 항목이 없을 때 문구 지원",
+          "distance": 0.9999
+        },
+        {
+          "memo_uuid": "ae5432e8-dc57-410a-bf02-6d64d7f07f7f",
+          "memo_title": "[유통 플랫폼] 프로젝트 목록 조회",
+          "distance": 0.9999
+        },
+        {
+          "memo_uuid": "35904cee-b32b-428f-aa18-1ba39a6442b1",
+          "memo_title": "SPARROW-9826 SAST, SCA 전처리 기능 분리",
+          "distance": 0.9999
+        }
+      ]
+    },
+    {
+      "id": "error-code-20210",
+      "query": "에러코드 20210 원인",
+      "negative": true,
+      "expected": [],
+      "latency_ms": 87.1,
+      "result_count": 10,
+      "distinct_memos": 6,
+      "top_distance": 0.9938,
+      "first_relevant_rank": null,
+      "recall_at_1": null,
+      "recall_at_3": null,
+      "recall_at_10": null,
+      "reciprocal_rank": null,
+      "confident_hit": false,
+      "returned": [
+        {
+          "memo_uuid": "9eb39a36-9b07-4e8a-b653-db5e52355a9b",
+          "memo_title": "SPARROW-11859 [플러그인] 2026.2.2 플러그인 설치 시 오류 발생",
+          "distance": 0.9938
+        },
+        {
+          "memo_uuid": "b69d14cb-cff9-417c-a59e-55b1c27526e5",
+          "memo_title": "SPARROW-10282 결재 관련 감사기록 상세가 과거 시점의 리소스 값으로 표시",
+          "distance": 0.9984
+        },
+        {
+          "memo_uuid": "3314dc14-8953-4902-9f61-8e682e111070",
+          "memo_title": "SPARROW-12005 특정 조건에서 NPE 발생",
+          "distance": 0.9992
+        },
+        {
+          "memo_uuid": "32dd92a0-0f82-400c-802c-2e86cb51f9d9",
+          "memo_title": "SPARROW-3759 binary TC 분석 시 메모리 오류 발생하는 현상",
+          "distance": 0.9998
+        },
+        {
+          "memo_uuid": "07a3fc2b-efa9-4ba8-833c-f5b03f4ef0d8",
+          "memo_title": "클라우드 에러 코드 참고용 자료",
+          "distance": 0.9998
+        },
+        {
+          "memo_uuid": "67b846ce-31d0-4aaa-acec-d1d5a2e5e850",
+          "memo_title": "SPARROW-9546 [티키테케] util/testcode SAST 분석 시 검출 오류",
+          "distance": 0.9999
+        },
+        {
+          "memo_uuid": "07a3fc2b-efa9-4ba8-833c-f5b03f4ef0d8",
+          "memo_title": "클라우드 에러 코드 참고용 자료",
+          "distance": 0.9999
+        },
+        {
+          "memo_uuid": "07a3fc2b-efa9-4ba8-833c-f5b03f4ef0d8",
+          "memo_title": "클라우드 에러 코드 참고용 자료",
+          "distance": 0.9999
+        },
+        {
+          "memo_uuid": "07a3fc2b-efa9-4ba8-833c-f5b03f4ef0d8",
+          "memo_title": "클라우드 에러 코드 참고용 자료",
+          "distance": 0.9999
+        },
+        {
+          "memo_uuid": "07a3fc2b-efa9-4ba8-833c-f5b03f4ef0d8",
+          "memo_title": "클라우드 에러 코드 참고용 자료",
+          "distance": 0.9999
+        }
+      ]
+    },
+    {
+      "id": "error-code-401",
+      "query": "오류코드 401 해결 방법",
+      "negative": true,
+      "expected": [],
+      "latency_ms": 103.3,
+      "result_count": 10,
+      "distinct_memos": 4,
+      "top_distance": 0.903,
+      "first_relevant_rank": null,
+      "recall_at_1": null,
+      "recall_at_3": null,
+      "recall_at_10": null,
+      "reciprocal_rank": null,
+      "confident_hit": false,
+      "returned": [
+        {
+          "memo_uuid": "c1315e50-c6ff-407b-b1d4-09b66d74ba00",
+          "memo_title": "SPARROW-11816 직접 의존성 저장소 반입 401 에러에도 요청 자체가 성공하는 현상",
+          "distance": 0.903
+        },
+        {
+          "memo_uuid": "c1315e50-c6ff-407b-b1d4-09b66d74ba00",
+          "memo_title": "SPARROW-11816 직접 의존성 저장소 반입 401 에러에도 요청 자체가 성공하는 현상",
+          "distance": 0.9476
+        },
+        {
+          "memo_uuid": "c1315e50-c6ff-407b-b1d4-09b66d74ba00",
+          "memo_title": "SPARROW-11816 직접 의존성 저장소 반입 401 에러에도 요청 자체가 성공하는 현상",
+          "distance": 0.9848
+        },
+        {
+          "memo_uuid": "c1315e50-c6ff-407b-b1d4-09b66d74ba00",
+          "memo_title": "SPARROW-11816 직접 의존성 저장소 반입 401 에러에도 요청 자체가 성공하는 현상",
+          "distance": 0.9938
+        },
+        {
+          "memo_uuid": "c1315e50-c6ff-407b-b1d4-09b66d74ba00",
+          "memo_title": "SPARROW-11816 직접 의존성 저장소 반입 401 에러에도 요청 자체가 성공하는 현상",
+          "distance": 0.9949
+        },
+        {
+          "memo_uuid": "c112ad40-28bf-48e6-a33a-cb378801ea64",
+          "memo_title": "[온디맨드] 결과 코드",
+          "distance": 0.9987
+        },
+        {
+          "memo_uuid": "f1e157f6-273f-47fd-8c54-85bd0c2d864b",
+          "memo_title": "자동 로그인 실패 메시지로 로그인을 할 수 없습니다.",
+          "distance": 0.9995
+        },
+        {
+          "memo_uuid": "c1315e50-c6ff-407b-b1d4-09b66d74ba00",
+          "memo_title": "SPARROW-11816 직접 의존성 저장소 반입 401 에러에도 요청 자체가 성공하는 현상",
+          "distance": 0.9995
+        },
+        {
+          "memo_uuid": "c1315e50-c6ff-407b-b1d4-09b66d74ba00",
+          "memo_title": "SPARROW-11816 직접 의존성 저장소 반입 401 에러에도 요청 자체가 성공하는 현상",
+          "distance": 0.9997
+        },
+        {
+          "memo_uuid": "07a3fc2b-efa9-4ba8-833c-f5b03f4ef0d8",
+          "memo_title": "클라우드 에러 코드 참고용 자료",
+          "distance": 0.9998
+        }
+      ]
+    },
+    {
+      "id": "sparrow-properties-metric",
+      "query": "sparrow.properties 메트릭 설정 방법",
+      "negative": false,
+      "expected": [
+        "e9290c20-0f55-47fc-9eed-6bffbe346f2f"
+      ],
+      "latency_ms": 151.9,
+      "result_count": 10,
+      "distinct_memos": 2,
+      "top_distance": 0.9997,
+      "first_relevant_rank": null,
+      "recall_at_1": 0,
+      "recall_at_3": 0,
+      "recall_at_10": 0,
+      "reciprocal_rank": 0,
+      "confident_hit": null,
+      "returned": [
+        {
+          "memo_uuid": "6e486d04-b527-4eb5-a5e6-ac6dbe53fa3d",
+          "memo_title": "Sparrow Enterprise sparrow.properties 설정 키 전체 목록",
+          "distance": 0.9997
+        },
+        {
+          "memo_uuid": "6e486d04-b527-4eb5-a5e6-ac6dbe53fa3d",
+          "memo_title": "Sparrow Enterprise sparrow.properties 설정 키 전체 목록",
+          "distance": 0.9998
+        },
+        {
+          "memo_uuid": "6e486d04-b527-4eb5-a5e6-ac6dbe53fa3d",
+          "memo_title": "Sparrow Enterprise sparrow.properties 설정 키 전체 목록",
+          "distance": 0.9998
+        },
+        {
+          "memo_uuid": "70e71fe8-a60b-4f5c-b335-8fa7e4885a74",
+          "memo_title": "sparrow.properties 옵션 목록 (2608.1 업데이트)",
+          "distance": 0.9999
+        },
+        {
+          "memo_uuid": "70e71fe8-a60b-4f5c-b335-8fa7e4885a74",
+          "memo_title": "sparrow.properties 옵션 목록 (2608.1 업데이트)",
+          "distance": 0.9999
+        },
+        {
+          "memo_uuid": "70e71fe8-a60b-4f5c-b335-8fa7e4885a74",
+          "memo_title": "sparrow.properties 옵션 목록 (2608.1 업데이트)",
+          "distance": 0.9999
+        },
+        {
+          "memo_uuid": "70e71fe8-a60b-4f5c-b335-8fa7e4885a74",
+          "memo_title": "sparrow.properties 옵션 목록 (2608.1 업데이트)",
+          "distance": 0.9999
+        },
+        {
+          "memo_uuid": "70e71fe8-a60b-4f5c-b335-8fa7e4885a74",
+          "memo_title": "sparrow.properties 옵션 목록 (2608.1 업데이트)",
+          "distance": 0.9999
+        },
+        {
+          "memo_uuid": "6e486d04-b527-4eb5-a5e6-ac6dbe53fa3d",
+          "memo_title": "Sparrow Enterprise sparrow.properties 설정 키 전체 목록",
+          "distance": 0.9999
+        },
+        {
+          "memo_uuid": "6e486d04-b527-4eb5-a5e6-ac6dbe53fa3d",
+          "memo_title": "Sparrow Enterprise sparrow.properties 설정 키 전체 목록",
+          "distance": 0.9999
+        }
+      ]
+    },
+    {
+      "id": "checker-rule-file",
+      "query": "체커 규칙 파일 작성 방법",
+      "negative": false,
+      "expected": [
+        "4dac86f9-4275-40fb-901d-c2a9f2dbc267"
+      ],
+      "latency_ms": 77,
+      "result_count": 10,
+      "distinct_memos": 6,
+      "top_distance": 0.6545,
+      "first_relevant_rank": 5,
+      "recall_at_1": 0,
+      "recall_at_3": 0,
+      "recall_at_10": 1,
+      "reciprocal_rank": 0.2,
+      "confident_hit": null,
+      "returned": [
+        {
+          "memo_uuid": "b38fd9ad-38d9-438c-945b-d3117a3c1ed4",
+          "memo_title": "이슈 검출 규칙 파일 다운로드 API",
+          "distance": 0.6545
+        },
+        {
+          "memo_uuid": "2461c290-168e-4847-80e6-081f144f5c13",
+          "memo_title": "이슈 검출 규칙 가져오기 파일",
+          "distance": 0.9747
+        },
+        {
+          "memo_uuid": "e2e74282-6c53-4745-a76d-87ede01d10f3",
+          "memo_title": "SPARROW-6387 설정 파일에 기록된 하드코딩된 중요 정보 검출 규칙 지원",
+          "distance": 0.9874
+        },
+        {
+          "memo_uuid": "b38fd9ad-38d9-438c-945b-d3117a3c1ed4",
+          "memo_title": "이슈 검출 규칙 파일 다운로드 API",
+          "distance": 0.9951
+        },
+        {
+          "memo_uuid": "4dac86f9-4275-40fb-901d-c2a9f2dbc267",
+          "memo_title": "[온디맨드] 이슈 검출 규칙 파일",
+          "distance": 0.9961
+        },
+        {
+          "memo_uuid": "173355ca-fe7c-48f1-988d-cf616d4cf6ef",
+          "memo_title": "보고서 템플릿",
+          "distance": 0.9973
+        },
+        {
+          "memo_uuid": "b38fd9ad-38d9-438c-945b-d3117a3c1ed4",
+          "memo_title": "이슈 검출 규칙 파일 다운로드 API",
+          "distance": 0.9987
+        },
+        {
+          "memo_uuid": "db27985a-c202-4f94-8f45-639fb6f7f1fe",
+          "memo_title": "SPSAST-2589 엔씨소프트 체커 세부 옵션 정규식 요청",
+          "distance": 0.999
+        },
+        {
+          "memo_uuid": "4dac86f9-4275-40fb-901d-c2a9f2dbc267",
+          "memo_title": "[온디맨드] 이슈 검출 규칙 파일",
+          "distance": 0.9999
+        },
+        {
+          "memo_uuid": "4dac86f9-4275-40fb-901d-c2a9f2dbc267",
+          "memo_title": "[온디맨드] 이슈 검출 규칙 파일",
+          "distance": 0.9999
+        }
+      ]
+    },
+    {
+      "id": "enterprise-backend-error-codes",
+      "query": "엔터프라이즈 백엔드 에러코드 목록",
+      "negative": false,
+      "expected": [
+        "b95c982e-28e4-4da5-986a-5af5daef4efd",
+        "c7bdc5ea-d6ce-4fda-8493-ad968bf9b61d"
+      ],
+      "latency_ms": 70.9,
+      "result_count": 10,
+      "distinct_memos": 7,
+      "top_distance": 0.0336,
+      "first_relevant_rank": 3,
+      "recall_at_1": 0,
+      "recall_at_3": 0.5,
+      "recall_at_10": 0.5,
+      "reciprocal_rank": 0.3333,
+      "confident_hit": null,
+      "returned": [
+        {
+          "memo_uuid": "eff529b3-c354-4d94-8ab7-8ee65174c6e9",
+          "memo_title": "Sparrow Enterprise 2402.3 릴리즈 현황",
+          "distance": 0.0336
+        },
+        {
+          "memo_uuid": "2c512b03-d87f-462e-9f65-30254e7ce6cb",
+          "memo_title": "Sparrow Enterprise 2606.1.2 릴리즈 현황",
+          "distance": 0.9336
+        },
+        {
+          "memo_uuid": "c7bdc5ea-d6ce-4fda-8493-ad968bf9b61d",
+          "memo_title": "Sparrow enterprise CLI 오류코드",
+          "distance": 0.9736
+        },
+        {
+          "memo_uuid": "0716e7a5-5d2d-4046-a593-ab16618fd4a0",
+          "memo_title": "SPARROW-11920 원인미상의 백엔드 다운",
+          "distance": 0.9955
+        },
+        {
+          "memo_uuid": "93461da5-6489-4316-991c-553178733841",
+          "memo_title": "Sparrow Enterprise 2605.1.SKB 릴리즈 현황",
+          "distance": 0.9963
+        },
+        {
+          "memo_uuid": "9aeb72c7-9ff6-4500-a10c-a0c869ac425b",
+          "memo_title": "Sparrow Enterprise 2601.2 릴리즈 현황",
+          "distance": 0.9982
+        },
+        {
+          "memo_uuid": "c7bdc5ea-d6ce-4fda-8493-ad968bf9b61d",
+          "memo_title": "Sparrow enterprise CLI 오류코드",
+          "distance": 0.9983
+        },
+        {
+          "memo_uuid": "93461da5-6489-4316-991c-553178733841",
+          "memo_title": "Sparrow Enterprise 2605.1.SKB 릴리즈 현황",
+          "distance": 0.9984
+        },
+        {
+          "memo_uuid": "c7bdc5ea-d6ce-4fda-8493-ad968bf9b61d",
+          "memo_title": "Sparrow enterprise CLI 오류코드",
+          "distance": 0.9988
+        },
+        {
+          "memo_uuid": "655e566d-36e8-48a1-82e6-c92d8b5ae63a",
+          "memo_title": "Sparrow Enterprise 2607.1 릴리즈 현황",
+          "distance": 0.9989
+        }
+      ]
+    },
+    {
+      "id": "report-export",
+      "query": "점검 결과 리포트 내보내기 방법",
+      "negative": false,
+      "expected": [
+        "d3bb184d-c693-4e3a-8214-d40fb7e5e505",
+        "cb311441-1c32-43c8-95b2-70c008a8d055"
+      ],
+      "latency_ms": 104.1,
+      "result_count": 10,
+      "distinct_memos": 7,
+      "top_distance": 0.9287,
+      "first_relevant_rank": 1,
+      "recall_at_1": 0.5,
+      "recall_at_3": 0.5,
+      "recall_at_10": 0.5,
+      "reciprocal_rank": 1,
+      "confident_hit": null,
+      "returned": [
+        {
+          "memo_uuid": "cb311441-1c32-43c8-95b2-70c008a8d055",
+          "memo_title": "분석 결과 내보내기",
+          "distance": 0.9287
+        },
+        {
+          "memo_uuid": "abaaa9a9-c171-4098-b52d-629fd3528a09",
+          "memo_title": "최근 분석 상세 보고서 내보내기",
+          "distance": 0.9452
+        },
+        {
+          "memo_uuid": "2c0d757f-94d3-4be7-855c-06e6d34e8cd4",
+          "memo_title": "분석 상세 보고서 내보내기",
+          "distance": 0.9482
+        },
+        {
+          "memo_uuid": "abaaa9a9-c171-4098-b52d-629fd3528a09",
+          "memo_title": "최근 분석 상세 보고서 내보내기",
+          "distance": 0.95
+        },
+        {
+          "memo_uuid": "8df4d400-b45e-4280-8f54-c3eb6ba8e7ae",
+          "memo_title": "프로젝트 내 상세 보고서 내보내기",
+          "distance": 0.9691
+        },
+        {
+          "memo_uuid": "2c0d757f-94d3-4be7-855c-06e6d34e8cd4",
+          "memo_title": "분석 상세 보고서 내보내기",
+          "distance": 0.9833
+        },
+        {
+          "memo_uuid": "2545ddb6-909a-41b1-8b96-b1d6144a3361",
+          "memo_title": "감사 기록 내보내기",
+          "distance": 0.9928
+        },
+        {
+          "memo_uuid": "58186188-d7b2-4e3c-ad10-b0c88b17ad49",
+          "memo_title": "분석 상세 보고서 내보내기",
+          "distance": 0.9998
+        },
+        {
+          "memo_uuid": "2c0d757f-94d3-4be7-855c-06e6d34e8cd4",
+          "memo_title": "분석 상세 보고서 내보내기",
+          "distance": 0.9998
+        },
+        {
+          "memo_uuid": "68987f74-394f-41c7-a284-3fc2cb1753c8",
+          "memo_title": "최근 분석 상세 보고서 내보내기",
+          "distance": 0.9998
+        }
+      ]
+    },
+    {
+      "id": "defect-severity",
+      "query": "결함 심각도 기준",
+      "negative": false,
+      "expected": [
+        "0cc648d4-d520-4e89-a16d-b92d97af09a7",
+        "b317f5d3-63e7-4fa3-9632-58bc7c598662",
+        "0756bfc8-be18-4440-a977-1f7f7846aa1b"
+      ],
+      "latency_ms": 123.2,
+      "result_count": 10,
+      "distinct_memos": 9,
+      "top_distance": 0.9931,
+      "first_relevant_rank": 1,
+      "recall_at_1": 0.3333,
+      "recall_at_3": 0.6667,
+      "recall_at_10": 1,
+      "reciprocal_rank": 1,
+      "confident_hit": null,
+      "returned": [
+        {
+          "memo_uuid": "0cc648d4-d520-4e89-a16d-b92d97af09a7",
+          "memo_title": "체커 위험도 기준을 알고 싶습니다.",
+          "distance": 0.9931
+        },
+        {
+          "memo_uuid": "0756bfc8-be18-4440-a977-1f7f7846aa1b",
+          "memo_title": "컴포넌트 취약점 심각도 단계",
+          "distance": 0.9935
+        },
+        {
+          "memo_uuid": "a08fc96e-d855-4dbc-b5a4-04ee10e84587",
+          "memo_title": "이슈의 위험도 기준",
+          "distance": 0.9938
+        },
+        {
+          "memo_uuid": "7e335bc7-0d7f-41b8-a68b-187e38545eda",
+          "memo_title": "위반 위험도",
+          "distance": 0.9968
+        },
+        {
+          "memo_uuid": "2d6bbcc1-5f88-4216-ab73-6aca565356c6",
+          "memo_title": "CVSS 점수",
+          "distance": 0.9979
+        },
+        {
+          "memo_uuid": "4f43cb8a-7328-4037-8656-a24796530c27",
+          "memo_title": "알려진 컴포넌트 취약점 심각도",
+          "distance": 0.9982
+        },
+        {
+          "memo_uuid": "80a6498c-3e11-425f-bbfb-49aa1ffaa210",
+          "memo_title": "SPARROW-11806 컴포넌트 취약점 심각도 단계 필터 표시 오류",
+          "distance": 0.9983
+        },
+        {
+          "memo_uuid": "80a6498c-3e11-425f-bbfb-49aa1ffaa210",
+          "memo_title": "SPARROW-11806 컴포넌트 취약점 심각도 단계 필터 표시 오류",
+          "distance": 0.9991
+        },
+        {
+          "memo_uuid": "3fae09e3-1122-42d0-8f5f-68662b25c9b6",
+          "memo_title": "실효 위반 위험도",
+          "distance": 0.9992
+        },
+        {
+          "memo_uuid": "b317f5d3-63e7-4fa3-9632-58bc7c598662",
+          "memo_title": "4버전 체커 위험도 기준",
+          "distance": 0.9996
+        }
+      ]
+    },
+    {
+      "id": "project-create",
+      "query": "프로젝트 생성 절차",
+      "negative": false,
+      "expected": [
+        "8081b6c6-8bae-4f3a-8c08-d8d4d901b597",
+        "1cc66273-bdb3-4007-b0f9-094bb89fd7dc"
+      ],
+      "latency_ms": 95.3,
+      "result_count": 10,
+      "distinct_memos": 8,
+      "top_distance": 0.9225,
+      "first_relevant_rank": 6,
+      "recall_at_1": 0,
+      "recall_at_3": 0,
+      "recall_at_10": 0.5,
+      "reciprocal_rank": 0.1667,
+      "confident_hit": null,
+      "returned": [
+        {
+          "memo_uuid": "ba315080-95c7-4a73-8ed2-d9e5d6c37624",
+          "memo_title": "프로젝트 추가",
+          "distance": 0.9225
+        },
+        {
+          "memo_uuid": "01c48fa3-3183-415b-b37e-7c02ca613222",
+          "memo_title": "프로젝트 추가",
+          "distance": 0.9531
+        },
+        {
+          "memo_uuid": "ca955f6a-3b18-42e4-96e9-1e8d30a4a86b",
+          "memo_title": "프로젝트 추가",
+          "distance": 0.9691
+        },
+        {
+          "memo_uuid": "6bca2db4-9f80-428f-b4ee-07fb26cbd1cd",
+          "memo_title": "프로젝트 추가",
+          "distance": 0.9828
+        },
+        {
+          "memo_uuid": "0ab06513-6b98-405a-a7b2-bf2aa051f2bc",
+          "memo_title": "SPARROW-10576 [CLI] create project명령어 설정파일 없이도 명령어 가능도록 파라미터화",
+          "distance": 0.9868
+        },
+        {
+          "memo_uuid": "8081b6c6-8bae-4f3a-8c08-d8d4d901b597",
+          "memo_title": "프로젝트 추가",
+          "distance": 0.9877
+        },
+        {
+          "memo_uuid": "01db54f0-a139-4ef3-9101-b8e0e1d0629c",
+          "memo_title": "프로젝트 초기 설정",
+          "distance": 0.9911
+        },
+        {
+          "memo_uuid": "ca955f6a-3b18-42e4-96e9-1e8d30a4a86b",
+          "memo_title": "프로젝트 추가",
+          "distance": 0.9923
+        },
+        {
+          "memo_uuid": "ca955f6a-3b18-42e4-96e9-1e8d30a4a86b",
+          "memo_title": "프로젝트 추가",
+          "distance": 0.9954
+        },
+        {
+          "memo_uuid": "fb184f8f-3d9a-4da5-a3ba-b96432e2fd43",
+          "memo_title": "[유통 플랫폼] 새 프로젝트 추가",
+          "distance": 0.9989
+        }
+      ]
+    },
+    {
+      "id": "user-permission",
+      "query": "사용자 권한 관리",
+      "negative": false,
+      "expected": [
+        "824011c5-597d-455e-b66c-da8f26706639",
+        "21036114-3aee-4c35-b6ec-21d85fb5e962",
+        "a3f995cd-81a8-4523-9655-726d8896e0d7"
+      ],
+      "latency_ms": 98.6,
+      "result_count": 10,
+      "distinct_memos": 8,
+      "top_distance": 0.8309,
+      "first_relevant_rank": 1,
+      "recall_at_1": 0.3333,
+      "recall_at_3": 0.3333,
+      "recall_at_10": 0.6667,
+      "reciprocal_rank": 1,
+      "confident_hit": null,
+      "returned": [
+        {
+          "memo_uuid": "21036114-3aee-4c35-b6ec-21d85fb5e962",
+          "memo_title": "시스템 권한",
+          "distance": 0.8309
+        },
+        {
+          "memo_uuid": "665dc5f5-527c-4d11-a9f0-bd48fb278775",
+          "memo_title": "사용자 목록 조회",
+          "distance": 0.8644
+        },
+        {
+          "memo_uuid": "99a7034a-9ce0-442b-a3a8-6d09229609dc",
+          "memo_title": "시스템 관리 화면 진입",
+          "distance": 0.9678
+        },
+        {
+          "memo_uuid": "5fd7d704-730f-4d3a-858d-2d90ec21d863",
+          "memo_title": "시스템 권한",
+          "distance": 0.9769
+        },
+        {
+          "memo_uuid": "15e0735a-773b-4946-9812-7ccd131cf9ac",
+          "memo_title": "프로젝트 권한",
+          "distance": 0.9917
+        },
+        {
+          "memo_uuid": "fba12aca-144e-4e7e-b6fa-fd950d90903c",
+          "memo_title": "유효 권한",
+          "distance": 0.9983
+        },
+        {
+          "memo_uuid": "10e6fc1d-d6fd-4626-89fa-136742b7e776",
+          "memo_title": "연동 요청 인증과 권한 검사",
+          "distance": 0.9993
+        },
+        {
+          "memo_uuid": "10e6fc1d-d6fd-4626-89fa-136742b7e776",
+          "memo_title": "연동 요청 인증과 권한 검사",
+          "distance": 0.9993
+        },
+        {
+          "memo_uuid": "a3f995cd-81a8-4523-9655-726d8896e0d7",
+          "memo_title": "프로젝트 권한",
+          "distance": 0.9994
+        },
+        {
+          "memo_uuid": "a3f995cd-81a8-4523-9655-726d8896e0d7",
+          "memo_title": "프로젝트 권한",
+          "distance": 0.9997
+        }
+      ]
+    },
+    {
+      "id": "api-auth",
+      "query": "API 인증 방식",
+      "negative": false,
+      "expected": [
+        "c3e83109-b0ba-4dc4-bd41-7892028abbe1",
+        "2f1ab82e-e697-41eb-9933-6181ba03e8b9",
+        "cbe9ffe2-31c1-47b7-bbfd-f6c66575dcdf"
+      ],
+      "latency_ms": 111.3,
+      "result_count": 10,
+      "distinct_memos": 6,
+      "top_distance": 0.9822,
+      "first_relevant_rank": null,
+      "recall_at_1": 0,
+      "recall_at_3": 0,
+      "recall_at_10": 0,
+      "reciprocal_rank": 0,
+      "confident_hit": null,
+      "returned": [
+        {
+          "memo_uuid": "10e6fc1d-d6fd-4626-89fa-136742b7e776",
+          "memo_title": "연동 요청 인증과 권한 검사",
+          "distance": 0.9822
+        },
+        {
+          "memo_uuid": "78f66d49-2fea-49c7-8e9b-cb287c784186",
+          "memo_title": "액세스 키",
+          "distance": 0.9939
+        },
+        {
+          "memo_uuid": "10e6fc1d-d6fd-4626-89fa-136742b7e776",
+          "memo_title": "연동 요청 인증과 권한 검사",
+          "distance": 0.999
+        },
+        {
+          "memo_uuid": "830ddb39-db4f-4426-a0e4-fccc4ac7c199",
+          "memo_title": "GitHub 인증",
+          "distance": 0.9993
+        },
+        {
+          "memo_uuid": "175f36a6-94af-4367-b8e8-e7ee601706cd",
+          "memo_title": "내 계정 조회 API",
+          "distance": 0.9994
+        },
+        {
+          "memo_uuid": "0fd05eb1-ac4e-4621-8b32-0b10b7fbfa78",
+          "memo_title": "API 키 발급",
+          "distance": 0.9994
+        },
+        {
+          "memo_uuid": "9d975b0f-e1a8-4f82-9538-3c9002784c42",
+          "memo_title": "GitHub 인증",
+          "distance": 0.9996
+        },
+        {
+          "memo_uuid": "9d975b0f-e1a8-4f82-9538-3c9002784c42",
+          "memo_title": "GitHub 인증",
+          "distance": 0.9997
+        },
+        {
+          "memo_uuid": "175f36a6-94af-4367-b8e8-e7ee601706cd",
+          "memo_title": "내 계정 조회 API",
+          "distance": 0.9998
+        },
+        {
+          "memo_uuid": "10e6fc1d-d6fd-4626-89fa-136742b7e776",
+          "memo_title": "연동 요청 인증과 권한 검사",
+          "distance": 0.9999
+        }
+      ]
+    },
+    {
+      "id": "incremental-analysis",
+      "query": "증분 분석 설정",
+      "negative": false,
+      "expected": [
+        "4b5681aa-cd70-4235-82cf-80d7262f55ed"
+      ],
+      "latency_ms": 237.6,
+      "result_count": 10,
+      "distinct_memos": 5,
+      "top_distance": 0.7996,
+      "first_relevant_rank": 2,
+      "recall_at_1": 0,
+      "recall_at_3": 1,
+      "recall_at_10": 1,
+      "reciprocal_rank": 0.5,
+      "confident_hit": null,
+      "returned": [
+        {
+          "memo_uuid": "60cdc8ad-2f9f-4ed6-82f0-dcecc4069d25",
+          "memo_title": "SPARROW-1519 정적 증분 분석 지원",
+          "distance": 0.7996
+        },
+        {
+          "memo_uuid": "4b5681aa-cd70-4235-82cf-80d7262f55ed",
+          "memo_title": "증분 분석",
+          "distance": 0.9711
+        },
+        {
+          "memo_uuid": "60cdc8ad-2f9f-4ed6-82f0-dcecc4069d25",
+          "memo_title": "SPARROW-1519 정적 증분 분석 지원",
+          "distance": 0.9776
+        },
+        {
+          "memo_uuid": "60cdc8ad-2f9f-4ed6-82f0-dcecc4069d25",
+          "memo_title": "SPARROW-1519 정적 증분 분석 지원",
+          "distance": 0.9817
+        },
+        {
+          "memo_uuid": "60cdc8ad-2f9f-4ed6-82f0-dcecc4069d25",
+          "memo_title": "SPARROW-1519 정적 증분 분석 지원",
+          "distance": 0.9877
+        },
+        {
+          "memo_uuid": "39363324-0317-42ef-9178-d443915ee51a",
+          "memo_title": "SPSAST-2192 인크리멘탈 분석 기능을 모든 언어에서 지원하도록 확장",
+          "distance": 0.9957
+        },
+        {
+          "memo_uuid": "60cdc8ad-2f9f-4ed6-82f0-dcecc4069d25",
+          "memo_title": "SPARROW-1519 정적 증분 분석 지원",
+          "distance": 0.9971
+        },
+        {
+          "memo_uuid": "00d91aaf-33cd-4ee8-96ee-3dcef11c6f71",
+          "memo_title": "분석 옵션 파라미터 입력",
+          "distance": 0.9972
+        },
+        {
+          "memo_uuid": "d99a345e-86ce-4f1f-a082-03ee38e59c8e",
+          "memo_title": "분석 대상 설정: 압축 파일",
+          "distance": 0.9975
+        },
+        {
+          "memo_uuid": "39363324-0317-42ef-9178-d443915ee51a",
+          "memo_title": "SPSAST-2192 인크리멘탈 분석 기능을 모든 언어에서 지원하도록 확장",
+          "distance": 0.9981
+        }
+      ]
+    },
+    {
+      "id": "ruleset-customization",
+      "query": "룰셋 커스터마이징",
+      "negative": false,
+      "expected": [
+        "20943602-b5a0-4409-a0b3-9f7d163a831a",
+        "4dac86f9-4275-40fb-901d-c2a9f2dbc267"
+      ],
+      "latency_ms": 56.4,
+      "result_count": 10,
+      "distinct_memos": 7,
+      "top_distance": 0.9994,
+      "first_relevant_rank": null,
+      "recall_at_1": 0,
+      "recall_at_3": 0,
+      "recall_at_10": 0,
+      "reciprocal_rank": 0,
+      "confident_hit": null,
+      "returned": [
+        {
+          "memo_uuid": "205b1f9a-be14-4d55-a9b3-0d56cb7ee6ce",
+          "memo_title": "SPARROW-10815 결재선 이슈 제외 처리 기능의 이슈 태그 조건 규칙 개선",
+          "distance": 0.9994
+        },
+        {
+          "memo_uuid": "9c9fd0e9-a9e3-4966-b7d5-ebb49a3cdc93",
+          "memo_title": "SPSAST-2624 한국교직원공제회 보고서 커스터마이징 요구사항",
+          "distance": 0.9995
+        },
+        {
+          "memo_uuid": "9c9fd0e9-a9e3-4966-b7d5-ebb49a3cdc93",
+          "memo_title": "SPSAST-2624 한국교직원공제회 보고서 커스터마이징 요구사항",
+          "distance": 0.9998
+        },
+        {
+          "memo_uuid": "b96bea99-1e6e-4da5-a66b-eaeebea7bd43",
+          "memo_title": "자산 분류 규칙 수정",
+          "distance": 0.9999
+        },
+        {
+          "memo_uuid": "2a42d865-8e7b-47dd-beec-28ee921efeb4",
+          "memo_title": "이슈 검출 규칙 집합 수정",
+          "distance": 0.9999
+        },
+        {
+          "memo_uuid": "5a435247-ba80-4815-ab97-32ebb1d527b6",
+          "memo_title": "SPSAST-3492 MISRA-C/C++ 2023 및 현대차 Kotlin 지원 레거시 SAST 커스텀 패키지 제작",
+          "distance": 0.9999
+        },
+        {
+          "memo_uuid": "8f7a5356-8850-42f9-9b0e-1abe6916c6ea",
+          "memo_title": "SPARROW-9139 서버 설정을 통한 서비스 로드 밸런싱 지원",
+          "distance": 0.9999
+        },
+        {
+          "memo_uuid": "6fed6559-3865-4d63-a514-8c928dd8d501",
+          "memo_title": "대시보드 레이아웃 정보 수정",
+          "distance": 0.9999
+        },
+        {
+          "memo_uuid": "6fed6559-3865-4d63-a514-8c928dd8d501",
+          "memo_title": "대시보드 레이아웃 정보 수정",
+          "distance": 0.9999
+        },
+        {
+          "memo_uuid": "9c9fd0e9-a9e3-4966-b7d5-ebb49a3cdc93",
+          "memo_title": "SPSAST-2624 한국교직원공제회 보고서 커스터마이징 요구사항",
+          "distance": 0.9999
+        }
+      ]
+    },
+    {
+      "id": "id-sparrow-12109",
+      "query": "SPARROW-12109",
+      "negative": false,
+      "expected": [
+        "01acc3be-f870-4cf1-adc8-754b0938d970"
+      ],
+      "latency_ms": 151.3,
+      "result_count": 10,
+      "distinct_memos": 5,
+      "top_distance": 0.9958,
+      "first_relevant_rank": null,
+      "recall_at_1": 0,
+      "recall_at_3": 0,
+      "recall_at_10": 0,
+      "reciprocal_rank": 0,
+      "confident_hit": null,
+      "returned": [
+        {
+          "memo_uuid": "2d15406f-4621-4a36-bb09-e17e042d74dd",
+          "memo_title": "Sparrow Enterprise 2611.1 릴리즈 현황",
+          "distance": 0.9958
+        },
+        {
+          "memo_uuid": "80eef1fd-8e7e-48df-9022-b43ba6dc5d79",
+          "memo_title": "Sparrow Enterprise 2609.1 릴리즈 현황",
+          "distance": 0.9982
+        },
+        {
+          "memo_uuid": "80eef1fd-8e7e-48df-9022-b43ba6dc5d79",
+          "memo_title": "Sparrow Enterprise 2609.1 릴리즈 현황",
+          "distance": 0.9984
+        },
+        {
+          "memo_uuid": "80eef1fd-8e7e-48df-9022-b43ba6dc5d79",
+          "memo_title": "Sparrow Enterprise 2609.1 릴리즈 현황",
+          "distance": 0.9987
+        },
+        {
+          "memo_uuid": "2d5c1879-f0d2-4dd2-9f46-2611f67df23a",
+          "memo_title": "Sparrow Enterprise 2509.1 릴리즈 현황",
+          "distance": 0.9989
+        },
+        {
+          "memo_uuid": "2d5c1879-f0d2-4dd2-9f46-2611f67df23a",
+          "memo_title": "Sparrow Enterprise 2509.1 릴리즈 현황",
+          "distance": 0.9995
+        },
+        {
+          "memo_uuid": "2d5c1879-f0d2-4dd2-9f46-2611f67df23a",
+          "memo_title": "Sparrow Enterprise 2509.1 릴리즈 현황",
+          "distance": 0.9997
+        },
+        {
+          "memo_uuid": "2d5c1879-f0d2-4dd2-9f46-2611f67df23a",
+          "memo_title": "Sparrow Enterprise 2509.1 릴리즈 현황",
+          "distance": 0.9997
+        },
+        {
+          "memo_uuid": "8929b25b-ced0-4e63-b32b-4ed8c29fab84",
+          "memo_title": "Sparrow Enterprise 2411.1 릴리즈 현황",
+          "distance": 0.9998
+        },
+        {
+          "memo_uuid": "28708c40-a3b9-42e9-b4c6-91d8db5e83bd",
+          "memo_title": "Sparrow Enterprise 2511.1 릴리즈 현황",
+          "distance": 0.9999
+        }
+      ]
+    },
+    {
+      "id": "id-sparrow-12113",
+      "query": "SPARROW-12113",
+      "negative": false,
+      "expected": [
+        "c87aea6a-e7bc-432f-9940-c606594cc2e2"
+      ],
+      "latency_ms": 115,
+      "result_count": 10,
+      "distinct_memos": 5,
+      "top_distance": 0.9988,
+      "first_relevant_rank": null,
+      "recall_at_1": 0,
+      "recall_at_3": 0,
+      "recall_at_10": 0,
+      "reciprocal_rank": 0,
+      "confident_hit": null,
+      "returned": [
+        {
+          "memo_uuid": "2ff5ba86-e336-41e4-80f3-88429b42b438",
+          "memo_title": "Sparrow Enterprise 2511.2 릴리즈 현황",
+          "distance": 0.9988
+        },
+        {
+          "memo_uuid": "80583bd8-779b-4321-b9a9-f1b44838d804",
+          "memo_title": "Sparrow Enterprise 2311.2 릴리즈 현황",
+          "distance": 0.9993
+        },
+        {
+          "memo_uuid": "92a76da0-17c5-43a6-b22b-05311cfc44f8",
+          "memo_title": "Sparrow Enterprise 2412.1 릴리즈 현황",
+          "distance": 0.9994
+        },
+        {
+          "memo_uuid": "92a76da0-17c5-43a6-b22b-05311cfc44f8",
+          "memo_title": "Sparrow Enterprise 2412.1 릴리즈 현황",
+          "distance": 0.9996
+        },
+        {
+          "memo_uuid": "8929b25b-ced0-4e63-b32b-4ed8c29fab84",
+          "memo_title": "Sparrow Enterprise 2411.1 릴리즈 현황",
+          "distance": 0.9996
+        },
+        {
+          "memo_uuid": "28708c40-a3b9-42e9-b4c6-91d8db5e83bd",
+          "memo_title": "Sparrow Enterprise 2511.1 릴리즈 현황",
+          "distance": 0.9996
+        },
+        {
+          "memo_uuid": "8929b25b-ced0-4e63-b32b-4ed8c29fab84",
+          "memo_title": "Sparrow Enterprise 2411.1 릴리즈 현황",
+          "distance": 0.9998
+        },
+        {
+          "memo_uuid": "92a76da0-17c5-43a6-b22b-05311cfc44f8",
+          "memo_title": "Sparrow Enterprise 2412.1 릴리즈 현황",
+          "distance": 0.9998
+        },
+        {
+          "memo_uuid": "28708c40-a3b9-42e9-b4c6-91d8db5e83bd",
+          "memo_title": "Sparrow Enterprise 2511.1 릴리즈 현황",
+          "distance": 0.9999
+        },
+        {
+          "memo_uuid": "2ff5ba86-e336-41e4-80f3-88429b42b438",
+          "memo_title": "Sparrow Enterprise 2511.2 릴리즈 현황",
+          "distance": 0.9999
+        }
+      ]
+    },
+    {
+      "id": "id-sparrow-1519",
+      "query": "SPARROW-1519",
+      "negative": false,
+      "expected": [
+        "60cdc8ad-2f9f-4ed6-82f0-dcecc4069d25"
+      ],
+      "latency_ms": 105,
+      "result_count": 10,
+      "distinct_memos": 5,
+      "top_distance": 0.9971,
+      "first_relevant_rank": null,
+      "recall_at_1": 0,
+      "recall_at_3": 0,
+      "recall_at_10": 0,
+      "reciprocal_rank": 0,
+      "confident_hit": null,
+      "returned": [
+        {
+          "memo_uuid": "2d15406f-4621-4a36-bb09-e17e042d74dd",
+          "memo_title": "Sparrow Enterprise 2611.1 릴리즈 현황",
+          "distance": 0.9971
+        },
+        {
+          "memo_uuid": "2d5c1879-f0d2-4dd2-9f46-2611f67df23a",
+          "memo_title": "Sparrow Enterprise 2509.1 릴리즈 현황",
+          "distance": 0.9994
+        },
+        {
+          "memo_uuid": "80eef1fd-8e7e-48df-9022-b43ba6dc5d79",
+          "memo_title": "Sparrow Enterprise 2609.1 릴리즈 현황",
+          "distance": 0.9995
+        },
+        {
+          "memo_uuid": "80eef1fd-8e7e-48df-9022-b43ba6dc5d79",
+          "memo_title": "Sparrow Enterprise 2609.1 릴리즈 현황",
+          "distance": 0.9996
+        },
+        {
+          "memo_uuid": "2d5c1879-f0d2-4dd2-9f46-2611f67df23a",
+          "memo_title": "Sparrow Enterprise 2509.1 릴리즈 현황",
+          "distance": 0.9996
+        },
+        {
+          "memo_uuid": "80eef1fd-8e7e-48df-9022-b43ba6dc5d79",
+          "memo_title": "Sparrow Enterprise 2609.1 릴리즈 현황",
+          "distance": 0.9997
+        },
+        {
+          "memo_uuid": "2d5c1879-f0d2-4dd2-9f46-2611f67df23a",
+          "memo_title": "Sparrow Enterprise 2509.1 릴리즈 현황",
+          "distance": 0.9998
+        },
+        {
+          "memo_uuid": "2d5c1879-f0d2-4dd2-9f46-2611f67df23a",
+          "memo_title": "Sparrow Enterprise 2509.1 릴리즈 현황",
+          "distance": 0.9998
+        },
+        {
+          "memo_uuid": "28708c40-a3b9-42e9-b4c6-91d8db5e83bd",
+          "memo_title": "Sparrow Enterprise 2511.1 릴리즈 현황",
+          "distance": 0.9999
+        },
+        {
+          "memo_uuid": "f81eabb7-fd09-48bf-989a-6b2ecf75b4a2",
+          "memo_title": "SPARROW-9596 [티키테케] 바이너리 TC | 동일 버전 SCA 분석 중 컴포넌트 개수 변동",
+          "distance": 0.9999
+        }
+      ]
+    },
+    {
+      "id": "id-sparrow-6323",
+      "query": "SPARROW-6323",
+      "negative": false,
+      "expected": [
+        "c1c79b42-ff43-4f3f-bcdd-ba03844b5932"
+      ],
+      "latency_ms": 134.3,
+      "result_count": 10,
+      "distinct_memos": 6,
+      "top_distance": 0.9451,
+      "first_relevant_rank": null,
+      "recall_at_1": 0,
+      "recall_at_3": 0,
+      "recall_at_10": 0,
+      "reciprocal_rank": 0,
+      "confident_hit": null,
+      "returned": [
+        {
+          "memo_uuid": "fbde3185-def1-4bfd-8bb1-dabd99e173a5",
+          "memo_title": "Sparrow Enterprise 2402.1 릴리즈 현황",
+          "distance": 0.9451
+        },
+        {
+          "memo_uuid": "23812068-ba4e-482d-b15b-7d529e5c5db9",
+          "memo_title": "Sparrow Enterprise 2603.1 릴리즈 현황",
+          "distance": 0.9706
+        },
+        {
+          "memo_uuid": "f44b6246-ffcc-45a3-a102-01b30404ff56",
+          "memo_title": "Sparrow Enterprise 2503.2 릴리즈 현황",
+          "distance": 0.9962
+        },
+        {
+          "memo_uuid": "40666b00-0a27-4b73-97e0-1e00abb86069",
+          "memo_title": "Sparrow Enterprise 2512.2 릴리즈 현황",
+          "distance": 0.9971
+        },
+        {
+          "memo_uuid": "8e1e2e58-06c5-45ea-b3cf-98c8894ffefb",
+          "memo_title": "Sparrow Enterprise 2603.2 릴리즈 현황",
+          "distance": 0.9991
+        },
+        {
+          "memo_uuid": "8e1e2e58-06c5-45ea-b3cf-98c8894ffefb",
+          "memo_title": "Sparrow Enterprise 2603.2 릴리즈 현황",
+          "distance": 0.9994
+        },
+        {
+          "memo_uuid": "98821d88-243b-4135-9a08-8b6727c3162f",
+          "memo_title": "Sparrow Enterprise 2403.2 릴리즈 현황",
+          "distance": 0.9995
+        },
+        {
+          "memo_uuid": "8e1e2e58-06c5-45ea-b3cf-98c8894ffefb",
+          "memo_title": "Sparrow Enterprise 2603.2 릴리즈 현황",
+          "distance": 0.9996
+        },
+        {
+          "memo_uuid": "8e1e2e58-06c5-45ea-b3cf-98c8894ffefb",
+          "memo_title": "Sparrow Enterprise 2603.2 릴리즈 현황",
+          "distance": 0.9997
+        },
+        {
+          "memo_uuid": "40666b00-0a27-4b73-97e0-1e00abb86069",
+          "memo_title": "Sparrow Enterprise 2512.2 릴리즈 현황",
+          "distance": 0.9998
+        }
+      ]
+    },
+    {
+      "id": "id-sparrow-12144",
+      "query": "SPARROW-12144",
+      "negative": false,
+      "expected": [
+        "0d9721d4-1d36-4e00-98e6-bdd45c1a149e"
+      ],
+      "latency_ms": 163.6,
+      "result_count": 10,
+      "distinct_memos": 5,
+      "top_distance": 0.9995,
+      "first_relevant_rank": null,
+      "recall_at_1": 0,
+      "recall_at_3": 0,
+      "recall_at_10": 0,
+      "reciprocal_rank": 0,
+      "confident_hit": null,
+      "returned": [
+        {
+          "memo_uuid": "92a76da0-17c5-43a6-b22b-05311cfc44f8",
+          "memo_title": "Sparrow Enterprise 2412.1 릴리즈 현황",
+          "distance": 0.9995
+        },
+        {
+          "memo_uuid": "eff9f197-ae11-44ca-a837-259aabeb0b47",
+          "memo_title": "Sparrow Enterprise 2401.1 릴리즈 현황",
+          "distance": 0.9996
+        },
+        {
+          "memo_uuid": "8929b25b-ced0-4e63-b32b-4ed8c29fab84",
+          "memo_title": "Sparrow Enterprise 2411.1 릴리즈 현황",
+          "distance": 0.9997
+        },
+        {
+          "memo_uuid": "8929b25b-ced0-4e63-b32b-4ed8c29fab84",
+          "memo_title": "Sparrow Enterprise 2411.1 릴리즈 현황",
+          "distance": 0.9997
+        },
+        {
+          "memo_uuid": "68343a2d-d8a6-4dc0-8ee2-cf614c0d1e2c",
+          "memo_title": "Sparrow Enterprise 2411.2 릴리즈 현황",
+          "distance": 0.9998
+        },
+        {
+          "memo_uuid": "68343a2d-d8a6-4dc0-8ee2-cf614c0d1e2c",
+          "memo_title": "Sparrow Enterprise 2411.2 릴리즈 현황",
+          "distance": 0.9998
+        },
+        {
+          "memo_uuid": "8929b25b-ced0-4e63-b32b-4ed8c29fab84",
+          "memo_title": "Sparrow Enterprise 2411.1 릴리즈 현황",
+          "distance": 0.9998
+        },
+        {
+          "memo_uuid": "8929b25b-ced0-4e63-b32b-4ed8c29fab84",
+          "memo_title": "Sparrow Enterprise 2411.1 릴리즈 현황",
+          "distance": 0.9998
+        },
+        {
+          "memo_uuid": "92a76da0-17c5-43a6-b22b-05311cfc44f8",
+          "memo_title": "Sparrow Enterprise 2412.1 릴리즈 현황",
+          "distance": 0.9999
+        },
+        {
+          "memo_uuid": "2ff5ba86-e336-41e4-80f3-88429b42b438",
+          "memo_title": "Sparrow Enterprise 2511.2 릴리즈 현황",
+          "distance": 0.9999
+        }
+      ]
+    },
+    {
+      "id": "title-issue-rule-option-type",
+      "query": "이슈 검출 규칙 옵션 유형",
+      "negative": false,
+      "expected": [
+        "479d934f-4aad-452a-99e2-51620cc579f5"
+      ],
+      "latency_ms": 62.1,
+      "result_count": 10,
+      "distinct_memos": 10,
+      "top_distance": 0.0005,
+      "first_relevant_rank": 1,
+      "recall_at_1": 1,
+      "recall_at_3": 1,
+      "recall_at_10": 1,
+      "reciprocal_rank": 1,
+      "confident_hit": null,
+      "returned": [
+        {
+          "memo_uuid": "479d934f-4aad-452a-99e2-51620cc579f5",
+          "memo_title": "이슈 검출 규칙 옵션 유형",
+          "distance": 0.0005
+        },
+        {
+          "memo_uuid": "b9296484-4e6e-4999-bc6b-bc968e136e4f",
+          "memo_title": "이슈 검출 규칙 옵션",
+          "distance": 0.0178
+        },
+        {
+          "memo_uuid": "8f9ede45-eb8b-4010-a202-2ad2f036e86a",
+          "memo_title": "이슈 검출 규칙 옵션 선택지",
+          "distance": 0.0346
+        },
+        {
+          "memo_uuid": "a6604df0-84f7-4dc4-b710-5d56e3550e2d",
+          "memo_title": "이슈 검출 규칙 옵션 설명",
+          "distance": 0.0866
+        },
+        {
+          "memo_uuid": "e05515e9-c657-4fe6-9983-fa2b04bdea8d",
+          "memo_title": "이슈 검출 규칙 옵션 이름",
+          "distance": 0.146
+        },
+        {
+          "memo_uuid": "84fc77e6-b6c4-449f-bd75-8ccfe57e0a78",
+          "memo_title": "이슈 검출 규칙 옵션 기본값",
+          "distance": 0.2043
+        },
+        {
+          "memo_uuid": "1630e506-9fa7-4e70-b1dd-b7a2ee010b08",
+          "memo_title": "이슈 검출 규칙 목록 조회",
+          "distance": 0.3128
+        },
+        {
+          "memo_uuid": "2bda0351-f747-409d-987c-07b3396b24a6",
+          "memo_title": "이슈 검출 규칙별 이슈 수 조회",
+          "distance": 0.6649
+        },
+        {
+          "memo_uuid": "f4639be9-672c-4a3b-acd1-c269b6a07305",
+          "memo_title": "이슈 검출 규칙 옵션 선택지 값",
+          "distance": 0.7155
+        },
+        {
+          "memo_uuid": "b07fb3cb-fb6f-4228-a166-3708c4f363b1",
+          "memo_title": "이슈 검출 규칙 옵션 필수 여부",
+          "distance": 0.9494
+        }
+      ]
+    },
+    {
+      "id": "title-incremental-analysis",
+      "query": "증분 분석",
+      "negative": false,
+      "expected": [
+        "4b5681aa-cd70-4235-82cf-80d7262f55ed"
+      ],
+      "latency_ms": 430,
+      "result_count": 10,
+      "distinct_memos": 9,
+      "top_distance": 0.9902,
+      "first_relevant_rank": null,
+      "recall_at_1": 0,
+      "recall_at_3": 0,
+      "recall_at_10": 0,
+      "reciprocal_rank": 0,
+      "confident_hit": null,
+      "returned": [
+        {
+          "memo_uuid": "3d4e97a5-a7ad-455d-973b-3b552d6226ff",
+          "memo_title": "전수 분석",
+          "distance": 0.9902
+        },
+        {
+          "memo_uuid": "ac02f46c-f6d4-4aa9-9daf-c3bc08f85a6a",
+          "memo_title": "SPARROW-9279 변경된 파일을 중심으로 분석할 수 있는 옵션 제공",
+          "distance": 0.9957
+        },
+        {
+          "memo_uuid": "ac02f46c-f6d4-4aa9-9daf-c3bc08f85a6a",
+          "memo_title": "SPARROW-9279 변경된 파일을 중심으로 분석할 수 있는 옵션 제공",
+          "distance": 0.9969
+        },
+        {
+          "memo_uuid": "1221bfe7-3186-4e73-a207-bc5162a134bf",
+          "memo_title": "수시 분석",
+          "distance": 0.9972
+        },
+        {
+          "memo_uuid": "47528c2d-9945-43a1-917d-b212143f3ddd",
+          "memo_title": "컴포넌트 분석",
+          "distance": 0.9986
+        },
+        {
+          "memo_uuid": "c2fe3014-256b-406f-8c04-bd28b2378fbd",
+          "memo_title": "분석",
+          "distance": 0.9995
+        },
+        {
+          "memo_uuid": "b45ef3c8-f9e3-4234-b06d-7e6317d8f51b",
+          "memo_title": "[온디맨드] 분석",
+          "distance": 0.9995
+        },
+        {
+          "memo_uuid": "52522c40-20cb-441c-8421-f27198e1053d",
+          "memo_title": "[온디맨드] 유형별 분석 수",
+          "distance": 0.9998
+        },
+        {
+          "memo_uuid": "14e39b66-be52-4ab9-a11c-04f4e4195c22",
+          "memo_title": "웹 취약점 분석 옵션",
+          "distance": 0.9999
+        },
+        {
+          "memo_uuid": "09976dee-5209-4445-abff-7d624192e688",
+          "memo_title": "[온디맨드] 최대 분석 시간",
+          "distance": 0.9999
+        }
+      ]
+    },
+    {
+      "id": "title-error-code-system",
+      "query": "오류 코드 체계",
+      "negative": false,
+      "expected": [
+        "b95c982e-28e4-4da5-986a-5af5daef4efd"
+      ],
+      "latency_ms": 166.4,
+      "result_count": 10,
+      "distinct_memos": 6,
+      "top_distance": 0.0073,
+      "first_relevant_rank": 1,
+      "recall_at_1": 1,
+      "recall_at_3": 1,
+      "recall_at_10": 1,
+      "reciprocal_rank": 1,
+      "confident_hit": null,
+      "returned": [
+        {
+          "memo_uuid": "b95c982e-28e4-4da5-986a-5af5daef4efd",
+          "memo_title": "오류 코드 체계",
+          "distance": 0.0073
+        },
+        {
+          "memo_uuid": "a975aa22-557c-4912-9237-8e187978b1c5",
+          "memo_title": "오류 상태 화면 표시",
+          "distance": 0.2756
+        },
+        {
+          "memo_uuid": "e2961436-bd67-431f-afaf-394829944023",
+          "memo_title": "오류 응답 규약",
+          "distance": 0.6809
+        },
+        {
+          "memo_uuid": "e2961436-bd67-431f-afaf-394829944023",
+          "memo_title": "오류 응답 규약",
+          "distance": 0.9262
+        },
+        {
+          "memo_uuid": "e2961436-bd67-431f-afaf-394829944023",
+          "memo_title": "오류 응답 규약",
+          "distance": 0.9952
+        },
+        {
+          "memo_uuid": "e2961436-bd67-431f-afaf-394829944023",
+          "memo_title": "오류 응답 규약",
+          "distance": 0.9954
+        },
+        {
+          "memo_uuid": "239a7b01-c2c3-4ef9-bfd2-205276795fd4",
+          "memo_title": "[온디맨드] 분석 메시지 파일",
+          "distance": 0.9994
+        },
+        {
+          "memo_uuid": "3a1ba702-0631-4019-a79e-dde45b4be7bf",
+          "memo_title": "메시지 코드",
+          "distance": 0.9995
+        },
+        {
+          "memo_uuid": "22246c19-9926-487f-9011-ee7b779af084",
+          "memo_title": "오류 코드",
+          "distance": 0.9995
+        },
+        {
+          "memo_uuid": "a975aa22-557c-4912-9237-8e187978b1c5",
+          "memo_title": "오류 상태 화면 표시",
+          "distance": 0.9998
+        }
+      ]
+    },
+    {
+      "id": "title-component-vuln-severity",
+      "query": "컴포넌트 취약점 심각도 단계",
+      "negative": false,
+      "expected": [
+        "0756bfc8-be18-4440-a977-1f7f7846aa1b"
+      ],
+      "latency_ms": 120.6,
+      "result_count": 10,
+      "distinct_memos": 8,
+      "top_distance": 0.0018,
+      "first_relevant_rank": null,
+      "recall_at_1": 0,
+      "recall_at_3": 0,
+      "recall_at_10": 0,
+      "reciprocal_rank": 0,
+      "confident_hit": null,
+      "returned": [
+        {
+          "memo_uuid": "a72931c4-230e-4705-aa20-f18ab5931d7d",
+          "memo_title": "SBOM 컴포넌트 취약점 심각도",
+          "distance": 0.0018
+        },
+        {
+          "memo_uuid": "6e20f01d-2c7d-4cc3-a1ab-e9b7aacab82b",
+          "memo_title": "[유통 플랫폼] SBOM 컴포넌트 취약점 심각도",
+          "distance": 0.008
+        },
+        {
+          "memo_uuid": "e5ea3fd4-d088-4beb-9ac5-ebfe6832c616",
+          "memo_title": "컴포넌트 취약점별 총 식별 수 조회",
+          "distance": 0.0524
+        },
+        {
+          "memo_uuid": "e5ea3fd4-d088-4beb-9ac5-ebfe6832c616",
+          "memo_title": "컴포넌트 취약점별 총 식별 수 조회",
+          "distance": 0.8356
+        },
+        {
+          "memo_uuid": "d7d95a5b-312c-41a0-9b62-48a83b202011",
+          "memo_title": "[유통 플랫폼] 심각도별 컴포넌트 취약점 수",
+          "distance": 0.9596
+        },
+        {
+          "memo_uuid": "f9789742-6f16-441d-840e-ccc400d4001e",
+          "memo_title": "컴포넌트 이슈 상세 정보 조회",
+          "distance": 0.9746
+        },
+        {
+          "memo_uuid": "197721bd-df7f-440f-b28b-db6e1a98a9a4",
+          "memo_title": "SPARROW-6249 취약한 컴포넌트 검출 규칙 세분화",
+          "distance": 0.9969
+        },
+        {
+          "memo_uuid": "f9789742-6f16-441d-840e-ccc400d4001e",
+          "memo_title": "컴포넌트 이슈 상세 정보 조회",
+          "distance": 0.9984
+        },
+        {
+          "memo_uuid": "0bec3044-1ec5-4b02-a0cf-5f84c355f520",
+          "memo_title": "새로운 컴포넌트 취약점 발생 컴포넌트 수",
+          "distance": 0.9993
+        },
+        {
+          "memo_uuid": "afdebf50-4d79-41bb-a527-9ef2e1086441",
+          "memo_title": "새로운 컴포넌트 취약점 알림 유형",
+          "distance": 0.9998
+        }
+      ]
+    },
+    {
+      "id": "title-metric-display",
+      "query": "메트릭 표시 설정",
+      "negative": false,
+      "expected": [
+        "e9290c20-0f55-47fc-9eed-6bffbe346f2f"
+      ],
+      "latency_ms": 137.1,
+      "result_count": 10,
+      "distinct_memos": 6,
+      "top_distance": 0.1255,
+      "first_relevant_rank": 1,
+      "recall_at_1": 1,
+      "recall_at_3": 1,
+      "recall_at_10": 1,
+      "reciprocal_rank": 1,
+      "confident_hit": null,
+      "returned": [
+        {
+          "memo_uuid": "e9290c20-0f55-47fc-9eed-6bffbe346f2f",
+          "memo_title": "메트릭 표시 설정",
+          "distance": 0.1255
+        },
+        {
+          "memo_uuid": "da91aaa7-134e-47bd-9286-6e8bfd23b832",
+          "memo_title": "SPARROW-10306 그래프/표 형태의 메트릭 정보 대시보드 및 메트릭 보고서 제공",
+          "distance": 0.9357
+        },
+        {
+          "memo_uuid": "6016f7b5-0fa2-4315-bc7c-9af2be149504",
+          "memo_title": "작업 내 메트릭 정보 조회",
+          "distance": 0.952
+        },
+        {
+          "memo_uuid": "da91aaa7-134e-47bd-9286-6e8bfd23b832",
+          "memo_title": "SPARROW-10306 그래프/표 형태의 메트릭 정보 대시보드 및 메트릭 보고서 제공",
+          "distance": 0.9859
+        },
+        {
+          "memo_uuid": "52505566-9458-4f4c-93bb-669e0c70a3ee",
+          "memo_title": "메트릭 정보 조회",
+          "distance": 0.9893
+        },
+        {
+          "memo_uuid": "db463e00-4d49-4900-9104-81b9258b9e13",
+          "memo_title": "메트릭 측정",
+          "distance": 0.9931
+        },
+        {
+          "memo_uuid": "da91aaa7-134e-47bd-9286-6e8bfd23b832",
+          "memo_title": "SPARROW-10306 그래프/표 형태의 메트릭 정보 대시보드 및 메트릭 보고서 제공",
+          "distance": 0.9934
+        },
+        {
+          "memo_uuid": "da91aaa7-134e-47bd-9286-6e8bfd23b832",
+          "memo_title": "SPARROW-10306 그래프/표 형태의 메트릭 정보 대시보드 및 메트릭 보고서 제공",
+          "distance": 0.9955
+        },
+        {
+          "memo_uuid": "da91aaa7-134e-47bd-9286-6e8bfd23b832",
+          "memo_title": "SPARROW-10306 그래프/표 형태의 메트릭 정보 대시보드 및 메트릭 보고서 제공",
+          "distance": 0.9958
+        },
+        {
+          "memo_uuid": "c695b845-4240-4f80-9721-642e268f4392",
+          "memo_title": "[온디맨드] 분석 범위 프리셋",
+          "distance": 0.9983
+        }
+      ]
+    }
+  ]
+}

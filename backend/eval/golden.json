@@ -1,0 +1,332 @@
+{
+  "version": 1,
+  "project_id": "66c94d7d-e530-4b59-837e-efa496c6b265",
+  "created_at": "2026-11-01",
+  "dataset": "skald production read-only snapshot 2026-11-01",
+  "queries": [
+    {
+      "id": "issue-rule-option-types",
+      "query": "이슈 검출 규칙 옵션 종류",
+      "expected": [
+        "479d934f-4aad-452a-99e2-51620cc579f5",
+        "b9296484-4e6e-4999-bc6b-bc968e136e4f"
+      ],
+      "titles": [
+        "이슈 검출 규칙 옵션 유형",
+        "이슈 검출 규칙 옵션"
+      ],
+      "notes": "The option type memo lists boolean/single-select/multi-select/etc."
+    },
+    {
+      "id": "sast-dast-difference",
+      "query": "SAST와 DAST 차이",
+      "expected": [],
+      "titles": [],
+      "notes": "No memo in the project directly compares SAST and DAST; content hits are release notes or external decks."
+    },
+    {
+      "id": "sca-language-support",
+      "query": "SCA 지원 언어",
+      "expected": [],
+      "titles": [],
+      "notes": "SCA docs describe dependency/file handling; the only language-support memos cover SAST/SAQT."
+    },
+    {
+      "id": "iast-support",
+      "query": "IAST 지원 여부",
+      "expected": [],
+      "titles": [],
+      "notes": "IAST appears only in external analyst decks, not in a product capability memo."
+    },
+    {
+      "id": "license-types-and-limits",
+      "query": "라이선스 종류와 제약",
+      "expected": [
+        "3e9233a5-30ca-426e-93e4-f5b0d8f2ce51",
+        "f2ff1254-49d7-4330-aa22-976700f10400"
+      ],
+      "titles": [
+        "제품 라이선스",
+        "라이선스별 동작"
+      ],
+      "notes": "Product license memo describes contract-based feature limits; the cloud license-detail memo enumerates per-license behavior."
+    },
+    {
+      "id": "release-5.0-changes",
+      "query": "릴리스 버전 5.0 주요 변경사항",
+      "expected": [],
+      "titles": [],
+      "notes": "Release memos in the project start at later 5.x versions (5.23+); there is no 5.0.0 release memo."
+    },
+    {
+      "id": "negative-sparrow-1234",
+      "query": "SPARROW-1234 이슈 내용",
+      "expected": [],
+      "titles": [],
+      "negative": true,
+      "notes": "SPARROW-1234 does not exist in the project; expect no confident answer."
+    },
+    {
+      "id": "negative-sfr-006-02",
+      "query": "SFR-006-02 기능 요구사항",
+      "expected": [],
+      "titles": [],
+      "negative": true,
+      "notes": "SFR-006-02 does not exist; also exercises multi-segment key extraction."
+    },
+    {
+      "id": "error-code-20210",
+      "query": "에러코드 20210 원인",
+      "expected": [],
+      "titles": [],
+      "notes": "20210 appears only once in an onboarding deck; no error-code catalog entry documents its cause."
+    },
+    {
+      "id": "error-code-401",
+      "query": "오류코드 401 해결 방법",
+      "expected": [],
+      "titles": [],
+      "notes": "401 appears in Jira bug reports and a release note, not in a troubleshooting solution memo."
+    },
+    {
+      "id": "sparrow-properties-metric",
+      "query": "sparrow.properties 메트릭 설정 방법",
+      "expected": [
+        "e9290c20-0f55-47fc-9eed-6bffbe346f2f"
+      ],
+      "titles": [
+        "메트릭 표시 설정"
+      ],
+      "notes": "Troubleshooting memo gives the exact sparrow.properties keys and the 5.x UI path."
+    },
+    {
+      "id": "checker-rule-file",
+      "query": "체커 규칙 파일 작성 방법",
+      "expected": [
+        "4dac86f9-4275-40fb-901d-c2a9f2dbc267"
+      ],
+      "titles": [
+        "[온디맨드] 이슈 검출 규칙 파일"
+      ],
+      "notes": "Memo documents the per-rule file structure and fields."
+    },
+    {
+      "id": "enterprise-backend-error-codes",
+      "query": "엔터프라이즈 백엔드 에러코드 목록",
+      "expected": [
+        "b95c982e-28e4-4da5-986a-5af5daef4efd",
+        "c7bdc5ea-d6ce-4fda-8493-ad968bf9b61d"
+      ],
+      "titles": [
+        "오류 코드 체계",
+        "Sparrow enterprise CLI 오류코드"
+      ],
+      "notes": "Error-code taxonomy memo plus the CLI error-code list."
+    },
+    {
+      "id": "report-export",
+      "query": "점검 결과 리포트 내보내기 방법",
+      "expected": [
+        "d3bb184d-c693-4e3a-8214-d40fb7e5e505",
+        "cb311441-1c32-43c8-95b2-70c008a8d055"
+      ],
+      "titles": [
+        "작업 상세 보고서 내보내기",
+        "분석 결과 내보내기"
+      ],
+      "notes": "Both export functions describe the report export flow."
+    },
+    {
+      "id": "defect-severity",
+      "query": "결함 심각도 기준",
+      "expected": [
+        "0cc648d4-d520-4e89-a16d-b92d97af09a7",
+        "b317f5d3-63e7-4fa3-9632-58bc7c598662",
+        "0756bfc8-be18-4440-a977-1f7f7846aa1b"
+      ],
+      "titles": [
+        "체커 위험도 기준을 알고 싶습니다.",
+        "4버전 체커 위험도 기준",
+        "컴포넌트 취약점 심각도 단계"
+      ],
+      "notes": "Severity/risk grading memos."
+    },
+    {
+      "id": "project-create",
+      "query": "프로젝트 생성 절차",
+      "expected": [
+        "8081b6c6-8bae-4f3a-8c08-d8d4d901b597",
+        "1cc66273-bdb3-4007-b0f9-094bb89fd7dc"
+      ],
+      "titles": [
+        "프로젝트 추가",
+        "사건: 프로젝트 추가"
+      ],
+      "notes": "Server project-create function and its information event."
+    },
+    {
+      "id": "user-permission",
+      "query": "사용자 권한 관리",
+      "expected": [
+        "824011c5-597d-455e-b66c-da8f26706639",
+        "21036114-3aee-4c35-b6ec-21d85fb5e962",
+        "a3f995cd-81a8-4523-9655-726d8896e0d7"
+      ],
+      "titles": [
+        "권한",
+        "시스템 권한",
+        "프로젝트 권한"
+      ],
+      "notes": "Permission model memos."
+    },
+    {
+      "id": "api-auth",
+      "query": "API 인증 방식",
+      "expected": [
+        "c3e83109-b0ba-4dc4-bd41-7892028abbe1",
+        "2f1ab82e-e697-41eb-9933-6181ba03e8b9",
+        "cbe9ffe2-31c1-47b7-bbfd-f6c66575dcdf"
+      ],
+      "titles": [
+        "형상 관리 연동 REST API 가이드",
+        "Rest API 헤더 목록",
+        "Rest API 바디"
+      ],
+      "notes": "REST API guide and its header/body specs."
+    },
+    {
+      "id": "incremental-analysis",
+      "query": "증분 분석 설정",
+      "expected": [
+        "4b5681aa-cd70-4235-82cf-80d7262f55ed"
+      ],
+      "titles": [
+        "증분 분석"
+      ],
+      "notes": "Incremental analysis flag and constraints."
+    },
+    {
+      "id": "ruleset-customization",
+      "query": "룰셋 커스터마이징",
+      "expected": [
+        "20943602-b5a0-4409-a0b3-9f7d163a831a",
+        "4dac86f9-4275-40fb-901d-c2a9f2dbc267"
+      ],
+      "titles": [
+        "Sparrow SAST 커스텀 기능",
+        "[온디맨드] 이슈 검출 규칙 파일"
+      ],
+      "notes": "Custom feature toggles and the rule-file schema."
+    },
+    {
+      "id": "id-sparrow-12109",
+      "query": "SPARROW-12109",
+      "expected": [
+        "01acc3be-f870-4cf1-adc8-754b0938d970"
+      ],
+      "titles": [
+        "SPARROW-12109 작업 상세 이슈 목록 내보내기 시 프로젝트 조회 권한 사용자 차단"
+      ],
+      "notes": "Exact client_reference_id lookup."
+    },
+    {
+      "id": "id-sparrow-12113",
+      "query": "SPARROW-12113",
+      "expected": [
+        "c87aea6a-e7bc-432f-9940-c606594cc2e2"
+      ],
+      "titles": [
+        "SPARROW-12113 프로젝트 목록 모든 항목 선택 후 보고서 내보내기 시 이슈 검출 규칙 필터 무시"
+      ],
+      "notes": "Exact client_reference_id lookup."
+    },
+    {
+      "id": "id-sparrow-1519",
+      "query": "SPARROW-1519",
+      "expected": [
+        "60cdc8ad-2f9f-4ed6-82f0-dcecc4069d25"
+      ],
+      "titles": [
+        "SPARROW-1519 정적 증분 분석 지원"
+      ],
+      "notes": "Exact client_reference_id lookup."
+    },
+    {
+      "id": "id-sparrow-6323",
+      "query": "SPARROW-6323",
+      "expected": [
+        "c1c79b42-ff43-4f3f-bcdd-ba03844b5932"
+      ],
+      "titles": [
+        "SPARROW-6323 사용자 목록 가져오기에서 사용자 목록 파일 첨부 후 가져오기 시 제외되는 현상"
+      ],
+      "notes": "Exact client_reference_id lookup."
+    },
+    {
+      "id": "id-sparrow-12144",
+      "query": "SPARROW-12144",
+      "expected": [
+        "0d9721d4-1d36-4e00-98e6-bdd45c1a149e"
+      ],
+      "titles": [
+        "SPARROW-12144 (동일 이슈) 32,767자를 초과하는 컴포넌트 취약점 이슈 엑셀 보고서 출력 불가"
+      ],
+      "notes": "Exact client_reference_id lookup."
+    },
+    {
+      "id": "title-issue-rule-option-type",
+      "query": "이슈 검출 규칙 옵션 유형",
+      "expected": [
+        "479d934f-4aad-452a-99e2-51620cc579f5"
+      ],
+      "titles": [
+        "이슈 검출 규칙 옵션 유형"
+      ],
+      "notes": "Exact SPMS information title."
+    },
+    {
+      "id": "title-incremental-analysis",
+      "query": "증분 분석",
+      "expected": [
+        "4b5681aa-cd70-4235-82cf-80d7262f55ed"
+      ],
+      "titles": [
+        "증분 분석"
+      ],
+      "notes": "Exact SPMS information title."
+    },
+    {
+      "id": "title-error-code-system",
+      "query": "오류 코드 체계",
+      "expected": [
+        "b95c982e-28e4-4da5-986a-5af5daef4efd"
+      ],
+      "titles": [
+        "오류 코드 체계"
+      ],
+      "notes": "Exact SPMS information title."
+    },
+    {
+      "id": "title-component-vuln-severity",
+      "query": "컴포넌트 취약점 심각도 단계",
+      "expected": [
+        "0756bfc8-be18-4440-a977-1f7f7846aa1b"
+      ],
+      "titles": [
+        "컴포넌트 취약점 심각도 단계"
+      ],
+      "notes": "Exact SPMS information title."
+    },
+    {
+      "id": "title-metric-display",
+      "query": "메트릭 표시 설정",
+      "expected": [
+        "e9290c20-0f55-47fc-9eed-6bffbe346f2f"
+      ],
+      "titles": [
+        "메트릭 표시 설정"
+      ],
+      "notes": "Exact troubleshooting title."
+    }
+  ]
+}
