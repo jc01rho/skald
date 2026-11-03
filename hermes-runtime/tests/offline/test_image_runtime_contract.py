@@ -69,9 +69,15 @@ def test_downstream_patch_is_pinned_and_upstream_dependencies_are_frozen():
     assert "diff --git a/plugins/platforms/discord/adapter.py b/plugins/platforms/discord/adapter.py" in patch
     pyproject_hunk = patch.split("diff --git a/pyproject.toml b/pyproject.toml", 1)[1].split("diff --git", 1)[0]
     changed = [line for line in pyproject_hunk.splitlines() if line[:1] in ("+", "-") and not line.startswith(("+++", "---"))]
-    assert len(changed) == 2 and all("PyJWT[crypto]==" in line for line in changed)
-    pinned = re.search(r"PyJWT\[crypto\]==([0-9.]+)", changed[1]).group(1)
-    assert f"pyjwt=={pinned}" in overlay
+    added = [line for line in changed if line.startswith("+")]
+    assert len(changed) == 2 * len(added) and len(added) == 3
+    pins = {
+        match.group(1).lower(): match.group(2)
+        for match in (re.search(r'"([A-Za-z0-9_.-]+)(?:\[[a-z]+\])?==([0-9.]+)', line) for line in added)
+    }
+    assert set(pins) == {"certifi", "pillow", "pyjwt"}
+    assert all(f"{name}=={version}" in overlay for name, version in pins.items())
+    assert f"`browser-harness` requires `pillow==12.3.0`, but `{pins['pillow']}` is installed" in dockerfile
     assert "diff --git a/uv.lock b/uv.lock" not in patch
 
 
