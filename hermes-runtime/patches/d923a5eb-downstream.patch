@@ -70,9 +70,18 @@ index 8610268cb3..66b858e05f 100644
          if not isinstance(message.channel, discord.DMChannel):
              channel_ids = {str(message.channel.id)}
 diff --git a/pyproject.toml b/pyproject.toml
-index 5145f275d1..195d2ac00a 100644
+index 5145f275d1..20ddde0f4c 100644
 --- a/pyproject.toml
 +++ b/pyproject.toml
+@@ -38,7 +38,7 @@ dependencies = [
+   # user picks that backend. Smaller `dependencies` = smaller blast
+   # radius for the next supply-chain attack.
+   "openai==2.24.0; python_version >= '3.14'",
+-  "certifi==2026.5.20; python_version >= '3.14'",
++  "certifi==2026.10.18; python_version >= '3.14'",
+   # TLS trust comes from the OS certificate store (agent/ssl_verify.py), so
+   # a corporate/internal root installed on the machine just works. certifi
+   # above stays a direct pin because httpx/requests/openai each depend on
 @@ -92,7 +92,7 @@ dependencies = [
    # it out of the lazy-install path that exists only for the heavy matrix deps.
    "Markdown==3.10.2; python_version >= '3.14'",
@@ -82,3 +91,12 @@ index 5145f275d1..195d2ac00a 100644
    # urllib3 2.7.0 fixes GHSA-mf9v-mfxr-j63j (decompression-bomb bypass)
    # and GHSA-qccp-gfcp-xxvc (header leak across origins).
    "urllib3>=2.7.0,<3; python_version >= '3.14'",
+@@ -170,7 +170,7 @@ dependencies = [
+   # libs required for the codecs we use, so it's safe to ship in the base
+   # install rather than gating it behind an extra + a mid-session lazy install
+   # (which deadlocked the CLI under prompt_toolkit — see #40490).
+-  "Pillow==12.3.0; python_version >= '3.14'",
++  "Pillow==13.0.0; python_version >= '3.14'",
+   # HEIF/HEIC/AVIF decode for the vision tools. iPhone photos and screenshots
+   # are HEIC (frequently mislabeled .jpg by upload pipelines); Pillow has no
+   # built-in HEIF codec, so without this the vision resolver rejects them as
