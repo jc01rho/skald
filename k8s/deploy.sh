@@ -1379,7 +1379,7 @@ deploy_functional_spec_mcp() {
         exit 1
     fi
 
-    local worker_statefulset="functional-spec-mcp-worker-05aeecde"
+    local worker_statefulset="functional-spec-mcp-worker-f42297a0"
     local worker_update_strategy
     worker_update_strategy="$(kubectl get statefulset/"$worker_statefulset" -n "$NAMESPACE" -o jsonpath='{.spec.updateStrategy.type}')"
     if [ "$worker_update_strategy" = "OnDelete" ]; then

@@ -21,20 +21,20 @@ spec:
 apiVersion: v1
 kind: Service
 metadata:
-  name: functional-spec-mcp-worker-05aeecde
+  name: functional-spec-mcp-worker-f42297a0
   namespace: skald
   labels:
     app: skald
     component: functional-spec-mcp
     environment: production
-    revision: 05aeecde
+    revision: f42297a0
 spec:
   clusterIP: None
   publishNotReadyAddresses: true
   selector:
     app: skald
     component: functional-spec-mcp-worker
-    revision: 05aeecde
+    revision: f42297a0
   ports:
     - name: http
       port: 8080
@@ -44,19 +44,19 @@ spec:
 apiVersion: v1
 kind: Service
 metadata:
-  name: functional-spec-mcp-worker-05aeecde-active
+  name: functional-spec-mcp-worker-f42297a0-active
   namespace: skald
   labels:
     app: skald
     component: functional-spec-mcp
     environment: production
-    revision: 05aeecde
+    revision: f42297a0
 spec:
   type: ClusterIP
   selector:
     app: skald
     component: functional-spec-mcp-worker
-    revision: 05aeecde
+    revision: f42297a0
   ports:
     - name: http
       port: 8080
