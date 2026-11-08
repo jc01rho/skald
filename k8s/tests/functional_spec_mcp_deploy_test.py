@@ -33,7 +33,7 @@ def test_functional_spec_mcp_uses_stateless_router_and_revision_workers():
         "rollingUpdate": {"maxUnavailable": 0, "maxSurge": 1},
     }
     assert worker["spec"]["replicas"] == 2
-    assert worker["spec"]["serviceName"] == "functional-spec-mcp-worker-05aeecde"
+    assert worker["spec"]["serviceName"] == "functional-spec-mcp-worker-f42297a0"
     assert worker["spec"]["updateStrategy"] == {"type": "OnDelete"}
     assert router["spec"]["template"]["spec"]["imagePullSecrets"] == [
         {"name": "ghcr-pull-secret"}
@@ -73,16 +73,16 @@ def test_functional_spec_mcp_services_keep_initial_and_session_routing_separate(
     assert router["spec"]["selector"]["component"] == "functional-spec-mcp-router"
     assert worker["spec"]["clusterIP"] == "None"
     assert worker["spec"]["publishNotReadyAddresses"] is True
-    assert worker["metadata"]["name"] == "functional-spec-mcp-worker-05aeecde"
-    assert initial["metadata"]["name"] == "functional-spec-mcp-worker-05aeecde-active"
-    assert initial["spec"]["selector"]["revision"] == "05aeecde"
+    assert worker["metadata"]["name"] == "functional-spec-mcp-worker-f42297a0"
+    assert initial["metadata"]["name"] == "functional-spec-mcp-worker-f42297a0-active"
+    assert initial["spec"]["selector"]["revision"] == "f42297a0"
 
 
 def test_functional_spec_mcp_config_has_no_stale_draining_revision():
     worker_config, router_config = load_documents(CONFIGMAP_PATH)
 
-    assert worker_config["metadata"]["name"] == "functional-spec-mcp-worker-config-05aeecde"
-    assert router_config["data"]["MCP_ROUTER_ACTIVE_REVISION"] == "05aeecde"
+    assert worker_config["metadata"]["name"] == "functional-spec-mcp-worker-config-f42297a0"
+    assert router_config["data"]["MCP_ROUTER_ACTIVE_REVISION"] == "f42297a0"
     assert router_config["data"]["MCP_ROUTER_DRAINING_REVISIONS"] == ""
 
 
@@ -115,7 +115,7 @@ def test_deploy_script_applies_and_waits_for_functional_spec_mcp():
     assert "jsonpath='{.status.updatedReplicas}'" in deploy_script
     assert "jsonpath='{.status.currentRevision}'" not in deploy_script
     assert (
-        'kubectl rollout status statefulset/functional-spec-mcp-worker-05aeecde '
+        'kubectl rollout status statefulset/functional-spec-mcp-worker-f42297a0 '
         '-n "$NAMESPACE"'
     ) not in deploy_script
     main_body = deploy_script[
