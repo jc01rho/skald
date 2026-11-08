@@ -124,7 +124,10 @@ export const requireEffectiveProject = () => {
     }
 }
 
-export const requirePromotedSpecScope = (defaultScopeKey = 'spms:all') => {
+// Resolves and validates the spec scope of a request. Exact, relation and traversal lookups read published
+// revisions, so they stay available whatever the reconciliation state is; only the quality-gated surfaces
+// (related, conflict candidates) pass requirePromotion.
+export const requireSpecScope = (defaultScopeKey = 'spms:all', requirePromotion = false) => {
     return async (req: Request, res: Response, next: NextFunction) => {
         try {
             const project = req.context?.project || await resolveEffectiveProject(req)
@@ -145,13 +148,15 @@ export const requirePromotedSpecScope = (defaultScopeKey = 'spms:all') => {
                 return res.status(403).json({ error: 'Spec scope mismatch', code: SPEC_SCOPE_MISMATCH })
             }
             const scopeKey = scopeKeys[0] || defaultScopeKey
-            const promotion = await DI.specPromotionStates.findOne({
-                project,
-                scope_key: scopeKey,
-                state: SpecPromotionStatus.PROMOTED,
-            })
-            if (!promotion) {
-                return res.status(409).json({ error: 'Spec scope is not promoted', code: SPEC_SCOPE_NOT_PROMOTED })
+            if (requirePromotion) {
+                const promotion = await DI.specPromotionStates.findOne({
+                    project,
+                    scope_key: scopeKey,
+                    state: SpecPromotionStatus.PROMOTED,
+                })
+                if (!promotion) {
+                    return res.status(409).json({ error: 'Spec scope is not promoted', code: SPEC_SCOPE_NOT_PROMOTED })
+                }
             }
             return next()
         } catch (error) {
@@ -162,5 +167,7 @@ export const requirePromotedSpecScope = (defaultScopeKey = 'spms:all') => {
         }
     }
 }
+
+export const requirePromotedSpecScope = (defaultScopeKey = 'spms:all') => requireSpecScope(defaultScopeKey, true)
 
 export const requireProjectAccess = () => requireEffectiveProject()

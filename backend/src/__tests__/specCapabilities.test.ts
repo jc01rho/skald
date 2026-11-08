@@ -4,6 +4,7 @@ import { specRevisionRouter } from '@/api/specRevision'
 import { DI } from '@/di'
 import { SpecPromotionStatus } from '@/entities/SpecPromotionState'
 import { requireEffectiveProject } from '@/middleware/authMiddleware'
+import { SpecRevisionService } from '@/services/specRevisionService'
 const project = { uuid: '00000000-0000-4000-8000-000000000001' } as any
 
 function app(): Express {
@@ -26,7 +27,7 @@ function app(): Express {
 describe('spec capability promotion gate', () => {
     afterEach(() => jest.restoreAllMocks())
 
-    it('advertises every native surface false when the effective scope is not promoted', async () => {
+    it('keeps exact, relation and traversal surfaces on while the scope is not promoted, and the quality surfaces off', async () => {
         const findOne = jest.fn().mockResolvedValue(null)
         DI.specPromotionStates = { findOne } as any
 
@@ -40,13 +41,13 @@ describe('spec capability promotion gate', () => {
         })
         expect(response.body).toEqual(expect.objectContaining({
             scope_key: 'spms:all',
-            native: false,
-            exact: false,
-            outgoing: false,
-            incoming: false,
+            native: true,
+            exact: true,
+            outgoing: true,
+            incoming: true,
             related: false,
             conflict_candidates: false,
-            traversal: expect.objectContaining({ supported: false, snapshot_cursor: false }),
+            traversal: expect.objectContaining({ supported: true, snapshot_cursor: true }),
         }))
     })
 
@@ -82,17 +83,29 @@ describe('spec capability promotion gate', () => {
     })
 
     it.each([
-        ['get', '/specs/exact?locator=spec:one', undefined],
-        ['get', '/specs/outgoing?locator=spec:one', undefined],
-        ['get', '/specs/incoming?locator=spec:one', undefined],
-        ['post', '/specs/traverse', { locator: 'spec:one' }],
+        ['get', '/specs/exact?locator=spec:one', undefined, 'exact', {}],
+        ['get', '/specs/outgoing?locator=spec:one', undefined, 'relations', []],
+        ['get', '/specs/incoming?locator=spec:one', undefined, 'relations', []],
+        ['post', '/specs/traverse', { locator: 'spec:one' }, 'traverse', { nodes: [] }],
+    ] as const)('serves %s %s before promotion', async (method, path, body, service, result) => {
+        const findOne = jest.fn().mockResolvedValue(null)
+        DI.specPromotionStates = { findOne } as any
+        jest.spyOn(SpecRevisionService.prototype, service as any).mockResolvedValue(result as never)
+
+        const pending = request(app())[method](path).set('Authorization', 'Bearer test-key')
+        const response = body ? await pending.send(body) : await pending
+
+        expect(response.status).toBe(200)
+        expect(findOne).not.toHaveBeenCalled()
+    })
+
+    it.each([
         ['post', '/specs/related', { locators: ['spec:one'] }],
         ['post', '/specs/conflict-candidates', { locators: ['spec:one'] }],
     ] as const)('rejects %s %s directly before promotion', async (method, path, body) => {
         DI.specPromotionStates = { findOne: jest.fn().mockResolvedValue(null) } as any
 
-        const pending = request(app())[method](path)
-        const response = body ? await pending.send(body) : await pending
+        const response = await request(app())[method](path).send(body)
 
         expect(response.status).toBe(409)
         expect(response.body).toEqual({ error: 'Spec scope is not promoted', code: 'SPEC_SCOPE_NOT_PROMOTED' })
