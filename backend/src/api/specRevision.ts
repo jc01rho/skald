@@ -2,7 +2,7 @@ import { createHash } from 'crypto'
 import express, { NextFunction, Request, Response } from 'express'
 import { z } from 'zod'
 import { DI } from '@/di'
-import { requirePromotedSpecScope, resolveEffectiveProject } from '@/middleware/authMiddleware'
+import { requirePromotedSpecScope, requireSpecScope, resolveEffectiveProject } from '@/middleware/authMiddleware'
 
 import { SpecRevisionError, SpecRevisionService } from '@/services/specRevisionService'
 import { SpecPromotionStatus } from '@/entities/SpecPromotionState'
@@ -177,14 +177,15 @@ specRevisionRouter.get('/spec-capabilities', async (req, res) => {
             scope_key: parsed.data.scope_key,
             state: SpecPromotionStatus.PROMOTED,
         })
-        const native = promotion !== null
-        const readiness = promotion?.nativeCapabilityReadiness?.() || {
-            exact: native,
-            outgoing: native,
-            incoming: native,
-            traversal: native,
-            related: false,
-            conflict_candidates: false,
+        // Exact, relation and traversal reads serve published revisions and never wait for promotion.
+        const native = true
+        const readiness = {
+            exact: true,
+            outgoing: true,
+            incoming: true,
+            traversal: true,
+            related: promotion?.nativeCapabilityReadiness?.().related ?? false,
+            conflict_candidates: promotion?.nativeCapabilityReadiness?.().conflict_candidates ?? false,
         }
         return res.json({
             protocol_version: '1',
@@ -224,7 +225,7 @@ specRevisionRouter.post('/spec-revisions/stage-and-publish', async (req, res) =>
     }
 })
 
-specRevisionRouter.get('/specs/exact', requirePromotedSpecScope(), async (req, res) => {
+specRevisionRouter.get('/specs/exact', requireSpecScope(), async (req, res) => {
     const parsed = ExactQuery.safeParse(req.query)
     if (!parsed.success) return validationError(res, parsed.error)
     try {
@@ -235,7 +236,7 @@ specRevisionRouter.get('/specs/exact', requirePromotedSpecScope(), async (req, r
     }
 })
 
-specRevisionRouter.get('/specs/outgoing', requirePromotedSpecScope(), async (req, res) => {
+specRevisionRouter.get('/specs/outgoing', requireSpecScope(), async (req, res) => {
     const parsed = GraphQuery.safeParse(req.query)
     if (!parsed.success) return validationError(res, parsed.error)
     try {
@@ -247,7 +248,7 @@ specRevisionRouter.get('/specs/outgoing', requirePromotedSpecScope(), async (req
     }
 })
 
-specRevisionRouter.get('/specs/incoming', requirePromotedSpecScope(), async (req, res) => {
+specRevisionRouter.get('/specs/incoming', requireSpecScope(), async (req, res) => {
     const parsed = GraphQuery.safeParse(req.query)
     if (!parsed.success) return validationError(res, parsed.error)
     try {
@@ -259,7 +260,7 @@ specRevisionRouter.get('/specs/incoming', requirePromotedSpecScope(), async (req
     }
 })
 
-specRevisionRouter.post('/specs/traverse', requirePromotedSpecScope(), async (req, res) => {
+specRevisionRouter.post('/specs/traverse', requireSpecScope(), async (req, res) => {
     const parsed = TraverseRequest.safeParse(req.body)
     if (!parsed.success) return validationError(res, parsed.error)
     try {
