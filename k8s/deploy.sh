@@ -1282,12 +1282,29 @@ functional_spec_mcp_revision_has_sessions() {
     return 1
 }
 
+# Echoes "busy", "idle" or "error" for a revision's drain state. An unreachable
+# pod reports "error" and callers treat that as busy: a failed probe is not
+# evidence that the revision's sessions are gone.
+functional_spec_mcp_revision_drain_state() {
+    local revision=$1
+    local state
+
+    functional_spec_mcp_revision_has_sessions "$revision"
+    case $? in
+        0) state="busy" ;;
+        1) state="idle" ;;
+        *) state="error" ;;
+    esac
+
+    printf '%s' "$state"
+}
+
 retire_drained_functional_spec_mcp_revisions() {
     local effective_draining_revisions=$1
     local desired_draining_revisions=$2
     local active_revision=$3
-    local revision deadline
-    local -a draining_revisions retire_revisions
+    local revision deadline state pending remaining_draining_revisions drain_timeout
+    local -a draining_revisions retire_revisions kept_revisions
 
     IFS=',' read -r -a draining_revisions <<< "$effective_draining_revisions"
     for revision in "${draining_revisions[@]}"; do
@@ -1299,49 +1316,90 @@ retire_drained_functional_spec_mcp_revisions() {
     done
 
     if [ "${#retire_revisions[@]}" -eq 0 ]; then
-        return
+        return 0
     fi
 
     for revision in "${retire_revisions[@]}"; do
         if ! drain_functional_spec_mcp_revision "$revision"; then
-            exit 1
+            log_warning "Functional spec MCP worker drain failed, keeping revision draining: $revision"
+            kept_revisions+=("$revision")
         fi
     done
 
-    deadline=$((SECONDS + 300))
+    # Retirement is best effort: it runs at the end of the deploy, so aborting on
+    # a slow drain would fail a deploy whose application changes are already live.
+    # A revision that still serves sessions, or cannot be queried, must also stay
+    # in the router draining list: the router only accepts session tokens for the
+    # active and the draining revisions and would reject the live ones otherwise.
+    drain_timeout="${FUNCTIONAL_SPEC_MCP_DRAIN_TIMEOUT_SECONDS:-300}"
+    deadline=$((SECONDS + drain_timeout))
     while true; do
+        pending="false"
         for revision in "${retire_revisions[@]}"; do
-            if functional_spec_mcp_revision_has_sessions "$revision"; then
-                if [ "$SECONDS" -ge "$deadline" ]; then
-                    log_error "Functional spec MCP worker drain timed out: $revision"
-                    exit 1
-                fi
-
-                sleep 5
-                continue 2
+            if functional_spec_mcp_revision_list_contains "${kept_revisions[*]-}" "$revision"; then
+                continue
             fi
+
+            state="$(functional_spec_mcp_revision_drain_state "$revision")"
+            if [ "$state" = "idle" ]; then
+                continue
+            fi
+
+            if [ "$SECONDS" -ge "$deadline" ]; then
+                log_warning "Functional spec MCP worker drain timed out ($state), keeping revision draining: $revision"
+                kept_revisions+=("$revision")
+                continue
+            fi
+
+            pending="true"
         done
-        break
+
+        if [ "$pending" = "false" ]; then
+            break
+        fi
+
+        sleep 5
     done
 
-    if ! kubectl patch configmap functional-spec-mcp-router-config -n "$NAMESPACE" \
-        --type=merge \
-        -p "{\"data\":{\"MCP_ROUTER_DRAINING_REVISIONS\":\"$desired_draining_revisions\"}}"; then
-        log_error "Functional spec MCP router draining revisions reset failed"
-        exit 1
+    remaining_draining_revisions="$desired_draining_revisions"
+    for revision in "${kept_revisions[@]-}"; do
+        if [ -z "$revision" ] || functional_spec_mcp_revision_list_contains "$remaining_draining_revisions" "$revision"; then
+            continue
+        fi
+
+        remaining_draining_revisions="${remaining_draining_revisions:+$remaining_draining_revisions,}$revision"
+    done
+
+    if [ "$remaining_draining_revisions" != "$desired_draining_revisions" ]; then
+        if ! kubectl patch configmap functional-spec-mcp-router-config -n "$NAMESPACE" \
+            --type=merge \
+            -p "{\"data\":{\"MCP_ROUTER_DRAINING_REVISIONS\":\"$remaining_draining_revisions\"}}"; then
+            log_error "Functional spec MCP router draining revisions update failed"
+            return 1
+        fi
+
+        if ! kubectl rollout restart deployment/functional-spec-mcp-router -n "$NAMESPACE"; then
+            log_error "Functional spec MCP router restart after worker retirement failed"
+            return 1
+        fi
+
+        if ! kubectl rollout status deployment/functional-spec-mcp-router -n "$NAMESPACE" --timeout=300s; then
+            log_error "Functional spec MCP router restart rollout failed"
+            return 1
+        fi
     fi
 
-    if ! kubectl rollout restart deployment/functional-spec-mcp-router -n "$NAMESPACE"; then
-        log_error "Functional spec MCP router restart after worker retirement failed"
-        exit 1
-    fi
-
-    if ! kubectl rollout status deployment/functional-spec-mcp-router -n "$NAMESPACE" --timeout=300s; then
-        log_error "Functional spec MCP router restart rollout failed"
-        exit 1
-    fi
+    for revision in "${kept_revisions[@]-}"; do
+        if [ -n "$revision" ]; then
+            log_warning "Functional spec MCP revision left draining for a later deploy: $revision"
+        fi
+    done
 
     for revision in "${retire_revisions[@]}"; do
+        if functional_spec_mcp_revision_list_contains "${kept_revisions[*]-}" "$revision"; then
+            continue
+        fi
+
         if kubectl delete statefulset "functional-spec-mcp-worker-$revision" -n "$NAMESPACE" --ignore-not-found=true \
             && kubectl delete service "functional-spec-mcp-worker-$revision" -n "$NAMESPACE" --ignore-not-found=true \
             && kubectl delete service "functional-spec-mcp-worker-$revision-active" -n "$NAMESPACE" --ignore-not-found=true \
@@ -1351,6 +1409,8 @@ retire_drained_functional_spec_mcp_revisions() {
             log_warning "Functional spec MCP drained revision retirement incomplete: $revision"
         fi
     done
+
+    return 0
 }
 
 # Step 7.7: Sparrow 기능 명세 HTTP MCP 배포
@@ -1451,10 +1511,12 @@ deploy_functional_spec_mcp() {
         exit 1
     fi
 
-    retire_drained_functional_spec_mcp_revisions \
+    if ! retire_drained_functional_spec_mcp_revisions \
         "$effective_draining_revisions" \
         "$desired_draining_revisions" \
-        "$active_revision"
+        "$active_revision"; then
+        log_warning "Functional spec MCP drained revision retirement deferred to the next deploy"
+    fi
 
     if ! kubectl wait --for=condition=Ready certificate/functional-spec-mcp-tls -n "$NAMESPACE" --timeout=300s; then
         log_error "Functional spec MCP TLS Certificate 준비 실패"

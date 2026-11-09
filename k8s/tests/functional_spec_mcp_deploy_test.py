@@ -1,3 +1,4 @@
+import subprocess
 from pathlib import Path
 
 import yaml
@@ -168,3 +169,78 @@ def test_deploy_script_retires_drained_functional_spec_mcp_revisions():
     assert 'kubectl delete statefulset "functional-spec-mcp-worker-$revision"' in deploy_script
     assert 'kubectl delete configmap "functional-spec-mcp-worker-config-$revision"' in deploy_script
     assert '--ignore-not-found=true' in deploy_script
+
+BUSY_REVISION = "aaaa1111"
+IDLE_REVISION = "bbbb2222"
+
+
+def _write_harness(tmp_path, busy_sessions):
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    log = tmp_path / "kubectl.log"
+
+    (bin_dir / "kubectl").write_text(
+        "#!/bin/bash\n"
+        'printf "%s\\n" "$*" >> "$KUBECTL_LOG"\n'
+        'case "$*" in\n'
+        '  *"get pods"*)\n'
+        f'    if [[ "$*" == *"revision={BUSY_REVISION}"* ]]; then echo pod/busy-0; else echo pod/idle-0; fi\n'
+        "    ;;\n"
+        '  *"exec"*)\n'
+        '    if [[ "$*" == *"busy-0"* ]]; then echo "${BUSY_SESSIONS}"; else echo 0; fi\n'
+        "    ;;\n"
+        "  *) echo ok ;;\n"
+        "esac\n"
+    )
+    (bin_dir / "kubectl").chmod(0o755)
+
+    harness = tmp_path / "harness.sh"
+    harness.write_text(
+        "set -u\n"
+        f'export PATH="{bin_dir}:$PATH"\n'
+        f'export KUBECTL_LOG="{log}"\n'
+        f'export BUSY_SESSIONS="{busy_sessions}"\n'
+        "export FUNCTIONAL_SPEC_MCP_DRAIN_TIMEOUT_SECONDS=0\n"
+        f'source "{DEPLOY_SCRIPT}"\n'
+        "rc=0\n"
+        f'retire_drained_functional_spec_mcp_revisions "{BUSY_REVISION},{IDLE_REVISION}" "" active9999 || rc=$?\n'
+        'echo "RETIRE_RC=$rc"\n'
+    )
+    return harness, log
+
+
+def _run(harness):
+    return subprocess.run(["bash", str(harness)], capture_output=True, text=True, timeout=120)
+
+
+def test_retire_keeps_busy_revision_draining_without_failing_deploy(tmp_path):
+    harness, log = _write_harness(tmp_path, busy_sessions=1)
+
+    result = _run(harness)
+
+    assert result.returncode == 0, result.stderr
+    assert "RETIRE_RC=0" in result.stdout, result.stdout
+    calls = log.read_text()
+    patch_lines = [
+        line for line in calls.splitlines() if line.startswith("patch configmap")
+    ]
+    assert len(patch_lines) == 1, calls
+    assert BUSY_REVISION in patch_lines[0]
+    assert IDLE_REVISION not in patch_lines[0]
+    assert f"delete statefulset functional-spec-mcp-worker-{IDLE_REVISION}" in calls
+    assert f"delete statefulset functional-spec-mcp-worker-{BUSY_REVISION}" not in calls
+    assert "rollout restart deployment/functional-spec-mcp-router" in calls
+
+
+def test_retire_deletes_every_idle_revision_without_touching_draining_list(tmp_path):
+    harness, log = _write_harness(tmp_path, busy_sessions=0)
+
+    result = _run(harness)
+
+    assert result.returncode == 0, result.stderr
+    assert "RETIRE_RC=0" in result.stdout, result.stdout
+    calls = log.read_text()
+    assert f"delete statefulset functional-spec-mcp-worker-{BUSY_REVISION}" in calls
+    assert f"delete statefulset functional-spec-mcp-worker-{IDLE_REVISION}" in calls
+    assert "patch configmap functional-spec-mcp-router-config" not in calls
+    assert "rollout restart deployment/functional-spec-mcp-router" not in calls
